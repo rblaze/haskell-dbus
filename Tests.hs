@@ -17,6 +17,7 @@
 
 import Test.QuickCheck.Batch
 import Tests.Signature (signatureTests)
+import Tests.Names (nameTests)
 
 options = TestOptions
 	{ no_of_tests     = 100
@@ -27,4 +28,5 @@ options = TestOptions
 main = do
 	runTests "simple" options . concat $
 		[ signatureTests
+		, nameTests
 		]
