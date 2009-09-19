@@ -17,11 +17,10 @@
 
 module Tests.Names (nameTests) where
 
-import Control.Monad (replicateM)
-import Data.List (intercalate)
-import Data.Maybe (fromJust, isJust, isNothing)
+import Data.Maybe (isNothing)
 import Test.QuickCheck
 import Test.QuickCheck.Batch (run)
+import Tests.Instances ()
 import DBus.Types.ObjectPath
 
 nameTests =
@@ -42,18 +41,3 @@ prop_Invalid1 = isNothing . mkObjectPath $ "a"
 prop_Invalid2 = isNothing . mkObjectPath $ "/a/"
 prop_Invalid3 = isNothing . mkObjectPath $ "/a/-"
 
-instance Arbitrary ObjectPath where
-	arbitrary = do
-		let chars = ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_"
-		let genElement = sized $ \n -> do
-			n' <- choose (1, max 1 n)
-			replicateM n' (elements chars)
-		let genElements = sized $ \n -> do
-			n' <- choose (1, max 1 n)
-			replicateM n' genElement
-		
-		useRoot <- frequency [(1, return True), (9, return False)]
-		path <- if useRoot
-			then return "/"
-			else fmap (intercalate "/" . ([] :)) genElements
-		return . fromJust . mkObjectPath $ path

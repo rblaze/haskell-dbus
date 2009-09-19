@@ -20,6 +20,7 @@ module Tests.Signature (signatureTests) where
 import Data.Maybe (fromJust, isJust, isNothing)
 import Test.QuickCheck
 import Test.QuickCheck.Batch (run)
+import Tests.Instances ()
 import DBus.Types.Signature
 
 signatureTests =
@@ -62,45 +63,3 @@ prop_Invalid2 = isNothing . mkSignature $ "a{vy}"
 -- Show is useful
 prop_show0 x = showsPrec 10 x "" == "Signature \"" ++ strSignature x ++ "\""
 prop_show1 x = showsPrec 11 x "" == "(Signature \"" ++ strSignature x ++ "\")"
-
-instance Arbitrary Type where
-	arbitrary = oneof [atomicType, containerType]
-
-instance Arbitrary Signature where
-	arbitrary = do
-		ts <- arbitrary
-		let str = concatMap typeString ts
-		if length str <= 255
-			then return . fromJust . mkSignature $ str
-			else arbitrary
-
-atomicType = elements
-	[ BooleanT
-	, ByteT
-	, UInt16T
-	, UInt32T
-	, UInt64T
-	, Int16T
-	, Int32T
-	, Int64T
-	, DoubleT
-	, StringT
-	, ObjectPathT
-	, SignatureT
-	]
-
-containerType = do
-	c <- choose (0,3) :: Gen Int
-	case c of
-		0 -> fmap ArrayT arbitrary
-		1 -> do
-			kt <- atomicType
-			vt <- arbitrary
-			return $ DictT kt vt
-		2 -> sized structType
-		3 -> return VariantT
-
-structType n | n >= 0 = do
-	ts <- resize (n `div` 2) arbitrary
-	return . StructT $ ts
-
