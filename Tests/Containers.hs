@@ -38,9 +38,9 @@ containerProperties = concat
 	, forAllAtomic prop_AtomSignature
 	, variantSignatureProperties
 	, [ property prop_VariantSignatureLength ]
-	, [ property prop_Arrayhomogeneous
-	  , property prop_Dicthomogeneous0
-	  , property prop_Dicthomogeneous1
+	, [ property prop_ArrayHomogeneous
+	  , property prop_DictHomogeneous0
+	  , property prop_DictHomogeneous1
 	  ]
 	]
 
@@ -99,7 +99,7 @@ prop_VariantSignatureLength x = length sig == 1 where
 
 -- All items in an array have the same signature. If items do not have
 -- the same signature, the array can't be constructed
-prop_Arrayhomogeneous vs = isJust array == homogeneousTypes where
+prop_ArrayHomogeneous vs = isJust array == homogeneousTypes where
 	array = arrayFromItems vs
 	homogeneousTypes = if length vs > 0
 		then all (== firstType) types
@@ -108,9 +108,9 @@ prop_Arrayhomogeneous vs = isJust array == homogeneousTypes where
 	firstType = head types
 
 -- A dictionary must have homogeneous key and value types
-prop_Dicthomogeneous0 = homogeneousDict
+prop_DictHomogeneous0 = homogeneousDict
 
-prop_Dicthomogeneous1 ks = forAll (vector (length ks)) $ \vs -> let
+prop_DictHomogeneous1 ks = forAll (vector (length ks)) $ \vs -> let
 	dict = dictionaryFromItems (zip ks vs)
 	in isJust dict ==> homogeneousDict (fromJust dict)
 
