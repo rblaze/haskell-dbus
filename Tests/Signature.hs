@@ -17,7 +17,7 @@
 
 module Tests.Signature (signatureProperties) where
 
-import Data.Maybe (fromJust, isJust, isNothing)
+import Data.Maybe (isJust, isNothing)
 import Test.QuickCheck
 import Tests.Instances ()
 import DBus.Types.Signature

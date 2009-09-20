@@ -1,3 +1,20 @@
+{-
+  Copyright (C) 2009 John Millikin <jmillikin@gmail.com>
+  
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  any later version.
+  
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+  
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+-}
+
 module Tests.Instances () where
 
 import Control.Monad (replicateM)
@@ -16,41 +33,49 @@ instance Arbitrary Char where
 	arbitrary = choose ('!', '~') -- TODO: unicode?
 
 instance Arbitrary Word8 where
+	coarbitrary = undefined
 	arbitrary = gen where
-		gen = fmap fromIntegral (choose (0, max) :: Gen Integer)
-		max = (iexp 2 8) - 1
+		gen = fmap fromIntegral (choose (0, max') :: Gen Integer)
+		max' = iexp 2 8 - 1
 
 instance Arbitrary Word16 where
+	coarbitrary = undefined
 	arbitrary = gen where
-		gen = fmap fromIntegral (choose (0, max) :: Gen Integer)
-		max = (iexp 2 16) - 1
+		gen = fmap fromIntegral (choose (0, max') :: Gen Integer)
+		max' = iexp 2 16 - 1
 
 instance Arbitrary Word32 where
+	coarbitrary = undefined
 	arbitrary = gen where
-		gen = fmap fromIntegral (choose (0, max) :: Gen Integer)
-		max = (iexp 2 32) - 1
+		gen = fmap fromIntegral (choose (0, max') :: Gen Integer)
+		max' = iexp 2 32 - 1
 
 instance Arbitrary Word64 where
+	coarbitrary = undefined
 	arbitrary = gen where
-		gen = fmap fromIntegral (choose (0, max) :: Gen Integer)
-		max = (iexp 2 64) - 1
+		gen = fmap fromIntegral (choose (0, max') :: Gen Integer)
+		max' = iexp 2 64 - 1
 
 instance Arbitrary Int16 where
+	coarbitrary = undefined
 	arbitrary = gen where
-		gen = fmap fromIntegral (choose (0, max) :: Gen Integer)
-		max = (iexp 2 16) - 1
+		gen = fmap fromIntegral (choose (0, max') :: Gen Integer)
+		max' = iexp 2 16 - 1
 
 instance Arbitrary Int32 where
+	coarbitrary = undefined
 	arbitrary = gen where
-		gen = fmap fromIntegral (choose (0, max) :: Gen Integer)
-		max = (iexp 2 32) - 1
+		gen = fmap fromIntegral (choose (0, max') :: Gen Integer)
+		max' = iexp 2 32 - 1
 
 instance Arbitrary Int64 where
+	coarbitrary = undefined
 	arbitrary = gen where
-		gen = fmap fromIntegral (choose (0, max) :: Gen Integer)
-		max = (iexp 2 64) - 1
+		gen = fmap fromIntegral (choose (0, max') :: Gen Integer)
+		max' = iexp 2 64 - 1
 
 instance Arbitrary ObjectPath where
+	coarbitrary = undefined
 	arbitrary = do
 		let chars = ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_"
 		let genElement = sized $ \n -> do
@@ -67,9 +92,11 @@ instance Arbitrary ObjectPath where
 		return . fromJust . mkObjectPath $ path
 
 instance Arbitrary Type where
+	coarbitrary = undefined
 	arbitrary = oneof [atomicType, containerType]
 
 instance Arbitrary Signature where
+	coarbitrary = undefined
 	arbitrary = do
 		ts <- arbitrary
 		let str = concatMap typeString ts
@@ -103,9 +130,7 @@ containerType = do
 		2 -> sized structType
 		3 -> return VariantT
 
-structType n | n >= 0 = do
-	ts <- resize (n `div` 2) arbitrary
-	return . StructT $ ts
+structType n | n >= 0 = fmap StructT $ resize (n `div` 2) arbitrary
 
 instance Arbitrary Atom where
 	coarbitrary = undefined
@@ -206,4 +231,4 @@ instance Arbitrary Variant where
 		VariantT    -> fmap toVariant (arbitrary :: Gen Variant)
 
 iexp :: Integral a => a -> a -> a
-iexp x y = floor $ (fromIntegral x) ** (fromIntegral y)
+iexp x y = floor $ fromIntegral x ** fromIntegral y
