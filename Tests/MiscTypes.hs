@@ -35,10 +35,16 @@ miscTypeProperties = concat
 
 prop_Equality x = x == x
 
+prop_IsVariable x = fromVariant (toVariant x) == Just x
+
+prop_IsAtomic x = fromAtom (toAtom x) == Just x
+
 -- Object paths
 
 objectPathProperties =
 	[ property (prop_Equality :: ObjectPath -> Bool)
+	, property (prop_IsVariable :: ObjectPath -> Bool)
+	, property (prop_IsAtomic :: ObjectPath -> Bool)
 	, property prop_ObjectPathIdentity
 	] ++ map property prop_ObjectPathInvalid
 
@@ -75,6 +81,8 @@ prop_EndianFromVariant = forAll endianWords $ \x -> let
 
 interfaceNameProperties =
 	[ property (prop_Equality :: InterfaceName -> Bool)
+	, property (prop_IsVariable :: InterfaceName -> Bool)
+	, property (prop_IsAtomic :: InterfaceName -> Bool)
 	, property prop_InterfaceNameIdentity
 	] ++ map property prop_InterfaceNameInvalid
 
@@ -93,6 +101,8 @@ prop_InterfaceNameInvalid = let invalid = isNothing . mkInterfaceName in
 
 busNameProperties =
 	[ property (prop_Equality :: BusName -> Bool)
+	, property (prop_IsVariable :: BusName -> Bool)
+	, property (prop_IsAtomic :: BusName -> Bool)
 	, property prop_BusNameIdentity
 	] ++ map property prop_BusNameInvalid
 
@@ -114,6 +124,8 @@ prop_BusNameInvalid = let invalid = isNothing . mkBusName in
 
 memberNameProperties =
 	[ property (prop_Equality :: MemberName -> Bool)
+	, property (prop_IsVariable :: MemberName -> Bool)
+	, property (prop_IsAtomic :: MemberName -> Bool)
 	, property prop_MemberNameIdentity
 	] ++ map property prop_MemberNameInvalid
 
@@ -129,6 +141,8 @@ prop_MemberNameInvalid = let invalid = isNothing . mkMemberName in
 
 errorNameProperties =
 	[ property (prop_Equality :: ErrorName -> Bool)
+	, property (prop_IsVariable :: ErrorName -> Bool)
+	, property (prop_IsAtomic :: ErrorName -> Bool)
 	, property prop_ErrorNameIdentity
 	] ++ map property prop_ErrorNameInvalid
 
@@ -146,7 +160,9 @@ prop_ErrorNameInvalid = let invalid = isNothing . mkErrorName in
 -- Serials
 
 serialProperties = 
-	[ property prop_SerialIncremented
+	[ property (prop_IsVariable :: Serial -> Bool)
+	, property (prop_IsAtomic :: Serial -> Bool)
+	, property prop_SerialIncremented
 	]
 
 prop_SerialIncremented x = nextSerial x > x
