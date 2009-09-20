@@ -15,28 +15,27 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 -}
 
-module Tests.Signature (signatureTests) where
+module Tests.Signature (signatureProperties) where
 
 import Data.Maybe (fromJust, isJust, isNothing)
 import Test.QuickCheck
-import Test.QuickCheck.Batch (run)
 import Tests.Instances ()
 import DBus.Types.Signature
 
-signatureTests =
-	[ run (prop_Equality :: Signature -> Bool)
-	, run (prop_Equality :: Type -> Bool)
-	, run prop_TypeToSig
-	, run prop_Ident
-	, run prop_Length0
-	, run prop_Length254
-	, run prop_Length255
-	, run prop_Length256
-	, run prop_Invalid0
-	, run prop_Invalid1
-	, run prop_Invalid2
-	, run prop_show0
-	, run prop_show1
+signatureProperties =
+	[ property (prop_Equality :: Signature -> Bool)
+	, property (prop_Equality :: Type -> Bool)
+	, property prop_TypeToSig
+	, property prop_Ident
+	, property prop_Length0
+	, property prop_Length254
+	, property prop_Length255
+	, property prop_Length256
+	, property prop_Invalid0
+	, property prop_Invalid1
+	, property prop_Invalid2
+	, property prop_show0
+	, property prop_show1
 	]
 
 -- Signatures and type equality

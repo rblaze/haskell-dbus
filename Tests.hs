@@ -16,8 +16,8 @@
 -}
 
 import Test.QuickCheck.Batch
-import Tests.Signature (signatureTests)
-import Tests.Names (nameTests)
+import Tests.Signature (signatureProperties)
+import Tests.Names (nameProperties)
 import Tests.Containers (containerProperties)
 
 options = TestOptions
@@ -27,8 +27,8 @@ options = TestOptions
 	}
 
 main = do
-	runTests "simple" options . concat $
-		[ signatureTests
-		, nameTests
-		, map run containerProperties
+	runTests "simple" options . map run . concat $
+		[ signatureProperties
+		, nameProperties
+		, containerProperties
 		]

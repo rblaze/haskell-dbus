@@ -15,21 +15,20 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 -}
 
-module Tests.Names (nameTests) where
+module Tests.Names (nameProperties) where
 
 import Data.Maybe (isNothing)
 import Test.QuickCheck
-import Test.QuickCheck.Batch (run)
 import Tests.Instances ()
 import DBus.Types.ObjectPath
 
-nameTests =
-	[ run (prop_Equality :: ObjectPath -> Bool)
-	, run prop_Identity
-	, run prop_Invalid0
-	, run prop_Invalid1
-	, run prop_Invalid2
-	, run prop_Invalid3
+nameProperties =
+	[ property (prop_Equality :: ObjectPath -> Bool)
+	, property prop_Identity
+	, property prop_Invalid0
+	, property prop_Invalid1
+	, property prop_Invalid2
+	, property prop_Invalid3
 	]
 
 prop_Equality x = x == x
