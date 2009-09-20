@@ -25,10 +25,7 @@ import Test.QuickCheck
 
 import Tests.Instances ()
 
-import DBus.Types.Atom
-import DBus.Types.Containers
-import DBus.Types.ObjectPath
-import DBus.Types.Signature
+import DBus.Types
 
 containerProperties = concat
 	[ forAllAtomic prop_AtomEquality

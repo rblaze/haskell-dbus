@@ -17,8 +17,8 @@
 
 import Test.QuickCheck.Batch
 import Tests.Signature (signatureProperties)
-import Tests.Names (nameProperties)
 import Tests.Containers (containerProperties)
+import Tests.MiscTypes (miscTypeProperties)
 
 options = TestOptions
 	{ no_of_tests     = 100
@@ -29,6 +29,6 @@ options = TestOptions
 main = do
 	runTests "simple" options . map run . concat $
 		[ signatureProperties
-		, nameProperties
+		, miscTypeProperties
 		, containerProperties
 		]

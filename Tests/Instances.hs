@@ -23,10 +23,7 @@ import Data.Maybe (fromJust)
 import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
 import Test.QuickCheck
-import DBus.Types.ObjectPath
-import DBus.Types.Signature
-import DBus.Types.Atom
-import DBus.Types.Containers
+import DBus.Types
 
 instance Arbitrary Char where
 	coarbitrary = undefined
@@ -74,22 +71,73 @@ instance Arbitrary Int64 where
 		gen = fmap fromIntegral (choose (0, max') :: Gen Integer)
 		max' = iexp 2 64 - 1
 
+sized' :: Int -> Gen a -> Gen [a]
+sized' atLeast g = sized $ \n -> do
+	n' <- choose (atLeast, max atLeast n)
+	replicateM n' g
+
+clampedSize :: Arbitrary a => Int -> Gen String -> (String -> Maybe a) -> Gen a
+clampedSize maxSize gen f = do
+	s <- gen
+	if length s > maxSize
+		then sized (\n -> resize n arbitrary)
+		else return . fromJust . f $ s
+
 instance Arbitrary ObjectPath where
 	coarbitrary = undefined
-	arbitrary = do
-		let chars = ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_"
-		let genElement = sized $ \n -> do
-			n' <- choose (1, max 1 n)
-			replicateM n' (elements chars)
-		let genElements = sized $ \n -> do
-			n' <- choose (1, max 1 n)
-			replicateM n' genElement
+	arbitrary = fmap (fromJust . mkObjectPath) path' where
+		c = ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_"
+		path = fmap (intercalate "/" . ([] :)) genElements
+		path' = frequency [(1, return "/"), (9, path)]
+		genElements = sized' 1 (sized' 1 (elements c))
+
+instance Arbitrary InterfaceName where
+	coarbitrary = undefined
+	arbitrary = clampedSize 255 genName mkInterfaceName where
+		c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
+		c' = c ++ ['0'..'9']
 		
-		useRoot <- frequency [(1, return True), (9, return False)]
-		path <- if useRoot
-			then return "/"
-			else fmap (intercalate "/" . ([] :)) genElements
-		return . fromJust . mkObjectPath $ path
+		genName = fmap (intercalate ".") genElements
+		genElements = sized' 2 genElement
+		genElement = do
+			x <- elements c
+			xs <- sized' 0 (elements c')
+			return (x:xs)
+		
+
+instance Arbitrary BusName where
+	coarbitrary = undefined
+	arbitrary = clampedSize 255 (oneof [unique, wellKnown]) mkBusName where
+		c = ['a'..'z'] ++ ['A'..'Z'] ++ "_-"
+		c' = c ++ ['0'..'9']
+		
+		unique = do
+			elems' <- sized' 2 $ elems c'
+			return $ ':': (intercalate "." elems')
+		
+		wellKnown = do
+			elems' <- sized' 2 $ elems c
+			return $ intercalate "." elems'
+		
+		elems start = do
+			x <- elements start
+			xs <- sized' 0 (elements c')
+			return (x:xs)
+
+instance Arbitrary MemberName where
+	coarbitrary = undefined
+	arbitrary = clampedSize 255 genName mkMemberName where
+		c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
+		c' = c ++ ['0'..'9']
+		
+		genName = do
+			x <- elements c
+			xs <- sized' 0 (elements c')
+			return (x:xs)
+
+instance Arbitrary ErrorName where
+	coarbitrary = undefined
+	arbitrary = fmap (fromJust . mkErrorName . strInterfaceName) arbitrary
 
 instance Arbitrary Type where
 	coarbitrary = undefined
@@ -97,12 +145,8 @@ instance Arbitrary Type where
 
 instance Arbitrary Signature where
 	coarbitrary = undefined
-	arbitrary = do
-		ts <- arbitrary
-		let str = concatMap typeString ts
-		if length str <= 255
-			then return . fromJust . mkSignature $ str
-			else arbitrary
+	arbitrary = clampedSize 255 genSig mkSignature where
+		genSig = fmap (concatMap typeString) arbitrary
 
 atomicType = elements
 	[ BooleanT
@@ -229,6 +273,19 @@ instance Arbitrary Variant where
 		DictT _ _   -> fmap toVariant (arbitrary :: Gen Dictionary)
 		StructT _   -> fmap toVariant (arbitrary :: Gen Structure)
 		VariantT    -> fmap toVariant (arbitrary :: Gen Variant)
+
+instance Arbitrary Endianness where
+	coarbitrary = undefined
+	arbitrary = elements [LittleEndian, BigEndian]
+
+instance Arbitrary Serial where
+	coarbitrary = undefined
+	arbitrary = do
+		-- Serials are actually Word32s, but incrementing one
+		-- that much takes too long.
+		n <- arbitrary :: Gen Word8
+		let fs = replicate (fromIntegral n) nextSerial
+		return . foldr (.) id fs $ firstSerial
 
 iexp :: Integral a => a -> a -> a
 iexp x y = floor $ fromIntegral x ** fromIntegral y
