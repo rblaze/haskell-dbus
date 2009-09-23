@@ -15,7 +15,7 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 -}
 
-module Tests.Instances () where
+module Tests.Instances (sized') where
 
 import Control.Monad (replicateM)
 import Data.List (intercalate)
