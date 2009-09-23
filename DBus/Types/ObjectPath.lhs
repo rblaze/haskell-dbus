@@ -27,7 +27,7 @@ import DBus.Types.Util (parseMaybe)
 \end{code}
 }
 
-\section{Object paths}
+\subsubsection{Object paths}
 
 An object path may be one of
 

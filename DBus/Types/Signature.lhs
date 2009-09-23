@@ -30,7 +30,7 @@ import DBus.Types.Util (checkLength, parseMaybe)
 \end{code}
 }
 
-\section{Signatures}
+\subsubsection{Signatures}
 
 Valid DBus type signatures must obey certain rules, such as "dict entries
 may only appear in arrays". A signature is guaranteed to be valid according
