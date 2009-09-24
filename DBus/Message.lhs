@@ -26,6 +26,7 @@ module DBus.Message (
 	) where
 import Data.Bits ((.|.), (.&.))
 import Data.Word (Word8)
+import Data.Maybe (fromJust)
 
 import qualified DBus.Types as T
 \end{code}
@@ -84,6 +85,47 @@ data HeaderField = Path        T.ObjectPath
                  | Sender      T.BusName
                  | Signature   T.Signature
 	deriving (Show, Eq)
+\end{code}
+
+\begin{code}
+header' :: T.Variable a => Word8 -> a -> T.Variant
+header' code x = T.toVariant $ T.Structure
+	[ T.toVariant code
+	, T.toVariant $ T.toVariant x
+	]
+
+unheader :: T.Variant -> Maybe (Word8, T.Variant)
+unheader v = do
+	struct <- T.fromVariant v
+	(c, v) <- case struct of
+		T.Structure [x, y] -> return  (x, y)
+		_                  -> Nothing
+	c' <- T.fromVariant c
+	v' <- T.fromVariant v
+	return (c', v')
+
+instance T.Variable HeaderField where
+	defaultSignature _ = fromJust . T.mkSignature $ "(yv)"
+	
+	toVariant (Path x)        = header' 1 x
+	toVariant (Interface x)   = header' 2 x
+	toVariant (Member x)      = header' 3 x
+	toVariant (ErrorName x)   = header' 4 x
+	toVariant (ReplySerial x) = header' 5 x
+	toVariant (Destination x) = header' 6 x
+	toVariant (Sender x)      = header' 7 x
+	toVariant (Signature x)   = header' 8 x
+	
+	fromVariant v = unheader v >>= \v' -> case v' of
+		(1, x) -> fmap Path        $ T.fromVariant x
+		(2, x) -> fmap Interface   $ T.fromVariant x
+		(3, x) -> fmap Member      $ T.fromVariant x
+		(4, x) -> fmap ErrorName   $ T.fromVariant x
+		(5, x) -> fmap ReplySerial $ T.fromVariant x
+		(6, x) -> fmap Destination $ T.fromVariant x
+		(7, x) -> fmap Sender      $ T.fromVariant x
+		(8, x) -> fmap Signature   $ T.fromVariant x
+		_      -> Nothing
 \end{code}
 
 \subsection{Message types}
