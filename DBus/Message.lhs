@@ -23,11 +23,14 @@ module DBus.Message (
 	,Signal (..)
 	,Flag (..)
 	,HeaderField (..)
+	,marshal
 	) where
 import Data.Bits ((.|.), (.&.))
-import Data.Word (Word8)
+import Data.Word (Word8, Word32)
+import qualified Data.ByteString.Lazy as L
 import Data.Maybe (fromJust)
 
+import qualified DBus.Protocol.Marshal as M
 import qualified DBus.Types as T
 \end{code}
 }
@@ -46,6 +49,13 @@ class Message a where
 	messageHeaderFields :: a -> [HeaderField]
 	messageFlags        :: a -> [Flag]
 	messageBody         :: a -> [T.Variant]
+\end{code}
+
+All messages are assumed to be using protocol version 1.
+
+\begin{code}
+protocolVersion :: Word8
+protocolVersion = 1
 \end{code}
 
 \subsection{Flags}
@@ -228,4 +238,37 @@ instance Message Signal where
 \begin{code}
 maybe' :: (a -> b) -> Maybe a -> [b]
 maybe' f x = maybe [] (\x' -> [f x']) x
+\end{code}
+
+\subsection{Marshaling}
+
+{\tt marshal} converts a message into a byte string, suitable for sending
+over the bus.
+
+\begin{code}
+marshal :: Message a => T.Endianness -> T.Serial -> a -> L.ByteString
+marshal e s m = L.append headerBytes bodyBytes where
+	bodyBytes = M.marshal e $ messageBody m
+	header = buildHeader e s m . fromIntegral . L.length $ bodyBytes
+	headerBytes = M.marshal e header
+\end{code}
+
+Build the header struct for a message. Endianness, the serial, and body
+length are provided.
+
+\begin{code}
+buildHeader :: Message a => T.Endianness -> T.Serial -> a -> Word32 -> [T.Variant]
+buildHeader endianness serial m bodyLen = header where
+	ts = concatMap (T.signatureTypes . T.variantSignature) $ messageBody m
+	bodySig = fromJust . T.mkSignature $ concatMap T.typeString ts
+	headers = Signature bodySig : messageHeaderFields m
+	header =
+		[ T.toVariant endianness
+		, T.toVariant . messageTypeCode $ m
+		, T.toVariant . encodeFlags . messageFlags $ m
+		, T.toVariant protocolVersion
+		, T.toVariant bodyLen
+		, T.toVariant serial
+		, T.toVariant . fromJust . T.toArray $ headers
+		]
 \end{code}
