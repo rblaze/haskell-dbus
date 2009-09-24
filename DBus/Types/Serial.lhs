@@ -16,7 +16,7 @@
 \ignore{
 \begin{code}
 module DBus.Types.Serial (
-	 Serial
+	 Serial (..)
 	,nextSerial
 	,firstSerial
 	) where

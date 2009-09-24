@@ -284,12 +284,7 @@ instance Arbitrary Endianness where
 
 instance Arbitrary Serial where
 	coarbitrary = undefined
-	arbitrary = do
-		-- Serials are actually Word32s, but incrementing one
-		-- that much takes too long.
-		n <- arbitrary :: Gen Word8
-		let fs = replicate (fromIntegral n) nextSerial
-		return . foldr (.) id fs $ firstSerial
+	arbitrary = fmap Serial arbitrary
 
 iexp :: Integral a => a -> a -> a
 iexp x y = floor $ fromIntegral x ** fromIntegral y
