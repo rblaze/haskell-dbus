@@ -24,6 +24,8 @@ import qualified DBus.Types as T
 \end{code}
 }
 
+\section{Value padding}
+
 \begin{code}
 padding :: Word64 -> Word8 -> Word64
 padding current count = required where

@@ -27,11 +27,13 @@ import Test.QuickCheck
 import Tests.Instances ()
 import DBus.Types
 import DBus.Protocol.Marshal
+import DBus.Protocol.Unmarshal
 
 marshalProperties :: [Property]
 marshalProperties =
 	[ property prop_MarshalAnyVariant
 	, property prop_MarshalAtom
+	, property prop_Unmarshal
 	]
 
 -- Check that any variant can be marshaled successfully.
@@ -43,6 +45,11 @@ prop_MarshalAtom e x = not . L.null . marshal e $ [atomToVariant x]
 -- TODO: test bytes of marshaled atoms
 
 -- TODO: test bytes of marshaled containers
+
+-- Any value, when marshaled, can be unmarshaled to the same value
+prop_Unmarshal e x = unmarshaled == Right [x] where
+	bytes = marshal e [x]
+	unmarshaled = unmarshal e (variantSignature x) bytes
 
 -- Helper to determine whether the given pure function raised an exception.
 -- No exceptions should be raised during the normal process of marshaling.
