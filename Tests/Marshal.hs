@@ -32,8 +32,6 @@ marshalProperties :: [Property]
 marshalProperties =
 	[ property prop_MarshalAnyVariant
 	, property prop_MarshalAtom
-	, property prop_MarshalStructArray
-	, property prop_MarshalDictionary
 	]
 
 -- Check that any variant can be marshaled successfully.
@@ -44,15 +42,7 @@ prop_MarshalAtom e x = not . L.null . marshal e $ [atomToVariant x]
 
 -- TODO: test bytes of marshaled atoms
 
--- TODO: test bytes of other marshaled containers
-
-prop_MarshalStructArray e = marshal e [toVariant array] == bytes where
-	bytes = L.pack [0, 0, 0, 0, 0, 0, 0, 0]
-	array = fromJust . toArray $ ([] :: [Structure])
-
-prop_MarshalDictionary e = marshal e [toVariant dict] == bytes where
-	bytes = L.pack [0, 0, 0, 0, 0, 0, 0, 0]
-	dict = fromJust . toDictionary $ ([] :: [(Word8, Word8)])
+-- TODO: test bytes of marshaled containers
 
 -- Helper to determine whether the given pure function raised an exception.
 -- No exceptions should be raised during the normal process of marshaling.
