@@ -133,13 +133,13 @@ instance T.Variable HeaderField where
 \subsubsection{Method calls}
 
 \begin{code}
-data MethodCall = MethodCall {
-	 methodCallPath        :: T.ObjectPath
-	,methodCallMember      :: T.MemberName
-	,methodCallInterface   :: Maybe T.InterfaceName
-	,methodCallDestination :: Maybe T.BusName
-	,methodCallFlags       :: [Flag]
-	,methodCallBody        :: [T.Variant]
+data MethodCall = MethodCall
+	{ methodCallPath        :: T.ObjectPath
+	, methodCallMember      :: T.MemberName
+	, methodCallInterface   :: Maybe T.InterfaceName
+	, methodCallDestination :: Maybe T.BusName
+	, methodCallFlags       :: [Flag]
+	, methodCallBody        :: [T.Variant]
 	}
 	deriving (Show, Eq)
 
@@ -159,11 +159,11 @@ instance Message MethodCall where
 \subsubsection{Method returns}
 
 \begin{code}
-data MethodReturn = MethodReturn {
-	 methodReturnSerial      :: T.Serial
-	,methodReturnDestination :: Maybe T.BusName
-	,methodReturnFlags       :: [Flag]
-	,methodReturnBody        :: [T.Variant]
+data MethodReturn = MethodReturn
+	{ methodReturnSerial      :: T.Serial
+	, methodReturnDestination :: Maybe T.BusName
+	, methodReturnFlags       :: [Flag]
+	, methodReturnBody        :: [T.Variant]
 	}
 	deriving (Show, Eq)
 
@@ -181,12 +181,12 @@ instance Message MethodReturn where
 \subsubsection{Errors}
 
 \begin{code}
-data Error = Error {
-	 errorName        :: T.ErrorName
-	,errorSerial      :: T.Serial
-	,errorDestination :: Maybe T.BusName
-	,errorFlags       :: [Flag]
-	,errorBody        :: [T.Variant]
+data Error = Error
+	{ errorName        :: T.ErrorName
+	, errorSerial      :: T.Serial
+	, errorDestination :: Maybe T.BusName
+	, errorFlags       :: [Flag]
+	, errorBody        :: [T.Variant]
 	}
 	deriving (Show, Eq)
 
@@ -205,12 +205,12 @@ instance Message Error where
 \subsubsection{Signals}
 
 \begin{code}
-data Signal = Signal {
-	 signalPath      :: T.ObjectPath
-	,signalMember    :: T.MemberName
-	,signalInterface :: T.InterfaceName
-	,signalFlags     :: [Flag]
-	,signalBody      :: [T.Variant]
+data Signal = Signal
+	{ signalPath      :: T.ObjectPath
+	, signalMember    :: T.MemberName
+	, signalInterface :: T.InterfaceName
+	, signalFlags     :: [Flag]
+	, signalBody      :: [T.Variant]
 	}
 	deriving (Show, Eq)
 
