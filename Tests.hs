@@ -19,6 +19,7 @@ import Test.QuickCheck.Batch
 import Tests.Address (addressProperties)
 import Tests.Signature (signatureProperties)
 import Tests.Containers (containerProperties)
+import Tests.Marshal (marshalProperties)
 import Tests.MiscTypes (miscTypeProperties)
 
 options = TestOptions
@@ -31,6 +32,7 @@ main = do
 	runTests "simple" options . map run . concat $
 		[ addressProperties
 		, signatureProperties
+		, marshalProperties
 		, miscTypeProperties
 		, containerProperties
 		]
