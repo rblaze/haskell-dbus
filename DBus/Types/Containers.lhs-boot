@@ -25,6 +25,7 @@ import DBus.Types.Signature (Signature)
 import DBus.Types.ObjectPath (ObjectPath)
 
 class Variable a where
+	defaultSignature :: a -> Signature
 	toVariant :: a -> Variant
 	fromVariant :: Variant -> Maybe a
 

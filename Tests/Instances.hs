@@ -220,7 +220,9 @@ instance Arbitrary Dictionary where
 		-- Only generate dictionaries of atomic values, as generating
 		-- containers randomly almost never results in a valid
 		-- array.
-		ks <- atomicType >>= \t -> case t of
+		kt <- atomicType
+		vt <- atomicType
+		ks <- case kt of
 			BooleanT    -> fmap (map toAtom) (arbitrary :: Gen [Bool])
 			ByteT       -> fmap (map toAtom) (arbitrary :: Gen [Word8])
 			UInt16T     -> fmap (map toAtom) (arbitrary :: Gen [Word16])
@@ -233,7 +235,7 @@ instance Arbitrary Dictionary where
 			StringT     -> fmap (map toAtom) (arbitrary :: Gen [String])
 			ObjectPathT -> fmap (map toAtom) (arbitrary :: Gen [ObjectPath])
 			SignatureT  -> fmap (map toAtom) (arbitrary :: Gen [Signature])
-		vs <- atomicType >>= \t -> case t of
+		vs <- case vt of
 			BooleanT    -> fmap (map toVariant) (arbitrary :: Gen [Bool])
 			ByteT       -> fmap (map toVariant) (arbitrary :: Gen [Word8])
 			UInt16T     -> fmap (map toVariant) (arbitrary :: Gen [Word16])
@@ -247,7 +249,9 @@ instance Arbitrary Dictionary where
 			ObjectPathT -> fmap (map toVariant) (arbitrary :: Gen [ObjectPath])
 			SignatureT  -> fmap (map toVariant) (arbitrary :: Gen [Signature])
 		
-		maybe arbitrary return (dictionaryFromItems (zip ks vs))
+		let kSig = fromJust . mkSignature . typeString $ kt
+		let vSig = fromJust . mkSignature . typeString $ vt
+		maybe arbitrary return (dictionaryFromItems kSig vSig (zip ks vs))
 
 instance Arbitrary Structure where
 	coarbitrary = undefined

@@ -19,7 +19,9 @@ module DBus.Types.Endianness (
 	 Endianness (..)
 	) where
 import Data.Word (Word8)
+import Data.Maybe (fromJust)
 import qualified DBus.Types.Containers as C
+import DBus.Types.Signature (mkSignature)
 \end{code}
 }
 
@@ -36,6 +38,7 @@ big-endian.
 
 \begin{code}
 instance C.Variable Endianness where
+	defaultSignature _ = fromJust . mkSignature $ "y"
 	toVariant LittleEndian = C.toVariant (0x6C :: Word8)
 	toVariant BigEndian = C.toVariant (0x42 :: Word8)
 	fromVariant v = do

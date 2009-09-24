@@ -21,8 +21,10 @@ module DBus.Types.Serial (
 	,firstSerial
 	) where
 import Data.Word (Word32)
+import Data.Maybe (fromJust)
 import qualified DBus.Types.Atom as A
 import qualified DBus.Types.Containers as C
+import DBus.Types.Signature (mkSignature)
 \end{code}
 }
 
@@ -39,6 +41,7 @@ instance A.Atomic Serial where
 	toAtom (Serial x) = A.toAtom x
 
 instance C.Variable Serial where
+	defaultSignature _ = fromJust . mkSignature $ "u"
 	toVariant (Serial x) = C.toVariant x
 	fromVariant = fmap Serial . C.fromVariant
 \end{code}

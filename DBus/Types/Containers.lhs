@@ -23,6 +23,7 @@ module DBus.Types.Containers (
 	,Variable
 	,toVariant
 	,fromVariant
+	,defaultSignature
 	,variantSignature
 	
 	,Array
@@ -44,6 +45,7 @@ module DBus.Types.Containers (
 	) where
 import Control.Arrow ((***))
 import Data.Typeable (Typeable, cast)
+import Data.Maybe (fromJust)
 import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
 import qualified DBus.Types.Signature as S
@@ -60,8 +62,12 @@ containers or marshaled. Additionally, external types may implement the
 {\tt Variable} interface to provide custom conversion to/from built-in D-Bus
 types.
 
+The {\tt defaultSignature} function will be passed {\tt unknown} to determine
+the signature an empty array or dictionary.
+
 \begin{code}
 class Variable a where
+	defaultSignature :: a -> S.Signature
 	toVariant :: a -> Variant
 	fromVariant :: Variant -> Maybe a
 \end{code}
@@ -92,6 +98,7 @@ Variants are themselves variables.
 
 \begin{code}
 instance Variable Variant where
+	defaultSignature _ = sig' "v"
 	toVariant = variant' "v"
 	fromVariant = cast'
 \end{code}
@@ -103,72 +110,84 @@ variantSignature (Variant s _) = s
 
 \begin{code}
 instance Variable Bool where
+	defaultSignature _ = sig' "b"
 	toVariant = variant' "b"
 	fromVariant = cast'
 \end{code}
 
 \begin{code}
 instance Variable Word8 where
+	defaultSignature _ = sig' "y"
 	toVariant = variant' "y"
 	fromVariant = cast'
 \end{code}
 
 \begin{code}
 instance Variable Word16 where
+	defaultSignature _ = sig' "q"
 	toVariant = variant' "q"
 	fromVariant = cast'
 \end{code}
 
 \begin{code}
 instance Variable Word32 where
+	defaultSignature _ = sig' "u"
 	toVariant = variant' "u"
 	fromVariant = cast'
 \end{code}
 
 \begin{code}
 instance Variable Word64 where
+	defaultSignature _ = sig' "t"
 	toVariant = variant' "t"
 	fromVariant = cast'
 \end{code}
 
 \begin{code}
 instance Variable Int16 where
+	defaultSignature _ = sig' "n"
 	toVariant = variant' "n"
 	fromVariant = cast'
 \end{code}
 
 \begin{code}
 instance Variable Int32 where
+	defaultSignature _ = sig' "i"
 	toVariant = variant' "i"
 	fromVariant = cast'
 \end{code}
 
 \begin{code}
 instance Variable Int64 where
+	defaultSignature _ = sig' "x"
 	toVariant = variant' "x"
 	fromVariant = cast'
 \end{code}
 
 \begin{code}
 instance Variable Double where
+	defaultSignature _ = sig' "d"
 	toVariant = variant' "d"
 	fromVariant = cast'
 \end{code}
 
 \begin{code}
 instance Variable String where
+	defaultSignature _ = sig' "s"
 	toVariant = variant' "s"
 	fromVariant = cast'
 \end{code}
 
 \begin{code}
 instance Variable O.ObjectPath where
+	defaultSignature _ = sig' "o"
 	toVariant = variant' "o"
 	fromVariant = cast'
 \end{code}
 
 \begin{code}
 instance Variable S.Signature where
+	defaultSignature _ = sig' "g"
 	toVariant = variant' "g"
 	fromVariant = cast'
 \end{code}
@@ -180,28 +199,38 @@ converted to and from standard Haskell lists, where the list contains elements w
 a valid type.
 
 \begin{code}
-data Array = Array [Variant]
+data Array = Array S.Signature [Variant]
 	deriving (Show, Eq, Typeable)
 
 instance Variable Array where
+	defaultSignature _ = sig' "ay"
 	toVariant x = Variant (arraySignature x) x
 	fromVariant = cast'
 
 toArray :: Variable a => [a] -> Maybe Array
-toArray = arrayFromItems . map toVariant
+toArray vs@([]) = Just $ Array sig [] where
+	itemSig = defaultSignature . head $ undefined:vs
+	sig = sig' $ 'a' : S.strSignature itemSig
+
+toArray vs = arrayFromItems sig variants where
+	variants = map toVariant vs
+	sig = variantSignature . head $ variants
 
 fromArray :: Variable a => Array -> Maybe [a]
-fromArray (Array vs) = mapM fromVariant vs
+fromArray (Array _ vs) = mapM fromVariant vs
 
 arrayItems :: Array -> [Variant]
-arrayItems (Array vs) = vs
+arrayItems (Array _ vs) = vs
 
-arrayFromItems :: [Variant] -> Maybe Array
-arrayFromItems = fmap Array . hasSameSignature
+arrayFromItems :: S.Signature -> [Variant] -> Maybe Array
+arrayFromItems itemSig vs = maybeArray where
+	maybeArray = if hasSignature itemSig vs
+		then Just (Array sig vs)
+		else Nothing
+	sig = sig' $ 'a' : S.strSignature itemSig
 
 arraySignature :: Array -> S.Signature
-arraySignature (Array []) = sig' "ay"
-arraySignature (Array ((Variant sig _):_)) = sig' ('a':S.strSignature sig)
+arraySignature (Array s _) = s
 \end{code}
 
 \subsubsection{Dictionaries}
@@ -210,43 +239,52 @@ Dictionaries are a key $\rightarrow$ value mapping, where the keys must be of an
 {\tt Atomic} type, and the values may be of any valid DBus type.
 
 \begin{code}
-data Dictionary = Dictionary [(A.Atom, Variant)]
+data Dictionary = Dictionary S.Signature [(A.Atom, Variant)]
 	deriving (Show, Eq, Typeable)
 
 instance Variable Dictionary where
+	defaultSignature _ = sig' "a{yy}"
 	toVariant x = Variant (dictionarySignature x) x
 	fromVariant = cast'
 
 toDictionary :: (A.Atomic a, Variable b) => [(a, b)] -> Maybe Dictionary
-toDictionary = dictionaryFromItems  . map (A.toAtom *** toVariant)
+toDictionary vs@([]) = Just $ Dictionary sig [] where
+	fake = head $ (undefined, undefined) : vs
+	kSig = S.strSignature . defaultSignature . fst $ fake
+	vSig = S.strSignature . defaultSignature . snd $ fake
+	sig = sig' $ "a{" ++ kSig ++ vSig ++ "}"
+
+toDictionary pairs = dictionaryFromItems kSig vSig pairs' where
+	pairs' = map (A.toAtom *** toVariant) pairs
+	kSig = A.atomSignature  . fst . head $ pairs'
+	vSig = variantSignature . snd . head $ pairs'
 
 fromDictionary :: (A.Atomic a, Variable b) => Dictionary -> Maybe [(a, b)]
-fromDictionary (Dictionary vs) = mapM fromVariant' vs where
+fromDictionary (Dictionary _ vs) = mapM fromVariant' vs where
 	fromVariant' (k, v) = do
 		k' <- A.fromAtom k
 		v' <- fromVariant v
 		return (k', v')
 
 dictionaryItems :: Dictionary -> [(A.Atom, Variant)]
-dictionaryItems (Dictionary vs) = vs
+dictionaryItems (Dictionary _ vs) = vs
 
-dictionaryFromItems :: [(A.Atom, Variant)] -> Maybe Dictionary
-dictionaryFromItems pairs = do
-	let ks = [A.atomToVariant k | (k,_) <- pairs]
-	let vs = [v | (_,v) <- pairs]
-	ks' <- mapM A.atomFromVariant =<< hasSameSignature ks
-	vs' <- hasSameSignature vs
-	return . Dictionary $ zip ks' vs'
+dictionaryFromItems :: S.Signature -> S.Signature -> [(A.Atom, Variant)]
+                    -> Maybe Dictionary
+dictionaryFromItems kSig vSig pairs = maybeDict where
+	maybeDict = if hasSignature kSig ks && hasSignature vSig vs
+		then Just (Dictionary sig pairs)
+		else Nothing
+	
+	ks = map (A.atomToVariant . fst) pairs
+	vs = map snd pairs
+	
+	kSig' = S.strSignature kSig
+	vSig' = S.strSignature vSig
+	sig = sig' $ "a{" ++ kSig' ++ vSig' ++ "}"
 
 dictionarySignature :: Dictionary -> S.Signature
-dictionarySignature (Dictionary []) = sig' "a{yy}"
-dictionarySignature (Dictionary ((k,v):_)) = case (A.atomToVariant k, v) of
-	-- Use case here to allow unwrapping of existential constructors
-	(Variant kSig _, Variant vSig _) -> let
-		kSig' = S.strSignature kSig
-		vSig' = S.strSignature vSig
-		sig = sig' $ "a{" ++ kSig' ++ vSig' ++ "}"
-		in sig
+dictionarySignature (Dictionary s _) = s
 \end{code}
 
 \subsubsection{Structures}
@@ -259,6 +297,7 @@ data Structure = Structure [Variant]
 	deriving (Show, Eq, Typeable)
 
 instance Variable Structure where
+	defaultSignature _ = sig' "()"
 	toVariant x = Variant (structureSignature x) x
 	fromVariant = cast'
 
@@ -272,7 +311,7 @@ structureSignature (Structure vs) = sig where
 
 \begin{code}
 sig' :: String -> S.Signature
-sig' x = let Just sig = S.mkSignature x in sig
+sig' = fromJust . S.mkSignature
 
 variant' :: (Variable a, Typeable a, Show a) => String -> a -> Variant
 variant' = Variant . sig'
@@ -280,10 +319,9 @@ variant' = Variant . sig'
 cast' :: Typeable a => Variant -> Maybe a
 cast' (Variant _ x) = cast x
 
-hasSameSignature :: [Variant] -> Maybe [Variant]
-hasSameSignature vs = if allIdentical (map variantSignature vs)
-	then Just vs
-	else Nothing
+hasSignature :: S.Signature -> [Variant] -> Bool
+hasSignature _   [] = True
+hasSignature sig vs = all (== sig) . map variantSignature $ vs
 
 allIdentical :: (Eq a) => [a] -> Bool
 allIdentical     [] = True

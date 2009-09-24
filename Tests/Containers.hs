@@ -18,6 +18,7 @@
 {-# LANGUAGE RankNTypes #-}
 module Tests.Containers (containerProperties) where
 
+import Control.Arrow ((&&&))
 import Data.Maybe (isJust, fromJust)
 import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
@@ -36,12 +37,16 @@ containerProperties = concat
 	, forAllVariable prop_VariantWrapping
 	
 	, forAllAtomic prop_AtomSignature
+	, forAllAtomic prop_AtomDefaultSignature
+	, forAllVariable prop_DefaultSignature
 	, variantSignatureProperties
 	, [ property prop_VariantSignatureLength ]
 	, [ property prop_ArrayHomogeneous
 	  , property prop_DictHomogeneous0
 	  , property prop_DictHomogeneous1
 	  ]
+	, props_EmptyArraySignature
+	, props_EmptyDictionarySignature
 	]
 
 -- Basic equality
@@ -65,6 +70,15 @@ prop_VariantWrapping gen = forAll gen $ \x ->
 
 prop_AtomSignature gen = forAll gen $ \x ->
 	atomSignature (toAtom x) == variantSignature (toVariant x)
+
+prop_AtomDefaultSignature gen = forAll gen $ \x ->
+	variantSignature (toVariant x) == defaultSignature x
+
+prop_DefaultSignature gen = forAll gen $ \x -> let
+	sig = strSignature . defaultSignature $ y
+	y = head [y, x]
+	in not . null $ sig
+
 
 -- Test that signatures are set properly
 sameSig :: Variable a => a -> Type -> Bool
@@ -100,18 +114,24 @@ prop_VariantSignatureLength x = length sig == 1 where
 -- All items in an array have the same signature. If items do not have
 -- the same signature, the array can't be constructed
 prop_ArrayHomogeneous vs = isJust array == homogeneousTypes where
-	array = arrayFromItems vs
+	array = arrayFromItems sig vs
 	homogeneousTypes = if length vs > 0
 		then all (== firstType) types
 		else True
 	types = map (signatureTypes . variantSignature) vs
 	firstType = head types
+	sig = if length vs > 0
+		then variantSignature (head vs)
+		else fromJust . mkSignature $ "y"
 
 -- A dictionary must have homogeneous key and value types
 prop_DictHomogeneous0 = homogeneousDict
 
 prop_DictHomogeneous1 ks = forAll (vector (length ks)) $ \vs -> let
-	dict = dictionaryFromItems (zip ks vs)
+	dict = dictionaryFromItems kSig vSig (zip ks vs)
+	(kSig, vSig) = if null ks
+		then (id &&& id) . fromJust . mkSignature $ "y"
+		else (atomSignature (head ks), variantSignature (head vs))
 	in isJust dict ==> homogeneousDict (fromJust dict)
 
 homogeneousDict :: Dictionary -> Property
@@ -127,6 +147,34 @@ homogeneousDict x = length items > 0 ==> homogeneous where
 	vFirst = head vTypes
 	
 	homogeneous = all (== kFirst) kTypes && all (== vFirst) vTypes
+
+props_EmptyArraySignature =
+	[ check ([] :: [Word8]) "ay"
+	, check ([] :: [Bool]) "ab"
+	, check ([] :: [Array]) "aay"
+	, check ([] :: [Dictionary]) "aa{yy}"
+	, check ([] :: [Structure]) "a()"
+	, check ([] :: [Variant]) "av"
+	]
+	where check xs sig = forAll (return sig) $ checkEmptyArray xs
+
+checkEmptyArray xs sig = arraySignature a == sig' where
+	sig' = fromJust . mkSignature $ sig
+	a = fromJust . toArray $ xs
+
+props_EmptyDictionarySignature =
+	[ check ([] :: [(Word8, Word8)]) "a{yy}"
+	, check ([] :: [(Bool, Word8)]) "a{by}"
+	, check ([] :: [(Bool, Array)]) "a{bay}"
+	, check ([] :: [(Bool, Dictionary)]) "a{ba{yy}}"
+	, check ([] :: [(Bool, Structure)]) "a{b()}"
+	, check ([] :: [(Bool, Variant)]) "a{bv}"
+	]
+	where check xs sig = forAll (return sig) $ checkEmptyDict xs
+
+checkEmptyDict xs sig = dictionarySignature a == sig' where
+	sig' = fromJust . mkSignature $ sig
+	a = fromJust . toDictionary $ xs
 
 -- TODO Conversion to/from array and dictionary
 

@@ -32,10 +32,12 @@ module DBus.Types.Names (
 	,mkErrorName
 	,strErrorName
 	) where
+import Data.Maybe (fromJust)
 import Text.Parsec ((<|>))
 import qualified Text.Parsec as P
 import qualified DBus.Types.Atom as A
 import qualified DBus.Types.Containers as C
+import DBus.Types.Signature (mkSignature)
 import DBus.Types.Util (checkLength, parseMaybe)
 \end{code}
 }
@@ -57,6 +59,7 @@ newtype InterfaceName = InterfaceName String
 
 \begin{code}
 instance C.Variable InterfaceName where
+	defaultSignature _ = fromJust . mkSignature $ "s"
 	toVariant = A.atomToVariant . A.toAtom
 	fromVariant = (mkInterfaceName =<<) . C.fromVariant
 instance A.Atomic InterfaceName where
@@ -90,6 +93,7 @@ newtype ErrorName = ErrorName String
 
 \begin{code}
 instance C.Variable ErrorName where
+	defaultSignature _ = fromJust . mkSignature $ "s"
 	toVariant = A.atomToVariant . A.toAtom
 	fromVariant = (mkErrorName =<<) . C.fromVariant
 instance A.Atomic ErrorName where
@@ -115,6 +119,7 @@ newtype BusName = BusName String
 
 \begin{code}
 instance C.Variable BusName where
+	defaultSignature _ = fromJust . mkSignature $ "s"
 	toVariant = A.atomToVariant . A.toAtom
 	fromVariant = (mkBusName =<<) . C.fromVariant
 instance A.Atomic BusName where
@@ -147,6 +152,7 @@ newtype MemberName = MemberName String
 
 \begin{code}
 instance C.Variable MemberName where
+	defaultSignature _ = fromJust . mkSignature $ "s"
 	toVariant = A.atomToVariant . A.toAtom
 	fromVariant = (mkMemberName =<<) . C.fromVariant
 instance A.Atomic MemberName where
