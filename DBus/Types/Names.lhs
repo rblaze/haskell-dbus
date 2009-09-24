@@ -57,7 +57,7 @@ newtype InterfaceName = InterfaceName String
 
 \begin{code}
 instance C.Variable InterfaceName where
-	toVariant = C.toVariant . A.toAtom
+	toVariant = A.atomToVariant . A.toAtom
 	fromVariant = (mkInterfaceName =<<) . C.fromVariant
 instance A.Atomic InterfaceName where
 	toAtom = A.toAtom . strInterfaceName
@@ -90,7 +90,7 @@ newtype ErrorName = ErrorName String
 
 \begin{code}
 instance C.Variable ErrorName where
-	toVariant = C.toVariant . A.toAtom
+	toVariant = A.atomToVariant . A.toAtom
 	fromVariant = (mkErrorName =<<) . C.fromVariant
 instance A.Atomic ErrorName where
 	toAtom = A.toAtom . strErrorName
@@ -115,7 +115,7 @@ newtype BusName = BusName String
 
 \begin{code}
 instance C.Variable BusName where
-	toVariant = C.toVariant . A.toAtom
+	toVariant = A.atomToVariant . A.toAtom
 	fromVariant = (mkBusName =<<) . C.fromVariant
 instance A.Atomic BusName where
 	toAtom = A.toAtom . strBusName
@@ -147,7 +147,7 @@ newtype MemberName = MemberName String
 
 \begin{code}
 instance C.Variable MemberName where
-	toVariant = C.toVariant . A.toAtom
+	toVariant = A.atomToVariant . A.toAtom
 	fromVariant = (mkMemberName =<<) . C.fromVariant
 instance A.Atomic MemberName where
 	toAtom = A.toAtom . strMemberName

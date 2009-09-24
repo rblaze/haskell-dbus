@@ -232,15 +232,15 @@ dictionaryItems (Dictionary vs) = vs
 
 dictionaryFromItems :: [(A.Atom, Variant)] -> Maybe Dictionary
 dictionaryFromItems pairs = do
-	let ks = [toVariant k | (k,_) <- pairs]
+	let ks = [A.atomToVariant k | (k,_) <- pairs]
 	let vs = [v | (_,v) <- pairs]
-	ks' <- mapM fromVariant =<< hasSameSignature ks
+	ks' <- mapM A.atomFromVariant =<< hasSameSignature ks
 	vs' <- hasSameSignature vs
 	return . Dictionary $ zip ks' vs'
 
 dictionarySignature :: Dictionary -> S.Signature
 dictionarySignature (Dictionary []) = sig' "a{yy}"
-dictionarySignature (Dictionary ((k,v):_)) = case (toVariant k, v) of
+dictionarySignature (Dictionary ((k,v):_)) = case (A.atomToVariant k, v) of
 	-- Use case here to allow unwrapping of existential constructors
 	(Variant kSig _, Variant vSig _) -> let
 		kSig' = S.strSignature kSig

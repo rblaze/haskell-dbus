@@ -58,7 +58,7 @@ prop_AtomWrapping0 gen = forAll gen $ \x ->
 	fromAtom (toAtom x) == Just x
 
 prop_AtomWrapping1 gen = forAll gen $ \x ->
-	toVariant (toAtom x) == toVariant x
+	atomToVariant (toAtom x) == toVariant x
 
 prop_VariantWrapping gen = forAll gen $ \x ->
 	fromVariant (toVariant x) == Just x

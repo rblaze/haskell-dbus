@@ -40,7 +40,7 @@ marshalProperties =
 prop_MarshalAnyVariant e x = noError $ marshal e [x]
 
 -- Any atomic value should marshal to *something*
-prop_MarshalAtom e x = not . L.null . marshal e $ [toVariant x]
+prop_MarshalAtom e x = not . L.null . marshal e $ [atomToVariant x]
 
 -- TODO: test bytes of marshaled atoms
 

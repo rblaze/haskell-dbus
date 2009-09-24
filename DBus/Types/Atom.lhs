@@ -27,6 +27,8 @@ module DBus.Types.Atom (
 	,toAtom
 	,fromAtom
 	,atomSignature
+	,atomToVariant
+	,atomFromVariant
 	)
 \end{code}
 \ignore{
@@ -51,27 +53,29 @@ newtype Atom = Atom C.Variant
 class C.Variable a => Atomic a where
 	toAtom :: a -> Atom
 
-instance C.Variable Atom where
-	toVariant (Atom x) = x
-	fromVariant v = msum as where
-		v' :: C.Variable a => Maybe a
-		v' = C.fromVariant v
-		fa :: (Atomic a, Functor f) => f a -> f Atom
-		fa = fmap toAtom
-		
-		as = [fa (v' :: Maybe Bool)
-		     ,fa (v' :: Maybe Word8)
-		     ,fa (v' :: Maybe Word16)
-		     ,fa (v' :: Maybe Word32)
-		     ,fa (v' :: Maybe Word64)
-		     ,fa (v' :: Maybe Int16)
-		     ,fa (v' :: Maybe Int32)
-		     ,fa (v' :: Maybe Int64)
-		     ,fa (v' :: Maybe Double)
-		     ,fa (v' :: Maybe String)
-		     ,fa (v' :: Maybe O.ObjectPath)
-		     ,fa (v' :: Maybe S.Signature)
-		     ]
+atomToVariant :: Atom -> C.Variant
+atomToVariant (Atom x) = x
+
+atomFromVariant :: C.Variant -> Maybe Atom
+atomFromVariant v = msum as where
+	v' :: C.Variable a => Maybe a
+	v' = C.fromVariant v
+	fa :: (Atomic a, Functor f) => f a -> f Atom
+	fa = fmap toAtom
+	
+	as = [fa (v' :: Maybe Bool)
+	     ,fa (v' :: Maybe Word8)
+	     ,fa (v' :: Maybe Word16)
+	     ,fa (v' :: Maybe Word32)
+	     ,fa (v' :: Maybe Word64)
+	     ,fa (v' :: Maybe Int16)
+	     ,fa (v' :: Maybe Int32)
+	     ,fa (v' :: Maybe Int64)
+	     ,fa (v' :: Maybe Double)
+	     ,fa (v' :: Maybe String)
+	     ,fa (v' :: Maybe O.ObjectPath)
+	     ,fa (v' :: Maybe S.Signature)
+	     ]
 \end{code}
 
 \begin{code}

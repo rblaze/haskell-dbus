@@ -175,7 +175,7 @@ getArrayBytes x = do
 \begin{code}
 dictionary :: T.Dictionary -> Marshal
 dictionary x = array x' where
-	pairs = map (first T.toVariant) (T.dictionaryItems x)
+	pairs = map (first T.atomToVariant) (T.dictionaryItems x)
 	structs = [T.Structure [k,v] | (k,v) <- pairs]
 	x' = fromJust . T.toArray $ structs
 \end{code}
