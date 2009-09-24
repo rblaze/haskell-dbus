@@ -272,3 +272,39 @@ buildHeader endianness serial m bodyLen = header where
 		, T.toVariant . fromJust . T.toArray $ headers
 		]
 \end{code}
+
+\subsection{Unmarshaling}
+
+\subsubsection{Received messages}
+
+Any messages parsed from the connection are stored in a
+{\tt ReceivedMessage} value, so clients can know which type of message
+was received, where it was sent from, and its serial.
+
+Unknown message types are parsed, but only to get the serial and bus name
+(which might be useful for returning an {\tt Error}). Clients should ignore
+unknown messages.
+
+\begin{code}
+data ReceivedMessage =
+	  ReceivedMethodCall   T.Serial (Maybe T.BusName) MethodCall
+	| ReceivedMethodReturn T.Serial (Maybe T.BusName) MethodReturn
+	| ReceivedError        T.Serial (Maybe T.BusName) Error
+	| ReceivedSignal       T.Serial (Maybe T.BusName) Signal
+	| ReceivedUnknown      T.Serial (Maybe T.BusName)
+	deriving (Show, Eq)
+
+receivedSerial :: ReceivedMessage -> T.Serial
+receivedSerial (ReceivedMethodCall   s _ _) = s
+receivedSerial (ReceivedMethodReturn s _ _) = s
+receivedSerial (ReceivedError        s _ _) = s
+receivedSerial (ReceivedSignal       s _ _) = s
+receivedSerial (ReceivedUnknown      s _ _) = s
+
+receivedSender :: ReceivedMessage -> Maybe T.BusName
+receivedSender (ReceivedMethodCall   _ s _) = s
+receivedSender (ReceivedMethodReturn _ s _) = s
+receivedSender (ReceivedError        _ s _) = s
+receivedSender (ReceivedSignal       _ s _) = s
+receivedSender (ReceivedUnknown      _ s _) = s
+\end{code}
