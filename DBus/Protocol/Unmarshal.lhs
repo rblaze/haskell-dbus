@@ -15,6 +15,7 @@
 
 \ignore{
 \begin{code}
+{-# LANGUAGE ExistentialQuantification #-}
 module DBus.Protocol.Unmarshal (unmarshal) where
 
 import Data.Maybe (fromJust)
@@ -39,7 +40,10 @@ import qualified DBus.Types as T
 \begin{code}
 unmarshal :: T.Endianness -> T.Signature -> L.ByteString
           -> Either String [T.Variant]
-unmarshal e sig bytes = runUnmarshal x e bytes where
+unmarshal e sig bytes = either' where
+	either' = case runUnmarshal x e bytes of
+		Left  y -> Left $ show y
+		Right y -> Right y
 	x = mapM unmarshal' $ T.signatureTypes sig
 \end{code}
 
@@ -70,7 +74,7 @@ bool :: Unmarshal Bool
 bool = word32 >>= \x -> case x of
 	0 -> return False
 	1 -> return True
-	_ -> invalid "boolean" x
+	_ -> E.throwError $ Invalid "boolean" x
 \end{code}
 
 \begin{code}
@@ -121,7 +125,7 @@ string :: Unmarshal String
 string = do
 	byteCount <- word32
 	bytes <- consume . fromIntegral $ byteCount
-	consume 1 -- NULL
+	skipNulls 1
 	return . toString $ bytes
 \end{code}
 
@@ -137,7 +141,7 @@ signature :: Unmarshal T.Signature
 signature = do
 	byteCount <- word8
 	bytes <- consume . fromIntegral $ byteCount
-	consume 1 -- NULL
+	skipNulls 1
 	fromMaybe T.mkSignature (toString bytes) "signature"
 \end{code}
 
@@ -159,9 +163,8 @@ array t = do
 	let end = start + fromIntegral byteCount
 	vs <- untilM (fmap (>= end) getOffset) (unmarshal' t)
 	end' <- getOffset
-	if end == end'
-		then fromMaybe (T.arrayFromItems sig) vs "array"
-		else E.throwError $ "Attempted to parse past the end of an array."
+	assert (end == end') "Array contained fewer bytes than expected."
+	fromMaybe (T.arrayFromItems sig) vs "array"
 \end{code}
 
 \subsubsection{Dictionaries}
@@ -180,7 +183,7 @@ mkPair :: T.Structure -> Unmarshal (T.Atom, T.Variant)
 mkPair (T.Structure [k, v]) = do
 	k' <- fromMaybe T.atomFromVariant k "dictionary key"
 	return (k', v)
-mkPair s = E.throwError $ "Invalid dictionary pair: " ++ show s
+mkPair s = E.throwError $ Invalid "dictionary item" s
 \end{code}
 
 \subsubsection{Structures}
@@ -200,7 +203,8 @@ variant = do
 	sig <- signature
 	t <- case T.signatureTypes sig of
 		[t'] -> return t'
-		_    -> invalid "variant signature" (T.strSignature sig)
+		_    -> E.throwError $ Invalid "variant signature"
+		                     $ T.strSignature sig
 	unmarshal' t
 \end{code}
 
@@ -208,11 +212,12 @@ variant = do
 
 \begin{code}
 data UnmarshalState = UnmarshalState T.Endianness L.ByteString Word64
-type Unmarshal = E.ErrorT String (S.State UnmarshalState)
+type Unmarshal = E.ErrorT UnmarshalError (S.State UnmarshalState)
 \end{code}
 
 \begin{code}
-runUnmarshal :: Unmarshal a -> T.Endianness -> L.ByteString -> Either String a
+runUnmarshal :: Unmarshal a -> T.Endianness -> L.ByteString
+                -> Either UnmarshalError a
 runUnmarshal x e bytes = S.evalState (E.runErrorT x) state where
 	state = UnmarshalState e bytes 0
 \end{code}
@@ -236,27 +241,22 @@ consume count = do
 			let offset' = offset + count
 			put $ UnmarshalState e bytes offset'
 			return x
-		else E.throwError $ "Couldn't consume " ++ show count ++ " bytes."
+		else E.throwError $ UnexpectedEOF offset
 \end{code}
 
 \begin{code}
 skipPadding :: Word8 -> Unmarshal ()
 skipPadding count = do
 	(UnmarshalState e bytes offset) <- get
-	let skip = padding (fromIntegral offset) (fromIntegral count)
-	put $ UnmarshalState e bytes (offset + fromIntegral skip)
+	bytes <- consume $ padding offset count
+	assert (L.all (== 0) bytes) "Non-zero bytes in padding."
 \end{code}
 
 \begin{code}
-fromMaybe :: Show a => (a -> Maybe b) -> a -> String -> Unmarshal b
-fromMaybe f x s = case f x of
-	Just x' -> return x'
-	Nothing -> invalid s x
-\end{code}
-
-\begin{code}
-invalid :: Show a => String -> a -> Unmarshal b
-invalid s x = E.throwError $ "Invalid " ++ s ++ ": " ++ show x
+skipNulls :: Word8 -> Unmarshal ()
+skipNulls count = do
+	bytes <- consume $ fromIntegral count
+	assert (L.all (== 0) bytes) "Non-zero bytes in padding."
 \end{code}
 
 \begin{code}
@@ -283,3 +283,29 @@ untilM test comp = do
 			return $ x:xs
 \end{code}
 
+\subsection{Errors}
+
+\begin{code}
+data UnmarshalError = UnexpectedEOF Word64
+                    | forall a. (Show a) => Invalid String a
+                    | GenericError String
+
+instance E.Error UnmarshalError where
+	strMsg = GenericError
+
+instance Show UnmarshalError where
+	show (UnexpectedEOF pos) = "Unexpected EOF at position " ++ show pos
+	show (Invalid label x)   = "Invalid " ++ label ++ ": " ++ show x
+	show (GenericError msg)  = "Error unmarshaling: " ++ msg
+\end{code}
+
+\begin{code}
+assert :: Bool -> String -> Unmarshal ()
+assert True  _   = return ()
+assert False msg = E.throwError $ E.strMsg msg
+\end{code}
+
+\begin{code}
+fromMaybe :: Show a => (a -> Maybe b) -> a -> String -> Unmarshal b
+fromMaybe f x s = maybe (E.throwError $ Invalid s x) return $ f x
+\end{code}
