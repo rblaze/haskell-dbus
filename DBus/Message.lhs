@@ -299,12 +299,12 @@ receivedSerial (ReceivedMethodCall   s _ _) = s
 receivedSerial (ReceivedMethodReturn s _ _) = s
 receivedSerial (ReceivedError        s _ _) = s
 receivedSerial (ReceivedSignal       s _ _) = s
-receivedSerial (ReceivedUnknown      s _ _) = s
+receivedSerial (ReceivedUnknown      s _) = s
 
 receivedSender :: ReceivedMessage -> Maybe T.BusName
 receivedSender (ReceivedMethodCall   _ s _) = s
 receivedSender (ReceivedMethodReturn _ s _) = s
 receivedSender (ReceivedError        _ s _) = s
 receivedSender (ReceivedSignal       _ s _) = s
-receivedSender (ReceivedUnknown      _ s _) = s
+receivedSender (ReceivedUnknown      _ s) = s
 \end{code}
