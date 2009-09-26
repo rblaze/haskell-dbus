@@ -38,12 +38,13 @@ import qualified DBus.Types as T
 \subsection{\tt unmarshal}
 
 \begin{code}
-unmarshal :: T.Endianness -> T.Signature -> L.ByteString
-          -> Either String [T.Variant]
+unmarshal :: (E.Error e, E.MonadError e m)
+             => T.Endianness -> T.Signature -> L.ByteString
+             -> m [T.Variant]
 unmarshal e sig bytes = either' where
 	either' = case runUnmarshal x e bytes of
-		Left  y -> Left $ show y
-		Right y -> Right y
+		Left  y -> E.throwError . E.strMsg . show $ y
+		Right y -> return y
 	x = mapM unmarshal' $ T.signatureTypes sig
 \end{code}
 
