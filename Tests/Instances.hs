@@ -80,7 +80,7 @@ clampedSize :: Arbitrary a => Int -> Gen String -> (String -> Maybe a) -> Gen a
 clampedSize maxSize gen f = do
 	s <- gen
 	if length s > maxSize
-		then sized (\n -> resize n arbitrary)
+		then sized (\n -> resize (n `div` 2) arbitrary)
 		else return . fromJust . f $ s
 
 instance Arbitrary ObjectPath where
