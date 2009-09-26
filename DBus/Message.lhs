@@ -240,6 +240,37 @@ maybe' :: (a -> b) -> Maybe a -> [b]
 maybe' f x = maybe [] (\x' -> [f x']) x
 \end{code}
 
+\subsection{Message headers}
+
+\begin{code}
+data MessageHeader = MessageHeader
+	{ headerEndianness :: T.Endianness
+	, headerTypeCode   :: Word8
+	, headerFlags      :: [Flag]
+	, headerProtocol   :: Word8
+	, headerBodySize   :: Word32
+	, headerSerial     :: T.Serial
+	, headerFields     :: [HeaderField]
+	} deriving (Show, Eq)
+\end{code}
+
+\begin{code}
+buildHeader :: Message a => T.Endianness -> T.Serial -> a -> Word32
+               -> MessageHeader
+buildHeader endianness serial m bodyLen = header where
+	ts = concatMap (T.signatureTypes . T.variantSignature) $ messageBody m
+	bodySig = fromJust . T.mkSignature $ concatMap T.typeString ts
+	fields = Signature bodySig : messageHeaderFields m
+	header = MessageHeader
+			endianness
+			(messageTypeCode m)
+			(messageFlags m)
+			protocolVersion
+			bodyLen
+			serial
+			fields
+\end{code}
+
 \subsection{Marshaling}
 
 {\tt marshal} converts a message into a byte string, suitable for sending
@@ -249,28 +280,25 @@ over the bus.
 marshal :: Message a => T.Endianness -> T.Serial -> a -> L.ByteString
 marshal e s m = L.append headerBytes bodyBytes where
 	bodyBytes = M.marshal e $ messageBody m
-	header = buildHeader e s m . fromIntegral . L.length $ bodyBytes
-	headerBytes = M.marshal e header
+	bodyLength = fromIntegral . L.length $ bodyBytes
+	header = marshalHeader (buildHeader e s m bodyLength)
+	headerBytes = M.marshal e $ header ++ [T.toVariant (T.Structure [])]
 \end{code}
 
 Build the header struct for a message. Endianness, the serial, and body
 length are provided.
 
 \begin{code}
-buildHeader :: Message a => T.Endianness -> T.Serial -> a -> Word32 -> [T.Variant]
-buildHeader endianness serial m bodyLen = header where
-	ts = concatMap (T.signatureTypes . T.variantSignature) $ messageBody m
-	bodySig = fromJust . T.mkSignature $ concatMap T.typeString ts
-	headers = Signature bodySig : messageHeaderFields m
-	header =
-		[ T.toVariant endianness
-		, T.toVariant . messageTypeCode $ m
-		, T.toVariant . encodeFlags . messageFlags $ m
-		, T.toVariant protocolVersion
-		, T.toVariant bodyLen
-		, T.toVariant serial
-		, T.toVariant . fromJust . T.toArray $ headers
-		]
+marshalHeader :: MessageHeader -> [T.Variant]
+marshalHeader h = map ($ h)
+	[ T.toVariant . headerEndianness
+	, T.toVariant . headerTypeCode
+	, T.toVariant . encodeFlags . headerFlags
+	, T.toVariant . headerProtocol
+	, T.toVariant . headerBodySize
+	, T.toVariant . headerSerial
+	, T.toVariant . fromJust . T.toArray . headerFields
+	]
 \end{code}
 
 \subsection{Unmarshaling}
