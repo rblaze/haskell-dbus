@@ -25,7 +25,7 @@ import Test.QuickCheck
 import Tests.Instances (sized')
 import DBus.Bus.Address
 
-addressProperties = concat $
+addressProperties = concat
 	[ prop_Valid
 	, prop_Invalid
 	, [ property prop_Identity

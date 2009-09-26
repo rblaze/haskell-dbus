@@ -84,6 +84,6 @@ hello = M.MethodCall
 	(fromJust . T.mkMemberName $ "Hello")
 	(T.mkInterfaceName "org.freedesktop.DBus")
 	(T.mkBusName "org.freedesktop.DBus")
-	(Set.empty)
+	Set.empty
 	[]
 \end{code}

@@ -247,7 +247,7 @@ instance Message Signal where
 
 \begin{code}
 maybe' :: (a -> b) -> Maybe a -> [b]
-maybe' f x = maybe [] (\x' -> [f x']) x
+maybe' f = maybe [] (\x' -> [f x'])
 \end{code}
 
 \subsection{Message headers}

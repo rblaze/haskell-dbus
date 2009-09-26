@@ -113,7 +113,7 @@ instance Arbitrary BusName where
 		
 		unique = do
 			elems' <- sized' 2 $ elems c'
-			return $ ':': (intercalate "." elems')
+			return $ ':' : intercalate "." elems'
 		
 		wellKnown = do
 			elems' <- sized' 2 $ elems c
