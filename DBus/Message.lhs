@@ -266,13 +266,13 @@ buildHeader endianness serial m bodyLen = header where
 	bodySig = fromJust . T.mkSignature $ concatMap T.typeString ts
 	fields = Signature bodySig : messageHeaderFields m
 	header = MessageHeader
-			endianness
-			(messageTypeCode m)
-			(messageFlags m)
-			protocolVersion
-			bodyLen
-			serial
-			fields
+		endianness
+		(messageTypeCode m)
+		(messageFlags m)
+		protocolVersion
+		bodyLen
+		serial
+		fields
 \end{code}
 
 \subsection{Marshaling}
