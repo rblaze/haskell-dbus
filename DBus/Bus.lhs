@@ -16,10 +16,11 @@
 \ignore{
 \begin{code}
 {-# LANGUAGE DeriveDataTypeable #-}
-module DBus.Bus (
-	 getSystemBus
-	,getSessionBus
+module DBus.Bus
+	( getSystemBus
+	, getSessionBus
 	) where
+
 import Data.Typeable (Typeable, cast)
 import Data.Maybe (fromJust)
 import qualified Data.Set as Set

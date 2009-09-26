@@ -22,6 +22,7 @@ module DBus.Bus.Address
 	, strAddress
 	, parseAddresses
 	) where
+
 import Data.Char (ord, digitToInt, chr)
 import qualified Data.Map as M
 import Data.List (intercalate)

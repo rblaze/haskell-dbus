@@ -15,10 +15,12 @@
 
 \ignore{
 \begin{code}
-module DBus.Protocol.Padding (
-	 padding
-	,padByType
+{-# OPTIONS_HADDOCK hide #-}
+module DBus.Protocol.Padding
+	( padding
+	, padByType
 	) where
+
 import Data.Word (Word8, Word64)
 import qualified DBus.Types as T
 \end{code}

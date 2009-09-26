@@ -15,6 +15,7 @@
 
 \ignore{
 \begin{code}
+{-# OPTIONS_HADDOCK hide #-}
 module DBus.Protocol.Marshal (marshal) where
 
 import Control.Arrow (first)

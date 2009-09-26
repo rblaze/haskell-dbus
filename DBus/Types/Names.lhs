@@ -15,23 +15,24 @@
 
 \ignore{
 \begin{code}
-module DBus.Types.Names (
-	 InterfaceName
-	,mkInterfaceName
-	,strInterfaceName
+module DBus.Types.Names
+	( InterfaceName
+	, mkInterfaceName
+	, strInterfaceName
 	
-	,BusName
-	,mkBusName
-	,strBusName
+	, BusName
+	, mkBusName
+	, strBusName
 	
-	,MemberName
-	,mkMemberName
-	,strMemberName
+	, MemberName
+	, mkMemberName
+	, strMemberName
 	
-	,ErrorName
-	,mkErrorName
-	,strErrorName
+	, ErrorName
+	, mkErrorName
+	, strErrorName
 	) where
+
 import Data.Maybe (fromJust)
 import Text.Parsec ((<|>))
 import qualified Text.Parsec as P

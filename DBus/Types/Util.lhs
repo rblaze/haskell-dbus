@@ -18,10 +18,12 @@
 
 \ignore{
 \begin{code}
-module DBus.Types.Util (
-	 checkLength
-	,parseMaybe
+{-# OPTIONS_HADDOCK hide #-}
+module DBus.Types.Util
+	( checkLength
+	, parseMaybe
 	) where
+
 import Text.Parsec (Parsec, parse)
 \end{code}
 }

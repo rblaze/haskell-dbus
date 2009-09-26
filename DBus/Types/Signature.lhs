@@ -24,6 +24,7 @@ module DBus.Types.Signature
 	, strSignature
 	, typeString
 	) where
+
 import Data.Typeable (Typeable)
 import Text.Parsec (char, (<|>), many, eof)
 import DBus.Types.Util (checkLength, parseMaybe)

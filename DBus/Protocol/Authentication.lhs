@@ -15,9 +15,9 @@
 
 \ignore{
 \begin{code}
-module DBus.Protocol.Authentication (
-	 authenticate
-	) where
+{-# OPTIONS_HADDOCK hide #-}
+module DBus.Protocol.Authentication (authenticate) where
+
 import Data.Char (ord)
 import Data.Word (Word32)
 import Data.List (isPrefixOf)

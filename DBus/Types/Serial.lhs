@@ -15,11 +15,12 @@
 
 \ignore{
 \begin{code}
-module DBus.Types.Serial (
-	 Serial (..)
-	,nextSerial
-	,firstSerial
+module DBus.Types.Serial
+	( Serial (..)
+	, nextSerial
+	, firstSerial
 	) where
+
 import Data.Word (Word32)
 import Data.Maybe (fromJust)
 import qualified DBus.Types.Atom as A

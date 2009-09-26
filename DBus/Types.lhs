@@ -15,15 +15,16 @@
 
 \ignore{
 \begin{code}
-module DBus.Types (
-	 module DBus.Types.Atom
-	,module DBus.Types.Containers
-	,module DBus.Types.Endianness
-	,module DBus.Types.Names
-	,module DBus.Types.ObjectPath
-	,module DBus.Types.Serial
-	,module DBus.Types.Signature
+module DBus.Types
+	( module DBus.Types.Atom
+	, module DBus.Types.Containers
+	, module DBus.Types.Endianness
+	, module DBus.Types.Names
+	, module DBus.Types.ObjectPath
+	, module DBus.Types.Serial
+	, module DBus.Types.Signature
 	) where
+
 import DBus.Types.Atom
 import DBus.Types.Containers
 import DBus.Types.Endianness

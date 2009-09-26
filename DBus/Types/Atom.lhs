@@ -18,22 +18,16 @@
 \ignore{
 \begin{code}
 {-# LANGUAGE TypeSynonymInstances #-}
-\end{code}
-}
-\begin{code}
-module DBus.Types.Atom (
-	 Atom
-	,Atomic
-	,toAtom
-	,fromAtom
-	,atomSignature
-	,atomToVariant
-	,atomFromVariant
-	)
-\end{code}
-\ignore{
-\begin{code}
-where
+module DBus.Types.Atom
+	( Atom
+	, Atomic
+	, toAtom
+	, fromAtom
+	, atomSignature
+	, atomToVariant
+	, atomFromVariant
+	) where
+
 import Control.Monad (msum)
 import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)

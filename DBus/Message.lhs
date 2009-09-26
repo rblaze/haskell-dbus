@@ -15,18 +15,19 @@
 
 \ignore{
 \begin{code}
-module DBus.Message (
-	 Message (..)
-	,MethodCall (..)
-	,MethodReturn (..)
-	,Error (..)
-	,Signal (..)
-	,Flag (..)
-	,HeaderField (..)
-	,ReceivedMessage (..)
-	,marshal
-	,unmarshal
+module DBus.Message
+	( Message (..)
+	, Flag (..)
+	, HeaderField (..)
+	, MethodCall (..)
+	, MethodReturn (..)
+	, Error (..)
+	, Signal (..)
+	, ReceivedMessage (..)
+	, marshal
+	, unmarshal
 	) where
+
 import Control.Monad (unless)
 import qualified Control.Monad.Error as E
 import Data.Bits ((.|.), (.&.))

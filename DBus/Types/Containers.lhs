@@ -18,31 +18,32 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-module DBus.Types.Containers (
-	 Variant
-	,Variable
-	,toVariant
-	,fromVariant
-	,defaultSignature
-	,variantSignature
+module DBus.Types.Containers
+	( Variant
+	, Variable
+	, toVariant
+	, fromVariant
+	, defaultSignature
+	, variantSignature
 	
-	,Array
-	,toArray
-	,fromArray
-	,arrayItems
-	,arrayFromItems
-	,arraySignature
+	, Array
+	, toArray
+	, fromArray
+	, arrayItems
+	, arrayFromItems
+	, arraySignature
 	
-	,Dictionary
-	,toDictionary
-	,fromDictionary
-	,dictionaryItems
-	,dictionaryFromItems
-	,dictionarySignature
+	, Dictionary
+	, toDictionary
+	, fromDictionary
+	, dictionaryItems
+	, dictionaryFromItems
+	, dictionarySignature
 	
-	,Structure (..)
-	,structureSignature
+	, Structure (..)
+	, structureSignature
 	) where
+
 import Control.Arrow ((***))
 import Data.Typeable (Typeable, cast)
 import Data.Maybe (fromJust)

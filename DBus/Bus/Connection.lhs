@@ -16,14 +16,15 @@
 \ignore{
 \begin{code}
 {-# LANGUAGE DeriveDataTypeable #-}
-module DBus.Bus.Connection (
-	 Connection
-	,connect
-	,send
-	,recv
-	,Transport (..)
-	,findTransport
+module DBus.Bus.Connection
+	( Transport (..)
+	, findTransport
+	, Connection
+	, connect
+	, send
+	, recv
 	) where
+
 import qualified Control.Concurrent as C
 import qualified Control.Exception as E
 import Data.Word (Word32)

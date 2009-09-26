@@ -16,11 +16,12 @@
 \ignore{
 \begin{code}
 {-# LANGUAGE DeriveDataTypeable #-}
-module DBus.Types.ObjectPath (
-	 ObjectPath
-	,mkObjectPath
-	,strObjectPath
+module DBus.Types.ObjectPath
+	( ObjectPath
+	, mkObjectPath
+	, strObjectPath
 	) where
+
 import Data.Typeable (Typeable)
 import qualified Text.Parsec as P
 import DBus.Types.Util (parseMaybe)
