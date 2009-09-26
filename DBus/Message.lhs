@@ -29,6 +29,7 @@ import Data.Bits ((.|.), (.&.))
 import Data.Word (Word8, Word32)
 import qualified Data.ByteString.Lazy as L
 import Data.Maybe (fromJust)
+import qualified Data.Set as S
 
 import qualified DBus.Protocol.Marshal as M
 import qualified DBus.Types as T
@@ -47,7 +48,7 @@ marshalled.
 class Message a where
 	messageTypeCode     :: a -> Word8
 	messageHeaderFields :: a -> [HeaderField]
-	messageFlags        :: a -> [Flag]
+	messageFlags        :: a -> S.Set Flag
 	messageBody         :: a -> [T.Variant]
 \end{code}
 
@@ -63,10 +64,13 @@ protocolVersion = 1
 Flags are represented as the integral value of each flag OR'd into a single
 byte.
 
+The instance of {\tt Ord} only exists for storing flags in a set. Flags have
+no inherent ordering.
+
 \begin{code}
 data Flag = NoReplyExpected
           | NoAutoStart
-	deriving (Show, Eq)
+	deriving (Show, Eq, Ord)
 \end{code}
 
 \begin{code}
@@ -148,7 +152,7 @@ data MethodCall = MethodCall
 	, methodCallMember      :: T.MemberName
 	, methodCallInterface   :: Maybe T.InterfaceName
 	, methodCallDestination :: Maybe T.BusName
-	, methodCallFlags       :: [Flag]
+	, methodCallFlags       :: S.Set Flag
 	, methodCallBody        :: [T.Variant]
 	}
 	deriving (Show, Eq)
@@ -172,7 +176,7 @@ instance Message MethodCall where
 data MethodReturn = MethodReturn
 	{ methodReturnSerial      :: T.Serial
 	, methodReturnDestination :: Maybe T.BusName
-	, methodReturnFlags       :: [Flag]
+	, methodReturnFlags       :: S.Set Flag
 	, methodReturnBody        :: [T.Variant]
 	}
 	deriving (Show, Eq)
@@ -195,7 +199,7 @@ data Error = Error
 	{ errorName        :: T.ErrorName
 	, errorSerial      :: T.Serial
 	, errorDestination :: Maybe T.BusName
-	, errorFlags       :: [Flag]
+	, errorFlags       :: S.Set Flag
 	, errorBody        :: [T.Variant]
 	}
 	deriving (Show, Eq)
@@ -219,7 +223,7 @@ data Signal = Signal
 	{ signalPath      :: T.ObjectPath
 	, signalMember    :: T.MemberName
 	, signalInterface :: T.InterfaceName
-	, signalFlags     :: [Flag]
+	, signalFlags     :: S.Set Flag
 	, signalBody      :: [T.Variant]
 	}
 	deriving (Show, Eq)
@@ -246,7 +250,7 @@ maybe' f x = maybe [] (\x' -> [f x']) x
 data MessageHeader = MessageHeader
 	{ headerEndianness :: T.Endianness
 	, headerTypeCode   :: Word8
-	, headerFlags      :: [Flag]
+	, headerFlags      :: S.Set Flag
 	, headerProtocol   :: Word8
 	, headerBodySize   :: Word32
 	, headerSerial     :: T.Serial
@@ -293,7 +297,7 @@ marshalHeader :: MessageHeader -> [T.Variant]
 marshalHeader h = map ($ h)
 	[ T.toVariant . headerEndianness
 	, T.toVariant . headerTypeCode
-	, T.toVariant . encodeFlags . headerFlags
+	, T.toVariant . encodeFlags . S.toList . headerFlags
 	, T.toVariant . headerProtocol
 	, T.toVariant . headerBodySize
 	, T.toVariant . headerSerial
