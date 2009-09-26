@@ -1,0 +1,30 @@
+name: dbus-core
+version: 0.1
+synopsis: DBus protocol
+license: GPL
+license-file: License.txt
+author: John Millikin
+maintainer: jmillikin@gmail.com
+build-type: Simple
+cabal-version: >=1.6
+category: Data
+stability: experimental
+bug-reports: mailto:jmillikin@gmail.com
+
+library
+  build-depends: base >=4 && < 5, parsec >= 3, bytestring,
+                 data-binary-ieee754, binary, utf8-string, mtl,
+                 containers, unix, network
+  exposed-modules:
+    DBus.Bus
+    DBus.Bus.Address
+    DBus.Bus.Connection
+    DBus.Message
+    DBus.Types
+    DBus.Types.Atom
+    DBus.Types.Containers
+    DBus.Types.Endianness
+    DBus.Types.Names
+    DBus.Types.ObjectPath
+    DBus.Types.Serial
+    DBus.Types.Signature
