@@ -19,6 +19,7 @@
 module DBus.Bus
 	( getSystemBus
 	, getSessionBus
+	, register
 	) where
 
 import Data.Typeable (Typeable, cast)
@@ -37,20 +38,29 @@ import qualified DBus.Types as T
 getBus :: A.Address -> IO (C.Connection, T.BusName)
 getBus addr = do
 	c <- C.connect . C.findTransport $ addr
-	C.send c return hello
-	reply <- C.recv c >>= \x -> case x of
-		Right x'  -> return x'
-		Left  err -> E.throwIO . E.AssertionFailed $ err
-	case findBusName reply of
-		Just x -> return (c, x)
-		Nothing -> E.throwIO . E.AssertionFailed $ "Received inappropriate reply to Hello()."
+	name <- register c
+	return (c, name)
+\end{code}
 
+\begin{code}
 findBusName :: M.ReceivedMessage -> Maybe T.BusName
 findBusName (M.ReceivedMethodReturn _ _ msg) = name where
 	name = case M.methodReturnBody msg of
 		[x] -> T.fromVariant x
 		_   -> Nothing
-findBusname _ = Nothing
+findBusName _ = Nothing
+\end{code}
+
+\begin{code}
+register :: C.Connection -> IO T.BusName
+register c = do
+	C.send c return hello
+	reply <- C.recv c >>= \x -> case x of
+		Right x'  -> return x'
+		Left  err -> E.throwIO . E.AssertionFailed $ err
+	case findBusName reply of
+		Just x -> return x
+		Nothing -> E.throwIO . E.AssertionFailed $ "Received inappropriate reply to Hello()."
 \end{code}
 
 \section{Default connections}
@@ -68,8 +78,10 @@ getSessionBus = do
 	env <- getEnv "DBUS_SESSION_BUS_ADDRESS"
 	case A.parseAddresses env of
 		Just (addr:_) -> getBus addr
-		Nothing -> E.throwIO $ BadAddress env
+		_             -> E.throwIO $ BadAddress env
+\end{code}
 
+\begin{code}
 data BadAddress = BadAddress String
 	deriving (Show, Typeable)
 
