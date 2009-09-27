@@ -24,6 +24,8 @@ module DBus.Message
 	, Error (..)
 	, Signal (..)
 	, ReceivedMessage (..)
+	, receivedSerial
+	, receivedSender
 	, marshal
 	, unmarshal
 	) where
