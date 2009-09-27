@@ -249,7 +249,7 @@ consume count = do
 \begin{code}
 skipPadding :: Word8 -> Unmarshal ()
 skipPadding count = do
-	(UnmarshalState e bytes offset) <- get
+	(UnmarshalState _ _ offset) <- get
 	bytes <- consume $ padding offset count
 	assert (L.all (== 0) bytes) "Non-zero bytes in padding."
 \end{code}

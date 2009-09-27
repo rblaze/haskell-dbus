@@ -118,8 +118,8 @@ header' code x = T.toVariant $ T.Structure
 	]
 
 unheader :: T.Variant -> Maybe (Word8, T.Variant)
-unheader v = do
-	struct <- T.fromVariant v
+unheader structV = do
+	struct <- T.fromVariant structV
 	(c, v) <- case struct of
 		T.Structure [x, y] -> return  (x, y)
 		_                  -> Nothing

@@ -323,8 +323,4 @@ cast' (Variant _ x) = cast x
 hasSignature :: S.Signature -> [Variant] -> Bool
 hasSignature _   [] = True
 hasSignature sig vs = all (== sig) . map variantSignature $ vs
-
-allIdentical :: (Eq a) => [a] -> Bool
-allIdentical     [] = True
-allIdentical (x:xs) = all (x ==) xs
 \end{code}

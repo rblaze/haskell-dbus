@@ -142,6 +142,7 @@ hexToInt = foldl ((+) . (16 *)) 0 . map digitToInt
 \end{code}
 
 \begin{code}
-eitherToMaybe (Left  x) = Nothing
+eitherToMaybe :: Either a b -> Maybe b
+eitherToMaybe (Left  _) = Nothing
 eitherToMaybe (Right x) = Just x
 \end{code}
