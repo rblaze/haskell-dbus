@@ -1,6 +1,6 @@
 name: dbus-core
-version: 0.1
-synopsis: DBus protocol
+version: 0.2
+synopsis: Low-level DBus protocol implementation
 license: GPL
 license-file: License.txt
 author: John Millikin
@@ -11,10 +11,30 @@ category: Data
 stability: experimental
 bug-reports: mailto:jmillikin@gmail.com
 
+extra-source-files:
+  dbus-core.tex
+  Examples/*.hs
+  Tests/*.hs
+  Tests.hs
+  DBus/Types/Containers.lhs-boot
+
+source-repository head
+  type: darcs
+  location: http://patch-tag.com/r/dbus-core/pullrepo
+
 library
-  build-depends: base >=4 && < 5, parsec >= 3, bytestring,
-                 data-binary-ieee754, binary, utf8-string, mtl,
-                 containers, unix, network
+  build-depends:
+    base >=4 && < 5,
+    parsec >= 3,
+    binary,
+    bytestring,
+    data-binary-ieee754,
+    utf8-string,
+    mtl,
+    containers,
+    unix,
+    network
+
   exposed-modules:
     DBus.Bus
     DBus.Bus.Address
@@ -28,3 +48,10 @@ library
     DBus.Types.ObjectPath
     DBus.Types.Serial
     DBus.Types.Signature
+
+  other-modules:
+    DBus.Protocol.Authentication
+    DBus.Protocol.Marshal
+    DBus.Protocol.Unmarshal
+    DBus.Protocol.Padding
+    DBus.Types.Util
