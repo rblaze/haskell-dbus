@@ -110,7 +110,7 @@ known parameters:
 
 TCP support is TODO
 
-\begin{code}%
+\begin{otherCode}
 tcp :: A.Address -> Transport
 tcp a@(A.Address _ params) = handleTransport a connect' where
 	host = lookup "host" params
@@ -124,7 +124,7 @@ tcp a@(A.Address _ params) = handleTransport a connect' where
 parsePort :: String -> Maybe PortNumber
 
 parseFamily :: String -> Maybe Family
-\end{code}%
+\end{otherCode}
 
 \subsection{Generic handle-based transport}
 
