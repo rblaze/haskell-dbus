@@ -1,5 +1,5 @@
 name: dbus-core
-version: 0.2
+version: 0.3
 synopsis: Low-level DBus protocol implementation
 license: GPL
 license-file: License.txt
