@@ -122,8 +122,8 @@ waitForReply :: C.Connection -> T.Serial -> IO M.MethodReturn
 waitForReply c serial = do
 	msg <- C.receive c
 	case msg of
-		(M.ReceivedMethodReturn _ _ reply) -> do
-			if (M.methodReturnSerial reply) == serial
+		(M.ReceivedMethodReturn _ _ reply) ->
+			if M.methodReturnSerial reply == serial
 				then return reply
 				else waitForReply c serial
 		_ -> waitForReply c serial

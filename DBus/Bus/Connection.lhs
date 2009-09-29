@@ -32,8 +32,7 @@ import Data.Word (Word32)
 import qualified Data.ByteString.Lazy as L
 import Data.ByteString.Lazy.UTF8 (toString, fromString)
 import qualified Data.Map as Map
-import Data.Maybe (isJust, isNothing)
-import Data.Typeable (Typeable, cast)
+import Data.Typeable (Typeable)
 
 import qualified Network as N
 import qualified System.IO as I
@@ -139,7 +138,7 @@ be specified.
 
 \begin{code}
 unix :: A.Address -> IO Transport
-unix a = handleTransport a . N.connectTo "localhost" =<< port where
+unix a = handleTransport . N.connectTo "localhost" =<< port where
 	params = A.addressParameters a
 	path = Map.lookup "path" params
 	abstract = Map.lookup "abstract" params
@@ -191,8 +190,8 @@ Both UNIX and TCP are backed by standard handles, and can therefore use
 a shared handle-based transport backend.
 
 \begin{code}
-handleTransport :: A.Address -> IO I.Handle -> IO Transport
-handleTransport addr io = do
+handleTransport :: IO I.Handle -> IO Transport
+handleTransport io = do
 	h <- io
 	I.hSetBuffering h I.NoBuffering
 	I.hSetBinaryMode h True

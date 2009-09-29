@@ -23,6 +23,8 @@ source-repository head
   location: http://patch-tag.com/r/jmillikin/dbus-core/pullrepo
 
 library
+  ghc-options: -Wall
+
   build-depends:
     base >=4 && < 5,
     parsec >= 3.0.0,

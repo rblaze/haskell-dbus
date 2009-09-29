@@ -408,7 +408,7 @@ getRaw get = do
 
 \begin{code}
 checkMatchingVersion :: (E.Error e, E.MonadError e m) => T.Variant -> m ()
-checkMatchingVersion v = unless (messageVersion == protocolVersion) $ do
+checkMatchingVersion v = unless (messageVersion == protocolVersion) $
 	E.throwError . E.strMsg . concat $
 		[ "Protocol version mismatch: "
 		, show messageVersion
