@@ -7,7 +7,7 @@ author: John Millikin
 maintainer: jmillikin@gmail.com
 build-type: Simple
 cabal-version: >=1.6
-category: Data
+category: Network, Desktop
 stability: experimental
 bug-reports: mailto:jmillikin@gmail.com
 
@@ -25,10 +25,10 @@ source-repository head
 library
   build-depends:
     base >=4 && < 5,
-    parsec >= 3,
+    parsec >= 3.0.0,
     binary,
     bytestring,
-    data-binary-ieee754,
+    data-binary-ieee754 >= 0.3,
     utf8-string,
     mtl,
     containers,
