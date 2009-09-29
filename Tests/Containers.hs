@@ -40,7 +40,13 @@ containerProperties = concat
 	, forAllAtomic prop_AtomDefaultSignature
 	, forAllVariable prop_DefaultSignature
 	, variantSignatureProperties
-	, [ property prop_VariantSignatureLength ]
+	
+	, [ property prop_VariantSignatureLength
+	  , property prop_VariantType
+	  , property prop_AtomType
+	  ]
+	
+	
 	, [ property prop_ArrayHomogeneous
 	  , property prop_DictHomogeneous0
 	  , property prop_DictHomogeneous1
@@ -82,8 +88,7 @@ prop_DefaultSignature gen = forAll gen $ \x -> let
 
 -- Test that signatures are set properly
 sameSig :: Variable a => a -> Type -> Bool
-sameSig x t = [t] == t' where
-	t' = signatureTypes . variantSignature . toVariant $ x
+sameSig x t = t == (variantType . toVariant) x
 
 sameSig' :: Variable a => (a -> Signature) -> a -> Bool
 sameSig' f x = f x == (variantSignature . toVariant) x
@@ -111,6 +116,15 @@ variantSignatureProperties =
 prop_VariantSignatureLength x = length sig == 1 where
 	sig = signatureTypes . variantSignature $ x
 
+-- variantType is a shortcut for getting the type in a variant's
+-- signature.
+prop_VariantType x = variantType x == t where
+	t = head . signatureTypes . variantSignature $ x
+
+-- Ditto atomType
+prop_AtomType x = atomType x == t where
+	t = head . signatureTypes . atomSignature $ x
+
 -- All items in an array have the same signature. If items do not have
 -- the same signature, the array can't be constructed
 prop_ArrayHomogeneous vs = isJust array == homogeneousTypes where
@@ -118,7 +132,7 @@ prop_ArrayHomogeneous vs = isJust array == homogeneousTypes where
 	homogeneousTypes = if length vs > 0
 		then all (== firstType) types
 		else True
-	types = map (signatureTypes . variantSignature) vs
+	types = map variantType vs
 	firstType = head types
 	sig = if length vs > 0
 		then variantSignature (head vs)
@@ -140,10 +154,10 @@ homogeneousDict x = length items > 0 ==> homogeneous where
 	keys = [k | (k,_) <- items]
 	values = [v | (_,v) <- items]
 	
-	kTypes = map (signatureTypes . atomSignature) keys
+	kTypes = map atomType keys
 	kFirst = head kTypes
 	
-	vTypes = map (signatureTypes . variantSignature) values
+	vTypes = map variantType values
 	vFirst = head vTypes
 	
 	homogeneous = all (== kFirst) kTypes && all (== vFirst) vTypes

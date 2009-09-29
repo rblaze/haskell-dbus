@@ -25,6 +25,7 @@ module DBus.Types.Containers
 	, fromVariant
 	, defaultSignature
 	, variantSignature
+	, variantType
 	
 	, Array
 	, toArray
@@ -107,6 +108,11 @@ instance Variable Variant where
 \begin{code}
 variantSignature :: Variant -> S.Signature
 variantSignature (Variant s _) = s
+\end{code}
+
+\begin{code}
+variantType :: Variant -> S.Type
+variantType = head . S.signatureTypes . variantSignature
 \end{code}
 
 \begin{code}

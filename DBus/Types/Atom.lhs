@@ -24,6 +24,7 @@ module DBus.Types.Atom
 	, toAtom
 	, fromAtom
 	, atomSignature
+	, atomType
 	, atomToVariant
 	, atomFromVariant
 	) where
@@ -80,6 +81,11 @@ fromAtom (Atom x) = C.fromVariant x
 \begin{code}
 atomSignature :: Atom -> S.Signature
 atomSignature (Atom v) = C.variantSignature v
+\end{code}
+
+\begin{code}
+atomType :: Atom -> S.Type
+atomType = head . S.signatureTypes . atomSignature
 \end{code}
 
 \subsubsection{Built-in atomic types}

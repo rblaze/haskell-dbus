@@ -271,7 +271,7 @@ data MessageHeader = MessageHeader
 buildHeader :: Message a => T.Endianness -> T.Serial -> a -> Word32
                -> MessageHeader
 buildHeader endianness serial m bodyLen = header where
-	ts = concatMap (T.signatureTypes . T.variantSignature) $ messageBody m
+	ts = map T.variantType $ messageBody m
 	bodySig = fromJust . T.mkSignature $ concatMap T.typeString ts
 	fields = Signature bodySig : messageHeaderFields m
 	header = MessageHeader
