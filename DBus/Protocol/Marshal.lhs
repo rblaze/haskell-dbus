@@ -40,31 +40,31 @@ import qualified DBus.Types as T
 
 \begin{code}
 marshal :: T.Endianness -> [T.Variant] -> L.ByteString
-marshal e vs = runMarshal (mapM_ marshal' vs) e
+marshal e vs = runMarshal (mapM_ marshalAny vs) e
 \end{code}
 
 \begin{code}
-marshal' :: T.Variant -> Marshal
-marshal' x = fromJust $ msum marshalers where
-	m f = fmap f . T.fromVariant
-	marshalers = map ($ x)
-		[ m bool
-		, m word8
-		, m word16
-		, m word32
-		, m word64
-		, m int16
-		, m int32
-		, m int64
-		, m double
-		, m string
-		, m objectPath
-		, m signature
-		, m array
-		, m dictionary
-		, m structure
-		, m variant
-		]
+marshalAny :: T.Variant -> Marshal
+marshalAny x = marshal' (T.variantType x) x where
+	v :: T.Variable a => T.Variant -> a
+	v = fromJust . T.fromVariant
+	
+	marshal' T.BooleanT    = bool       . v
+	marshal' T.ByteT       = word8      . v
+	marshal' T.UInt16T     = word16     . v
+	marshal' T.UInt32T     = word32     . v
+	marshal' T.UInt64T     = word64     . v
+	marshal' T.Int16T      = int16      . v
+	marshal' T.Int32T      = int32      . v
+	marshal' T.Int64T      = int64      . v
+	marshal' T.DoubleT     = double     . v
+	marshal' T.StringT     = string     . v
+	marshal' T.ObjectPathT = objectPath . v
+	marshal' T.SignatureT  = signature  . v
+	marshal' (T.ArrayT _)  = array      . v
+	marshal' (T.DictT _ _) = dictionary . v
+	marshal' (T.StructT _) = structure  . v
+	marshal' T.VariantT    = variant    . v
 \end{code}
 
 \subsection{Atoms}
@@ -162,7 +162,7 @@ getArrayBytes x = do
 	s <- S.get
 	(MarshalState _ afterLength) <- word32 0 >> S.get
 	(MarshalState _ afterPadding) <- pad (padByType itemType) >> S.get
-	(MarshalState _ afterItems) <- mapM_ marshal' vs >> S.get
+	(MarshalState _ afterItems) <- mapM_ marshalAny vs >> S.get
 	
 	let paddingBytes = L.drop (L.length afterLength) afterPadding
 	let itemBytes = L.drop (L.length afterPadding) afterItems
@@ -185,14 +185,14 @@ dictionary x = array x' where
 
 \begin{code}
 structure :: T.Structure -> Marshal
-structure (T.Structure xs) = pad 8 >> mapM_ marshal' xs
+structure (T.Structure xs) = pad 8 >> mapM_ marshalAny xs
 \end{code}
 
 \subsubsection{Variants}
 
 \begin{code}
 variant :: T.Variant -> Marshal
-variant x = signature (T.variantSignature x) >> marshal' x
+variant x = signature (T.variantSignature x) >> marshalAny x
 \end{code}
 
 \subsection{The {\tt Marshal} monad}
