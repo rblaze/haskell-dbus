@@ -40,21 +40,21 @@ padding current count = required where
 
 \begin{code}
 padByType :: T.Type -> Word8
-padByType T.BooleanT    = 4
-padByType T.ByteT       = 1
-padByType T.UInt16T     = 2
-padByType T.UInt32T     = 4
-padByType T.UInt64T     = 8
-padByType T.Int16T      = 2
-padByType T.Int32T      = 4
-padByType T.Int64T      = 8
-padByType T.DoubleT     = 8
-padByType T.StringT     = 4
-padByType T.ObjectPathT = 4
-padByType T.SignatureT  = 1
-padByType T.VariantT    = 1
-padByType (T.ArrayT _)  = 4
-padByType (T.DictT _ _) = 4
-padByType (T.StructT _) = 8
+padByType T.BooleanT          = 4
+padByType T.ByteT             = 1
+padByType T.UInt16T           = 2
+padByType T.UInt32T           = 4
+padByType T.UInt64T           = 8
+padByType T.Int16T            = 2
+padByType T.Int32T            = 4
+padByType T.Int64T            = 8
+padByType T.DoubleT           = 8
+padByType T.StringT           = 4
+padByType T.ObjectPathT       = 4
+padByType T.SignatureT        = 1
+padByType (T.ArrayT _)        = 4
+padByType (T.DictionaryT _ _) = 4
+padByType (T.StructureT _)    = 8
+padByType T.VariantT          = 1
 \end{code}
 

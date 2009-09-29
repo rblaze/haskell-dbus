@@ -49,22 +49,22 @@ marshalAny x = marshal' (T.variantType x) x where
 	v :: T.Variable a => T.Variant -> a
 	v = fromJust . T.fromVariant
 	
-	marshal' T.BooleanT    = bool       . v
-	marshal' T.ByteT       = word8      . v
-	marshal' T.UInt16T     = word16     . v
-	marshal' T.UInt32T     = word32     . v
-	marshal' T.UInt64T     = word64     . v
-	marshal' T.Int16T      = int16      . v
-	marshal' T.Int32T      = int32      . v
-	marshal' T.Int64T      = int64      . v
-	marshal' T.DoubleT     = double     . v
-	marshal' T.StringT     = string     . v
-	marshal' T.ObjectPathT = objectPath . v
-	marshal' T.SignatureT  = signature  . v
-	marshal' (T.ArrayT _)  = array      . v
-	marshal' (T.DictT _ _) = dictionary . v
-	marshal' (T.StructT _) = structure  . v
-	marshal' T.VariantT    = variant    . v
+	marshal' T.BooleanT          = bool       . v
+	marshal' T.ByteT             = word8      . v
+	marshal' T.UInt16T           = word16     . v
+	marshal' T.UInt32T           = word32     . v
+	marshal' T.UInt64T           = word64     . v
+	marshal' T.Int16T            = int16      . v
+	marshal' T.Int32T            = int32      . v
+	marshal' T.Int64T            = int64      . v
+	marshal' T.DoubleT           = double     . v
+	marshal' T.StringT           = string     . v
+	marshal' T.ObjectPathT       = objectPath . v
+	marshal' T.SignatureT        = signature  . v
+	marshal' (T.ArrayT _)        = array      . v
+	marshal' (T.DictionaryT _ _) = dictionary . v
+	marshal' (T.StructureT _)    = structure  . v
+	marshal' T.VariantT          = variant    . v
 \end{code}
 
 \subsection{Atoms}

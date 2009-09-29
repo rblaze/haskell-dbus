@@ -91,12 +91,12 @@ mkSignature = (parseMaybe sigParser =<<) . checkLength 255 where
 		keyType <- parseAtom
 		valueType <- parseType
 		char '}'
-		return $ DictT keyType valueType
+		return $ DictionaryT keyType valueType
 	parseStruct = do
 		char '('
 		types <- many parseType
 		char ')'
-		return $ StructT types
+		return $ StructureT types
 \end{code}
 
 Convert a signature to a string, for marshaling over the bus or display.
@@ -125,26 +125,26 @@ data Type =
 	| ObjectPathT
 	| SignatureT
 	| ArrayT Type
-	| DictT Type Type
-	| StructT [Type]
+	| DictionaryT Type Type
+	| StructureT [Type]
 	| VariantT
 	deriving (Show, Eq)
 
 typeString :: Type -> String
-typeString BooleanT      = "b"
-typeString ByteT         = "y"
-typeString Int16T        = "n"
-typeString UInt16T       = "q"
-typeString Int32T        = "i"
-typeString UInt32T       = "u"
-typeString Int64T        = "x"
-typeString UInt64T       = "t"
-typeString DoubleT       = "d"
-typeString StringT       = "s"
-typeString ObjectPathT   = "o"
-typeString SignatureT    = "g"
-typeString (ArrayT t)    = 'a' : typeString t
-typeString (DictT kt vt) = "a{" ++ typeString kt ++ typeString vt ++ "}"
-typeString (StructT ts)  = "(" ++ concatMap typeString ts ++ ")"
-typeString VariantT      = "v"
+typeString BooleanT            = "b"
+typeString ByteT               = "y"
+typeString Int16T              = "n"
+typeString UInt16T             = "q"
+typeString Int32T              = "i"
+typeString UInt32T             = "u"
+typeString Int64T              = "x"
+typeString UInt64T             = "t"
+typeString DoubleT             = "d"
+typeString StringT             = "s"
+typeString ObjectPathT         = "o"
+typeString SignatureT          = "g"
+typeString (ArrayT t)          = 'a' : typeString t
+typeString (DictionaryT kt vt) = "a{" ++ typeString kt ++ typeString vt ++ "}"
+typeString (StructureT ts)     = "(" ++ concatMap typeString ts ++ ")"
+typeString VariantT            = "v"
 \end{code}

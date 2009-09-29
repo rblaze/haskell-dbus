@@ -170,11 +170,11 @@ containerType = do
 		1 -> do
 			kt <- atomicType
 			vt <- arbitrary
-			return $ DictT kt vt
+			return $ DictionaryT kt vt
 		2 -> sized structType
 		3 -> return VariantT
 
-structType n | n >= 0 = fmap StructT $ resize (n `div` 2) arbitrary
+structType n | n >= 0 = fmap StructureT $ resize (n `div` 2) arbitrary
 
 instance Arbitrary Atom where
 	coarbitrary = undefined
@@ -261,22 +261,22 @@ instance Arbitrary Structure where
 instance Arbitrary Variant where
 	coarbitrary = undefined
 	arbitrary = arbitrary >>= \t -> case t of
-		BooleanT    -> fmap toVariant (arbitrary :: Gen Bool)
-		ByteT       -> fmap toVariant (arbitrary :: Gen Word8)
-		UInt16T     -> fmap toVariant (arbitrary :: Gen Word16)
-		UInt32T     -> fmap toVariant (arbitrary :: Gen Word32)
-		UInt64T     -> fmap toVariant (arbitrary :: Gen Word64)
-		Int16T      -> fmap toVariant (arbitrary :: Gen Int16)
-		Int32T      -> fmap toVariant (arbitrary :: Gen Int32)
-		Int64T      -> fmap toVariant (arbitrary :: Gen Int64)
-		DoubleT     -> fmap toVariant (arbitrary :: Gen Double)
-		StringT     -> fmap toVariant (arbitrary :: Gen String)
-		ObjectPathT -> fmap toVariant (arbitrary :: Gen ObjectPath)
-		SignatureT  -> fmap toVariant (arbitrary :: Gen Signature)
-		ArrayT _    -> fmap toVariant (arbitrary :: Gen Array)
-		DictT _ _   -> fmap toVariant (arbitrary :: Gen Dictionary)
-		StructT _   -> fmap toVariant (arbitrary :: Gen Structure)
-		VariantT    -> fmap toVariant (arbitrary :: Gen Variant)
+		BooleanT          -> fmap toVariant (arbitrary :: Gen Bool)
+		ByteT             -> fmap toVariant (arbitrary :: Gen Word8)
+		UInt16T           -> fmap toVariant (arbitrary :: Gen Word16)
+		UInt32T           -> fmap toVariant (arbitrary :: Gen Word32)
+		UInt64T           -> fmap toVariant (arbitrary :: Gen Word64)
+		Int16T            -> fmap toVariant (arbitrary :: Gen Int16)
+		Int32T            -> fmap toVariant (arbitrary :: Gen Int32)
+		Int64T            -> fmap toVariant (arbitrary :: Gen Int64)
+		DoubleT           -> fmap toVariant (arbitrary :: Gen Double)
+		StringT           -> fmap toVariant (arbitrary :: Gen String)
+		ObjectPathT       -> fmap toVariant (arbitrary :: Gen ObjectPath)
+		SignatureT        -> fmap toVariant (arbitrary :: Gen Signature)
+		ArrayT _          -> fmap toVariant (arbitrary :: Gen Array)
+		DictionaryT _ _   -> fmap toVariant (arbitrary :: Gen Dictionary)
+		StructureT _      -> fmap toVariant (arbitrary :: Gen Structure)
+		VariantT          -> fmap toVariant (arbitrary :: Gen Variant)
 
 instance Arbitrary Endianness where
 	coarbitrary = undefined

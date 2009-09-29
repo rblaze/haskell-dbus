@@ -243,7 +243,7 @@ formatVariant' (ArrayT _) x = MultiLine lines' where
 		, Line "]"
 		]
 
-formatVariant' (DictT _ _) x = MultiLine lines' where
+formatVariant' (DictionaryT _ _) x = MultiLine lines' where
 	items = dictionaryItems . fromJust . fromVariant $ x
 	lines' = [ Line "dictionary {"
 		, Children . map formatItem $ items
@@ -255,7 +255,7 @@ formatVariant' (DictT _ _) x = MultiLine lines' where
 		vHead = head v'
 		vTail = map Line $ tail v'
 
-formatVariant' (StructT _) x = MultiLine lines' where
+formatVariant' (StructureT _) x = MultiLine lines' where
 	Structure items = fromJust . fromVariant $ x
 	lines' =
 		[ Line "struct ("
