@@ -55,13 +55,10 @@ findBus []    = getSessionBus
 findBus (o:_) = case o of
 	BusOption Session -> getSessionBus
 	BusOption System  -> getSystemBus
-	AddressOption addr -> do
-		addr' <- case parseAddresses addr of
-			Just (x:_) -> return x
-			_          -> error $ "Invalid address: " ++ show addr
-		c <- connect . findTransport $ addr'
-		name <- register c
-		return (c, name)
+	AddressOption addr -> case parseAddresses addr of
+			Just [x] -> getBus x
+			Just  x  -> getFirstBus x
+			_        -> error $ "Invalid address: " ++ show addr
 
 addMatchMsg :: String -> MethodCall
 addMatchMsg match = MethodCall
@@ -83,12 +80,8 @@ defaultFilters =
 	, "type='error'"
 	]
 
-onMessage :: Either String ReceivedMessage -> IO ()
-onMessage (Left err) = do
-	hPutStrLn stderr err
-	exitFailure
-
-onMessage (Right msg) = putStrLn (formatMessage msg ++ "\n")
+onMessage :: ReceivedMessage -> IO ()
+onMessage msg = putStrLn (formatMessage msg ++ "\n")
 
 main :: IO ()
 main = do
@@ -108,7 +101,7 @@ main = do
 	
 	mapM_ (addMatch bus) filters
 	
-	forever (recv bus >>= onMessage)
+	forever (receive bus >>= onMessage)
 
 -- Message formatting is verbose and mostly uninteresting, except as an
 -- excersise in string manipulation.
