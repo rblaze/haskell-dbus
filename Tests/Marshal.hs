@@ -21,7 +21,6 @@ import qualified Control.Exception as E
 import System.IO.Unsafe (unsafePerformIO)
 import qualified Data.ByteString.Lazy as L
 import Data.Word
-import Data.Maybe (fromJust)
 
 import Test.QuickCheck
 import Tests.Instances ()

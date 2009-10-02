@@ -47,7 +47,6 @@ module DBus.Types.Containers
 
 import Control.Arrow ((***))
 import Data.Typeable (Typeable, cast)
-import Data.Maybe (fromJust)
 import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
 import qualified DBus.Types.Signature as S
@@ -318,7 +317,7 @@ structureSignature (Structure vs) = sig where
 
 \begin{code}
 sig' :: String -> S.Signature
-sig' = fromJust . S.mkSignature
+sig' = S.mkSignature'
 
 variant' :: (Variable a, Typeable a, Show a) => String -> a -> Variant
 variant' = Variant . sig'

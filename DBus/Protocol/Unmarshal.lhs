@@ -19,7 +19,6 @@
 {-# LANGUAGE ExistentialQuantification #-}
 module DBus.Protocol.Unmarshal (unmarshal) where
 
-import Data.Maybe (fromJust)
 import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
 import qualified Control.Monad.State as S
@@ -157,7 +156,7 @@ array t = do
 	let getOffset = do
 		(UnmarshalState _ _ o) <- get
 		return o
-	let sig = fromJust . T.mkSignature . T.typeString $ t
+	let sig = T.mkSignature' . T.typeString $ t
 	
 	byteCount <- word32
 	skipPadding (padByType t)
@@ -177,8 +176,8 @@ dictionary kt vt = do
 	arr <- array $ T.StructureT [kt, vt]
 	structs <- fromMaybe T.fromArray arr "dictionary"
 	pairs <- mapM mkPair structs
-	let kSig = fromJust . T.mkSignature . T.typeString $ kt
-	let vSig = fromJust . T.mkSignature . T.typeString $ vt
+	let kSig = T.mkSignature' . T.typeString $ kt
+	let vSig = T.mkSignature' . T.typeString $ vt
 	fromMaybe (T.dictionaryFromItems kSig vSig) pairs "dictionary"
 
 mkPair :: T.Structure -> Unmarshal (T.Atom, T.Variant)

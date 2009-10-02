@@ -18,28 +18,31 @@
 module DBus.Types.Names
 	( InterfaceName
 	, mkInterfaceName
+	, mkInterfaceName'
 	, strInterfaceName
 	
 	, BusName
 	, mkBusName
+	, mkBusName'
 	, strBusName
 	
 	, MemberName
 	, mkMemberName
+	, mkMemberName'
 	, strMemberName
 	
 	, ErrorName
 	, mkErrorName
+	, mkErrorName'
 	, strErrorName
 	) where
 
-import Data.Maybe (fromJust)
 import Text.Parsec ((<|>))
 import qualified Text.Parsec as P
 import qualified DBus.Types.Atom as A
 import qualified DBus.Types.Containers as C
-import DBus.Types.Signature (mkSignature)
-import DBus.Types.Util (checkLength, parseMaybe)
+import DBus.Types.Signature (mkSignature')
+import DBus.Types.Util (checkLength, parseMaybe, mkUnsafe)
 \end{code}
 }
 
@@ -60,7 +63,7 @@ newtype InterfaceName = InterfaceName String
 
 \begin{code}
 instance C.Variable InterfaceName where
-	defaultSignature _ = fromJust . mkSignature $ "s"
+	defaultSignature _ = mkSignature' "s"
 	toVariant = A.atomToVariant . A.toAtom
 	fromVariant = (mkInterfaceName =<<) . C.fromVariant
 instance A.Atomic InterfaceName where
@@ -75,6 +78,11 @@ mkInterfaceName s = checkLength 255 s >>= parseMaybe parser where
 	element = P.oneOf c >> P.many (P.oneOf c')
 	name = element >> P.many1 (P.char '.' >> element)
 	parser = name >> P.eof >> return (InterfaceName s)
+\end{code}
+
+\begin{code}
+mkInterfaceName' :: String -> InterfaceName
+mkInterfaceName' = mkUnsafe "interface name" mkInterfaceName
 \end{code}
 
 \begin{code}
@@ -94,7 +102,7 @@ newtype ErrorName = ErrorName String
 
 \begin{code}
 instance C.Variable ErrorName where
-	defaultSignature _ = fromJust . mkSignature $ "s"
+	defaultSignature _ = mkSignature' "s"
 	toVariant = A.atomToVariant . A.toAtom
 	fromVariant = (mkErrorName =<<) . C.fromVariant
 instance A.Atomic ErrorName where
@@ -104,6 +112,11 @@ instance A.Atomic ErrorName where
 \begin{code}
 mkErrorName :: String -> Maybe ErrorName
 mkErrorName = fmap (ErrorName . strInterfaceName) . mkInterfaceName
+\end{code}
+
+\begin{code}
+mkErrorName' :: String -> ErrorName
+mkErrorName' = mkUnsafe "error name" mkErrorName
 \end{code}
 
 \begin{code}
@@ -120,7 +133,7 @@ newtype BusName = BusName String
 
 \begin{code}
 instance C.Variable BusName where
-	defaultSignature _ = fromJust . mkSignature $ "s"
+	defaultSignature _ = mkSignature' "s"
 	toVariant = A.atomToVariant . A.toAtom
 	fromVariant = (mkBusName =<<) . C.fromVariant
 instance A.Atomic BusName where
@@ -140,6 +153,11 @@ mkBusName s = checkLength 255 s >>= parseMaybe parser where
 \end{code}
 
 \begin{code}
+mkBusName' :: String -> BusName
+mkBusName' = mkUnsafe "bus name" mkBusName
+\end{code}
+
+\begin{code}
 strBusName :: BusName -> String
 strBusName (BusName x) = x
 \end{code}
@@ -153,7 +171,7 @@ newtype MemberName = MemberName String
 
 \begin{code}
 instance C.Variable MemberName where
-	defaultSignature _ = fromJust . mkSignature $ "s"
+	defaultSignature _ = mkSignature' "s"
 	toVariant = A.atomToVariant . A.toAtom
 	fromVariant = (mkMemberName =<<) . C.fromVariant
 instance A.Atomic MemberName where
@@ -167,6 +185,11 @@ mkMemberName s = checkLength 255 s >>= parseMaybe parser where
 	c' = c ++ ['0'..'9']
 	name = P.oneOf c >> P.many (P.oneOf c')
 	parser = name >> P.eof >> return (MemberName s)
+\end{code}
+
+\begin{code}
+mkMemberName' :: String -> MemberName
+mkMemberName' = mkUnsafe "member name" mkMemberName
 \end{code}
 
 \begin{code}

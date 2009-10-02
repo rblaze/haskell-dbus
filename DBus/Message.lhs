@@ -128,7 +128,7 @@ unheader structV = do
 	return (c', v')
 
 instance T.Variable HeaderField where
-	defaultSignature _ = fromJust . T.mkSignature $ "(yv)"
+	defaultSignature _ = T.mkSignature' "(yv)"
 	
 	toVariant (Path x)        = header' 1 x
 	toVariant (Interface x)   = header' 2 x
@@ -272,7 +272,7 @@ buildHeader :: Message a => T.Endianness -> T.Serial -> a -> Word32
                -> MessageHeader
 buildHeader endianness serial m bodyLen = header where
 	ts = map T.variantType $ messageBody m
-	bodySig = fromJust . T.mkSignature $ concatMap T.typeString ts
+	bodySig = T.mkSignature' $ concatMap T.typeString ts
 	fields = Signature bodySig : messageHeaderFields m
 	header = MessageHeader
 		endianness
@@ -380,8 +380,8 @@ type RawMessage = (T.Endianness, L.ByteString, L.ByteString)
 getRaw :: (E.Error e, E.MonadError e m) =>
           (Word32 -> m L.ByteString) -> m RawMessage
 getRaw get = do
-	let fixed'Sig = fromJust . T.mkSignature $ "yyyy"
-	let fixedSig  = fromJust . T.mkSignature $ "yyyyuuu"
+	let fixed'Sig = T.mkSignature' "yyyy"
+	let fixedSig  = T.mkSignature' "yyyyuuu"
 	
 	-- Protocol version
 	fixedBytes <- get 16
@@ -432,7 +432,7 @@ Next, the header is parsed into a proper {\tt MessageHeader}.
 parseHeader :: (E.Error e, E.MonadError e m)
                => T.Endianness -> L.ByteString -> m MessageHeader
 parseHeader endianness bytes = do
-	let signature = fromJust . T.mkSignature $ "yyyyuua(yv)"
+	let signature = T.mkSignature' "yyyyuua(yv)"
 	vs <- U.unmarshal endianness signature bytes
 	let fieldArray = fromJust . T.fromVariant $ vs !! 6
 	let fields = mapMaybe T.fromVariant $ T.arrayItems fieldArray
@@ -453,7 +453,7 @@ unmarshaling the body. Otherwise, the body is assumed to be empty.
 \begin{code}
 findBodySignature :: [HeaderField] -> T.Signature
 findBodySignature fields = fromMaybe empty signature where
-	empty = fromJust . T.mkSignature $ ""
+	empty = T.mkSignature' ""
 	signature = listToMaybe [x | Signature x <- fields]
 \end{code}
 

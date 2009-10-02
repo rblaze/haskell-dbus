@@ -19,12 +19,13 @@
 module DBus.Types.ObjectPath
 	( ObjectPath
 	, mkObjectPath
+	, mkObjectPath'
 	, strObjectPath
 	) where
 
 import Data.Typeable (Typeable)
 import qualified Text.Parsec as P
-import DBus.Types.Util (parseMaybe)
+import DBus.Types.Util (parseMaybe, mkUnsafe)
 \end{code}
 }
 
@@ -51,6 +52,9 @@ mkObjectPath s = parseMaybe path' s where
 	c = P.oneOf $ ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_"
 	path = P.char '/' >>= P.optional . P.sepBy (P.many1 c) . P.char
 	path' = path >> P.eof >> return (ObjectPath s)
+
+mkObjectPath' :: String -> ObjectPath
+mkObjectPath' = mkUnsafe "object path" mkObjectPath
 
 strObjectPath :: ObjectPath -> String
 strObjectPath (ObjectPath x) = x

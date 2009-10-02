@@ -136,7 +136,7 @@ prop_ArrayHomogeneous vs = isJust array == homogeneousTypes where
 	firstType = head types
 	sig = if length vs > 0
 		then variantSignature (head vs)
-		else fromJust . mkSignature $ "y"
+		else mkSignature' "y"
 
 -- A dictionary must have homogeneous key and value types
 prop_DictHomogeneous0 = homogeneousDict
@@ -144,7 +144,7 @@ prop_DictHomogeneous0 = homogeneousDict
 prop_DictHomogeneous1 ks = forAll (vector (length ks)) $ \vs -> let
 	dict = dictionaryFromItems kSig vSig (zip ks vs)
 	(kSig, vSig) = if null ks
-		then (id &&& id) . fromJust . mkSignature $ "y"
+		then (id &&& id) . mkSignature' $ "y"
 		else (atomSignature (head ks), variantSignature (head vs))
 	in isJust dict ==> homogeneousDict (fromJust dict)
 
@@ -173,7 +173,7 @@ props_EmptyArraySignature =
 	where check xs sig = forAll (return sig) $ checkEmptyArray xs
 
 checkEmptyArray xs sig = arraySignature a == sig' where
-	sig' = fromJust . mkSignature $ sig
+	sig' = mkSignature' sig
 	a = fromJust . toArray $ xs
 
 props_EmptyDictionarySignature =
@@ -187,7 +187,7 @@ props_EmptyDictionarySignature =
 	where check xs sig = forAll (return sig) $ checkEmptyDict xs
 
 checkEmptyDict xs sig = dictionarySignature a == sig' where
-	sig' = fromJust . mkSignature $ sig
+	sig' = mkSignature' sig
 	a = fromJust . toDictionary $ xs
 
 -- TODO Conversion to/from array and dictionary

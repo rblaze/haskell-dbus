@@ -21,13 +21,14 @@ module DBus.Types.Signature
 	, Type(..)
 	, signatureTypes
 	, mkSignature
+	, mkSignature'
 	, strSignature
 	, typeString
 	) where
 
 import Data.Typeable (Typeable)
 import Text.Parsec (char, (<|>), many, eof)
-import DBus.Types.Util (checkLength, parseMaybe)
+import DBus.Types.Util (checkLength, parseMaybe, mkUnsafe)
 \end{code}
 }
 
@@ -97,6 +98,11 @@ mkSignature = (parseMaybe sigParser =<<) . checkLength 255 where
 		types <- many parseType
 		char ')'
 		return $ StructureT types
+\end{code}
+
+\begin{code}
+mkSignature' :: String -> Signature
+mkSignature' = mkUnsafe "signature" mkSignature
 \end{code}
 
 Convert a signature to a string, for marshaling over the bus or display.

@@ -93,8 +93,8 @@ getSessionBus = do
 \begin{code}
 hello :: M.MethodCall
 hello = M.MethodCall
-	(fromJust . T.mkObjectPath $ "/org/freedesktop/DBus")
-	(fromJust . T.mkMemberName $ "Hello")
+	(T.mkObjectPath' "/org/freedesktop/DBus")
+	(T.mkMemberName' "Hello")
 	(T.mkInterfaceName "org.freedesktop.DBus")
 	(T.mkBusName "org.freedesktop.DBus")
 	Set.empty

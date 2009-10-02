@@ -62,8 +62,8 @@ findBus (o:_) = case o of
 
 addMatchMsg :: String -> MethodCall
 addMatchMsg match = MethodCall
-	(fromJust . mkObjectPath $ "/org/freedesktop/DBus")
-	(fromJust . mkMemberName $ "AddMatch")
+	(mkObjectPath' "/org/freedesktop/DBus")
+	(mkMemberName' "AddMatch")
 	(mkInterfaceName "org.freedesktop.DBus")
 	(mkBusName "org.freedesktop.DBus")
 	Set.empty

@@ -19,7 +19,6 @@ module Tests.Instances (sized') where
 
 import Control.Monad (replicateM)
 import Data.List (intercalate)
-import Data.Maybe (fromJust)
 import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
 import Test.QuickCheck
@@ -76,16 +75,16 @@ sized' atLeast g = sized $ \n -> do
 	n' <- choose (atLeast, max atLeast n)
 	replicateM n' g
 
-clampedSize :: Arbitrary a => Int -> Gen String -> (String -> Maybe a) -> Gen a
+clampedSize :: Arbitrary a => Int -> Gen String -> (String -> a) -> Gen a
 clampedSize maxSize gen f = do
 	s <- gen
 	if length s > maxSize
 		then sized (\n -> resize (n `div` 2) arbitrary)
-		else return . fromJust . f $ s
+		else return . f $ s
 
 instance Arbitrary ObjectPath where
 	coarbitrary = undefined
-	arbitrary = fmap (fromJust . mkObjectPath) path' where
+	arbitrary = fmap mkObjectPath' path' where
 		c = ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_"
 		path = fmap (intercalate "/" . ([] :)) genElements
 		path' = frequency [(1, return "/"), (9, path)]
@@ -93,7 +92,7 @@ instance Arbitrary ObjectPath where
 
 instance Arbitrary InterfaceName where
 	coarbitrary = undefined
-	arbitrary = clampedSize 255 genName mkInterfaceName where
+	arbitrary = clampedSize 255 genName mkInterfaceName' where
 		c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
 		c' = c ++ ['0'..'9']
 		
@@ -107,7 +106,7 @@ instance Arbitrary InterfaceName where
 
 instance Arbitrary BusName where
 	coarbitrary = undefined
-	arbitrary = clampedSize 255 (oneof [unique, wellKnown]) mkBusName where
+	arbitrary = clampedSize 255 (oneof [unique, wellKnown]) mkBusName' where
 		c = ['a'..'z'] ++ ['A'..'Z'] ++ "_-"
 		c' = c ++ ['0'..'9']
 		
@@ -126,7 +125,7 @@ instance Arbitrary BusName where
 
 instance Arbitrary MemberName where
 	coarbitrary = undefined
-	arbitrary = clampedSize 255 genName mkMemberName where
+	arbitrary = clampedSize 255 genName mkMemberName' where
 		c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
 		c' = c ++ ['0'..'9']
 		
@@ -137,7 +136,7 @@ instance Arbitrary MemberName where
 
 instance Arbitrary ErrorName where
 	coarbitrary = undefined
-	arbitrary = fmap (fromJust . mkErrorName . strInterfaceName) arbitrary
+	arbitrary = fmap (mkErrorName' . strInterfaceName) arbitrary
 
 instance Arbitrary Type where
 	coarbitrary = undefined
@@ -145,7 +144,7 @@ instance Arbitrary Type where
 
 instance Arbitrary Signature where
 	coarbitrary = undefined
-	arbitrary = clampedSize 255 genSig mkSignature where
+	arbitrary = clampedSize 255 genSig mkSignature' where
 		genSig = fmap (concatMap typeString) arbitrary
 
 atomicType = elements
@@ -249,8 +248,8 @@ instance Arbitrary Dictionary where
 			ObjectPathT -> fmap (map toVariant) (arbitrary :: Gen [ObjectPath])
 			SignatureT  -> fmap (map toVariant) (arbitrary :: Gen [Signature])
 		
-		let kSig = fromJust . mkSignature . typeString $ kt
-		let vSig = fromJust . mkSignature . typeString $ vt
+		let kSig = mkSignature' . typeString $ kt
+		let vSig = mkSignature' . typeString $ vt
 		maybe arbitrary return (dictionaryFromItems kSig vSig (zip ks vs))
 
 instance Arbitrary Structure where

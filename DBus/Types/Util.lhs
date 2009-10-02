@@ -22,6 +22,7 @@
 module DBus.Types.Util
 	( checkLength
 	, parseMaybe
+	, mkUnsafe
 	) where
 
 import Text.Parsec (Parsec, parse)
@@ -37,4 +38,11 @@ checkLength _ _ = Nothing
 \begin{code}
 parseMaybe :: Parsec String () a -> String -> Maybe a
 parseMaybe p = either (const Nothing) Just . parse p ""
+\end{code}
+
+\begin{code}
+mkUnsafe :: Show a => String -> (a -> Maybe b) -> a -> b
+mkUnsafe label f x = case f x of
+	Just x' -> x'
+	Nothing -> error $ "Invalid " ++ label ++ ": " ++ show x
 \end{code}
