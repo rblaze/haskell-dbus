@@ -126,6 +126,7 @@ instance Arbitrary Signal where
 		path   <- arbitrary
 		member <- arbitrary
 		iface  <- arbitrary
+		dest   <- arbitrary
 		flags  <- fmap fromList arbitrary
 		body   <- sized (\n -> resize (n `div` 2) arbitrary)
-		return $ Signal path member iface flags body
+		return $ Signal path member iface dest flags body

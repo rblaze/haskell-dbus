@@ -158,6 +158,8 @@ formatMessage (ReceivedSignal serial sender msg) = concat
 	[ "signal"
 	, " sender="
 	, fromMaybe "(null)" . fmap strBusName $ sender
+	, " -> dest="
+	, fromMaybe "(null)" . fmap strBusName . signalDestination $ msg
 	, " serial="
 	, show serial
 	, " path="

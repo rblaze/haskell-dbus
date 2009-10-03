@@ -238,11 +238,12 @@ instance Message Error where
 
 \begin{code}
 data Signal = Signal
-	{ signalPath      :: T.ObjectPath
-	, signalMember    :: T.MemberName
-	, signalInterface :: T.InterfaceName
-	, signalFlags     :: S.Set Flag
-	, signalBody      :: [T.Variant]
+	{ signalPath        :: T.ObjectPath
+	, signalMember      :: T.MemberName
+	, signalInterface   :: T.InterfaceName
+	, signalDestination :: Maybe T.BusName
+	, signalFlags       :: S.Set Flag
+	, signalBody        :: [T.Variant]
 	}
 	deriving (Show, Eq)
 
@@ -250,10 +251,12 @@ instance Message Signal where
 	messageTypeCode _ = 4
 	messageFlags      = signalFlags
 	messageBody       = signalBody
-	messageHeaderFields m =
-		[ Path      $ signalPath m
-		, Member    $ signalMember m
-		, Interface $ signalInterface m
+	messageHeaderFields m = concat
+		[ [ Path      $ signalPath m
+		  , Member    $ signalMember m
+		  , Interface $ signalInterface m
+		  ]
+		, maybe' Destination . signalDestination $ m
 		]
 \end{code}
 
@@ -526,7 +529,8 @@ mkSignal fields flags body = do
 	path <- require "path" [x | Path x <- fields]
 	member <- require "member" [x | Member x <- fields]
 	iface <- require "interface" [x | Interface x <- fields]
-	return $ Signal path member iface flags body
+	let dest = listToMaybe [x | Destination x <- fields]
+	return $ Signal path member iface dest flags body
 \end{code}
 
 \begin{code}
