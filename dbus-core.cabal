@@ -38,25 +38,25 @@ library
     network
 
   exposed-modules:
+    DBus.Address
     DBus.Bus
-    DBus.Bus.Address
-    DBus.Bus.Connection
+    DBus.Connection
     DBus.Constants
     DBus.Message
     DBus.Types
+
+  other-modules:
     DBus.Types.Atom
     DBus.Types.Containers
+    DBus.Types.Containers.Array
+    DBus.Types.Containers.Dictionary
+    DBus.Types.Containers.Structure
+    DBus.Types.Containers.Variant
     DBus.Types.Endianness
     DBus.Types.Names
     DBus.Types.ObjectPath
     DBus.Types.Serial
     DBus.Types.Signature
-
-  other-modules:
-    DBus.Types.Containers.Array
-    DBus.Types.Containers.Dictionary
-    DBus.Types.Containers.Structure
-    DBus.Types.Containers.Variant
     DBus.Internal.Authentication
     DBus.Internal.Marshal
     DBus.Internal.Unmarshal

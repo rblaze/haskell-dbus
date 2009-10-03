@@ -15,9 +15,10 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 -}
 
+import DBus.Address
 import DBus.Bus
-import DBus.Bus.Address
-import DBus.Bus.Connection
+import DBus.Connection
+import DBus.Constants
 import DBus.Message
 import DBus.Types
 
@@ -62,10 +63,10 @@ findBus (o:_) = case o of
 
 addMatchMsg :: String -> MethodCall
 addMatchMsg match = MethodCall
-	(mkObjectPath' "/org/freedesktop/DBus")
+	dbusPath
 	(mkMemberName' "AddMatch")
-	(mkInterfaceName "org.freedesktop.DBus")
-	(mkBusName "org.freedesktop.DBus")
+	(Just dbusInterface)
+	(Just dbusName)
 	Set.empty
 	[toVariant match]
 

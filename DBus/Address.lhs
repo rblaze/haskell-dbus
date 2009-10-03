@@ -15,7 +15,7 @@
 
 \ignore{
 \begin{code}
-module DBus.Bus.Address
+module DBus.Address
 	( Address
 	, addressMethod
 	, addressParameters

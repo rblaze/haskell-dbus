@@ -24,13 +24,12 @@ module DBus.Bus
 
 import qualified Control.Exception as E
 import Control.Monad (when)
-
 import Data.Maybe (fromJust, isNothing)
 import qualified Data.Set as Set
-
 import System.Environment (getEnv)
-import qualified DBus.Bus.Address as A
-import qualified DBus.Bus.Connection as C
+
+import qualified DBus.Address as A
+import qualified DBus.Connection as C
 import DBus.Constants (dbusName, dbusPath, dbusInterface)
 import qualified DBus.Message as M
 import qualified DBus.Types as T

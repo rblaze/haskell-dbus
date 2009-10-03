@@ -23,7 +23,7 @@ import Data.Map (toList)
 import Data.Maybe (isJust, isNothing)
 import Test.QuickCheck
 import Tests.Instances (sized')
-import DBus.Bus.Address
+import DBus.Address
 
 addressProperties = concat
 	[ prop_Valid

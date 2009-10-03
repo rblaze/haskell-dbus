@@ -16,7 +16,7 @@
 \ignore{
 \begin{code}
 {-# LANGUAGE DeriveDataTypeable #-}
-module DBus.Bus.Connection
+module DBus.Connection
 	( Connection
 	, ConnectionException (..)
 	, ProtocolException (..)
@@ -37,9 +37,9 @@ import Data.Typeable (Typeable)
 import qualified Network as N
 import qualified System.IO as I
 
+import qualified DBus.Address as A
 import qualified DBus.Types as T
 import DBus.Message (Message, ReceivedMessage, marshal, unmarshal)
-import qualified DBus.Bus.Address as A
 import DBus.Internal.Authentication (authenticate)
 \end{code}
 }
