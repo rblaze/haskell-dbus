@@ -16,16 +16,30 @@
 \ignore{
 \begin{code}
 module DBus.Message
-	( Message (..)
+	( -- * Message structure and fields
+	  Message (..)
 	, Flag (..)
 	, HeaderField (..)
+	
+	  -- * Message types
+	  -- ** Method calls
 	, MethodCall (..)
+	
+	  -- ** Method returns
 	, MethodReturn (..)
+	
+	  -- ** Errors
 	, Error (..)
+	
+	  -- ** Signals
 	, Signal (..)
+	
+	  -- * Received messages
 	, ReceivedMessage (..)
 	, receivedSerial
 	, receivedSender
+	
+	  -- * (Un)marshaling
 	, marshal
 	, unmarshal
 	) where

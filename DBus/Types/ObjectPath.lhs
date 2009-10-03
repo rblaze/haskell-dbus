@@ -17,7 +17,8 @@
 \begin{code}
 {-# LANGUAGE DeriveDataTypeable #-}
 module DBus.Types.ObjectPath
-	( ObjectPath
+	( -- * Object paths
+	  ObjectPath
 	, mkObjectPath
 	, mkObjectPath'
 	, strObjectPath

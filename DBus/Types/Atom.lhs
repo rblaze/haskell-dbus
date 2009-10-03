@@ -19,7 +19,8 @@
 \begin{code}
 {-# LANGUAGE TypeSynonymInstances #-}
 module DBus.Types.Atom
-	( Atom
+	( -- * Atoms
+	  Atom
 	, Atomic
 	, toAtom
 	, fromAtom

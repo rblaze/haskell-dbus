@@ -17,7 +17,8 @@
 \begin{code}
 {-# LANGUAGE DeriveDataTypeable #-}
 module DBus.Types.Signature
-	( Signature
+	( -- * Signatures
+	  Signature
 	, Type(..)
 	, signatureTypes
 	, mkSignature

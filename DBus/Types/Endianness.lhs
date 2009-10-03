@@ -15,7 +15,10 @@
 
 \ignore{
 \begin{code}
-module DBus.Types.Endianness (Endianness (..)) where
+module DBus.Types.Endianness
+	( -- * Endianness
+	  Endianness (..)
+	) where
 
 import Data.Word (Word8)
 import qualified DBus.Types.Containers as C

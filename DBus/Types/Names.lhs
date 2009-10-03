@@ -16,21 +16,27 @@
 \ignore{
 \begin{code}
 module DBus.Types.Names
-	( InterfaceName
+	( -- * Names
+	
+	  -- ** Interface names
+	  InterfaceName
 	, mkInterfaceName
 	, mkInterfaceName'
 	, strInterfaceName
 	
+	  -- ** Bus names
 	, BusName
 	, mkBusName
 	, mkBusName'
 	, strBusName
 	
+	  -- ** Member names
 	, MemberName
 	, mkMemberName
 	, mkMemberName'
 	, strMemberName
 	
+	  -- ** Error names
 	, ErrorName
 	, mkErrorName
 	, mkErrorName'

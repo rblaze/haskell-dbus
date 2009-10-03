@@ -16,13 +16,21 @@
 \ignore{
 \begin{code}
 module DBus.Types.Containers
-	( Variant
+	( -- * Containers
+	
+	  -- ** Variants
+	  Variant
 	, Variable (..)
 	, variantSignature
 	, variantType
 	
+	  -- ** Arrays
 	, module DBus.Types.Containers.Array
+	
+	  -- ** Dictionaries
 	, module DBus.Types.Containers.Dictionary
+	
+	  -- ** Structures
 	, module DBus.Types.Containers.Structure
 	) where
 
