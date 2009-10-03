@@ -31,18 +31,18 @@ protocolVersion = 1
 \subsection{Main bus location}
 
 \begin{code}
-busName :: T.BusName
-busName = T.mkBusName' "org.freedesktop.DBus"
+dbusName :: T.BusName
+dbusName = T.mkBusName' "org.freedesktop.DBus"
 \end{code}
 
 \begin{code}
-busPath :: T.ObjectPath
-busPath = T.mkObjectPath' "/org/freedesktop/DBus"
+dbusPath :: T.ObjectPath
+dbusPath = T.mkObjectPath' "/org/freedesktop/DBus"
 \end{code}
 
 \begin{code}
-busInterface :: T.InterfaceName
-busInterface = T.mkInterfaceName' "org.freedesktop.DBus"
+dbusInterface :: T.InterfaceName
+dbusInterface = T.mkInterfaceName' "org.freedesktop.DBus"
 \end{code}
 
 \subsection{Other pre-defined interfaces}
