@@ -16,7 +16,7 @@
 \ignore{
 \begin{code}
 {-# OPTIONS_HADDOCK hide #-}
-module DBus.Protocol.Authentication (authenticate) where
+module DBus.Internal.Authentication (authenticate) where
 
 import Data.Char (ord)
 import Data.Word (Word32)

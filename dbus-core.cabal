@@ -53,8 +53,8 @@ library
     DBus.Types.Signature
 
   other-modules:
-    DBus.Protocol.Authentication
-    DBus.Protocol.Marshal
-    DBus.Protocol.Unmarshal
-    DBus.Protocol.Padding
-    DBus.Types.Util
+    DBus.Internal.Authentication
+    DBus.Internal.Marshal
+    DBus.Internal.Unmarshal
+    DBus.Internal.Padding
+    DBus.Internal.Util

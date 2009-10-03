@@ -28,7 +28,7 @@ module DBus.Types.Signature
 
 import Data.Typeable (Typeable)
 import Text.Parsec (char, (<|>), many, eof)
-import DBus.Types.Util (checkLength, parseMaybe, mkUnsafe)
+import DBus.Internal.Util (checkLength, parseMaybe, mkUnsafe)
 \end{code}
 }
 

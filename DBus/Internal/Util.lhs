@@ -19,7 +19,7 @@
 \ignore{
 \begin{code}
 {-# OPTIONS_HADDOCK hide #-}
-module DBus.Types.Util
+module DBus.Internal.Util
 	( checkLength
 	, parseMaybe
 	, mkUnsafe

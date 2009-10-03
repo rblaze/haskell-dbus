@@ -25,8 +25,8 @@ import Data.Word
 import Test.QuickCheck
 import Tests.Instances ()
 import DBus.Types
-import DBus.Protocol.Marshal
-import DBus.Protocol.Unmarshal
+import DBus.Internal.Marshal
+import DBus.Internal.Unmarshal
 
 marshalProperties :: [Property]
 marshalProperties =

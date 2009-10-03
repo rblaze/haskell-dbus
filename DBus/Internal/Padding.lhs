@@ -16,7 +16,7 @@
 \ignore{
 \begin{code}
 {-# OPTIONS_HADDOCK hide #-}
-module DBus.Protocol.Padding
+module DBus.Internal.Padding
 	( padding
 	, alignment
 	) where
