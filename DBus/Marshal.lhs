@@ -15,7 +15,7 @@
 
 \ignore{
 \begin{code}
-module DBus.Internal.Marshal (marshal) where
+module DBus.Marshal (marshal) where
 
 import Control.Arrow (first)
 import Control.Monad (msum)
@@ -28,7 +28,7 @@ import Data.ByteString.Lazy.UTF8 (fromString)
 import qualified Data.Binary.Put as P
 import qualified Data.Binary.IEEE754 as IEEE
 
-import DBus.Internal.Padding (padding, alignment)
+import DBus.Padding (padding, alignment)
 import qualified DBus.Types as T
 \end{code}
 }

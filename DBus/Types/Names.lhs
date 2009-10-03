@@ -48,7 +48,7 @@ import qualified Text.Parsec as P
 import qualified DBus.Types.Atom as A
 import qualified DBus.Types.Containers as C
 import DBus.Types.Signature (mkSignature')
-import DBus.Internal.Util (checkLength, parseMaybe, mkUnsafe)
+import DBus.Util (checkLength, parseMaybe, mkUnsafe)
 \end{code}
 }
 

@@ -40,7 +40,7 @@ import qualified System.IO as I
 import qualified DBus.Address as A
 import qualified DBus.Types as T
 import DBus.Message (Message, ReceivedMessage, marshal, unmarshal)
-import DBus.Internal.Authentication (authenticate)
+import DBus.Authentication (authenticate)
 \end{code}
 }
 

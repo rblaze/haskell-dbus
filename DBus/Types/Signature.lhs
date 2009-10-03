@@ -29,7 +29,7 @@ module DBus.Types.Signature
 
 import Data.Typeable (Typeable)
 import Text.Parsec (char, (<|>), many, eof)
-import DBus.Internal.Util (checkLength, parseMaybe, mkUnsafe)
+import DBus.Util (checkLength, parseMaybe, mkUnsafe)
 \end{code}
 }
 

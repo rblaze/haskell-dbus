@@ -15,7 +15,7 @@
 
 \ignore{
 \begin{code}
-module DBus.Internal.Padding
+module DBus.Padding
 	( padding
 	, alignment
 	) where

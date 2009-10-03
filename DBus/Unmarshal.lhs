@@ -16,7 +16,7 @@
 \ignore{
 \begin{code}
 {-# LANGUAGE ExistentialQuantification #-}
-module DBus.Internal.Unmarshal (unmarshal) where
+module DBus.Unmarshal (unmarshal) where
 
 import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
@@ -27,7 +27,7 @@ import Data.ByteString.Lazy.UTF8 (toString)
 import qualified Data.Binary.Get as G
 import qualified Data.Binary.IEEE754 as IEEE
 
-import DBus.Internal.Padding (padding, alignment)
+import DBus.Padding (padding, alignment)
 import qualified DBus.Types as T
 \end{code}
 }

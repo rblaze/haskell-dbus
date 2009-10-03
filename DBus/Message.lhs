@@ -52,9 +52,9 @@ import qualified Data.ByteString.Lazy as L
 import Data.Maybe (fromJust, fromMaybe, listToMaybe, mapMaybe)
 import qualified Data.Set as S
 
-import qualified DBus.Internal.Marshal as M
-import qualified DBus.Internal.Unmarshal as U
-import DBus.Internal.Padding (padding)
+import qualified DBus.Marshal as M
+import qualified DBus.Unmarshal as U
+import DBus.Padding (padding)
 import qualified DBus.Types as T
 import DBus.Constants (protocolVersion)
 \end{code}

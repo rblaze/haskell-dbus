@@ -15,7 +15,7 @@
 
 \ignore{
 \begin{code}
-module DBus.Internal.Authentication (authenticate) where
+module DBus.Authentication (authenticate) where
 
 import Data.Char (ord)
 import Data.Word (Word32)

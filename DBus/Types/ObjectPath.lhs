@@ -26,7 +26,7 @@ module DBus.Types.ObjectPath
 
 import Data.Typeable (Typeable)
 import qualified Text.Parsec as P
-import DBus.Internal.Util (parseMaybe, mkUnsafe)
+import DBus.Util (parseMaybe, mkUnsafe)
 \end{code}
 }
 

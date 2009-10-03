@@ -18,7 +18,7 @@
 
 \ignore{
 \begin{code}
-module DBus.Internal.Util
+module DBus.Util
 	( checkLength
 	, parseMaybe
 	, mkUnsafe

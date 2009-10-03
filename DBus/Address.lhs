@@ -29,7 +29,7 @@ import Data.List (intercalate)
 import Text.Printf (printf)
 import qualified Text.Parsec as P
 import Text.Parsec ((<|>))
-import DBus.Internal.Util (hexToInt, eitherToMaybe)
+import DBus.Util (hexToInt, eitherToMaybe)
 \end{code}
 }
 
