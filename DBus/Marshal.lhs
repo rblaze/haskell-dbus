@@ -15,16 +15,23 @@
 
 \ignore{
 \begin{code}
-module DBus.Marshal (marshal) where
+{-# LANGUAGE DeriveDataTypeable #-}
+module DBus.Marshal
+	( MarshalError (..)
+	, marshal
+	) where
 
 import Control.Arrow (first)
-import Control.Monad (msum)
+import Control.Monad (when)
 import qualified Control.Monad.State as S
+import qualified Control.Monad.Error as E
+import Control.Exception (Exception)
 import Data.Maybe (fromJust)
 import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
 import qualified Data.ByteString.Lazy as L
 import Data.ByteString.Lazy.UTF8 (fromString)
+import Data.Typeable (Typeable)
 import qualified Data.Binary.Put as P
 import qualified Data.Binary.IEEE754 as IEEE
 
@@ -38,7 +45,7 @@ import qualified DBus.Types as T
 \subsection{\tt marshal}
 
 \begin{code}
-marshal :: T.Endianness -> [T.Variant] -> L.ByteString
+marshal :: T.Endianness -> [T.Variant] -> Either MarshalError L.ByteString
 marshal e vs = runMarshal (mapM_ marshalAny vs) e
 \end{code}
 
@@ -148,7 +155,10 @@ temporary marshaler, to get the padding right.
 array :: T.Array -> Marshal
 array x = do
 	(arrayPadding, arrayBytes) <- getArrayBytes x
-	word32 . fromIntegral . L.length $ arrayBytes
+	let arrayLen = fromIntegral . L.length $ arrayBytes
+	when (arrayLen > arrayMaximumLength)
+		(E.throwError $ ArrayTooLong arrayLen)
+	word32 arrayLen
 	append arrayPadding
 	append arrayBytes
 \end{code}
@@ -168,6 +178,11 @@ getArrayBytes x = do
 	
 	S.put s
 	return (paddingBytes, itemBytes)
+\end{code}
+
+\begin{code}
+arrayMaximumLength :: Word32
+arrayMaximumLength = 67108864
 \end{code}
 
 \subsubsection{Dictionaries}
@@ -201,15 +216,15 @@ to be calculated properly.
 
 \begin{code}
 data MarshalState = MarshalState T.Endianness L.ByteString
-type MarshalM = S.State MarshalState
+type MarshalM = E.ErrorT MarshalError (S.State MarshalState)
 type Marshal = MarshalM ()
 \end{code}
 
 \begin{code}
-runMarshal :: Marshal -> T.Endianness -> L.ByteString
-runMarshal m e = bytes where
-	initialState = MarshalState e L.empty
-	(MarshalState _ bytes) = S.execState m initialState
+runMarshal :: Marshal -> T.Endianness -> Either MarshalError L.ByteString
+runMarshal m e = case S.runState (E.runErrorT m) (MarshalState e L.empty) of
+	(Left  x, _                   ) -> Left x
+	(Right _, MarshalState _ bytes) -> Right bytes
 \end{code}
 
 \begin{code}
@@ -239,4 +254,24 @@ appendPut put x = do
 	append $ case e of
 		T.BigEndian -> bytes
 		T.LittleEndian -> L.reverse bytes
+\end{code}
+
+\subsection{Errors}
+
+\begin{code}
+data MarshalError
+	= MessageTooLong Word32
+	| InvalidBodySignature String
+	| ArrayTooLong Word32
+	deriving (Eq, Typeable)
+
+instance Exception MarshalError
+
+instance E.Error MarshalError where
+	strMsg = undefined
+
+instance Show MarshalError where
+	show (MessageTooLong x) = "Message too long (" ++ show x ++ " bytes)."
+	show (InvalidBodySignature x) = "Invalid body signature: " ++ show x
+	show (ArrayTooLong x) = "Array too long (" ++ show x ++ " bytes)."
 \end{code}

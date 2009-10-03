@@ -41,11 +41,12 @@ module DBus.Message
 	
 	  -- * (Un)marshaling
 	, U.UnmarshalError (..)
+	, M.MarshalError (..)
 	, marshal
 	, unmarshal
 	) where
 
-import Control.Monad (unless)
+import Control.Monad (unless, when)
 import qualified Control.Monad.Error as E
 import Data.Bits ((.|.), (.&.))
 import Data.Word (Word8, Word32)
@@ -282,12 +283,15 @@ data MessageHeader = MessageHeader
 
 \begin{code}
 buildHeader :: Message a => T.Endianness -> T.Serial -> a -> Word32
-               -> MessageHeader
-buildHeader endianness serial m bodyLen = header where
-	ts = map T.variantType $ messageBody m
-	bodySig = T.mkSignature' $ concatMap T.typeString ts
-	fields = Signature bodySig : messageHeaderFields m
-	header = MessageHeader
+               -> Either M.MarshalError MessageHeader
+buildHeader endianness serial m bodyLen = do
+	let bodySig = concatMap (T.typeString . T.variantType) $ messageBody m
+	bodySig' <- case T.mkSignature bodySig of
+		Just x -> Right x
+		Nothing -> Left $ M.InvalidBodySignature bodySig
+	
+	let fields = Signature bodySig' : messageHeaderFields m
+	return $ MessageHeader
 		endianness
 		(messageTypeCode m)
 		(messageFlags m)
@@ -303,12 +307,23 @@ buildHeader endianness serial m bodyLen = header where
 over the bus.
 
 \begin{code}
-marshal :: Message a => T.Endianness -> T.Serial -> a -> L.ByteString
-marshal e s m = L.append headerBytes bodyBytes where
-	bodyBytes = M.marshal e $ messageBody m
-	bodyLength = fromIntegral . L.length $ bodyBytes
-	header = marshalHeader (buildHeader e s m bodyLength)
-	headerBytes = M.marshal e $ header ++ [T.toVariant (T.Structure [])]
+marshal :: Message a => T.Endianness -> T.Serial -> a
+           -> Either M.MarshalError L.ByteString
+marshal e s m = do
+	bodyBytes <- M.marshal e $ messageBody m
+	let bodyLength = fromIntegral . L.length $ bodyBytes
+	header <- fmap marshalHeader $ buildHeader e s m bodyLength
+	headerBytes <- M.marshal e $ header ++ [T.toVariant (T.Structure [])]
+	let allBytes = L.append headerBytes bodyBytes
+	let messageLength = fromIntegral . L.length $ allBytes
+	when (messageLength > messageMaximumLength)
+		(E.throwError $ M.MessageTooLong messageLength)
+	return allBytes
+\end{code}
+
+\begin{code}
+messageMaximumLength :: Word32
+messageMaximumLength = 134217728
 \end{code}
 
 Build the header struct for a message. Endianness, the serial, and body

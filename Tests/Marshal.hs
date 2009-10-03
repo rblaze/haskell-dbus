@@ -39,7 +39,9 @@ marshalProperties =
 prop_MarshalAnyVariant e x = noError $ marshal e [x]
 
 -- Any atomic value should marshal to *something*
-prop_MarshalAtom e x = not . L.null . marshal e $ [atomToVariant x]
+prop_MarshalAtom e x = case marshal e [atomToVariant x] of
+	Right x -> not . L.null $ x
+	Left  _ -> False
 
 -- TODO: test bytes of marshaled atoms
 
@@ -47,7 +49,7 @@ prop_MarshalAtom e x = not . L.null . marshal e $ [atomToVariant x]
 
 -- Any value, when marshaled, can be unmarshaled to the same value
 prop_Unmarshal e x = unmarshaled == Right [x] where
-	bytes = marshal e [x]
+	Right bytes = marshal e [x]
 	unmarshaled = unmarshal e (variantSignature x) bytes
 
 -- Helper to determine whether the given pure function raised an exception.

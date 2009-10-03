@@ -86,7 +86,9 @@ multi-threaded clients.
 send :: Message a => Connection -> (T.Serial -> IO b) -> a -> IO b
 send (Connection _ t mvar) io msg = withSerial mvar $ \serial -> do
 	x <- io serial
-	transportSend t . marshal T.LittleEndian serial $ msg
+	case marshal T.LittleEndian serial $ msg of
+		Right bytes -> transportSend t bytes
+		Left  err   -> E.throwIO err
 	return x
 
 withSerial :: C.MVar T.Serial -> (T.Serial -> IO a) -> IO a

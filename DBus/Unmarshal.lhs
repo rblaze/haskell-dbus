@@ -296,13 +296,12 @@ data UnmarshalError
 	| Invalid String String
 	| ProtocolVersionMismatch Word8
 	| RequiredHeaderFieldMissing String
-	| GenericError String
 	deriving (Eq, Typeable)
 
 instance Exception UnmarshalError
 
 instance E.Error UnmarshalError where
-	strMsg = GenericError
+	strMsg = undefined
 
 instance Show UnmarshalError where
 	show (UnexpectedEOF pos) = "Unexpected EOF at position " ++ show pos
@@ -318,7 +317,6 @@ instance Show UnmarshalError where
 		, show x
 		, " is missing."
 		]
-	show (GenericError msg)  = "Error unmarshaling: " ++ msg
 \end{code}
 
 \begin{code}

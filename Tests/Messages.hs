@@ -44,7 +44,10 @@ headerFieldProperties =
 prop_HeaderFieldVariable x = fromVariant (toVariant x) == Just x
 	where types = [x :: HeaderField]
 
-prop_Marshal gen = forAll arbitrary (\e s -> forAll gen (not . L.null . marshal e s))
+prop_Marshal gen = forAll arbitrary (\e s -> forAll gen (\msg ->
+	case marshal e s msg of
+		Right x -> not . L.null $ x
+		Left  _ -> False))
 
 prop_Unmarshal0 e s msg = checkUnmarshal expected e s msg where
 	expected = ReceivedMethodCall s Nothing msg
@@ -59,7 +62,7 @@ prop_Unmarshal3 e s msg = checkUnmarshal expected e s msg where
 	expected = ReceivedSignal s Nothing msg
 
 checkUnmarshal expected e s msg = unmarshaled == Right expected where
-	bytes = marshal e s msg
+	Right bytes = marshal e s msg
 	getBytes = G.getLazyByteString . fromIntegral
 	unmarshaled = G.runGet (unmarshal getBytes) bytes
 
