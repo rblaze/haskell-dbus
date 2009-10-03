@@ -16,7 +16,6 @@ extra-source-files:
   Examples/*.hs
   Tests/*.hs
   Tests.hs
-  DBus/Types/Containers.lhs-boot
 
 source-repository head
   type: darcs
