@@ -38,10 +38,10 @@ import DBus.Types.Signature
 \clearpage
 \section{Types}
 
+\input{DBus/Types/Containers.lhs}
 \input{DBus/Types/Atom.lhs}
 \input{DBus/Types/Signature.lhs}
 \input{DBus/Types/Names.lhs}
 \input{DBus/Types/ObjectPath.lhs}
 \input{DBus/Types/Serial.lhs}
 \input{DBus/Types/Endianness.lhs}
-\input{DBus/Types/Containers.lhs}

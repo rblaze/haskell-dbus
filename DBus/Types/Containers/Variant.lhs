@@ -32,7 +32,6 @@ import qualified DBus.Types.Signature as S
 import qualified DBus.Types.ObjectPath as O
 \end{code}
 }
-\subsection{Containers}
 
 \subsubsection{Variants}
 

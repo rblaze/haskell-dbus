@@ -36,6 +36,7 @@ import qualified DBus.Types as T
 \end{code}
 }
 
+\clearpage
 \section{Connecting to a message bus}
 
 Connecting to a message bus is a bit more involved than just connecting

@@ -52,8 +52,6 @@ import DBus.Internal.Util (checkLength, parseMaybe, mkUnsafe)
 \end{code}
 }
 
-\subsubsection{Names}
-
 All names have a length limit of 255 characters.
 
 \subsubsection{Interface names}

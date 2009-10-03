@@ -22,9 +22,12 @@ module DBus.Internal.Util
 	( checkLength
 	, parseMaybe
 	, mkUnsafe
+	, hexToInt
+	, eitherToMaybe
 	) where
 
 import Text.Parsec (Parsec, parse)
+import Data.Char (digitToInt)
 \end{code}
 }
 
@@ -44,4 +47,15 @@ mkUnsafe :: Show a => String -> (a -> Maybe b) -> a -> b
 mkUnsafe label f x = case f x of
 	Just x' -> x'
 	Nothing -> error $ "Invalid " ++ label ++ ": " ++ show x
+\end{code}
+
+\begin{code}
+hexToInt :: String -> Int
+hexToInt = foldl ((+) . (16 *)) 0 . map digitToInt
+\end{code}
+
+\begin{code}
+eitherToMaybe :: Either a b -> Maybe b
+eitherToMaybe (Left  _) = Nothing
+eitherToMaybe (Right x) = Just x
 \end{code}

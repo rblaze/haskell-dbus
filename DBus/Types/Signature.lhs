@@ -118,8 +118,8 @@ ensure correct nesting when using these, so all generation of signatures
 must go through {\tt parseSignature}.
 
 \begin{code}
-data Type =
-	  BooleanT
+data Type
+	= BooleanT
 	| ByteT
 	| Int16T
 	| UInt16T

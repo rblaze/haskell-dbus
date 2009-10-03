@@ -27,12 +27,6 @@ import qualified DBus.Types.Containers.Variant as V
 \end{code}
 }
 
-\subsection{Containers}
-
-\input{DBus/Types/Containers/Array.lhs}
-\input{DBus/Types/Containers/Dictionary.lhs}
-\input{DBus/Types/Containers/Variant.lhs}
-
 \subsubsection{Structures}
 
 Structures contain a heterogenous list of DBus values. Any value may be

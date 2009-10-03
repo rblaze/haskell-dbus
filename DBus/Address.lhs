@@ -23,18 +23,20 @@ module DBus.Address
 	, parseAddresses
 	) where
 
-import Data.Char (ord, digitToInt, chr)
+import Data.Char (ord, chr)
 import qualified Data.Map as M
 import Data.List (intercalate)
 import Text.Printf (printf)
 import qualified Text.Parsec as P
 import Text.Parsec ((<|>))
+import DBus.Internal.Util (hexToInt, eitherToMaybe)
 \end{code}
 }
 
+\clearpage
 \section{Addresses}
 
-\subsection{Formatting}
+\subsection{Address syntax}
 
 A bus address is in the format {\tt $method$:$key$=$value$,$key$=$value$...}
 where the method may be empty and parameters are optional. An address's
@@ -132,17 +134,4 @@ strAddress (Address t ps) = t ++ ":" ++ ps' where
 		[k ++ "=" ++ (v >>= encode)]
 	encode c | elem c optionallyEncoded = [c]
 	         | otherwise       = printf "%%%02X" (ord c)
-\end{code}
-
-Finally, a couple parser utility functions.
-
-\begin{code}
-hexToInt :: String -> Int
-hexToInt = foldl ((+) . (16 *)) 0 . map digitToInt
-\end{code}
-
-\begin{code}
-eitherToMaybe :: Either a b -> Maybe b
-eitherToMaybe (Left  _) = Nothing
-eitherToMaybe (Right x) = Just x
 \end{code}

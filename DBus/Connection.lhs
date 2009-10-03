@@ -44,6 +44,7 @@ import DBus.Internal.Authentication (authenticate)
 \end{code}
 }
 
+\clearpage
 \section{Connections}
 
 A {\tt Connection} is an opaque handle to an open DBus channel, with
@@ -214,8 +215,8 @@ If connecting to DBus fails, a {\tt ConnectionException} will be thrown.
 The constructor describes which exception occurred.
 
 \begin{code}
-data ConnectionException =
-	  InvalidAddress String
+data ConnectionException
+	= InvalidAddress String
 	| BadParameters A.Address String
 	| UnknownMethod A.Address
 	| NoWorkingAddress [A.Address]

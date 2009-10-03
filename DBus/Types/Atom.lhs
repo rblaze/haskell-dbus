@@ -13,8 +13,6 @@
 % You should have received a copy of the GNU General Public License
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-\subsection{Atoms}
-
 \ignore{
 \begin{code}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -38,6 +36,8 @@ import qualified DBus.Types.ObjectPath as O
 import qualified DBus.Types.Containers.Variant as V
 \end{code}
 }
+
+\subsection{Atoms}
 
 Any atomic value can be used as a dictionary key. Types which might be
 used for dict keys should implement {\tt Atomic}.
@@ -88,8 +88,6 @@ atomSignature (Atom v) = V.variantSignature v
 atomType :: Atom -> S.Type
 atomType = head . S.signatureTypes . atomSignature
 \end{code}
-
-\subsubsection{Built-in atomic types}
 
 \begin{code}
 toAtom' :: Atomic a => a -> Atom

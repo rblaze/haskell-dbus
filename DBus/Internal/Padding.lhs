@@ -25,7 +25,7 @@ import qualified DBus.Types as T
 \end{code}
 }
 
-\section{Value padding}
+\section{Byte padding and alignment}
 
 \begin{code}
 padding :: Word64 -> Word8 -> Word64
@@ -39,21 +39,21 @@ padding current count = required where
 
 \begin{code}
 alignment :: T.Type -> Word8
-alignment T.BooleanT          = 4
-alignment T.ByteT             = 1
-alignment T.UInt16T           = 2
-alignment T.UInt32T           = 4
-alignment T.UInt64T           = 8
-alignment T.Int16T            = 2
-alignment T.Int32T            = 4
-alignment T.Int64T            = 8
-alignment T.DoubleT           = 8
-alignment T.StringT           = 4
-alignment T.ObjectPathT       = 4
-alignment T.SignatureT        = 1
+alignment  T.BooleanT         = 4
+alignment  T.ByteT            = 1
+alignment  T.UInt16T          = 2
+alignment  T.UInt32T          = 4
+alignment  T.UInt64T          = 8
+alignment  T.Int16T           = 2
+alignment  T.Int32T           = 4
+alignment  T.Int64T           = 8
+alignment  T.DoubleT          = 8
+alignment  T.StringT          = 4
+alignment  T.ObjectPathT      = 4
+alignment  T.SignatureT       = 1
 alignment (T.ArrayT _)        = 4
 alignment (T.DictionaryT _ _) = 4
 alignment (T.StructureT _)    = 8
-alignment T.VariantT          = 1
+alignment  T.VariantT         = 1
 \end{code}
 

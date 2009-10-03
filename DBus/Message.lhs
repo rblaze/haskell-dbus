@@ -107,14 +107,15 @@ decodeFlags flagsByte = flags where
 \subsection{Header fields}
 
 \begin{code}
-data HeaderField = Path        T.ObjectPath
-                 | Interface   T.InterfaceName
-                 | Member      T.MemberName
-                 | ErrorName   T.ErrorName
-                 | ReplySerial T.Serial
-                 | Destination T.BusName
-                 | Sender      T.BusName
-                 | Signature   T.Signature
+data HeaderField
+	= Path        T.ObjectPath
+	| Interface   T.InterfaceName
+	| Member      T.MemberName
+	| ErrorName   T.ErrorName
+	| ReplySerial T.Serial
+	| Destination T.BusName
+	| Sender      T.BusName
+	| Signature   T.Signature
 	deriving (Show, Eq)
 \end{code}
 
@@ -335,8 +336,8 @@ Unknown message types are parsed, but only to get the serial and bus name
 unknown messages.
 
 \begin{code}
-data ReceivedMessage =
-	  ReceivedMethodCall   T.Serial (Maybe T.BusName) MethodCall
+data ReceivedMessage
+	= ReceivedMethodCall   T.Serial (Maybe T.BusName) MethodCall
 	| ReceivedMethodReturn T.Serial (Maybe T.BusName) MethodReturn
 	| ReceivedError        T.Serial (Maybe T.BusName) Error
 	| ReceivedSignal       T.Serial (Maybe T.BusName) Signal

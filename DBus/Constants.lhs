@@ -21,6 +21,7 @@ import Data.Word (Word8)
 \end{code}
 }
 
+\clearpage
 \section{Constants}
 
 \begin{code}

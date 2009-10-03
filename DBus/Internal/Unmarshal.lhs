@@ -49,22 +49,22 @@ unmarshal e sig bytes = either' where
 
 \begin{code}
 unmarshal' :: T.Type -> Unmarshal T.Variant
-unmarshal' T.BooleanT            = fmap T.toVariant bool
-unmarshal' T.ByteT               = fmap T.toVariant word8
-unmarshal' T.UInt16T             = fmap T.toVariant word16
-unmarshal' T.UInt32T             = fmap T.toVariant word32
-unmarshal' T.UInt64T             = fmap T.toVariant word64
-unmarshal' T.Int16T              = fmap T.toVariant int16
-unmarshal' T.Int32T              = fmap T.toVariant int32
-unmarshal' T.Int64T              = fmap T.toVariant int64
-unmarshal' T.DoubleT             = fmap T.toVariant double
-unmarshal' T.StringT             = fmap T.toVariant string
-unmarshal' T.ObjectPathT         = fmap T.toVariant objectPath
-unmarshal' T.SignatureT          = fmap T.toVariant signature
+unmarshal'  T.BooleanT           = fmap T.toVariant bool
+unmarshal'  T.ByteT              = fmap T.toVariant word8
+unmarshal'  T.UInt16T            = fmap T.toVariant word16
+unmarshal'  T.UInt32T            = fmap T.toVariant word32
+unmarshal'  T.UInt64T            = fmap T.toVariant word64
+unmarshal'  T.Int16T             = fmap T.toVariant int16
+unmarshal'  T.Int32T             = fmap T.toVariant int32
+unmarshal'  T.Int64T             = fmap T.toVariant int64
+unmarshal'  T.DoubleT            = fmap T.toVariant double
+unmarshal'  T.StringT            = fmap T.toVariant string
+unmarshal'  T.ObjectPathT        = fmap T.toVariant objectPath
+unmarshal'  T.SignatureT         = fmap T.toVariant signature
 unmarshal' (T.ArrayT t)          = fmap T.toVariant $ array t
 unmarshal' (T.DictionaryT kt vt) = fmap T.toVariant $ dictionary kt vt
 unmarshal' (T.StructureT ts)     = fmap T.toVariant $ structure ts
-unmarshal' T.VariantT            = fmap T.toVariant variant
+unmarshal'  T.VariantT           = fmap T.toVariant variant
 \end{code}
 
 \subsection{Atoms}
@@ -286,9 +286,10 @@ untilM test comp = do
 \subsection{Errors}
 
 \begin{code}
-data UnmarshalError = UnexpectedEOF Word64
-                    | forall a. (Show a) => Invalid String a
-                    | GenericError String
+data UnmarshalError
+	= UnexpectedEOF Word64
+	| forall a. (Show a) => Invalid String a
+	| GenericError String
 
 instance E.Error UnmarshalError where
 	strMsg = GenericError
