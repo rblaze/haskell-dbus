@@ -107,12 +107,12 @@ sendHello c = do
 	serial <- C.send c return hello
 	reply <- waitForReply c serial
 	let name = case M.methodReturnBody reply of
-		[x] -> T.fromVariant x
-		_   -> Nothing
+		(x:_) -> T.fromVariant x
+		_     -> Nothing
 	
-	when (isNothing name)
-		(E.throwIO . C.ProtocolException $
-		 "Received inappropriate reply to Hello().")
+	when (isNothing name) $ do
+		E.throwIO $ E.AssertionFailed "Invalid response to Hello()"
+		return ()
 	
 	return . fromJust $ name
 \end{code}

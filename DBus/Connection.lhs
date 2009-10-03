@@ -19,7 +19,6 @@
 module DBus.Connection
 	( Connection
 	, ConnectionException (..)
-	, ProtocolException (..)
 	, connect
 	, send
 	, receive
@@ -108,7 +107,7 @@ receive (Connection _ t _) = do
 	either' <- unmarshal $ transportRecv t
 	case either' of
 		Right x -> return x
-		Left err -> E.throwIO . ProtocolException $ err
+		Left err -> E.throwIO err
 \end{code}
 
 \section{Transports}
@@ -224,14 +223,3 @@ data ConnectionException
 
 instance E.Exception ConnectionException
 \end{code}
-
-If a message cannot be unmarshaled --- for example, due to malformed or
-truncated input --- a {\tt ProtocolException} will be thrown.
-
-\begin{code}
-data ProtocolException = ProtocolException String
-	deriving (Show, Typeable)
-
-instance E.Exception ProtocolException
-\end{code}
-

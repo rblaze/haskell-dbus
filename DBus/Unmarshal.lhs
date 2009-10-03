@@ -15,20 +15,26 @@
 
 \ignore{
 \begin{code}
-{-# LANGUAGE ExistentialQuantification #-}
-module DBus.Unmarshal (unmarshal) where
+{-# LANGUAGE DeriveDataTypeable #-}
+module DBus.Unmarshal
+	( UnmarshalError (..)
+	, unmarshal
+	) where
 
 import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
+import Control.Exception (Exception)
 import qualified Control.Monad.State as S
 import qualified Control.Monad.Error as E
 import qualified Data.ByteString.Lazy as L
 import Data.ByteString.Lazy.UTF8 (toString)
+import Data.Typeable (Typeable)
 import qualified Data.Binary.Get as G
 import qualified Data.Binary.IEEE754 as IEEE
 
 import DBus.Padding (padding, alignment)
 import qualified DBus.Types as T
+import DBus.Constants (protocolVersion)
 \end{code}
 }
 
@@ -37,15 +43,14 @@ import qualified DBus.Types as T
 \subsection{\tt unmarshal}
 
 \begin{code}
-unmarshal :: (E.Error e, E.MonadError e m)
-             => T.Endianness -> T.Signature -> L.ByteString
-             -> m [T.Variant]
-unmarshal e sig bytes = either' where
-	either' = case runUnmarshal x e bytes of
-		Left  y -> E.throwError . E.strMsg . show $ y
-		Right y -> return y
+unmarshal :: T.Endianness -> T.Signature -> L.ByteString
+             -> Either UnmarshalError [T.Variant]
+unmarshal e sig bytes = runUnmarshal x e bytes where
 	x = mapM unmarshal' $ T.signatureTypes sig
 \end{code}
+
+T.Endianness -> L.ByteString
+                -> Either UnmarshalError a
 
 \begin{code}
 unmarshal' :: T.Type -> Unmarshal T.Variant
@@ -74,7 +79,7 @@ bool :: Unmarshal Bool
 bool = word32 >>= \x -> case x of
 	0 -> return False
 	1 -> return True
-	_ -> E.throwError $ Invalid "boolean" x
+	_ -> E.throwError $ Invalid "boolean" (show x)
 \end{code}
 
 \begin{code}
@@ -183,7 +188,7 @@ mkPair :: T.Structure -> Unmarshal (T.Atom, T.Variant)
 mkPair (T.Structure [k, v]) = do
 	k' <- fromMaybe T.atomFromVariant k "dictionary key"
 	return (k', v)
-mkPair s = E.throwError $ Invalid "dictionary item" s
+mkPair s = E.throwError $ Invalid "dictionary item" (show s)
 \end{code}
 
 \subsubsection{Structures}
@@ -204,7 +209,7 @@ variant = do
 	t <- case T.signatureTypes sig of
 		[t'] -> return t'
 		_    -> E.throwError $ Invalid "variant signature"
-		                     $ T.strSignature sig
+		                     $ show sig
 	unmarshal' t
 \end{code}
 
@@ -288,15 +293,31 @@ untilM test comp = do
 \begin{code}
 data UnmarshalError
 	= UnexpectedEOF Word64
-	| forall a. (Show a) => Invalid String a
+	| Invalid String String
+	| ProtocolVersionMismatch Word8
+	| RequiredHeaderFieldMissing String
 	| GenericError String
+	deriving (Eq, Typeable)
+
+instance Exception UnmarshalError
 
 instance E.Error UnmarshalError where
 	strMsg = GenericError
 
 instance Show UnmarshalError where
 	show (UnexpectedEOF pos) = "Unexpected EOF at position " ++ show pos
-	show (Invalid label x)   = "Invalid " ++ label ++ ": " ++ show x
+	show (Invalid label x)   = "Invalid " ++ label ++ ": " ++ x
+	show (ProtocolVersionMismatch messageVersion) = concat
+		[ "Protocol version mismatch: "
+		, show messageVersion
+		, " != "
+		, show protocolVersion
+		]
+	show (RequiredHeaderFieldMissing x) = concat
+		[ "Required field "
+		, show x
+		, " is missing."
+		]
 	show (GenericError msg)  = "Error unmarshaling: " ++ msg
 \end{code}
 
@@ -308,5 +329,5 @@ assert False msg = E.throwError $ E.strMsg msg
 
 \begin{code}
 fromMaybe :: Show a => (a -> Maybe b) -> a -> String -> Unmarshal b
-fromMaybe f x s = maybe (E.throwError $ Invalid s x) return $ f x
+fromMaybe f x s = maybe (E.throwError $ Invalid s (show x)) return $ f x
 \end{code}

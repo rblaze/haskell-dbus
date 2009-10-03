@@ -40,6 +40,7 @@ module DBus.Message
 	, receivedSender
 	
 	  -- * (Un)marshaling
+	, U.UnmarshalError (..)
 	, marshal
 	, unmarshal
 	) where
@@ -368,12 +369,12 @@ construct a {\tt ReceivedMessage} of the proper type and attributes.
 
 \begin{code}
 unmarshal :: Monad m => (Word32 -> m L.ByteString)
-          -> m (Either String ReceivedMessage)
+          -> m (Either U.UnmarshalError ReceivedMessage)
 unmarshal getBytes = E.runErrorT $ do
 	(endianness, headerBytes, bodyBytes) <- getRaw $ E.lift . getBytes
 	header <- parseHeader endianness headerBytes
 	let signature = findBodySignature . headerFields $ header
-	body <- U.unmarshal endianness signature bodyBytes
+	body <- unmarshal' endianness signature bodyBytes
 	
 	mkReceived
 		(headerTypeCode header)
@@ -383,28 +384,36 @@ unmarshal getBytes = E.runErrorT $ do
 		body
 \end{code}
 
+\begin{code}
+unmarshal' :: Monad m => T.Endianness -> T.Signature -> L.ByteString
+              -> E.ErrorT U.UnmarshalError m [T.Variant]
+unmarshal' e s bytes = case U.unmarshal e s bytes of
+	Left x -> E.throwError x
+	Right x -> return x
+\end{code}
+
 First, some minimal parsing is required to retrieve the full byte buffer
 from the input. This depends on the fixed structure of the message header to
 pull in every required byte without fully parsing the header fields.
 
 \begin{code}
 type RawMessage = (T.Endianness, L.ByteString, L.ByteString)
-getRaw :: (E.Error e, E.MonadError e m) =>
-          (Word32 -> m L.ByteString) -> m RawMessage
+getRaw :: Monad m => (Word32 -> E.ErrorT U.UnmarshalError m L.ByteString)
+          -> E.ErrorT U.UnmarshalError m RawMessage
 getRaw get = do
 	let fixed'Sig = T.mkSignature' "yyyy"
 	let fixedSig  = T.mkSignature' "yyyyuuu"
 	
 	-- Protocol version
 	fixedBytes <- get 16
-	fixed' <- U.unmarshal T.LittleEndian fixed'Sig fixedBytes
+	fixed' <- unmarshal' T.LittleEndian fixed'Sig fixedBytes
 	checkMatchingVersion $ fixed' !! 3
 	
 	-- Endianness
 	endianness <- getEndianness $ fixed' !! 0
 	
 	-- Header field bytes
-	fixed <- U.unmarshal endianness fixedSig fixedBytes
+	fixed <- unmarshal' endianness fixedSig fixedBytes
 	let fieldByteCount = fromJust . T.fromVariant $ fixed !! 6
 	fieldBytes <- get fieldByteCount
 	
@@ -419,33 +428,27 @@ getRaw get = do
 \end{code}
 
 \begin{code}
-checkMatchingVersion :: (E.Error e, E.MonadError e m) => T.Variant -> m ()
+checkMatchingVersion :: Monad m => T.Variant -> E.ErrorT U.UnmarshalError m ()
 checkMatchingVersion v = unless (messageVersion == protocolVersion) $
-	E.throwError . E.strMsg . concat $
-		[ "Protocol version mismatch: "
-		, show messageVersion
-		, " != "
-		, show protocolVersion
-		]
+	E.throwError $ U.ProtocolVersionMismatch messageVersion
 	where messageVersion = fromJust . T.fromVariant $ v
 \end{code}
 
 \begin{code}
-getEndianness :: (E.Error e, E.MonadError e m) => T.Variant -> m T.Endianness
+getEndianness :: Monad m => T.Variant -> E.ErrorT U.UnmarshalError m T.Endianness
 getEndianness v = maybe bad return $ T.fromVariant v where
 	word = fromJust . T.fromVariant $ v :: Word8
-	bad = E.throwError . E.strMsg
-	      $ "Invalid endianness code: " ++ show word
+	bad = E.throwError $ U.Invalid "endianness code" (show word)
 \end{code}
 
 Next, the header is parsed into a proper {\tt MessageHeader}.
 
 \begin{code}
-parseHeader :: (E.Error e, E.MonadError e m)
-               => T.Endianness -> L.ByteString -> m MessageHeader
+parseHeader :: Monad m => T.Endianness -> L.ByteString
+               -> E.ErrorT U.UnmarshalError m MessageHeader
 parseHeader endianness bytes = do
 	let signature = T.mkSignature' "yyyyuua(yv)"
-	vs <- U.unmarshal endianness signature bytes
+	vs <- unmarshal' endianness signature bytes
 	let fieldArray = fromJust . T.fromVariant $ vs !! 6
 	let fields = mapMaybe T.fromVariant $ T.arrayItems fieldArray
 	let flagByte = fromJust . T.fromVariant $ vs !! 2
@@ -470,9 +473,6 @@ findBodySignature fields = fromMaybe empty signature where
 \end{code}
 
 \begin{code}
-mkReceived :: (E.Error e, E.MonadError e m)
-               => Word8 -> T.Serial -> [HeaderField] -> S.Set Flag
-               -> [T.Variant] -> m ReceivedMessage
 mkReceived 1 = mkReceived' ReceivedMethodCall mkMethodCall
 mkReceived 2 = mkReceived' ReceivedMethodReturn mkMethodReturn
 mkReceived 3 = mkReceived' ReceivedError mkError
@@ -481,11 +481,6 @@ mkReceived _ = undefined -- mkReceived' ReceivedUnknown    mkUnknown
 \end{code}
 
 \begin{code}
-mkReceived' :: (E.Error e, E.MonadError e m)
-               => (T.Serial -> Maybe T.BusName -> a -> ReceivedMessage)
-               -> ([HeaderField] -> S.Set Flag -> [T.Variant] -> m a)
-               -> T.Serial -> [HeaderField] -> S.Set Flag -> [T.Variant]
-               -> m ReceivedMessage
 mkReceived' mkRecv mkMsg serial fields flags body = do
 	msg <- mkMsg fields flags body
 	let sender = listToMaybe [x | Sender x <- fields]
@@ -493,8 +488,8 @@ mkReceived' mkRecv mkMsg serial fields flags body = do
 \end{code}
 
 \begin{code}
-mkMethodCall :: (E.Error e, E.MonadError e m) => [HeaderField] -> S.Set Flag
-                -> [T.Variant] -> m MethodCall
+mkMethodCall :: Monad m => [HeaderField] -> S.Set Flag -> [T.Variant]
+                -> E.ErrorT U.UnmarshalError m MethodCall
 mkMethodCall fields flags body = do
 	path <- require "path" [x | Path x <- fields]
 	member <- require "member name" [x | Member x <- fields]
@@ -504,8 +499,8 @@ mkMethodCall fields flags body = do
 \end{code}
 
 \begin{code}
-mkMethodReturn :: (E.Error e, E.MonadError e m) => [HeaderField] -> S.Set Flag
-                  -> [T.Variant] -> m MethodReturn
+mkMethodReturn :: Monad m => [HeaderField] -> S.Set Flag -> [T.Variant]
+                  -> E.ErrorT U.UnmarshalError m MethodReturn
 mkMethodReturn fields flags body = do
 	serial <- require "reply serial" [x | ReplySerial x <- fields]
 	let dest = listToMaybe [x | Destination x <- fields]
@@ -513,8 +508,8 @@ mkMethodReturn fields flags body = do
 \end{code}
 
 \begin{code}
-mkError :: (E.Error e, E.MonadError e m) => [HeaderField] -> S.Set Flag
-           -> [T.Variant] -> m Error
+mkError :: Monad m => [HeaderField] -> S.Set Flag -> [T.Variant]
+           -> E.ErrorT U.UnmarshalError m Error
 mkError fields flags body = do
 	name <- require "error name" [x | ErrorName x <- fields]
 	serial <- require "reply serial" [x | ReplySerial x <- fields]
@@ -523,8 +518,8 @@ mkError fields flags body = do
 \end{code}
 
 \begin{code}
-mkSignal :: (E.Error e, E.MonadError e m) => [HeaderField] -> S.Set Flag
-            -> [T.Variant] -> m Signal
+mkSignal :: Monad m => [HeaderField] -> S.Set Flag -> [T.Variant]
+            -> E.ErrorT U.UnmarshalError m Signal
 mkSignal fields flags body = do
 	path <- require "path" [x | Path x <- fields]
 	member <- require "member" [x | Member x <- fields]
@@ -534,7 +529,7 @@ mkSignal fields flags body = do
 \end{code}
 
 \begin{code}
-require :: (E.Error e, E.MonadError e m) => String -> [a] -> m a
+require :: Monad m => String -> [a] -> E.ErrorT U.UnmarshalError m a
 require _     (x:_) = return x
-require label _     = E.throwError . E.strMsg $ "Required field " ++ show label ++ " is missing."
+require label _     = E.throwError $ U.RequiredHeaderFieldMissing label
 \end{code}
