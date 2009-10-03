@@ -18,7 +18,6 @@
 
 \ignore{
 \begin{code}
-{-# OPTIONS_HADDOCK hide #-}
 module DBus.Internal.Util
 	( checkLength
 	, parseMaybe

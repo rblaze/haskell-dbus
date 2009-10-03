@@ -15,7 +15,6 @@
 
 \ignore{
 \begin{code}
-{-# OPTIONS_HADDOCK hide #-}
 module DBus.Internal.Authentication (authenticate) where
 
 import Data.Char (ord)

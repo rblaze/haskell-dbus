@@ -15,7 +15,6 @@
 
 \ignore{
 \begin{code}
-{-# OPTIONS_HADDOCK hide #-}
 {-# LANGUAGE ExistentialQuantification #-}
 module DBus.Internal.Unmarshal (unmarshal) where
 
