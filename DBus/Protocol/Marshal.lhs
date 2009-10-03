@@ -29,7 +29,7 @@ import Data.ByteString.Lazy.UTF8 (fromString)
 import qualified Data.Binary.Put as P
 import qualified Data.Binary.IEEE754 as IEEE
 
-import DBus.Protocol.Padding (padding, padByType)
+import DBus.Protocol.Padding (padding, alignment)
 import qualified DBus.Types as T
 \end{code}
 }
@@ -161,7 +161,7 @@ getArrayBytes x = do
 	let [T.ArrayT itemType] = T.signatureTypes . T.arraySignature $ x
 	s <- S.get
 	(MarshalState _ afterLength) <- word32 0 >> S.get
-	(MarshalState _ afterPadding) <- pad (padByType itemType) >> S.get
+	(MarshalState _ afterPadding) <- pad (alignment itemType) >> S.get
 	(MarshalState _ afterItems) <- mapM_ marshalAny vs >> S.get
 	
 	let paddingBytes = L.drop (L.length afterLength) afterPadding

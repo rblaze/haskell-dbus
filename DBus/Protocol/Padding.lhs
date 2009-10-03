@@ -18,7 +18,7 @@
 {-# OPTIONS_HADDOCK hide #-}
 module DBus.Protocol.Padding
 	( padding
-	, padByType
+	, alignment
 	) where
 
 import Data.Word (Word8, Word64)
@@ -39,22 +39,22 @@ padding current count = required where
 \end{code}
 
 \begin{code}
-padByType :: T.Type -> Word8
-padByType T.BooleanT          = 4
-padByType T.ByteT             = 1
-padByType T.UInt16T           = 2
-padByType T.UInt32T           = 4
-padByType T.UInt64T           = 8
-padByType T.Int16T            = 2
-padByType T.Int32T            = 4
-padByType T.Int64T            = 8
-padByType T.DoubleT           = 8
-padByType T.StringT           = 4
-padByType T.ObjectPathT       = 4
-padByType T.SignatureT        = 1
-padByType (T.ArrayT _)        = 4
-padByType (T.DictionaryT _ _) = 4
-padByType (T.StructureT _)    = 8
-padByType T.VariantT          = 1
+alignment :: T.Type -> Word8
+alignment T.BooleanT          = 4
+alignment T.ByteT             = 1
+alignment T.UInt16T           = 2
+alignment T.UInt32T           = 4
+alignment T.UInt64T           = 8
+alignment T.Int16T            = 2
+alignment T.Int32T            = 4
+alignment T.Int64T            = 8
+alignment T.DoubleT           = 8
+alignment T.StringT           = 4
+alignment T.ObjectPathT       = 4
+alignment T.SignatureT        = 1
+alignment (T.ArrayT _)        = 4
+alignment (T.DictionaryT _ _) = 4
+alignment (T.StructureT _)    = 8
+alignment T.VariantT          = 1
 \end{code}
 

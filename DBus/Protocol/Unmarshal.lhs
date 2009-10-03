@@ -28,7 +28,7 @@ import Data.ByteString.Lazy.UTF8 (toString)
 import qualified Data.Binary.Get as G
 import qualified Data.Binary.IEEE754 as IEEE
 
-import DBus.Protocol.Padding (padding, padByType)
+import DBus.Protocol.Padding (padding, alignment)
 import qualified DBus.Types as T
 \end{code}
 }
@@ -159,7 +159,7 @@ array t = do
 	let sig = T.mkSignature' . T.typeString $ t
 	
 	byteCount <- word32
-	skipPadding (padByType t)
+	skipPadding (alignment t)
 	start <- getOffset
 	let end = start + fromIntegral byteCount
 	vs <- untilM (fmap (>= end) getOffset) (unmarshal' t)
