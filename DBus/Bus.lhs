@@ -31,6 +31,7 @@ import qualified Data.Set as Set
 import System.Environment (getEnv)
 import qualified DBus.Bus.Address as A
 import qualified DBus.Bus.Connection as C
+import DBus.Constants (busName, busPath, busInterface)
 import qualified DBus.Message as M
 import qualified DBus.Types as T
 \end{code}
@@ -92,11 +93,10 @@ getSessionBus = do
 
 \begin{code}
 hello :: M.MethodCall
-hello = M.MethodCall
-	(T.mkObjectPath' "/org/freedesktop/DBus")
+hello = M.MethodCall busPath
 	(T.mkMemberName' "Hello")
-	(T.mkInterfaceName "org.freedesktop.DBus")
-	(T.mkBusName "org.freedesktop.DBus")
+	(Just busInterface)
+	(Just busName)
 	Set.empty
 	[]
 \end{code}

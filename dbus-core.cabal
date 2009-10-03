@@ -41,6 +41,7 @@ library
     DBus.Bus
     DBus.Bus.Address
     DBus.Bus.Connection
+    DBus.Constants
     DBus.Message
     DBus.Types
     DBus.Types.Atom
