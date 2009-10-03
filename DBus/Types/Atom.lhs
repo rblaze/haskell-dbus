@@ -34,7 +34,7 @@ import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
 import qualified DBus.Types.Signature as S
 import qualified DBus.Types.ObjectPath as O
-import {-# SOURCE #-} qualified DBus.Types.Containers as C
+import qualified DBus.Types.Containers.Variant as V
 \end{code}
 }
 
@@ -42,19 +42,19 @@ Any atomic value can be used as a dictionary key. Types which might be
 used for dict keys should implement {\tt Atomic}.
 
 \begin{code}
-newtype Atom = Atom C.Variant
+newtype Atom = Atom V.Variant
 	deriving (Show, Eq)
 
-class C.Variable a => Atomic a where
+class V.Variable a => Atomic a where
 	toAtom :: a -> Atom
 
-atomToVariant :: Atom -> C.Variant
+atomToVariant :: Atom -> V.Variant
 atomToVariant (Atom x) = x
 
-atomFromVariant :: C.Variant -> Maybe Atom
+atomFromVariant :: V.Variant -> Maybe Atom
 atomFromVariant v = msum as where
-	v' :: C.Variable a => Maybe a
-	v' = C.fromVariant v
+	v' :: V.Variable a => Maybe a
+	v' = V.fromVariant v
 	fa :: (Atomic a, Functor f) => f a -> f Atom
 	fa = fmap toAtom
 	
@@ -74,13 +74,13 @@ atomFromVariant v = msum as where
 \end{code}
 
 \begin{code}
-fromAtom :: C.Variable a => Atom -> Maybe a
-fromAtom (Atom x) = C.fromVariant x
+fromAtom :: V.Variable a => Atom -> Maybe a
+fromAtom (Atom x) = V.fromVariant x
 \end{code}
 
 \begin{code}
 atomSignature :: Atom -> S.Signature
-atomSignature (Atom v) = C.variantSignature v
+atomSignature (Atom v) = V.variantSignature v
 \end{code}
 
 \begin{code}
@@ -92,7 +92,7 @@ atomType = head . S.signatureTypes . atomSignature
 
 \begin{code}
 toAtom' :: Atomic a => a -> Atom
-toAtom' = Atom . C.toVariant
+toAtom' = Atom . V.toVariant
 
 instance Atomic Bool         where toAtom = toAtom'
 instance Atomic Word8        where toAtom = toAtom'

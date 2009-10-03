@@ -53,6 +53,10 @@ library
     DBus.Types.Signature
 
   other-modules:
+    DBus.Types.Containers.Array
+    DBus.Types.Containers.Dictionary
+    DBus.Types.Containers.Structure
+    DBus.Types.Containers.Variant
     DBus.Internal.Authentication
     DBus.Internal.Marshal
     DBus.Internal.Unmarshal

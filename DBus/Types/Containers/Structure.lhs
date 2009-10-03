@@ -15,21 +15,15 @@
 
 \ignore{
 \begin{code}
-module DBus.Types.Containers
-	( Variant
-	, Variable (..)
-	, variantSignature
-	, variantType
-	
-	, module DBus.Types.Containers.Array
-	, module DBus.Types.Containers.Dictionary
-	, module DBus.Types.Containers.Structure
+{-# LANGUAGE DeriveDataTypeable #-}
+module DBus.Types.Containers.Structure
+	( Structure (..)
+	, structureSignature
 	) where
 
-import DBus.Types.Containers.Variant
-import DBus.Types.Containers.Array
-import DBus.Types.Containers.Dictionary
-import DBus.Types.Containers.Structure
+import Data.Typeable (Typeable, cast)
+import qualified DBus.Types.Signature as S
+import qualified DBus.Types.Containers.Variant as V
 \end{code}
 }
 
@@ -37,5 +31,24 @@ import DBus.Types.Containers.Structure
 
 \input{DBus/Types/Containers/Array.lhs}
 \input{DBus/Types/Containers/Dictionary.lhs}
-\input{DBus/Types/Containers/Structure.lhs}
 \input{DBus/Types/Containers/Variant.lhs}
+
+\subsubsection{Structures}
+
+Structures contain a heterogenous list of DBus values. Any value may be
+contained within a structure.
+
+\begin{code}
+data Structure = Structure [V.Variant]
+	deriving (Show, Eq, Typeable)
+
+instance V.Variable Structure where
+	defaultSignature _ = S.mkSignature' "()"
+	toVariant x = V.Variant (structureSignature x) x
+	fromVariant (V.Variant _ x) = cast x
+
+structureSignature :: Structure -> S.Signature
+structureSignature (Structure vs) = sig where
+	sigs = [s | (V.Variant s _) <- vs]
+	sig = S.mkSignature' $ "(" ++ concatMap S.strSignature sigs ++ ")"
+\end{code}
