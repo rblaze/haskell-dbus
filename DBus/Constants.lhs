@@ -17,10 +17,16 @@
 \begin{code}
 module DBus.Constants where
 import qualified DBus.Types as T
+import Data.Word (Word8)
 \end{code}
 }
 
 \section{Constants}
+
+\begin{code}
+protocolVersion :: Word8
+protocolVersion = 1
+\end{code}
 
 \subsection{Main bus location}
 

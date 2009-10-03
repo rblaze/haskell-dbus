@@ -42,6 +42,7 @@ import qualified DBus.Protocol.Marshal as M
 import qualified DBus.Protocol.Unmarshal as U
 import DBus.Protocol.Padding (padding)
 import qualified DBus.Types as T
+import DBus.Constants (protocolVersion)
 \end{code}
 }
 
@@ -59,13 +60,6 @@ class Message a where
 	messageHeaderFields :: a -> [HeaderField]
 	messageFlags        :: a -> S.Set Flag
 	messageBody         :: a -> [T.Variant]
-\end{code}
-
-All messages are assumed to be using protocol version 1.
-
-\begin{code}
-protocolVersion :: Word8
-protocolVersion = 1
 \end{code}
 
 \subsection{Flags}
