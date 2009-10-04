@@ -22,10 +22,11 @@ module DBus.Introspection
 	, Parameter (..)
 	, Property (..)
 	, PropertyAccess (..)
+	, toXML
 	, fromXML
 	) where
 
-import Control.Arrow ((>>>), (&&&))
+import Control.Arrow ((>>>), (&&&), (<+>))
 import Control.Monad (mapM)
 import Data.Maybe (listToMaybe, maybeToList)
 import qualified Text.XML.HXT.Arrow as A
@@ -58,8 +59,92 @@ data Property = Property String T.Signature [PropertyAccess]
 	deriving (Show)
 
 data PropertyAccess = Read | Write
-	deriving (Show)
+	deriving (Show, Eq)
 \end{code}
+
+\subsection{Generating an XML introspection document}
+
+\begin{code}
+toXML :: Object -> String
+toXML obj = concat $ A.runLA (A.xshow (dtd <+> (xmlObject obj))) () where
+	dtd = A.mkDTDDoctype
+		[ ("name", "node")
+		, ("SYSTEM", "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd")
+		, ("PUBLIC", "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN")
+		] A.none
+\end{code}
+
+\begin{code}
+xmlObject :: A.ArrowXml a => Object -> a n A.XmlTree
+xmlObject (Object path interfaces children') = A.mkElement (A.mkName "node")
+	(mkAttr "name" (T.strObjectPath path))
+	(A.catA . concat $
+		[ map xmlInterface interfaces
+		, map xmlObject children'
+		])
+\end{code}
+
+\begin{code}
+xmlInterface :: A.ArrowXml a => Interface -> a n A.XmlTree
+xmlInterface (Interface name methods signals properties) = A.mkElement (A.mkName "interface")
+	(mkAttr "name" (T.strInterfaceName name))
+	(A.catA . concat $
+		[ map xmlMethod methods
+		, map xmlSignal signals
+		, map xmlProperty properties
+		])
+\end{code}
+
+\begin{code}
+xmlMethod :: A.ArrowXml a => Method -> a n A.XmlTree
+xmlMethod (Method name inParams outParams) = A.mkElement (A.mkName "method")
+	(mkAttr "name" (T.strMemberName name))
+	(A.catA . concat $
+		[ map (xmlParameter "in") inParams
+		, map (xmlParameter "out") outParams
+		])
+\end{code}
+
+\begin{code}
+xmlSignal :: A.ArrowXml a => Signal -> a n A.XmlTree
+xmlSignal (Signal name params) = A.mkElement (A.mkName "signal")
+	(mkAttr "name" (T.strMemberName name))
+	(A.catA (map (xmlParameter "out") params))
+\end{code}
+
+\begin{code}
+xmlParameter :: A.ArrowXml a => String -> Parameter -> a n A.XmlTree
+xmlParameter direction (Parameter name sig) = A.mkElement (A.mkName "arg")
+	(A.catA [ mkAttr "name" name
+	        , mkAttr "type" $ T.strSignature sig
+	        , mkAttr "direction" direction
+	        ])
+	A.none
+\end{code}
+
+\begin{code}
+xmlProperty :: A.ArrowXml a => Property -> a n A.XmlTree
+xmlProperty (Property name sig access) = A.mkElement (A.mkName "property")
+	(A.catA [ mkAttr "name" name
+	        , mkAttr "type" $ T.strSignature sig
+	        , mkAttr "access" $ xmlAccess access
+	        ])
+	A.none
+\end{code}
+
+\begin{code}
+xmlAccess :: [PropertyAccess] -> String
+xmlAccess access = read ++ write where
+	read = if elem Read access then "read" else ""
+	write = if elem Write access then "write" else ""
+\end{code}
+
+\begin{code}
+mkAttr :: A.ArrowXml a => String -> String -> a n A.XmlTree
+mkAttr name value = A.mkAttr (A.mkName name) (A.txt value)
+\end{code}
+
+\subsection{Parsing an XML introspection document}
 
 \begin{code}
 fromXML :: T.ObjectPath -> String -> Maybe Object
