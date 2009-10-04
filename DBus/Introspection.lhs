@@ -167,11 +167,13 @@ parseRoot defaultPath t = do
 \begin{code}
 parseChild :: T.ObjectPath -> A.XmlTree -> Maybe Object
 parseChild parentPath t = do
-	let parentPath' = T.strObjectPath parentPath
+	let parentPath' = case T.strObjectPath parentPath of
+		"/" -> "/"
+		x   -> x ++ "/"
 	pathSegment <- case getAttr "name" t of
 		"" -> Nothing
 		x  -> Just x
-	path <- T.mkObjectPath (parentPath' ++ "/" ++ pathSegment)
+	path <- T.mkObjectPath (parentPath' ++ pathSegment)
 	parseObject' path t
 \end{code}
 
