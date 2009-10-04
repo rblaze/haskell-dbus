@@ -74,31 +74,30 @@ of the user's session.
 
 \begin{code}
 getSystemBus :: IO (C.Connection, T.BusName)
-getSystemBus = getBus addr where
-	systemBusPath = "unix:path=/var/run/dbus/system_bus_socket"
-	Just [addr] = A.parseAddresses systemBusPath
+getSystemBus = getBus' $ fromEnv `E.catch` noEnv where
+	defaultAddr = "unix:path=/var/run/dbus/system_bus_socket"
+	fromEnv = getEnv "DBUS_SYSTEM_BUS_ADDRESS"
+	noEnv (E.SomeException _) = return defaultAddr
 \end{code}
 
 \begin{code}
 getSessionBus :: IO (C.Connection, T.BusName)
-getSessionBus = do
-	env <- getEnv "DBUS_SESSION_BUS_ADDRESS"
-	
-	case A.parseAddresses env of
-		Just [x] -> getBus x
-		Just  x  -> getFirstBus x
-		_        -> E.throwIO $ C.InvalidAddress env
+getSessionBus = getBus' $ getEnv "DBUS_SESSION_BUS_ADDRESS"
 \end{code}
 
 \begin{code}
 getStarterBus :: IO (C.Connection, T.BusName)
-getStarterBus = do
-	env <- getEnv "DBUS_STARTER_ADDRESS"
-	
-	case A.parseAddresses env of
+getStarterBus = getBus' $ getEnv "DBUS_STARTER_ADDRESS"
+\end{code}
+
+\begin{code}
+getBus' :: IO String -> IO (C.Connection, T.BusName)
+getBus' io = do
+	addr <- io
+	case A.parseAddresses addr of
 		Just [x] -> getBus x
 		Just  x  -> getFirstBus x
-		_        -> E.throwIO $ C.InvalidAddress env
+		_        -> E.throwIO $ C.InvalidAddress addr
 \end{code}
 
 \subsection{Sending the ``hello'' message}
