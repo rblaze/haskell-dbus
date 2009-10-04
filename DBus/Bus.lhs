@@ -18,6 +18,7 @@
 module DBus.Bus
 	( getSystemBus
 	, getSessionBus
+	, getStarterBus
 	, getFirstBus
 	, getBus
 	) where
@@ -82,6 +83,17 @@ getSystemBus = getBus addr where
 getSessionBus :: IO (C.Connection, T.BusName)
 getSessionBus = do
 	env <- getEnv "DBUS_SESSION_BUS_ADDRESS"
+	
+	case A.parseAddresses env of
+		Just [x] -> getBus x
+		Just  x  -> getFirstBus x
+		_        -> E.throwIO $ C.InvalidAddress env
+\end{code}
+
+\begin{code}
+getStarterBus :: IO (C.Connection, T.BusName)
+getStarterBus = do
+	env <- getEnv "DBUS_STARTER_ADDRESS"
 	
 	case A.parseAddresses env of
 		Just [x] -> getBus x
