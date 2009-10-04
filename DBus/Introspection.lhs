@@ -19,6 +19,7 @@ module DBus.Introspection
 	( Object (..)
 	, Interface (..)
 	, Method (..)
+	, Signal (..)
 	, Parameter (..)
 	, Property (..)
 	, PropertyAccess (..)
