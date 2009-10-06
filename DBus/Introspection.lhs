@@ -67,7 +67,7 @@ data PropertyAccess = Read | Write
 
 \begin{code}
 toXML :: Object -> String
-toXML obj = concat $ A.runLA (A.xshow (dtd <+> (xmlObject obj))) () where
+toXML obj = concat $ A.runLA (A.xshow (dtd <+> xmlRoot obj)) () where
 	dtd = A.mkDTDDoctype
 		[ ("name", "node")
 		, ("SYSTEM", "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd")
@@ -76,24 +76,40 @@ toXML obj = concat $ A.runLA (A.xshow (dtd <+> (xmlObject obj))) () where
 \end{code}
 
 \begin{code}
-xmlObject :: A.ArrowXml a => Object -> a n A.XmlTree
-xmlObject (Object path interfaces children') = A.mkElement (A.mkName "node")
+xmlRoot :: A.ArrowXml a => Object -> a n A.XmlTree
+xmlRoot (Object path interfaces children') = A.mkElement (A.mkName "node")
 	(mkAttr "name" (T.strObjectPath path))
 	(A.catA . concat $
 		[ map xmlInterface interfaces
-		, map xmlObject children'
+		, map (xmlObject path) children'
 		])
 \end{code}
 
 \begin{code}
+xmlObject :: A.ArrowXml a => T.ObjectPath -> Object -> a n A.XmlTree
+xmlObject parentPath (Object path interfaces children') =
+	A.mkElement (A.mkName "node")
+		(mkAttr "name" relpath)
+		(A.catA . concat $
+			[ map xmlInterface interfaces
+			, map (xmlObject path) children'
+			])
+	where
+		path' = T.strObjectPath path
+		parent' = T.strObjectPath parentPath
+		relpath = drop (length parent') path'
+\end{code}
+
+\begin{code}
 xmlInterface :: A.ArrowXml a => Interface -> a n A.XmlTree
-xmlInterface (Interface name methods signals properties) = A.mkElement (A.mkName "interface")
-	(mkAttr "name" (T.strInterfaceName name))
-	(A.catA . concat $
-		[ map xmlMethod methods
-		, map xmlSignal signals
-		, map xmlProperty properties
-		])
+xmlInterface (Interface name methods signals properties) =
+	A.mkElement (A.mkName "interface")
+		(mkAttr "name" (T.strInterfaceName name))
+		(A.catA . concat $
+			[ map xmlMethod methods
+			, map xmlSignal signals
+			, map xmlProperty properties
+			])
 \end{code}
 
 \begin{code}
