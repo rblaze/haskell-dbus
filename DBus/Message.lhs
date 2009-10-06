@@ -360,7 +360,7 @@ data ReceivedMessage
 	| ReceivedMethodReturn T.Serial (Maybe T.BusName) MethodReturn
 	| ReceivedError        T.Serial (Maybe T.BusName) Error
 	| ReceivedSignal       T.Serial (Maybe T.BusName) Signal
-	| ReceivedUnknown      T.Serial (Maybe T.BusName)
+	| ReceivedUnknown      T.Serial (Maybe T.BusName) Word8
 	deriving (Show, Eq)
 
 receivedSerial :: ReceivedMessage -> T.Serial
@@ -368,14 +368,14 @@ receivedSerial (ReceivedMethodCall   s _ _) = s
 receivedSerial (ReceivedMethodReturn s _ _) = s
 receivedSerial (ReceivedError        s _ _) = s
 receivedSerial (ReceivedSignal       s _ _) = s
-receivedSerial (ReceivedUnknown      s _) = s
+receivedSerial (ReceivedUnknown      s _ _) = s
 
 receivedSender :: ReceivedMessage -> Maybe T.BusName
 receivedSender (ReceivedMethodCall   _ s _) = s
 receivedSender (ReceivedMethodReturn _ s _) = s
 receivedSender (ReceivedError        _ s _) = s
 receivedSender (ReceivedSignal       _ s _) = s
-receivedSender (ReceivedUnknown      _ s) = s
+receivedSender (ReceivedUnknown      _ s _) = s
 \end{code}
 
 Unmarshaling is a three-step process: retrieve the raw bytes, parse the
@@ -492,7 +492,7 @@ mkReceived 1 = mkReceived' ReceivedMethodCall mkMethodCall
 mkReceived 2 = mkReceived' ReceivedMethodReturn mkMethodReturn
 mkReceived 3 = mkReceived' ReceivedError mkError
 mkReceived 4 = mkReceived' ReceivedSignal mkSignal
-mkReceived _ = undefined -- mkReceived' ReceivedUnknown    mkUnknown
+mkReceived x = (\y z _ _ -> return $ mkUnknown x y z)
 \end{code}
 
 \begin{code}
@@ -541,6 +541,12 @@ mkSignal fields flags body = do
 	iface <- require "interface" [x | Interface x <- fields]
 	let dest = listToMaybe [x | Destination x <- fields]
 	return $ Signal path member iface dest flags body
+\end{code}
+
+\begin{code}
+mkUnknown :: Word8 -> T.Serial -> [HeaderField] -> ReceivedMessage
+mkUnknown code serial fields = ReceivedUnknown serial sender code where
+	sender = listToMaybe [x | Sender x <- fields]
 \end{code}
 
 \begin{code}
