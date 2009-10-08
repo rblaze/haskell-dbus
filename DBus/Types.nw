@@ -68,6 +68,9 @@ data Type
 	| DBusStructure [Type]
 	deriving (Show, Eq)
 
+class Typeable a => Builtin a where
+	builtinDBusType :: a -> Type
+
 typeCode :: Type -> String
 <<atomic type codes>>
 <<container type codes>>
@@ -127,14 +130,13 @@ so clients aren't allowed to invent their own atomic types.
 class Atomic a where
 	toAtom   :: a -> Atom
 	fromAtom :: Atom -> Maybe a
-	typeOf   :: a -> Type
 
-data Atom = forall a. (Atomic a, Typeable a, Show a, Eq a) => Atom a
+data Atom = forall a. (Builtin a, Show a, Eq a) => Atom a
 
 instance Show Atom where
 	showsPrec d (Atom x) = showParen (d > 10) $
 		s "Atom " . showSig . s " " . showsPrec 11 x
-		where showSig = shows . typeCode . typeOf $ x
+		where showSig = shows . typeCode . builtinDBusType $ x
 		      s       = showString
 
 instance Eq Atom where
@@ -147,28 +149,29 @@ instance Eq Atom where
 @ Most atomic types map directly to a built-in Haskell type.
 
 <<DBus/Types.hs>>=
-#define INSTANCE_ATOMIC(HASKELL, DBUS) \
+#define BUILTIN_ATOMIC(HASKELL, DBUS) \
+	instance Builtin HASKELL where \
+		{ builtinDBusType _ = DBUS }; \
 	instance Atomic HASKELL where \
 		{ toAtom = Atom \
-		; fromAtom (Atom x) = cast x \
-		; typeOf _ = DBUS }
+		; fromAtom (Atom x) = cast x };
 
-INSTANCE_ATOMIC(Bool,   DBusBoolean)
-INSTANCE_ATOMIC(Word8,  DBusByte)
-INSTANCE_ATOMIC(Int16,  DBusInt16)
-INSTANCE_ATOMIC(Int32,  DBusInt32)
-INSTANCE_ATOMIC(Int64,  DBusInt64)
-INSTANCE_ATOMIC(Word16, DBusWord16)
-INSTANCE_ATOMIC(Word32, DBusWord32)
-INSTANCE_ATOMIC(Word64, DBusWord64)
-INSTANCE_ATOMIC(Double, DBusDouble)
-INSTANCE_ATOMIC(String, DBusString)
+BUILTIN_ATOMIC(Bool,   DBusBoolean)
+BUILTIN_ATOMIC(Word8,  DBusByte)
+BUILTIN_ATOMIC(Int16,  DBusInt16)
+BUILTIN_ATOMIC(Int32,  DBusInt32)
+BUILTIN_ATOMIC(Int64,  DBusInt64)
+BUILTIN_ATOMIC(Word16, DBusWord16)
+BUILTIN_ATOMIC(Word32, DBusWord32)
+BUILTIN_ATOMIC(Word64, DBusWord64)
+BUILTIN_ATOMIC(Double, DBusDouble)
+BUILTIN_ATOMIC(String, DBusString)
 
 @ A few are DBus-specific; they are defined later.
 
 <<DBus/Types.hs>>=
-INSTANCE_ATOMIC(Signature, DBusSignature)
-INSTANCE_ATOMIC(ObjectPath, DBusObjectPath)
+BUILTIN_ATOMIC(Signature, DBusSignature)
+BUILTIN_ATOMIC(ObjectPath, DBusObjectPath)
 
 @ \subsection{Containers}
 Container types are identified by a (generally) multi-character type code,
@@ -215,7 +218,7 @@ values have a fixed type:
 <<DBus/Types.hs>>=
 #define ATOMIC_VARIABLE(T) \
 	instance Variable T where \
-		{ toVariant x = Variant (typeOf x) x \
+		{ toVariant x = Variant (builtinDBusType x) x \
 		; fromVariant (Variant _ x) = cast x }
 
 ATOMIC_VARIABLE(Bool)
