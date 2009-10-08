@@ -191,55 +191,52 @@ class Variable a where
 	toVariant :: a -> Variant
 	fromVariant :: Variant -> Maybe a
 
-data Variant = forall a. (Variable a, Typeable a, Show a, Eq a) =>
-               Variant Type a
+data Variant = forall a. (Builtin a, Show a, Eq a) => Variant a
 	deriving (Typeable)
 
 instance Show Variant where
-	showsPrec d (Variant t x) = showParen (d > 10) $
+	showsPrec d (Variant x) = showParen (d > 10) $
 		s "Variant " . showSig . s " " . showsPrec 11 x
-		where showSig = shows $ typeCode t
+		where showSig = shows . typeCode . builtinDBusType $ x
 		      s       = showString
 
 instance Eq Variant where
-	(Variant _ x) == (Variant _ y) = cast x == Just y
+	(Variant x) == (Variant y) = cast x == Just y
 
-variantType :: Variant -> Type
-variantType (Variant t _) = t
+instance Builtin Variant where
+	builtinDBusType _ = DBusVariant
 
 @ Any instance of {\tt Variable} can be stored in a {\tt Variant}.
 ``Built-in'' types, defined below, have direct access to the {\tt Variant}
 value constructor. Other types may implement {\tt toVariant} by constructing
 a {\tt Variant} containing a built-in type.
 
-Instances of {\tt Variable} for atomic types are easy to define, because
-values have a fixed type:
+<<DBus/Types.hs>>=
+variantType :: Variant -> Type
+variantType (Variant x) = builtinDBusType x
+
+
+@ By default, there are instances of {\tt Variable} for all built-in types.
 
 <<DBus/Types.hs>>=
-#define ATOMIC_VARIABLE(T) \
+#define BUILTIN_VARIABLE(T) \
 	instance Variable T where \
-		{ toVariant x = Variant (builtinDBusType x) x \
-		; fromVariant (Variant _ x) = cast x }
+		{ toVariant = Variant \
+		; fromVariant (Variant x) = cast x }
 
-ATOMIC_VARIABLE(Bool)
-ATOMIC_VARIABLE(Word8)
-ATOMIC_VARIABLE(Int16)
-ATOMIC_VARIABLE(Int32)
-ATOMIC_VARIABLE(Int64)
-ATOMIC_VARIABLE(Word16)
-ATOMIC_VARIABLE(Word32)
-ATOMIC_VARIABLE(Word64)
-ATOMIC_VARIABLE(Double)
-ATOMIC_VARIABLE(String)
-ATOMIC_VARIABLE(Signature)
-ATOMIC_VARIABLE(ObjectPath)
-
-@ And the instance for {\tt Variant} itself is just as simple:
-
-<<DBus/Types.hs>>=
-instance Variable Variant where
-	toVariant = Variant DBusVariant
-	fromVariant (Variant _ x) = cast x
+BUILTIN_VARIABLE(Bool)
+BUILTIN_VARIABLE(Word8)
+BUILTIN_VARIABLE(Int16)
+BUILTIN_VARIABLE(Int32)
+BUILTIN_VARIABLE(Int64)
+BUILTIN_VARIABLE(Word16)
+BUILTIN_VARIABLE(Word32)
+BUILTIN_VARIABLE(Word64)
+BUILTIN_VARIABLE(Double)
+BUILTIN_VARIABLE(String)
+BUILTIN_VARIABLE(Signature)
+BUILTIN_VARIABLE(ObjectPath)
+BUILTIN_VARIABLE(Variant)
 
 <<variant exports>>=
   Variant
@@ -264,12 +261,13 @@ instance Show Array where
 		s "Array " . showSig . s " [" . s valueString . s "]" where
 			s = showString
 			showSig = shows $ typeCode t
-			vs' = [show x | (Variant _ x) <- vs]
+			vs' = [show x | (Variant x) <- vs]
 			valueString = intercalate ", " vs'
 
-instance Variable Array where
-	toVariant x@(Array t _) = Variant (DBusArray t) x
-	fromVariant (Variant _ x) = cast x
+instance Builtin Array where
+	builtinDBusType (Array t _) = DBusArray t
+
+BUILTIN_VARIABLE(Array)
 
 arrayItems :: Array -> [Variant]
 arrayItems (Array _ vs) = vs
@@ -277,8 +275,8 @@ arrayItems (Array _ vs) = vs
 fromArray :: Variable a => Array -> Maybe [a]
 fromArray (Array _ vs) = mapM fromVariant vs
 
-<<array exports>>=
-  Array
+<<exports>>=
+, Array
 , arrayItems
 , fromArray
 
@@ -303,13 +301,13 @@ instance Show Dictionary where
 			s = showString
 			showSig = shows (typeCode kt ++ typeCode vt)
 			valueString = intercalate ", " $ map showPair pairs
-			showPair ((Atom k), (Variant _ v)) =
+			showPair ((Atom k), (Variant v)) =
 				show k ++ " -> " ++ show v
 
-instance Variable Dictionary where
-	toVariant x@(Dictionary kt vt _) = Variant type' x where
-		type' = DBusDictionary kt vt
-	fromVariant (Variant _ x) = cast x
+instance Builtin Dictionary where
+	builtinDBusType (Dictionary kt vt _) = DBusDictionary kt vt
+
+BUILTIN_VARIABLE(Dictionary)
 
 fromDictionary :: (Atomic a, Variable b) => Dictionary -> Maybe [(a, b)]
 fromDictionary (Dictionary _ _ vs) = forM vs $ \(k, v) -> do
@@ -335,13 +333,14 @@ type code is simply ``()''.
 <<container type codes>>=
 typeCode (DBusStructure ts) = "(" ++ concatMap typeCode ts ++ ")"
 
+<<DBus/Types.hs>>=
 data Structure = Structure [Variant]
 	deriving (Show, Eq, Typeable)
 
-instance Variable Structure where
-	toVariant x@(Structure vs) = Variant type' x where
-		type' = DBusStructure $ map variantType vs
-	fromVariant (Variant _ x) = cast x
+instance Builtin Structure where
+	builtinDBusType (Structure vs) = DBusStructure $ map variantType vs
+
+BUILTIN_VARIABLE(Structure)
 
 <<structure exports>>=
   Structure (..)
