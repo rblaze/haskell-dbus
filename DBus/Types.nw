@@ -21,16 +21,8 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE CPP #-}
-module DBus.Types
-	( <<type exports>>
-	, <<atom exports>>
-	, <<signature exports>>
-	, <<object path exports>>
-	, <<variant exports>>
-	, <<array exports>>
-	, <<dictionary exports>>
-	, <<structure exports>>
-	) where
+module DBus.Types (<<exports>>) where
+
 import Control.Monad (msum, forM)
 import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
@@ -75,7 +67,7 @@ typeCode :: Type -> String
 <<atomic type codes>>
 <<container type codes>>
 
-<<type exports>>=
+<<exports>>=
   Type (..)
 , typeCode
 
@@ -142,8 +134,8 @@ instance Show Atom where
 instance Eq Atom where
 	(Atom x) == (Atom y) = cast x == Just y
 
-<<atom exports>>=
-  Atom
+<<exports>>=
+, Atom
 , Atomic (..)
 
 @ Most atomic types map directly to a built-in Haskell type.
@@ -238,8 +230,8 @@ BUILTIN_VARIABLE(Signature)
 BUILTIN_VARIABLE(ObjectPath)
 BUILTIN_VARIABLE(Variant)
 
-<<variant exports>>=
-  Variant
+<<exports>>=
+, Variant
 , Variable (..)
 , variantType
 
@@ -318,8 +310,8 @@ fromDictionary (Dictionary _ _ vs) = forM vs $ \(k, v) -> do
 dictionaryItems :: Dictionary -> [(Atom, Variant)]
 dictionaryItems (Dictionary _ _ vs) = vs
 
-<<dictionary exports>>=
-  Dictionary
+<<exports>>=
+, Dictionary
 , dictionaryItems
 , fromDictionary
 
@@ -342,8 +334,8 @@ instance Builtin Structure where
 
 BUILTIN_VARIABLE(Structure)
 
-<<structure exports>>=
-  Structure (..)
+<<exports>>=
+, Structure (..)
 
 @ \subsection{Signatures}
 
@@ -424,8 +416,8 @@ mkSignature' = mkUnsafe "signature" mkSignature
 @ Most of these are available for use by clients, with the exception of the
 {\tt Signature} value constructor.
 
-<<signature exports>>=
-  Signature
+<<exports>>=
+, Signature
 , signatureTypes
 , strSignature
 , mkSignature
@@ -462,8 +454,8 @@ mkObjectPath s = parseMaybe path' s where
 mkObjectPath' :: String -> ObjectPath
 mkObjectPath' = mkUnsafe "object path" mkObjectPath
 
-<<object path exports>>=
-  ObjectPath
+<<exports>>=
+, ObjectPath
 , mkObjectPath
 , mkObjectPath'
 , strObjectPath
