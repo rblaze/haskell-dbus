@@ -126,7 +126,16 @@ class Atomic a where
 	fromAtom :: Atom -> Maybe a
 	typeOf   :: a -> Type
 
-data Atom = forall a. (Atomic a, Typeable a, Show a) => Atom a
+data Atom = forall a. (Atomic a, Typeable a, Show a, Eq a) => Atom a
+
+instance Show Atom where
+	showsPrec d (Atom x) = showParen (d > 10) $
+		s "Atom " . showSig . s " " . showsPrec 11 x
+		where showSig = shows . typeCode . typeOf $ x
+		      s       = showString
+
+instance Eq Atom where
+	(Atom x) == (Atom y) = cast x == Just y
 
 <<atom exports>>=
   Atom
