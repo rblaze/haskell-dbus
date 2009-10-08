@@ -122,8 +122,9 @@ so clients aren't allowed to invent their own atomic types.
 
 <<DBus/Types.hs>>=
 class Atomic a where
-	toAtom :: a -> Atom
-	typeOf :: a -> Type
+	toAtom   :: a -> Atom
+	fromAtom :: Atom -> Maybe a
+	typeOf   :: a -> Type
 
 data Atom = forall a. (Atomic a, Typeable a, Show a) => Atom a
 
@@ -137,6 +138,7 @@ data Atom = forall a. (Atomic a, Typeable a, Show a) => Atom a
 #define INSTANCE_ATOMIC(HASKELL, DBUS) \
 	instance Atomic HASKELL where \
 		{ toAtom = Atom \
+		; fromAtom (Atom x) = cast x \
 		; typeOf _ = DBUS }
 
 INSTANCE_ATOMIC(Bool,   DBusBoolean)
