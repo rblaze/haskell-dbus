@@ -233,9 +233,9 @@ ATOMIC_VARIABLE(ObjectPath)
 
 @ And the instance for {\tt Variant} itself is just as simple:
 
-<<DBus/Types.h>>=
+<<DBus/Types.hs>>=
 instance Variable Variant where
-	toVariant = Variant DBusVariable
+	toVariant = Variant DBusVariant
 	fromVariant (Variant _ x) = cast x
 
 <<variant exports>>=
