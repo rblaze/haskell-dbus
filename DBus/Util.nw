@@ -13,11 +13,10 @@
 % You should have received a copy of the GNU General Public License
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-\clearpage
-\section{Misc. utility functions}
+@ \section{Misc. utility functions}
 
-\ignore{
-\begin{code}
+<<DBus/Util.hs>>=
+<<copyright>>
 module DBus.Util
 	( checkLength
 	, parseMaybe
@@ -25,37 +24,24 @@ module DBus.Util
 	, hexToInt
 	, eitherToMaybe
 	) where
-
 import Text.Parsec (Parsec, parse)
 import Data.Char (digitToInt)
-\end{code}
-}
 
-\begin{code}
 checkLength :: Int -> String -> Maybe String
 checkLength length' s | length s <= length' = Just s
 checkLength _ _ = Nothing
-\end{code}
 
-\begin{code}
 parseMaybe :: Parsec String () a -> String -> Maybe a
 parseMaybe p = either (const Nothing) Just . parse p ""
-\end{code}
 
-\begin{code}
 mkUnsafe :: Show a => String -> (a -> Maybe b) -> a -> b
 mkUnsafe label f x = case f x of
 	Just x' -> x'
 	Nothing -> error $ "Invalid " ++ label ++ ": " ++ show x
-\end{code}
 
-\begin{code}
 hexToInt :: String -> Int
 hexToInt = foldl ((+) . (16 *)) 0 . map digitToInt
-\end{code}
 
-\begin{code}
 eitherToMaybe :: Either a b -> Maybe b
 eitherToMaybe (Left  _) = Nothing
 eitherToMaybe (Right x) = Just x
-\end{code}

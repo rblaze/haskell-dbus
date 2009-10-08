@@ -22,6 +22,7 @@ source-repository head
   location: http://patch-tag.com/r/jmillikin/dbus-core/pullrepo
 
 library
+  hs-source-dirs: hs
   ghc-options: -Wall
 
   build-depends:
@@ -39,27 +40,7 @@ library
 
   exposed-modules:
     DBus.Address
-    DBus.Bus
-    DBus.Connection
-    DBus.Constants
-    DBus.Introspection
-    DBus.Message
     DBus.Types
 
   other-modules:
-    DBus.Authentication
-    DBus.Types.Atom
-    DBus.Types.Containers
-    DBus.Types.Containers.Array
-    DBus.Types.Containers.Dictionary
-    DBus.Types.Containers.Structure
-    DBus.Types.Containers.Variant
-    DBus.Types.Endianness
-    DBus.Types.Names
-    DBus.Types.ObjectPath
-    DBus.Types.Serial
-    DBus.Types.Signature
-    DBus.Marshal
-    DBus.Padding
-    DBus.Unmarshal
     DBus.Util

@@ -1,0 +1,395 @@
+% Copyright (C) 2009 John Millikin <jmillikin@gmail.com>
+% 
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+@ \section{Types}
+
+<<DBus/Types.hs>>=
+<<copyright>>
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE CPP #-}
+module DBus.Types
+	( <<type exports>>
+	, <<atom exports>>
+	, <<signature exports>>
+	, <<object path exports>>
+	, <<variant exports>>
+	, <<structure exports>>
+	) where
+import Control.Monad (msum)
+import Data.Word (Word8, Word16, Word32, Word64)
+import Data.Int (Int16, Int32, Int64)
+import Data.Typeable (Typeable, cast)
+import Text.Parsec ((<|>))
+import qualified Text.Parsec as P
+import DBus.Util (checkLength, parseMaybe, mkUnsafe)
+
+@ DBus types are divided into two categories, ``atomic'' and ``container''
+types. Atoms are actual values -- strings, numbers, etc. Containers store
+atoms and other containers. The most interesting difference between the two
+is that atoms may be used as the keys in associative mappings
+(``dictionaries'').
+
+Internally, types are represented using an enumerated type.
+
+<<DBus/Types.hs>>=
+data Type
+	= DBusBoolean
+	| DBusByte
+	| DBusInt16
+	| DBusInt32
+	| DBusInt64
+	| DBusWord16
+	| DBusWord32
+	| DBusWord64
+	| DBusDouble
+	| DBusString
+	| DBusSignature
+	| DBusObjectPath
+	| DBusVariant
+	| DBusArray Type
+	| DBusDictionary Type Type
+	| DBusStructure [Type]
+	deriving (Show, Eq)
+
+typeCode :: Type -> String
+<<atomic type codes>>
+<<container type codes>>
+
+<<type exports>>=
+  Type (..)
+, typeCode
+
+@ \subsection{Atoms}
+
+Every atomic type is identified by a unique ``type code'', which is a single
+letter.
+
+\begin{table}[h]
+\caption{Atomic types}
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Type        & Code & Description \\
+\midrule
+Boolean     &  b   & Either {\tt True} or {\tt False} \\
+Byte        &  y   & 8-bit unsigned integer \\
+Int16       &  n   & 16-bit signed integer \\
+Int32       &  i   & 32-bit signed integer \\
+Int64       &  x   & 64-bit signed integer \\
+Word16      &  q   & 16-bit unsigned integer \\
+Word32      &  u   & 32-bit unsigned integer \\
+Word64      &  t   & 64-bit unsigned integer \\
+Double      &  d   & 64-bit IEEE754 floating-point \\
+String      &  s   & Unicode string with no {\tt NUL} bytes \\
+Signature   &  g   & Type signature; see ``Signatures'' \\
+Object path &  o   & Path to a remote object; see ``Object paths'' \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+<<atomic type codes>>=
+typeCode DBusBoolean    = "b"
+typeCode DBusByte       = "y"
+typeCode DBusInt16      = "n"
+typeCode DBusInt32      = "i"
+typeCode DBusInt64      = "x"
+typeCode DBusWord16     = "q"
+typeCode DBusWord32     = "u"
+typeCode DBusWord64     = "t"
+typeCode DBusDouble     = "d"
+typeCode DBusString     = "s"
+typeCode DBusSignature  = "g"
+typeCode DBusObjectPath = "o"
+
+@ The {\tt Atom} type is used to store any type which must be atomic, such
+as dictionary keys. The constructor is not exported outside of this module,
+so clients aren't allowed to invent their own atomic types.
+
+<<DBus/Types.hs>>=
+class Atomic a where
+	toAtom :: a -> Atom
+	typeOf :: a -> Type
+
+data Atom = forall a. (Atomic a, Typeable a, Show a) => Atom a
+
+<<atom exports>>=
+  Atom
+, Atomic (..)
+
+@ Most atomic types map directly to a built-in Haskell type.
+
+<<DBus/Types.hs>>=
+#define INSTANCE_ATOMIC(HASKELL, DBUS) \
+	instance Atomic HASKELL where \
+		{ toAtom = Atom \
+		; typeOf _ = DBUS }
+
+INSTANCE_ATOMIC(Bool,   DBusBoolean)
+INSTANCE_ATOMIC(Word8,  DBusByte)
+INSTANCE_ATOMIC(Int16,  DBusInt16)
+INSTANCE_ATOMIC(Int32,  DBusInt32)
+INSTANCE_ATOMIC(Int64,  DBusInt64)
+INSTANCE_ATOMIC(Word16, DBusWord16)
+INSTANCE_ATOMIC(Word32, DBusWord32)
+INSTANCE_ATOMIC(Word64, DBusWord64)
+INSTANCE_ATOMIC(Double, DBusDouble)
+INSTANCE_ATOMIC(String, DBusString)
+
+@ A few are DBus-specific; they are defined later.
+
+<<DBus/Types.hs>>=
+INSTANCE_ATOMIC(Signature, DBusSignature)
+INSTANCE_ATOMIC(ObjectPath, DBusObjectPath)
+
+@ \subsection{Containers}
+Container types are identified by a (generally) multi-character type code,
+depending in which types they contain. There are four kinds of containers:
+
+@ \subsubsection{Variants}
+
+Variants may store any DBus value, including other variants. Their type code
+is ``v'', which does not change depending on the type they contain. Variants
+can be used to store heterogenous values in an array or dictionary.
+
+<<container type codes>>=
+typeCode DBusVariant = "v"
+
+<<DBus/Types.hs>>=
+class Variable a where
+	toVariant :: a -> Variant
+	fromVariant :: Variant -> Maybe a
+
+data Variant = forall a. (Variable a, Typeable a, Show a, Eq a) =>
+               Variant Type a
+	deriving (Typeable)
+
+instance Show Variant where
+	showsPrec d (Variant t x) = showParen (d > 10) $
+		s "Variant " . showSig . s " " . showsPrec 11 x
+		where showSig = shows $ typeCode t
+		      s       = showString
+
+instance Eq Variant where
+	(Variant _ x) == (Variant _ y) = cast x == Just y
+
+variantType :: Variant -> Type
+variantType (Variant t _) = t
+
+@ Any instance of {\tt Variable} can be stored in a {\tt Variant}.
+``Built-in'' types, defined below, have direct access to the {\tt Variant}
+value constructor. Other types may implement {\tt toVariant} by constructing
+a {\tt Variant} containing a built-in type.
+
+Instances of {\tt Variable} for atomic types are easy to define, because
+values have a fixed type:
+
+<<DBus/Types.hs>>=
+#define ATOMIC_VARIABLE(T) \
+	instance Variable T where \
+		{ toVariant x = Variant (typeOf x) x \
+		; fromVariant (Variant _ x) = cast x }
+
+ATOMIC_VARIABLE(Bool)
+ATOMIC_VARIABLE(Word8)
+ATOMIC_VARIABLE(Int16)
+ATOMIC_VARIABLE(Int32)
+ATOMIC_VARIABLE(Int64)
+ATOMIC_VARIABLE(Word16)
+ATOMIC_VARIABLE(Word32)
+ATOMIC_VARIABLE(Word64)
+ATOMIC_VARIABLE(Double)
+ATOMIC_VARIABLE(String)
+ATOMIC_VARIABLE(Signature)
+ATOMIC_VARIABLE(ObjectPath)
+
+@ And the instance for {\tt Variant} itself is just as simple:
+
+<<DBus/Types.h>>=
+instance Variable Variant where
+	toVariant = Variant DBusVariable
+	fromVariant (Variant _ x) = cast x
+
+<<variant exports>>=
+  Variant
+, Variable (..)
+, variantType
+
+@ \subsubsection{Arrays}
+
+Arrays are homogenous sequences of any valid DBus type. An array's type
+code is ``a'' followed by the type it contains. For example, an array of
+booleans would have the type string ``ab''.
+
+<<container type codes>>=
+typeCode (DBusArray t) = 'a' : typeCode t
+
+@ \subsubsection{Dictionaries}
+
+A homogenous (key $\rightarrow$ value) mapping, where the key type must be
+atomic. Values may be of any valid DBus type, but must have an identical
+type. A dictionary's type code is ``a\{$key\_type$ $value\_type$\}''. For
+example, a dictionary of bytes to booleans would have the type string
+``a{yb}''.
+
+<<container type codes>>=
+typeCode (DBusDictionary k v) = concat ["a{", typeCode k, typeCode v, "}"]
+
+@ \subsubsection{Structures}
+
+A heterogeneous, fixed-length structure; equivalent in purpose to a Haskell
+tuple. A structure's type code is the concatenation of its contained types,
+wrapped by ``('' and ``)''. Structures may be empty, in which case their
+type code is simply ``()''.
+
+<<container type codes>>=
+typeCode (DBusStructure ts) = "(" ++ concatMap typeCode ts ++ ")"
+
+data Structure = Structure [Variant]
+	deriving (Show, Eq, Typeable)
+
+instance Variable Structure where
+	toVariant x@(Structure vs) = Variant type' x where
+		type' = DBusStructure $ map variantType vs
+	fromVariant (Variant _ x) = cast x
+
+<<structure exports>>=
+  Structure (..)
+
+@ \subsection{Signatures}
+
+@ Valid DBus type signatures must obey certain rules, such as ``dict keys
+must be atomic'', which are difficult to express in the Haskell type system.
+A signature is guaranteed to be valid according to these rules. Creating them
+requires using the {\tt mkSignature} function, which will convert a valid
+DBus signature string into a {\tt Signature}.
+
+<<DBus/Types.hs>>=
+data Signature = Signature { signatureTypes :: [Type] }
+	deriving (Eq, Typeable)
+
+instance Show Signature where
+	showsPrec d x = showParen (d > 10) $
+		showString "Signature " . shows (strSignature x)
+
+strSignature :: Signature -> String
+strSignature (Signature ts) = concatMap typeCode ts
+
+@ Additional restrictions apply to signatures, in addition to those imposed
+by the DBus type definitions:
+
+\begin{itemize}
+\item Signatures may be at most 255 characters long.
+\end{itemize}
+
+<<DBus/Types.hs>>=
+mkSignature :: String -> Maybe Signature
+mkSignature = (parseMaybe sigParser =<<) . checkLength 255 where
+	sigParser = do
+		types <- P.many parseType
+		P.eof
+		return $ Signature types
+	parseType = parseAtom <|> parseContainer
+	parseContainer =
+		    parseArray
+		<|> parseStruct
+		<|> (P.char 'v' >> return DBusVariant)
+	parseAtom =
+		    (P.char 'b' >> return DBusBoolean)
+		<|> (P.char 'y' >> return DBusByte)
+		<|> (P.char 'n' >> return DBusInt16)
+		<|> (P.char 'i' >> return DBusInt32)
+		<|> (P.char 'x' >> return DBusInt64)
+		<|> (P.char 'q' >> return DBusWord16)
+		<|> (P.char 'u' >> return DBusWord32)
+		<|> (P.char 't' >> return DBusWord64)
+		<|> (P.char 'd' >> return DBusDouble)
+		<|> (P.char 's' >> return DBusString)
+		<|> (P.char 'g' >> return DBusSignature)
+		<|> (P.char 'o' >> return DBusObjectPath)
+	parseArray = do
+		P.char 'a'
+		parseDict <|> do
+		t <- parseType
+		return $ DBusArray t
+	parseDict = do
+		P.char '{'
+		keyType <- parseAtom
+		valueType <- parseType
+		P.char '}'
+		return $ DBusDictionary keyType valueType
+	parseStruct = do
+		P.char '('
+		types <- P.many parseType
+		P.char ')'
+		return $ DBusStructure types
+
+@ Since many signatures are defined as string literals, it's useful to
+have a helper function to construct a signature directly from a string.
+If the input string is invalid, {\tt error} will be called.
+
+<<DBus/Types.hs>>=
+mkSignature' :: String -> Signature
+mkSignature' = mkUnsafe "signature" mkSignature
+
+@ Most of these are available for use by clients, with the exception of the
+{\tt Signature} value constructor.
+
+<<signature exports>>=
+  Signature
+, signatureTypes
+, strSignature
+, mkSignature
+, mkSignature'
+
+@ \subsection{Object paths}
+
+<<DBus/Types.hs>>=
+newtype ObjectPath = ObjectPath String
+	deriving (Show, Eq, Ord, Typeable)
+
+strObjectPath :: ObjectPath -> String
+strObjectPath (ObjectPath x) = x
+
+@ An object path may be one of
+
+\begin{itemize}
+\item The root path, {\tt "/"}.
+\item {\tt '/'}, followed by one or more element names. Each element name
+      contains characters in the set {\tt [a-zA-Z0-9\_]}, and must have at
+      least one character.
+\end{itemize}
+
+Element names are separated by {\tt '/'}, and the path may not end in
+{\tt '/'} unless it is the root path.
+
+<<DBus/Types.hs>>=
+mkObjectPath :: String -> Maybe ObjectPath
+mkObjectPath s = parseMaybe path' s where
+	c = P.oneOf $ ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_"
+	path = P.char '/' >>= P.optional . P.sepBy (P.many1 c) . P.char
+	path' = path >> P.eof >> return (ObjectPath s)
+
+mkObjectPath' :: String -> ObjectPath
+mkObjectPath' = mkUnsafe "object path" mkObjectPath
+
+<<object path exports>>=
+  ObjectPath
+, mkObjectPath
+, mkObjectPath'
+, strObjectPath
+

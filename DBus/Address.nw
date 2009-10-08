@@ -13,8 +13,10 @@
 % You should have received a copy of the GNU General Public License
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-\ignore{
-\begin{code}
+@ \section{Addresses}
+
+<<DBus/Address.hs>>=
+<<copyright>>
 module DBus.Address
 	( Address
 	, addressMethod
@@ -30,10 +32,8 @@ import Text.Printf (printf)
 import qualified Text.Parsec as P
 import Text.Parsec ((<|>))
 import DBus.Util (hexToInt, eitherToMaybe)
-\end{code}
-}
 
-\clearpage
+@
 \section{Addresses}
 
 \subsection{Address syntax}
@@ -71,15 +71,15 @@ followed by two hexadecimal digits. Every other allowed byte is termed
 an ``optionally encoded'' byte, and may appear unescaped in parameter
 values.
 
-\begin{code}
+<<DBus/Address.hs>>=
 optionallyEncoded :: String
 optionallyEncoded = ['0'..'9'] ++ ['a'..'z'] ++ ['A'..'Z'] ++ "-_/\\*."
-\end{code}
 
+@
 The address simply stores its method and parameter map, with a custom
 {\tt Show} instance to provide easier debugging.
 
-\begin{code}
+<<DBus/Address.hs>>=
 data Address = Address
 	{ addressMethod     :: String
 	, addressParameters :: M.Map String String
@@ -87,15 +87,14 @@ data Address = Address
 
 instance Show Address where
 	showsPrec d x = showParen (d> 10) $
-		showString' ["Address \"", strAddress x, "\""] where
-		showString' = foldr (.) id . map showString
-\end{code}
+		showString "Address " . shows (strAddress x)
 
+@
 Parsing is straightforward; the input string is divided into addresses by
 semicolons, then further by colons and commas. Parsing will fail if any
 of the addresses in the input failed to parse.
 
-\begin{code}
+<<DBus/Address.hs>>=
 parseAddresses :: String -> Maybe [Address]
 parseAddresses s = eitherToMaybe $ P.parse parser "" s where
 	address = do
@@ -120,13 +119,13 @@ parseAddresses s = eitherToMaybe $ P.parse parser "" s where
 		P.char '%'
 		hex <- P.count 2 P.hexDigit
 		return . chr . hexToInt $ hex
-\end{code}
 
+@
 Converting an {\tt Address} back to a {\tt String} is just the reverse
 operation. Note that because the original parameter order is not preserved,
 the string produced might differ from the original input.
 
-\begin{code}
+<<DBus/Address.hs>>=
 strAddress :: Address -> String
 strAddress (Address t ps) = t ++ ":" ++ ps' where
 	ps' = intercalate "," $ do
@@ -134,4 +133,3 @@ strAddress (Address t ps) = t ++ ":" ++ ps' where
 		[k ++ "=" ++ (v >>= encode)]
 	encode c | elem c optionallyEncoded = [c]
 	         | otherwise       = printf "%%%02X" (ord c)
-\end{code}
