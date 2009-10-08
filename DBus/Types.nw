@@ -27,11 +27,14 @@ module DBus.Types
 	, <<signature exports>>
 	, <<object path exports>>
 	, <<variant exports>>
+	, <<array exports>>
+	, <<dictionary exports>>
 	, <<structure exports>>
 	) where
-import Control.Monad (msum)
+import Control.Monad (msum, forM)
 import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
+import Data.List (intercalate)
 import Data.Typeable (Typeable, cast)
 import Text.Parsec ((<|>))
 import qualified Text.Parsec as P
@@ -249,6 +252,33 @@ booleans would have the type string ``ab''.
 <<container type codes>>=
 typeCode (DBusArray t) = 'a' : typeCode t
 
+<<DBus/Types.hs>>=
+data Array = Array Type [Variant]
+	deriving (Eq, Typeable)
+
+instance Show Array where
+	showsPrec d (Array t vs) = showParen (d > 10) $
+		s "Array " . showSig . s " [" . s valueString . s "]" where
+			s = showString
+			showSig = shows $ typeCode t
+			vs' = [show x | (Variant _ x) <- vs]
+			valueString = intercalate ", " vs'
+
+instance Variable Array where
+	toVariant x@(Array t _) = Variant (DBusArray t) x
+	fromVariant (Variant _ x) = cast x
+
+arrayItems :: Array -> [Variant]
+arrayItems (Array _ vs) = vs
+
+fromArray :: Variable a => Array -> Maybe [a]
+fromArray (Array _ vs) = mapM fromVariant vs
+
+<<array exports>>=
+  Array
+, arrayItems
+, fromArray
+
 @ \subsubsection{Dictionaries}
 
 A homogenous (key $\rightarrow$ value) mapping, where the key type must be
@@ -259,6 +289,38 @@ example, a dictionary of bytes to booleans would have the type string
 
 <<container type codes>>=
 typeCode (DBusDictionary k v) = concat ["a{", typeCode k, typeCode v, "}"]
+
+<<DBus/Types.hs>>=
+data Dictionary = Dictionary Type Type [(Atom, Variant)]
+	deriving (Eq, Typeable)
+
+instance Show Dictionary where
+	showsPrec d (Dictionary kt vt pairs) = showParen (d > 10) $
+		s "Dictionary " . showSig . s " {" . s valueString . s "}" where
+			s = showString
+			showSig = shows (typeCode kt ++ typeCode vt)
+			valueString = intercalate ", " $ map showPair pairs
+			showPair ((Atom k), (Variant _ v)) =
+				show k ++ " -> " ++ show v
+
+instance Variable Dictionary where
+	toVariant x@(Dictionary kt vt _) = Variant type' x where
+		type' = DBusDictionary kt vt
+	fromVariant (Variant _ x) = cast x
+
+fromDictionary :: (Atomic a, Variable b) => Dictionary -> Maybe [(a, b)]
+fromDictionary (Dictionary _ _ vs) = forM vs $ \(k, v) -> do
+	k' <- fromAtom k
+	v' <- fromVariant v
+	return (k', v')
+
+dictionaryItems :: Dictionary -> [(Atom, Variant)]
+dictionaryItems (Dictionary _ _ vs) = vs
+
+<<dictionary exports>>=
+  Dictionary
+, dictionaryItems
+, fromDictionary
 
 @ \subsubsection{Structures}
 
