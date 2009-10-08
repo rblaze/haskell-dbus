@@ -460,3 +460,114 @@ mkObjectPath' = mkUnsafe "object path" mkObjectPath
 , mkObjectPath'
 , strObjectPath
 
+@ \subsection{Names}
+
+Various aspects of DBus require the use of specially-formatted strings,
+called ``names''. All names are limited to 255 characters, and use subsets
+of ASCII.
+
+Since all names have basically the same structure (a {\tt newtype}
+declaration and some helper functions), a I define a macro to automate
+the definitions.
+
+<<DBus/Types.hs>>=
+#define NAME_TYPE(TYPE, NAME) \
+	newtype TYPE = TYPE String \
+		deriving (Show, Eq, Ord); \
+		                          \
+	instance Variable TYPE where \
+		{ toVariant = toVariant . str##TYPE \
+		; fromVariant = (mk##TYPE =<<) . fromVariant }; \
+		                                                \
+	instance Atomic TYPE where \
+		{ toAtom = toAtom . str##TYPE \
+		; fromAtom = (mk##TYPE =<<) . fromAtom }; \
+		                                          \
+	str##TYPE :: TYPE -> String; \
+	str##TYPE (TYPE x) = x; \
+	                        \
+	mk##TYPE##' :: String -> TYPE; \
+	mk##TYPE##' = mkUnsafe NAME mk##TYPE
+
+@ \subsubsection{Bus names}
+
+TODO: describe format of bus names
+
+<<DBus/Types.hs>>=
+NAME_TYPE(BusName, "bus name")
+
+mkBusName :: String -> Maybe BusName
+mkBusName s = checkLength 255 s >>= parseMaybe parser where
+	c = ['a'..'z'] ++ ['A'..'Z'] ++ "_-"
+	c' = c ++ ['0'..'9']
+	parser = (unique <|> wellKnown) >> P.eof >> return (BusName s)
+	unique = P.char ':' >> elems c'
+	wellKnown = elems c
+	elems start = elem' start >> P.many1 (P.char '.' >> elem' start)
+	elem' start = P.oneOf start >> P.many (P.oneOf c')
+
+<<exports>>=
+, BusName
+, mkBusName
+, mkBusName'
+, strBusName
+
+@ \subsubsection{Interface names}
+
+An interface name consists of two or more {\tt '.'}-separated elements. Each
+element constists of characters from the set {\tt [a-zA-Z0-9\_]}, may not
+start with a digit, and must have at least one character.
+
+<<DBus/Types.hs>>=
+NAME_TYPE(InterfaceName, "interface name")
+
+mkInterfaceName :: String -> Maybe InterfaceName
+mkInterfaceName s = checkLength 255 s >>= parseMaybe parser where
+	c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
+	c' = c ++ ['0'..'9']
+	element = P.oneOf c >> P.many (P.oneOf c')
+	name = element >> P.many1 (P.char '.' >> element)
+	parser = name >> P.eof >> return (InterfaceName s)
+
+<<exports>>=
+, InterfaceName
+, mkInterfaceName
+, mkInterfaceName'
+, strInterfaceName
+
+@ \subsubsection{Error names}
+
+Error names have the same format as interface names, so the parser logic
+can just be re-purposed.
+
+<<DBus/Types.hs>>=
+NAME_TYPE(ErrorName, "error name")
+
+mkErrorName :: String -> Maybe ErrorName
+mkErrorName = fmap (ErrorName . strInterfaceName) . mkInterfaceName
+
+<<exports>>=
+, ErrorName
+, mkErrorName
+, mkErrorName'
+, strErrorName
+
+@ \subsubsection{Member names}
+
+TODO: describe format of member names
+
+<<DBus/Types.hs>>=
+NAME_TYPE(MemberName, "member name")
+
+mkMemberName :: String -> Maybe MemberName
+mkMemberName s = checkLength 255 s >>= parseMaybe parser where
+	c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
+	c' = c ++ ['0'..'9']
+	name = P.oneOf c >> P.many (P.oneOf c')
+	parser = name >> P.eof >> return (MemberName s)
+
+<<exports>>=
+, MemberName
+, mkMemberName
+, mkMemberName'
+, strMemberName
