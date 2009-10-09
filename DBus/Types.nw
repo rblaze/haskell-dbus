@@ -119,7 +119,7 @@ as dictionary keys. The constructor is not exported outside of this module,
 so clients aren't allowed to invent their own atomic types.
 
 <<DBus/Types.hs>>=
-class Atomic a where
+class Variable a => Atomic a where
 	toAtom   :: a -> Atom
 	fromAtom :: Atom -> Maybe a
 
