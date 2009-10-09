@@ -134,9 +134,13 @@ instance Show Atom where
 instance Eq Atom where
 	(Atom x) == (Atom y) = cast x == Just y
 
+atomType :: Atom -> Type
+atomType (Atom x) = builtinDBusType x
+
 <<exports>>=
 , Atom
 , Atomic (..)
+, atomType
 
 @ Most atomic types map directly to a built-in Haskell type.
 
