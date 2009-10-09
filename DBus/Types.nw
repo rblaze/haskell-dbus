@@ -471,7 +471,7 @@ called ``names''. All names are limited to 255 characters, and use subsets
 of ASCII.
 
 Since all names have basically the same structure (a {\tt newtype}
-declaration and some helper functions), a I define a macro to automate
+declaration and some helper functions), I define a macro to automate
 the definitions.
 
 <<DBus/Types.hs>>=
