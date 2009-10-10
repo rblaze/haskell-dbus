@@ -5,6 +5,7 @@ import Distribution.Simple.Utils
 import Distribution.Simple.Program
 import Distribution.PackageDescription
 import Distribution.Verbosity
+import System.Directory
 import System.FilePath
 
 main = defaultMainWithHooks simpleUserHooks
@@ -36,4 +37,5 @@ nwPreprocessor _ lbi = PreProcessor
 		rawSystemProgramConf verbosity cpphsProgram
 			(withPrograms lbi)
 			[cppInput, "--hashes", "--noline", "-O" ++ outFile]
+		removeFile cppInput
 	}
