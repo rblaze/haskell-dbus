@@ -9,28 +9,22 @@
 % Smaller margins
 \usepackage[left=1.5cm,top=2cm,right=1.5cm,nohead,nofoot]{geometry}
 
-%\makeindex
+% Remove boxes from hyperlinks
+\hypersetup{
+    colorlinks,
+    linkcolor=blue,
+}
+
+\makeindex
 
 \begin{document}
 
-%\addcontentsline{toc}{section}{Contents}
-%\tableofcontents
+\addcontentsline{toc}{section}{Contents}
+\tableofcontents
 
-\input{tex/Types.tex}
-\input{tex/Address.tex}
-\input{tex/Util.tex}
+\input{tex/DBus/Types.tex}
+\input{tex/DBus/Address.tex}
+\input{tex/DBus/Util.tex}
 \input{tex/Tests.tex}
-
-%\input{DBus/Address.lhs}
-%\input{DBus/Connection.lhs}
-%\input{DBus/Bus.lhs}
-%\input{DBus/Authentication.lhs}
-%\input{DBus/Types.lhs}
-%\input{DBus/Message.lhs}
-%\input{DBus/Introspection.lhs}
-%\input{DBus/Marshal.lhs}
-%\input{DBus/Unmarshal.lhs}
-%\input{DBus/Padding.lhs}
-%\input{DBus/Util.lhs}
 
 \end{document}
