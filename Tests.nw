@@ -11,184 +11,145 @@
 % GNU General Public License for more details.
 % 
 % You should have received a copy of the GNU General Public License
-% along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-@ \section{Tests}
+	% along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 <<Tests.hs>>=
 <<copyright>>
-{-# LANGUAGE RankNTypes #-}
-import Test.QuickCheck.Batch
-import Test.QuickCheck
+module Main (tests) where
 
+import Test.QuickCheck
+import Test.Framework (Test, testGroup, defaultMain)
+import Test.Framework.Providers.QuickCheck2 (testProperty)
+
+import Control.Arrow ((&&&))
 import Control.Monad (replicateM)
 import Data.List (intercalate, isInfixOf)
+import Data.Maybe (fromJust, isJust)
 import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
 
 import DBus.Types
 
-options = TestOptions
-	{ no_of_tests     = 100
-	, length_of_tests = 1
-	, debug_tests     = False
-	}
-
-main = do
-	runTests "atoms" options . map run . concat $
-		[<<atomic properties>>
-		]
-	
-	{-
-	runTests "variants" options . map run . concat $
-		[<<variable properties>>
-		]
-	-}
-	
-	runTests "names" options . map run . concat $
-		[<<name properties>>
-		]
+@ \section{Tests}
 
 <<Tests.hs>>=
-atomicProperties :: (Atomic a, Show a, Eq a, Arbitrary a) => Gen a -> [Property]
-atomicProperties gen = let
-	prop_Identity x = (fromAtom . toAtom) x == Just x
-	prop_Equality x y = (x == y) == (toAtom x == toAtom y)
-	prop_VariantTypeEquality x = atomType (toAtom x) ==
-	                                 variantType (toVariant x)
-	
-	in variableProperties gen ++
-	[ forAll gen prop_Identity
-	, forAll gen prop_Equality
-	, forAll gen prop_VariantTypeEquality
+tests :: [Test]
+tests = [<<tests>>
 	]
 
-<<atomic properties>>=
-  atomicProperties (arbitrary :: Gen Bool)
-, atomicProperties (arbitrary :: Gen Word8)
-, atomicProperties (arbitrary :: Gen Word16)
-, atomicProperties (arbitrary :: Gen Word32)
-, atomicProperties (arbitrary :: Gen Word64)
-, atomicProperties (arbitrary :: Gen Int16)
-, atomicProperties (arbitrary :: Gen Int32)
-, atomicProperties (arbitrary :: Gen Int64)
-, atomicProperties (arbitrary :: Gen Double)
-, atomicProperties (arbitrary :: Gen String)
-, atomicProperties (arbitrary :: Gen ObjectPath)
-, [ property prop_ObjectPathIdentity ]
+main :: IO ()
+main = defaultMain tests
 
-, atomicProperties (arbitrary :: Gen Signature)
-, [ property prop_SignatureIdentity
-  , property prop_SignatureShowType
-  ]
+@ \subsection{Types}
 
-<<Tests.hs>>=
-prop_ObjectPathIdentity x = (mkObjectPath . strObjectPath) x == Just x
-
-prop_SignatureIdentity x = (mkSignature . strSignature) x == Just x
-prop_SignatureShowType x = show (strSignature x) `isInfixOf` show x
-
-<<Tests.hs>>=
-variableProperties :: (Variable a, Show a, Eq a, Arbitrary a) => Gen a -> [Property]
-variableProperties gen = let
-	prop_Identity x = (fromVariant . toVariant) x == Just x
-	prop_Equality x y = (x == y) == (toVariant x == toVariant y)
-	in
-	[ forAll gen prop_Identity
-	, forAll gen prop_Equality
+<<tests>>=
+  testGroup "Types"
+	[ testGroup "Atomic types"
+		[<<atom tests>>
+		]
+	, testGroup "Container types"
+		[<<container tests>>
+		]
 	]
 
-<<variable properties>>=
---, variableProperties (arbitrary :: Gen Array)
---, variableProperties (arbitrary :: Gen Dictionary)
---, variableProperties (arbitrary :: Gen Structure)
---, variableProperties (arbitrary :: Gen Variant)
+<<atom tests>>=
+
+<<container tests>>=
+
+@ \subsubsection{Atoms}
 
 <<Tests.hs>>=
-instance Arbitrary Char where
-	coarbitrary = undefined
-	arbitrary = choose ('!', '~') -- TODO: unicode?
+commonAtomTests :: (Atomic a, Eq a, Show a, Arbitrary a) => Gen a -> [Test]
+commonAtomTests gen =
+	[<<common atom tests>>
+	]
 
-iexp :: Integral a => a -> a -> a
-iexp x y = floor $ fromIntegral x ** fromIntegral y
+<<common atom tests>>=
+  testProperty "Atom identity" . forAll gen
+	$ \x -> (fromAtom . toAtom) x == Just x
 
-instance Arbitrary Word8 where
-	coarbitrary = undefined
-	arbitrary = fmap fromIntegral gen where
-		gen = choose (0, max') :: Gen Integer
-		max' = iexp 2 8 - 1
+, testProperty "Atom equality" . forAll gen
+	$ \x y -> (x == y) == (toAtom x == toAtom y)
 
-instance Arbitrary Word16 where
-	coarbitrary = undefined
-	arbitrary = fmap fromIntegral gen where
-		gen = choose (0, max') :: Gen Integer
-		max' = iexp 2 16 - 1
+, testProperty "Atom/Variant type equality" . forAll gen
+	$ \x -> atomType (toAtom x) == variantType (toVariant x)
 
-instance Arbitrary Word32 where
-	coarbitrary = undefined
-	arbitrary = fmap fromIntegral gen where
-		gen = choose (0, max') :: Gen Integer
-		max' = iexp 2 32 - 1
+<<atom tests>>=
+  testGroup "Bool" $ commonAtomTests (arbitrary :: Gen Bool)
+, testGroup "Word8"   $ commonAtomTests (arbitrary :: Gen Word8)
+, testGroup "Word16"  $ commonAtomTests (arbitrary :: Gen Word16)
+, testGroup "Word32"  $ commonAtomTests (arbitrary :: Gen Word32)
+, testGroup "Word64"  $ commonAtomTests (arbitrary :: Gen Word64)
+, testGroup "Int16"   $ commonAtomTests (arbitrary :: Gen Int16)
+, testGroup "Int32"   $ commonAtomTests (arbitrary :: Gen Int32)
+, testGroup "Int64"   $ commonAtomTests (arbitrary :: Gen Int64)
+, testGroup "Double"  $ commonAtomTests (arbitrary :: Gen Double)
+, testGroup "String"  $ commonAtomTests (arbitrary :: Gen String)
 
-instance Arbitrary Word64 where
-	coarbitrary = undefined
-	arbitrary = fmap fromIntegral gen where
-		gen = choose (0, max') :: Gen Integer
-		max' = iexp 2 64 - 1
+<<Tests.hs>>=
+atomicType :: Gen Type
+atomicType = elements
+	[ DBusBoolean
+	, DBusByte
+	, DBusWord16
+	, DBusWord32
+	, DBusWord64
+	, DBusInt16
+	, DBusInt32
+	, DBusInt64
+	, DBusDouble
+	, DBusString
+	, DBusObjectPath
+	, DBusSignature
+	]
 
-instance Arbitrary Int16 where
-	coarbitrary = undefined
-	arbitrary = fmap fromIntegral gen where
-		gen = choose (0, max') :: Gen Integer
-		max' = iexp 2 16 - 1
+containerType :: Gen Type
+containerType = do
+	c <- choose (0,3) :: Gen Int
+	case c of
+		0 -> fmap DBusArray arbitrary
+		1 -> do
+			kt <- atomicType
+			vt <- arbitrary
+			return $ DBusDictionary kt vt
+		2 -> sized structType
+		3 -> return DBusVariant
 
-instance Arbitrary Int32 where
-	coarbitrary = undefined
-	arbitrary = fmap fromIntegral gen where
-		gen = choose (0, max') :: Gen Integer
-		max' = iexp 2 32 - 1
+structType :: Int -> Gen Type
+structType n | n >= 0 = fmap DBusStructure $ resize (n `div` 2) arbitrary
+structType _ = return $ DBusStructure []
 
-instance Arbitrary Int64 where
-	coarbitrary = undefined
-	arbitrary = fmap fromIntegral gen where
-		gen = choose (0, max') :: Gen Integer
-		max' = iexp 2 64 - 1
+instance Arbitrary Type where
+	arbitrary = oneof [atomicType, containerType]
 
-sized' :: Int -> Gen a -> Gen [a]
-sized' atLeast g = sized $ \n -> do
-	n' <- choose (atLeast, max atLeast n)
-	replicateM n' g
+instance Arbitrary Signature where
+	arbitrary = clampedSize 255 genSig mkSignature' where
+		genSig = fmap (concatMap typeCode) arbitrary
 
-clampedSize :: Arbitrary a => Int -> Gen String -> (String -> a) -> Gen a
-clampedSize maxSize gen f = do
-	s <- gen
-	if length s > maxSize
-		then sized $ \n -> resize (n `div` 2) arbitrary
-		else return . f $ s
+<<atom tests>>=
+, testGroup "Signature" $ commonAtomTests (arbitrary :: Gen Signature) ++
+	[ testProperty "Signature identity"
+		$ \x -> (mkSignature . strSignature) x == Just x
+	, testProperty "Signature show"
+		$ \x -> show (strSignature x) `isInfixOf` show x
+	]
 
+<<Tests.hs>>=
 instance Arbitrary ObjectPath where
-	coarbitrary = undefined
 	arbitrary = fmap mkObjectPath' path' where
 		c = ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_"
 		path = fmap (intercalate "/" . ([] :)) genElements
 		path' = frequency [(1, return "/"), (9, path)]
 		genElements = sized' 1 (sized' 1 (elements c))
 
-instance Arbitrary InterfaceName where
-	coarbitrary = undefined
-	arbitrary = clampedSize 255 genName mkInterfaceName' where
-		c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
-		c' = c ++ ['0'..'9']
-		
-		genName = fmap (intercalate ".") genElements
-		genElements = sized' 2 genElement
-		genElement = do
-			x <- elements c
-			xs <- sized' 0 (elements c')
-			return (x:xs)
+<<atom tests>>=
+, testGroup "ObjectPath" $ commonAtomTests (arbitrary :: Gen ObjectPath) ++
+	[ testProperty "ObjectPath identity"
+		$ \x -> (mkObjectPath . strObjectPath) x == Just x
+	]
 
+<<Tests.hs>>=
 instance Arbitrary BusName where
-	coarbitrary = undefined
 	arbitrary = clampedSize 255 (oneof [unique, wellKnown]) mkBusName' where
 		c = ['a'..'z'] ++ ['A'..'Z'] ++ "_-"
 		c' = c ++ ['0'..'9']
@@ -206,8 +167,43 @@ instance Arbitrary BusName where
 			xs <- sized' 0 (elements c')
 			return (x:xs)
 
+<<atom tests>>=
+, testGroup "BusName" $ commonAtomTests (arbitrary :: Gen BusName) ++
+	[ testProperty "BusName identity"
+		$ \x -> (mkBusName . strBusName) x == Just x
+	]
+
+<<Tests.hs>>=
+instance Arbitrary InterfaceName where
+	arbitrary = clampedSize 255 genName mkInterfaceName' where
+		c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
+		c' = c ++ ['0'..'9']
+		
+		genName = fmap (intercalate ".") genElements
+		genElements = sized' 2 genElement
+		genElement = do
+			x <- elements c
+			xs <- sized' 0 (elements c')
+			return (x:xs)
+
+<<atom tests>>=
+, testGroup "InterfaceName" $ commonAtomTests (arbitrary :: Gen InterfaceName) ++
+	[ testProperty "InterfaceName identity"
+		$ \x -> (mkInterfaceName . strInterfaceName) x == Just x
+	]
+
+<<Tests.hs>>=
+instance Arbitrary ErrorName where
+	arbitrary = fmap (mkErrorName' . strInterfaceName) arbitrary
+
+<<atom tests>>=
+, testGroup "ErrorName" $ commonAtomTests (arbitrary :: Gen ErrorName) ++
+	[ testProperty "ErrorName identity"
+		$ \x -> (mkErrorName . strErrorName) x == Just x
+	]
+
+<<Tests.hs>>=
 instance Arbitrary MemberName where
-	coarbitrary = undefined
 	arbitrary = clampedSize 255 genName mkMemberName' where
 		c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
 		c' = c ++ ['0'..'9']
@@ -217,68 +213,195 @@ instance Arbitrary MemberName where
 			xs <- sized' 0 (elements c')
 			return (x:xs)
 
-instance Arbitrary ErrorName where
-	coarbitrary = undefined
-	arbitrary = fmap (mkErrorName' . strInterfaceName) arbitrary
-
-
-prop_BusNameIdentity x = (mkBusName . strBusName) x == Just x
-prop_InterfaceNameIdentity x = (mkInterfaceName . strInterfaceName) x == Just x
-prop_ErrorNameIdentity x = (mkErrorName . strErrorName) x == Just x
-prop_MemberNameIdentity x = (mkMemberName . strMemberName) x == Just x
-
-<<name properties>>=
- atomicProperties (arbitrary :: Gen BusName)
-, [ property prop_BusNameIdentity
-  ]
-
-, atomicProperties (arbitrary :: Gen InterfaceName)
-, [ property prop_InterfaceNameIdentity
-  ]
-
-, atomicProperties (arbitrary :: Gen ErrorName)
-, [ property prop_ErrorNameIdentity
-  ]
-
-, atomicProperties (arbitrary :: Gen MemberName)
-, [ property prop_MemberNameIdentity
-  ]
-
-<<Tests.hs>>=
-atomicType = elements
-	[ DBusBoolean
-	, DBusByte
-	, DBusWord16
-	, DBusWord32
-	, DBusWord64
-	, DBusInt16
-	, DBusInt32
-	, DBusInt64
-	, DBusDouble
-	, DBusString
-	, DBusObjectPath
-	, DBusSignature
+<<atom tests>>=
+, testGroup "MemberName" $ commonAtomTests (arbitrary :: Gen MemberName) ++
+	[ testProperty "MemberName identity"
+		$ \x -> (mkMemberName . strMemberName) x == Just x
 	]
 
-containerType = do
-	c <- choose (0,3) :: Gen Int
-	case c of
-		0 -> fmap DBusArray arbitrary
-		1 -> do
-			kt <- atomicType
-			vt <- arbitrary
-			return $ DBusDictionary kt vt
-		2 -> sized structType
-		3 -> return DBusVariant
+@ \subsubsection{Containers}
 
-structType n | n >= 0 = fmap DBusStructure $ resize (n `div` 2) arbitrary
+@ All variable types must obey these properties.
 
-instance Arbitrary Type where
-	coarbitrary = undefined
-	arbitrary = oneof [atomicType, containerType]
+<<Tests.hs>>=
+prop_VariantIdentity gen = testProperty "Variant identity" . forAll gen
+	$ \x -> (fromVariant . toVariant) x == Just x
 
-instance Arbitrary Signature where
-	coarbitrary = undefined
-	arbitrary = clampedSize 255 genSig mkSignature' where
-		genSig = fmap (concatMap typeCode) arbitrary
+prop_VariantEquality gen = testProperty "Variant equality" . forAll gen
+	$ \x y -> (x == y) == (toVariant x == toVariant y)
 
+@ Since all atomic types are also variable, the Variant properties are
+added to the set of common Atom tests.
+
+<<common atom tests>>=
+, prop_VariantIdentity gen
+, prop_VariantEquality gen
+
+<<Tests.hs>>=
+commonVariantTests gen =
+	[ prop_VariantIdentity gen
+	, prop_VariantEquality gen
+	]
+
+<<Tests.hs>>=
+genVariant :: Type -> Gen Variant
+genVariant t = case t of
+	DBusBoolean        -> fmap toVariant (arbitrary :: Gen Bool)
+	DBusByte           -> fmap toVariant (arbitrary :: Gen Word8)
+	DBusWord16         -> fmap toVariant (arbitrary :: Gen Word16)
+	DBusWord32         -> fmap toVariant (arbitrary :: Gen Word32)
+	DBusWord64         -> fmap toVariant (arbitrary :: Gen Word64)
+	DBusInt16          -> fmap toVariant (arbitrary :: Gen Int16)
+	DBusInt32          -> fmap toVariant (arbitrary :: Gen Int32)
+	DBusInt64          -> fmap toVariant (arbitrary :: Gen Int64)
+	DBusDouble         -> fmap toVariant (arbitrary :: Gen Double)
+	DBusString         -> fmap toVariant (arbitrary :: Gen String)
+	DBusObjectPath     -> fmap toVariant (arbitrary :: Gen ObjectPath)
+	DBusSignature      -> fmap toVariant (arbitrary :: Gen Signature)
+	DBusArray _        -> fmap toVariant (arbitrary :: Gen Array)
+	DBusDictionary _ _ -> fmap toVariant (arbitrary :: Gen Dictionary)
+	DBusStructure _    -> fmap toVariant (arbitrary :: Gen Structure)
+	DBusVariant        -> fmap toVariant (arbitrary :: Gen Variant)
+
+instance Arbitrary Variant where
+	arbitrary = arbitrary >>= genVariant
+
+<<Tests.hs>>=
+genAtom :: Type -> Gen Atom
+genAtom t = case t of
+	DBusBoolean        -> fmap toAtom (arbitrary :: Gen Bool)
+	DBusByte           -> fmap toAtom (arbitrary :: Gen Word8)
+	DBusWord16         -> fmap toAtom (arbitrary :: Gen Word16)
+	DBusWord32         -> fmap toAtom (arbitrary :: Gen Word32)
+	DBusWord64         -> fmap toAtom (arbitrary :: Gen Word64)
+	DBusInt16          -> fmap toAtom (arbitrary :: Gen Int16)
+	DBusInt32          -> fmap toAtom (arbitrary :: Gen Int32)
+	DBusInt64          -> fmap toAtom (arbitrary :: Gen Int64)
+	DBusDouble         -> fmap toAtom (arbitrary :: Gen Double)
+	DBusString         -> fmap toAtom (arbitrary :: Gen String)
+	DBusObjectPath     -> fmap toAtom (arbitrary :: Gen ObjectPath)
+	DBusSignature      -> fmap toAtom (arbitrary :: Gen Signature)
+
+instance Arbitrary Atom where
+	arbitrary = atomicType >>= genAtom
+
+<<container tests>>=
+  testGroup "Variant" $ commonVariantTests (arbitrary :: Gen Variant)
+
+<<Tests.hs>>=
+instance Arbitrary Array where
+	arbitrary = do
+		-- Only generate arrays of atomic values, as generating
+		-- containers randomly almost never results in a valid
+		-- array.
+		t <- atomicType
+		xs <- listOf $ genVariant t
+		return . fromJust $ arrayFromItems t xs
+
+prop_ArrayHomogeneous vs = isJust array == homogeneousTypes where
+	array = arrayFromItems firstType vs
+	homogeneousTypes = all (== firstType) types
+	types = map variantType vs
+	firstType = if null types
+		then DBusByte
+		else head types
+
+<<container tests>>=
+, testGroup "Array" $ commonVariantTests (arbitrary :: Gen Array) ++
+	[ testProperty "Array identity"
+		$ \x -> Just x == arrayFromItems (arrayType x) (arrayItems x)
+	, testProperty "Array homogeneity" prop_ArrayHomogeneous
+	]
+
+<<Tests.hs>>=
+instance Arbitrary Dictionary where
+	arbitrary = do
+		-- Only generate dictionaries of atomic values, as generating
+		-- containers randomly almost never results in a valid
+		-- dictionary.
+		kt <- atomicType
+		vt <- atomicType
+		ks <- listOf $ genAtom kt
+		vs <- vectorOf (length ks) $ genVariant vt
+		
+		return . fromJust $ dictionaryFromItems kt vt $ zip ks vs
+
+prop_DictionaryHomogeneous ks = forAll (vector (length ks)) $ \vs -> let
+	dict = dictionaryFromItems kType vType (zip ks vs)
+	(kType, vType) = if null ks
+		then (id &&& id) DBusByte
+		else (atomType (head ks), variantType (head vs))
+	homogeneousTypes = all correctType $ zip ks vs
+	correctType (k, v) = atomType k == kType && variantType v == vType
+	in isJust dict == homogeneousTypes
+
+<<container tests>>=
+, testGroup "Dictionary" $ commonVariantTests (arbitrary :: Gen Dictionary) ++
+	[ testProperty "Dictionary identity"
+		$ \x -> Just x == dictionaryFromItems
+			(dictionaryKeyType x)
+			(dictionaryValueType x)
+			(dictionaryItems x)
+	, testProperty "Dictionary homogeneity" prop_DictionaryHomogeneous
+	]
+
+<<Tests.hs>>=
+instance Arbitrary Structure where
+	arbitrary = sized $ \n ->
+		fmap Structure $ resize (n `div` 2) arbitrary
+
+<<container tests>>=
+, testGroup "Structure" $ commonVariantTests (arbitrary :: Gen Structure)
+
+@ \subsection{Other instances}
+
+<<Tests.hs>>=
+iexp :: Integral a => a -> a -> a
+iexp x y = floor $ fromIntegral x ** fromIntegral y
+
+instance Arbitrary Word8 where
+	arbitrary = fmap fromIntegral gen where
+		gen = choose (0, max') :: Gen Integer
+		max' = iexp 2 8 - 1
+
+instance Arbitrary Word16 where
+	arbitrary = fmap fromIntegral gen where
+		gen = choose (0, max') :: Gen Integer
+		max' = iexp 2 16 - 1
+
+instance Arbitrary Word32 where
+	arbitrary = fmap fromIntegral gen where
+		gen = choose (0, max') :: Gen Integer
+		max' = iexp 2 32 - 1
+
+instance Arbitrary Word64 where
+	arbitrary = fmap fromIntegral gen where
+		gen = choose (0, max') :: Gen Integer
+		max' = iexp 2 64 - 1
+
+instance Arbitrary Int16 where
+	arbitrary = fmap fromIntegral gen where
+		gen = choose (0, max') :: Gen Integer
+		max' = iexp 2 16 - 1
+
+instance Arbitrary Int32 where
+	arbitrary = fmap fromIntegral gen where
+		gen = choose (0, max') :: Gen Integer
+		max' = iexp 2 32 - 1
+
+instance Arbitrary Int64 where
+	arbitrary = fmap fromIntegral gen where
+		gen = choose (0, max') :: Gen Integer
+		max' = iexp 2 64 - 1
+
+sized' :: Int -> Gen a -> Gen [a]
+sized' atLeast g = sized $ \n -> do
+	n' <- choose (atLeast, max atLeast n)
+	replicateM n' g
+
+clampedSize :: Arbitrary a => Int -> Gen String -> (String -> a) -> Gen a
+clampedSize maxSize gen f = do
+	s <- gen
+	if length s > maxSize
+		then sized $ \n -> resize (n `div` 2) arbitrary
+		else return . f $ s
