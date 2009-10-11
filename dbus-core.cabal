@@ -65,6 +65,7 @@ executable tests
     ghc-options: -fhpc
 
   other-modules:
+    DBus.Address
     DBus.Types
     DBus.Util
 

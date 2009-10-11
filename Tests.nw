@@ -18,16 +18,19 @@
 module Main (tests) where
 
 import Test.QuickCheck
-import Test.Framework (Test, testGroup, defaultMain)
+import Test.Framework (Test, testGroup)
+import qualified Test.Framework as F
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 
 import Control.Arrow ((&&&))
 import Control.Monad (replicateM)
 import Data.List (intercalate, isInfixOf)
-import Data.Maybe (fromJust, isJust)
+import Data.Maybe (fromJust, isJust, isNothing)
+import qualified Data.Map as Map
 import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
 
+import DBus.Address
 import DBus.Types
 
 @ \section{Tests}
@@ -38,7 +41,7 @@ tests = [<<tests>>
 	]
 
 main :: IO ()
-main = defaultMain tests
+main = F.defaultMain tests
 
 @ \subsection{Types}
 
@@ -352,6 +355,91 @@ instance Arbitrary Structure where
 
 <<container tests>>=
 , testGroup "Structure" $ commonVariantTests (arbitrary :: Gen Structure)
+
+@ \subsection{Addresses}
+
+<<Tests.hs>>=
+singleTests :: Testable a => [a] -> [Test]
+singleTests ts = singleTests' 1 ts where
+	singleTests' _ []     = []
+	singleTests' n (t:ts') = plusOptions (testProperty (name n) t)
+	                         : singleTests' (n + 1) ts'
+	
+	total = length ts
+	options = F.TestOptions Nothing (Just 1) Nothing Nothing
+	plusOptions = F.plusTestOptions options
+	name n = "Test " ++ show n ++ "/" ++ show total
+
+<<tests>>=
+, testGroup "Addresses"
+	[ testProperty "Address identity"
+		$ \x -> mkAddresses (strAddress x) == Just [x]
+	, testProperty "Multiple addresses"
+		$ \x y -> let
+		joined = concat [strAddress x, ";", strAddress y]
+		in mkAddresses joined == Just [x, y]
+	, testProperty "Ignore trailing semicolon"
+		$ \x -> mkAddresses (strAddress x ++ ";") == Just [x]
+	, testProperty "Ignore trailing comma"
+		$ \x -> let
+		hasParams = not . Map.null . addressParameters $ x
+		parsed = mkAddresses (strAddress x ++ ",")
+		in hasParams ==> parsed == Just [x]
+	, testGroup "Valid addresses" $ singleTests
+		[ isJust . mkAddresses $ ":"
+		, isJust . mkAddresses $ "a:"
+		, isJust . mkAddresses $ "a:b=c"
+		, isJust . mkAddresses $ "a:;"
+		, isJust . mkAddresses $ "a:;b:"
+		, isJust . mkAddresses $ "a:b=c,"
+		]
+	, testGroup "Invalid addresses" $ singleTests
+		[ isNothing . mkAddresses $ ""
+		, isNothing . mkAddresses $ "a"
+		, isNothing . mkAddresses $ "a:b"
+		, isNothing . mkAddresses $ "a:b="
+		, isNothing . mkAddresses $ "a:,"
+		]
+	]
+
+<<Tests.hs>>=
+instance Arbitrary Address where
+	arbitrary = genAddress where
+		optional = ['0'..'9'] ++ ['a'..'z'] ++ ['A'..'Z'] ++ "-_/\\*."
+		methodChars = filter (flip notElem ":;") ['!'..'~']
+		keyChars = filter (flip notElem "=;,") ['!'..'~']
+		
+		genMethod = sized' 0 $ elements methodChars
+		genParam = do
+			key <- genKey
+			value <- genValue
+			return . concat $ [key, "=", value]
+		
+		genKey = sized' 1 $ elements keyChars
+		genValue = oneof [encodedValue, plainValue]
+		genHex = elements $ ['0'..'9'] ++ ['a'..'f'] ++ ['A'..'F']
+		encodedValue = do
+			x1 <- genHex
+			x2 <- genHex
+			return ['%', x1, x2]
+		plainValue = sized' 1 $ elements optional
+		
+		genParams = do
+			params <- sized' 0 genParam
+			let params' = intercalate "," params
+			extraComma <- if null params
+				then return ""
+				else elements ["", ","]
+			return $ concat [params', extraComma]
+		
+		genAddress = do
+			m <- genMethod
+			params <- genParams
+			extraSemicolon <- elements ["", ";"]
+			let addrStr = concat [m, ":", params, extraSemicolon]
+			let Just [addr] = mkAddresses addrStr
+			return addr
+
 
 @ \subsection{Other instances}
 

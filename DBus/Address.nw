@@ -13,16 +13,14 @@
 % You should have received a copy of the GNU General Public License
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-@ \section{Addresses}
-
 <<DBus/Address.hs>>=
 <<copyright>>
 module DBus.Address
 	( Address
 	, addressMethod
 	, addressParameters
+	, mkAddresses
 	, strAddress
-	, parseAddresses
 	) where
 
 import Data.Char (ord, chr)
@@ -95,8 +93,8 @@ semicolons, then further by colons and commas. Parsing will fail if any
 of the addresses in the input failed to parse.
 
 <<DBus/Address.hs>>=
-parseAddresses :: String -> Maybe [Address]
-parseAddresses s = eitherToMaybe $ P.parse parser "" s where
+mkAddresses :: String -> Maybe [Address]
+mkAddresses s = eitherToMaybe $ P.parse parser "" s where
 	address = do
 		method <- P.many (P.noneOf ":;")
 		P.char ':'
