@@ -21,6 +21,12 @@ source-repository head
   type: darcs
   location: http://patch-tag.com/r/jmillikin/dbus-core/pullrepo
 
+flag test
+  default: False
+
+flag hpc
+  default: False
+
 library
   ghc-options: -Wall
 
@@ -43,3 +49,22 @@ library
 
   other-modules:
     DBus.Util
+
+executable tests
+  main-is: Tests.hs
+
+  if flag(test)
+    build-depends:
+        QuickCheck >= 2
+      , test-framework
+      , test-framework-quickcheck2
+  else
+    buildable: False
+
+  if flag(hpc)
+    ghc-options: -fhpc
+
+  other-modules:
+    DBus.Types
+    DBus.Util
+
