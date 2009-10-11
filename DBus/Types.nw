@@ -22,10 +22,12 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 module DBus.Types (<<exports>>) where
 
-import Control.Monad (msum, forM)
+import Control.Arrow ((***))
+import Control.Monad (forM)
 import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
 import Data.List (intercalate)
+import qualified Data.Map as Map
 import Data.Typeable (Typeable, cast)
 import Text.Parsec ((<|>))
 import qualified Text.Parsec as P
@@ -264,16 +266,32 @@ instance Builtin Array where
 
 BUILTIN_VARIABLE(Array)
 
+arrayType :: Array -> Type
+arrayType (Array t _) = t
+
 arrayItems :: Array -> [Variant]
 arrayItems (Array _ vs) = vs
 
 fromArray :: Variable a => Array -> Maybe [a]
 fromArray (Array _ vs) = mapM fromVariant vs
 
+toArray :: Variable a => Type -> [a] -> Maybe Array
+toArray t = arrayFromItems t . map toVariant
+
+arrayFromItems :: Type -> [Variant] -> Maybe Array
+arrayFromItems t vs = do
+	mkSignature (typeCode t)
+	if all (\x -> variantType x == t) vs
+		then Just $ Array t vs
+		else Nothing
+
 <<exports>>=
 , Array
+, arrayType
 , arrayItems
 , fromArray
+, toArray
+, arrayFromItems
 
 @ \subsubsection{Dictionaries}
 
@@ -304,19 +322,47 @@ instance Builtin Dictionary where
 
 BUILTIN_VARIABLE(Dictionary)
 
-fromDictionary :: (Atomic a, Variable b) => Dictionary -> Maybe [(a, b)]
-fromDictionary (Dictionary _ _ vs) = forM vs $ \(k, v) -> do
-	k' <- fromAtom k
-	v' <- fromVariant v
-	return (k', v')
+dictionaryKeyType :: Dictionary -> Type
+dictionaryKeyType (Dictionary t _ _) = t
+
+dictionaryValueType :: Dictionary -> Type
+dictionaryValueType (Dictionary _ t _) = t
 
 dictionaryItems :: Dictionary -> [(Atom, Variant)]
 dictionaryItems (Dictionary _ _ vs) = vs
 
+fromDictionary :: (Atomic a, Ord a, Variable b) => Dictionary
+               -> Maybe (Map.Map a b)
+fromDictionary (Dictionary _ _ vs) = do
+	pairs <- forM vs $ \(k, v) -> do
+		k' <- fromAtom k
+		v' <- fromVariant v
+		return (k', v')
+	return $ Map.fromList pairs
+
+toDictionary :: (Atomic a, Variable b) => Type -> Type -> Map.Map a b
+             -> Maybe Dictionary
+toDictionary kt vt map' = dictionaryFromItems kt vt pairs where
+	pairs = map (toAtom *** toVariant) $ Map.toList map'
+
+dictionaryFromItems :: Type -> Type -> [(Atom, Variant)] -> Maybe Dictionary
+dictionaryFromItems kt vt pairs = do
+	mkSignature (typeCode kt)
+	mkSignature (typeCode vt)
+	
+	let sameType (k, v) = atomType k == kt && variantType v == vt
+	if all sameType pairs
+		then Just $ Dictionary kt vt pairs
+		else Nothing
+
 <<exports>>=
 , Dictionary
 , dictionaryItems
+, dictionaryKeyType
+, dictionaryValueType
 , fromDictionary
+, toDictionary
+, dictionaryFromItems
 
 @ \subsubsection{Structures}
 
