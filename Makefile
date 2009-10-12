@@ -1,5 +1,6 @@
 TEX_SOURCES=tex/DBus/Address.tex \
             tex/DBus/Types.tex \
+            tex/DBus/Constants.tex \
             tex/DBus/Util.tex \
             tex/DBus/Wire.tex \
             tex/Tests.tex \
