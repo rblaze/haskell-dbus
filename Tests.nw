@@ -251,42 +251,40 @@ commonVariantTests gen =
 
 <<Tests.hs>>=
 genVariant :: Type -> Gen Variant
-genVariant t = case t of
-	DBusBoolean        -> fmap toVariant (arbitrary :: Gen Bool)
-	DBusByte           -> fmap toVariant (arbitrary :: Gen Word8)
-	DBusWord16         -> fmap toVariant (arbitrary :: Gen Word16)
-	DBusWord32         -> fmap toVariant (arbitrary :: Gen Word32)
-	DBusWord64         -> fmap toVariant (arbitrary :: Gen Word64)
-	DBusInt16          -> fmap toVariant (arbitrary :: Gen Int16)
-	DBusInt32          -> fmap toVariant (arbitrary :: Gen Int32)
-	DBusInt64          -> fmap toVariant (arbitrary :: Gen Int64)
-	DBusDouble         -> fmap toVariant (arbitrary :: Gen Double)
-	DBusString         -> fmap toVariant (arbitrary :: Gen String)
-	DBusObjectPath     -> fmap toVariant (arbitrary :: Gen ObjectPath)
-	DBusSignature      -> fmap toVariant (arbitrary :: Gen Signature)
-	DBusArray _        -> fmap toVariant (arbitrary :: Gen Array)
-	DBusDictionary _ _ -> fmap toVariant (arbitrary :: Gen Dictionary)
-	DBusStructure _    -> fmap toVariant (arbitrary :: Gen Structure)
-	DBusVariant        -> fmap toVariant (arbitrary :: Gen Variant)
+genVariant  DBusBoolean         = fmap toVariant (arbitrary :: Gen Bool)
+genVariant  DBusByte            = fmap toVariant (arbitrary :: Gen Word8)
+genVariant  DBusWord16          = fmap toVariant (arbitrary :: Gen Word16)
+genVariant  DBusWord32          = fmap toVariant (arbitrary :: Gen Word32)
+genVariant  DBusWord64          = fmap toVariant (arbitrary :: Gen Word64)
+genVariant  DBusInt16           = fmap toVariant (arbitrary :: Gen Int16)
+genVariant  DBusInt32           = fmap toVariant (arbitrary :: Gen Int32)
+genVariant  DBusInt64           = fmap toVariant (arbitrary :: Gen Int64)
+genVariant  DBusDouble          = fmap toVariant (arbitrary :: Gen Double)
+genVariant  DBusString          = fmap toVariant (arbitrary :: Gen String)
+genVariant  DBusObjectPath      = fmap toVariant (arbitrary :: Gen ObjectPath)
+genVariant  DBusSignature       = fmap toVariant (arbitrary :: Gen Signature)
+genVariant (DBusArray _)        = fmap toVariant (arbitrary :: Gen Array)
+genVariant (DBusDictionary _ _) = fmap toVariant (arbitrary :: Gen Dictionary)
+genVariant (DBusStructure _)    = fmap toVariant (arbitrary :: Gen Structure)
+genVariant  DBusVariant         = fmap toVariant (arbitrary :: Gen Variant)
 
 instance Arbitrary Variant where
 	arbitrary = arbitrary >>= genVariant
 
 <<Tests.hs>>=
 genAtom :: Type -> Gen Atom
-genAtom t = case t of
-	DBusBoolean        -> fmap toAtom (arbitrary :: Gen Bool)
-	DBusByte           -> fmap toAtom (arbitrary :: Gen Word8)
-	DBusWord16         -> fmap toAtom (arbitrary :: Gen Word16)
-	DBusWord32         -> fmap toAtom (arbitrary :: Gen Word32)
-	DBusWord64         -> fmap toAtom (arbitrary :: Gen Word64)
-	DBusInt16          -> fmap toAtom (arbitrary :: Gen Int16)
-	DBusInt32          -> fmap toAtom (arbitrary :: Gen Int32)
-	DBusInt64          -> fmap toAtom (arbitrary :: Gen Int64)
-	DBusDouble         -> fmap toAtom (arbitrary :: Gen Double)
-	DBusString         -> fmap toAtom (arbitrary :: Gen String)
-	DBusObjectPath     -> fmap toAtom (arbitrary :: Gen ObjectPath)
-	DBusSignature      -> fmap toAtom (arbitrary :: Gen Signature)
+genAtom DBusBoolean    = fmap toAtom (arbitrary :: Gen Bool)
+genAtom DBusByte       = fmap toAtom (arbitrary :: Gen Word8)
+genAtom DBusWord16     = fmap toAtom (arbitrary :: Gen Word16)
+genAtom DBusWord32     = fmap toAtom (arbitrary :: Gen Word32)
+genAtom DBusWord64     = fmap toAtom (arbitrary :: Gen Word64)
+genAtom DBusInt16      = fmap toAtom (arbitrary :: Gen Int16)
+genAtom DBusInt32      = fmap toAtom (arbitrary :: Gen Int32)
+genAtom DBusInt64      = fmap toAtom (arbitrary :: Gen Int64)
+genAtom DBusDouble     = fmap toAtom (arbitrary :: Gen Double)
+genAtom DBusString     = fmap toAtom (arbitrary :: Gen String)
+genAtom DBusObjectPath = fmap toAtom (arbitrary :: Gen ObjectPath)
+genAtom DBusSignature  = fmap toAtom (arbitrary :: Gen Signature)
 
 instance Arbitrary Atom where
 	arbitrary = atomicType >>= genAtom
