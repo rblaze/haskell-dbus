@@ -48,6 +48,7 @@ library
     DBus.Types
 
   other-modules:
+    DBus.Wire
     DBus.Util
 
 executable tests
@@ -67,5 +68,6 @@ executable tests
   other-modules:
     DBus.Address
     DBus.Types
+    DBus.Wire
     DBus.Util
 

@@ -32,6 +32,7 @@ import Data.Int (Int16, Int32, Int64)
 
 import DBus.Address
 import DBus.Types
+import DBus.Wire
 
 @ \section{Tests}
 
@@ -446,6 +447,30 @@ instance Arbitrary Address where
 			let Just [addr] = mkAddresses addrStr
 			return addr
 
+@ \subsection{Wire format}
+
+<<Tests.hs>>=
+isRight :: Either a b -> Bool
+isRight = either (const False) (const True)
+
+prop_Unmarshal :: Endianness -> Variant -> Property
+prop_Unmarshal e x = valid ==> unmarshaled == Right [x] where
+	sig = mkSignature . typeCode . variantType $ x
+	Just sig' = sig
+	
+	bytes = marshal e [x]
+	Right bytes' = bytes
+	
+	valid = isJust sig && isRight bytes
+	unmarshaled = unmarshal e sig' bytes'
+
+instance Arbitrary Endianness where
+	arbitrary = elements [LittleEndian, BigEndian]
+
+<<tests>>=
+, testGroup "Wire format"
+	[ testProperty "Marshal -> Ummarshal" prop_Unmarshal
+	]
 
 @ \subsection{Other instances}
 

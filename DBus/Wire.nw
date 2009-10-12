@@ -1,0 +1,569 @@
+% Copyright (C) 2009 John Millikin <jmillikin@gmail.com>
+% 
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+@ \section{Wire format}
+
+<<DBus/Wire.hs>>=
+<<copyright>>
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+module DBus.Wire (<<exports>>) where
+
+import Control.Monad (when, unless)
+import qualified Control.Monad.State as ST
+import qualified Control.Monad.Error as E
+import qualified Data.Binary.Put as P
+import qualified Data.Binary.Get as G
+import qualified Data.Binary.IEEE754 as IEEE
+import qualified Data.ByteString.Lazy as L
+import Data.ByteString.Lazy.UTF8 (toString, fromString)
+import Data.Maybe (fromJust)
+import Data.Word (Word8, Word32, Word64)
+import Data.Int (Int16, Int32, Int64)
+
+import qualified DBus.Types as T
+
+@ \subsection{Endianness}
+
+<<DBus/Wire.hs>>=
+data Endianness = LittleEndian | BigEndian
+	deriving (Show, Eq)
+
+@ Endianness is encoded in the header as a single {\sc ascii} character,
+either {\tt 'l'} ({\tt 0x6C}) for little-endian or {\tt 'B'} ({\tt 0x42})
+for big-endian.
+
+<<DBus/Wire.hs>>=
+-- TODO: endianness
+
+<<exports>>=
+  Endianness (..)
+
+@ \subsection{Alignment}
+
+Every built-in type has an associated alignment. If a value of the given
+type is marshaled, it must have {\sc nul} bytes inserted until it starts
+on a byte index divisible by its alignment.
+
+<<DBus/Wire.hs>>=
+alignment :: T.Type -> Word8
+<<alignments>>
+
+padding :: Word64 -> Word8 -> Word64
+padding current count = required where
+	count' = fromIntegral count
+	missing = mod current count'
+	required = if missing > 0
+		then count' - missing
+		else 0
+
+<<exports>>=
+, alignment
+
+@ \subsection{Marshaling}
+
+Clients can perform marshaling via {\tt marshal}, which will generate
+a {\tt ByteString} with the fully marshaled data.
+
+<<DBus/Wire.hs>>=
+marshal :: Endianness -> [T.Variant] -> Either MarshalError L.ByteString
+marshal e vs = runMarshal (mapM_ marshal' vs) e
+
+marshal' :: T.Variant -> Marshal
+marshal' v = marshalType (T.variantType v) where
+	x :: T.Variable a => a
+	x = fromJust . T.fromVariant $ v
+	marshalType :: T.Type -> Marshal
+	<<marshalers>>
+
+<<exports>>=
+, marshal
+
+@ Marshaling is implemented using an error transformer over an internal
+state.
+
+<<DBus/Wire.hs>>=
+data MarshalState = MarshalState Endianness L.ByteString
+newtype MarshalM a = MarshalM (E.ErrorT MarshalError (ST.State MarshalState) a)
+	deriving (Monad, E.MonadError MarshalError, ST.MonadState MarshalState)
+type Marshal = MarshalM ()
+
+runMarshal :: Marshal -> Endianness -> Either MarshalError L.ByteString
+runMarshal (MarshalM m) e = case ST.runState (E.runErrorT m) initialState of
+	(Right _, MarshalState _ bytes) -> Right bytes
+	(Left  x, _) -> Left x
+	where initialState = MarshalState e L.empty
+
+@ TODO: describe these functions
+
+<<DBus/Wire.hs>>=
+append :: L.ByteString -> Marshal
+append bs = do
+	(MarshalState e bs') <- ST.get
+	ST.put $ MarshalState e (L.append bs' bs)
+
+<<DBus/Wire.hs>>=
+pad :: Word8 -> Marshal
+pad count = do
+	(MarshalState _ bytes) <- ST.get
+	let padding' = padding (fromIntegral . L.length $ bytes) count
+	append $ L.replicate (fromIntegral padding') 0
+
+@ Most numeric values already have marshalers implemented in the
+{\tt Data.Binary.Put} module; this function lets them be re-used easily.
+
+<<DBus/Wire.hs>>=
+marshalPut :: (a -> P.Put) -> a -> Marshal
+marshalPut put x = do
+	let bytes = P.runPut $ put x
+	(MarshalState e _) <- ST.get
+	pad . fromIntegral . L.length $ bytes
+	append $ case e of
+		BigEndian -> bytes
+		LittleEndian -> L.reverse bytes
+
+@ \subsubsection{Errors}
+
+Marshaling can fail for four reasons:
+
+\begin{itemize}
+\item The message exceeds the maximum message size of $2^{27}$ bytes.
+\item An array in the message exceeds the maximum array size of $2^{26}$ bytes.
+\item The body's signature is not valid (for example, more than 255 fields).
+\item A variant's signature is not valid -- same causes as an invalid body
+      signature.
+\end{itemize}
+
+<<DBus/Wire.hs>>=
+messageMaximumLength :: Word32
+messageMaximumLength = 134217728
+
+arrayMaximumLength :: Word32
+arrayMaximumLength = 67108864
+
+data MarshalError
+	= MessageTooLong Word32
+	| ArrayTooLong Word32
+	| InvalidBodySignature String
+	| InvalidVariantSignature String
+	deriving (Eq)
+
+instance Show MarshalError where
+	show (MessageTooLong x) = concat
+		["Message too long (", show x, " bytes)."]
+	show (ArrayTooLong x) = concat
+		["Array too long (", show x, " bytes)."]
+	show (InvalidBodySignature x) = concat
+		["Invalid body signature: ", show x]
+	show (InvalidVariantSignature x) = concat
+		["Invalid variant signature: ", show x]
+
+instance E.Error MarshalError
+
+<<exports>>=
+, MarshalError (..)
+
+@ \subsection{Unmarshaling}
+
+<<DBus/Wire.hs>>=
+unmarshal :: Endianness -> T.Signature -> L.ByteString
+          -> Either UnmarshalError [T.Variant]
+unmarshal e sig = runUnmarshal (mapM unmarshalType $ T.signatureTypes sig) e
+
+unmarshalType :: T.Type -> Unmarshal T.Variant
+<<unmarshalers>>
+
+<<exports>>=
+, unmarshal
+
+@ Unmarshaling also uses an error transformer and internal state.
+
+<<DBus/Wire.hs>>=
+data UnmarshalState = UnmarshalState Endianness L.ByteString Word64
+newtype Unmarshal a = Unmarshal (E.ErrorT UnmarshalError (ST.State UnmarshalState) a)
+	deriving (Monad, Functor, E.MonadError UnmarshalError, ST.MonadState UnmarshalState)
+
+runUnmarshal :: Unmarshal a -> Endianness -> L.ByteString -> Either UnmarshalError a
+runUnmarshal (Unmarshal m) e bytes = ST.evalState (E.runErrorT m) state where
+	state = UnmarshalState e bytes 0
+
+@ TODO: describe these functions
+
+<<DBus/Wire.hs>>=
+consume :: Word64 -> Unmarshal L.ByteString
+consume count = do
+	(UnmarshalState e bytes offset) <- ST.get
+	let bytes' = L.drop (fromIntegral offset) bytes
+	let x = L.take (fromIntegral count) bytes'
+	unless (L.length x == fromIntegral count) $
+		E.throwError $ UnexpectedEOF offset
+	
+	ST.put $ UnmarshalState e bytes (offset + count)
+	return x
+
+<<DBus/Wire.hs>>=
+skipPadding :: Word8 -> Unmarshal ()
+skipPadding count = do
+	(UnmarshalState _ _ offset) <- ST.get
+	bytes <- consume $ padding offset count
+	unless (L.all (== 0) bytes) $
+		E.throwError $ InvalidPadding offset
+
+<<DBus/Wire.hs>>=
+skipTerminator :: Unmarshal ()
+skipTerminator = do
+	(UnmarshalState _ _ offset) <- ST.get
+	bytes <- consume 1
+	unless (L.all (== 0) bytes) $
+		E.throwError $ MissingTerminator offset
+
+<<DBus/Wire.hs>>=
+fromMaybe :: Show a => String -> (a -> Maybe b) -> a -> Unmarshal b
+fromMaybe label f x = case f x of
+	Just x' -> return x'
+	Nothing -> E.throwError $ Invalid label $ show x
+
+fromMaybe' :: (Show a, T.Variable b) => String -> (a -> Maybe b) -> a
+           -> Unmarshal T.Variant
+fromMaybe' label f x = do
+	x' <- fromMaybe label f x
+	return $ T.toVariant x'
+
+<<DBus/Wire.hs>>=
+unmarshalGet :: Word8 -> G.Get a -> G.Get a -> Unmarshal a
+unmarshalGet count be le = do
+	skipPadding count
+	(UnmarshalState e _ _) <- ST.get
+	bs <- consume . fromIntegral $ count
+	let get' = case e of
+		BigEndian -> be
+		LittleEndian -> le
+	return $ G.runGet get' bs
+
+unmarshalGet' :: T.Variable a => Word8 -> G.Get a -> G.Get a
+              -> Unmarshal T.Variant
+unmarshalGet' count be le = fmap T.toVariant $ unmarshalGet count be le
+
+<<DBus/Wire.hs>>=
+untilM :: Monad m => m Bool -> m a -> m [a]
+untilM test comp = do
+	done <- test
+	if done
+		then return []
+		else do
+			x <- comp
+			xs <- untilM test comp
+			return $ x:xs
+
+@ \subsubsection{Errors}
+
+Unmarshaling can fail for four reasons:
+
+\begin{itemize}
+\item The message's declared protocol version is unsupported.
+\item Unexpected {\sc eof}, when there are less bytes remaining than are
+      required.
+\item An invalid byte sequence for a given value type.
+\item Missing required header fields for the declared message type.
+\item Non-zero bytes were found where padding was expected.
+\item A string, signature, or object path was not {\sc null}-terminated.
+\item An array's size didn't match the number of elements
+\end{itemize}
+
+<<DBus/Wire.hs>>=
+data UnmarshalError
+	= UnsupportedProtocolVersion Word8
+	| UnexpectedEOF Word64
+	| Invalid String String
+	| MissingHeaderField String
+	| InvalidPadding Word64
+	| MissingTerminator Word64
+	| ArraySizeMismatch
+	deriving (Eq)
+
+instance Show UnmarshalError where
+	show (UnsupportedProtocolVersion x) = concat
+		["Unsupported protocol version: ", show x]
+	show (UnexpectedEOF pos) = concat
+		["Unexpected EOF at position ", show pos]
+	show (Invalid label x) = concat
+		["Invalid ", label, ": ", x]
+	show (MissingHeaderField x) = concat
+		["Required field " , show x , " is missing."]
+	show (InvalidPadding pos) = concat
+		["Invalid padding at position ", show pos]
+	show (MissingTerminator pos) = concat
+		["Missing NUL terminator at position ", show pos]
+	show ArraySizeMismatch = "Array size mismatch"
+
+instance E.Error UnmarshalError
+
+<<exports>>=
+, UnmarshalError (..)
+
+@ \subsection{Numerics}
+
+Numeric values are fixed-length, and aligned ``naturally'' -- ie, a 4-byte
+integer will have a 4-byte alignment.
+
+<<alignments>>=
+alignment T.DBusByte    = 1
+alignment T.DBusWord16  = 2
+alignment T.DBusWord32  = 4
+alignment T.DBusWord64  = 8
+alignment T.DBusInt16   = 2
+alignment T.DBusInt32   = 4
+alignment T.DBusInt64   = 8
+alignment T.DBusDouble  = 8
+
+@ Because {\tt Word32}s are often used for other types, there's
+separate functions for handling them.
+
+<<DBus/Wire.hs>>=
+marshalWord32 :: Word32 -> Marshal
+marshalWord32 = marshalPut P.putWord32be
+
+unmarshalWord32 :: Unmarshal Word32
+unmarshalWord32 = unmarshalGet 4 G.getWord32be G.getWord32le
+
+<<marshalers>>=
+marshalType T.DBusByte   = append $ L.singleton x
+marshalType T.DBusWord16 = marshalPut P.putWord16be x
+marshalType T.DBusWord32 = marshalPut P.putWord32be x
+marshalType T.DBusWord64 = marshalPut P.putWord64be x
+marshalType T.DBusInt16  = marshalPut P.putWord16be $ fromIntegral (x :: Int16)
+marshalType T.DBusInt32  = marshalPut P.putWord32be $ fromIntegral (x :: Int32)
+marshalType T.DBusInt64  = marshalPut P.putWord64be $ fromIntegral (x :: Int64)
+marshalType T.DBusDouble = marshalPut IEEE.putFloat64be x
+
+<<unmarshalers>>=
+unmarshalType T.DBusByte = fmap (T.toVariant . L.head) $ consume 1
+unmarshalType T.DBusWord16 = unmarshalGet' 2 G.getWord16be G.getWord16le
+unmarshalType T.DBusWord32 = unmarshalGet' 4 G.getWord32be G.getWord32le
+unmarshalType T.DBusWord64 = unmarshalGet' 8 G.getWord64be G.getWord64le
+unmarshalType T.DBusDouble = unmarshalGet' 8 IEEE.getFloat64be IEEE.getFloat64le
+
+unmarshalType T.DBusInt16  = do
+	x <- unmarshalGet 2 G.getWord16be G.getWord16le
+	return . T.toVariant $ (fromIntegral x :: Int16)
+
+unmarshalType T.DBusInt32  = do
+	x <- unmarshalGet 4 G.getWord32be G.getWord32le
+	return . T.toVariant $ (fromIntegral x :: Int32)
+
+unmarshalType T.DBusInt64  = do
+	x <- unmarshalGet 8 G.getWord64be G.getWord64le
+	return . T.toVariant $ (fromIntegral x :: Int64)
+
+@ \subsection{Booleans}
+
+Booleans are marshaled as 4-byte unsigned integers containing either of
+the values 0 or 1. Yes, really.
+
+<<alignments>>=
+alignment T.DBusBoolean = 4
+
+<<marshalers>>=
+marshalType T.DBusBoolean = marshalWord32 $ if x then 1 else 0
+
+<<unmarshalers>>=
+unmarshalType T.DBusBoolean = unmarshalWord32 >>=
+	fromMaybe' "boolean" (\x -> case x of
+		0 -> Just False
+		1 -> Just True
+		_ -> Nothing)
+
+@ \subsection{Strings and object paths}
+
+Strings are encoded in {\sc utf-8}, terminated with {\tt NUL}, and prefixed
+with their length as an unsigned 32-bit integer. Their alignment is that of
+their length. Object paths are marshaled just like strings, though additional
+checks are required when unmarshaling.
+
+<<DBus/Wire.hs>>=
+marshalString :: String -> Marshal
+marshalString x = do
+	let bytes = fromString x
+	marshalWord32 . fromIntegral . L.length $ bytes
+	append bytes
+	append (L.singleton 0)
+
+<<DBus/Wire.hs>>=
+unmarshalString :: Unmarshal String
+unmarshalString = do
+	byteCount <- unmarshalWord32
+	bytes <- consume . fromIntegral $ byteCount
+	skipTerminator
+	return . toString $ bytes
+
+<<alignments>>=
+alignment T.DBusString     = 4
+alignment T.DBusObjectPath = 4
+
+<<marshalers>>=
+marshalType T.DBusString = marshalString x
+marshalType T.DBusObjectPath = marshalString . T.strObjectPath $ x
+
+<<unmarshalers>>=
+unmarshalType T.DBusString = fmap T.toVariant unmarshalString
+
+unmarshalType T.DBusObjectPath = unmarshalString >>=
+	fromMaybe' "object path" T.mkObjectPath
+
+@ \subsection{Signatures}
+
+Signatures are similar to strings, except their length is limited to 255
+characters and is therefore stored as a single byte.
+
+<<DBus/Wire.hs>>=
+marshalSignature :: T.Signature -> Marshal
+marshalSignature x = do
+	let bytes = fromString . T.strSignature $ x
+	let size = fromIntegral . L.length $ bytes
+	append (L.singleton size)
+	append bytes
+	append (L.singleton 0)
+
+<<DBus/Wire.hs>>=
+unmarshalSignature :: Unmarshal T.Signature
+unmarshalSignature = do
+	byteCount <- fmap L.head $ consume 1
+	sigStr <- fmap toString $ consume . fromIntegral $ byteCount
+	skipTerminator
+	fromMaybe "signature" T.mkSignature sigStr
+
+<<alignments>>=
+alignment T.DBusSignature  = 1
+
+<<marshalers>>=
+marshalType T.DBusSignature = marshalSignature x
+
+<<unmarshalers>>=
+unmarshalType T.DBusSignature = fmap T.toVariant unmarshalSignature
+
+@ \subsection{Containers}
+
+@ \subsubsection{Arrays}
+
+<<alignments>>=
+alignment (T.DBusArray _) = 4
+
+<<marshalers>>=
+marshalType (T.DBusArray _) = marshalArray x
+
+<<unmarshalers>>=
+unmarshalType (T.DBusArray t) = fmap T.toVariant $ unmarshalArray t
+
+@ Marshaling arrays is complicated, because the array body must be marshaled
+\emph{first} to calculate the array length. This requires building a
+temporary marshaler, to get the padding right.
+
+<<DBus/Wire.hs>>=
+marshalArray :: T.Array -> Marshal
+marshalArray x = do
+	(arrayPadding, arrayBytes) <- getArrayBytes x
+	let arrayLen = fromIntegral . L.length $ arrayBytes
+	when (arrayLen > arrayMaximumLength)
+		(E.throwError $ ArrayTooLong arrayLen)
+	marshalWord32 arrayLen
+	append arrayPadding
+	append arrayBytes
+
+<<DBus/Wire.hs>>=
+getArrayBytes :: T.Array -> MarshalM (L.ByteString, L.ByteString)
+getArrayBytes x = do
+	let vs = T.arrayItems x
+	let itemType = T.arrayType x
+	s <- ST.get
+	(MarshalState _ afterLength) <- marshalWord32 0 >> ST.get
+	(MarshalState _ afterPadding) <- pad (alignment itemType) >> ST.get
+	(MarshalState _ afterItems) <- mapM_ marshal' vs >> ST.get
+	
+	let paddingBytes = L.drop (L.length afterLength) afterPadding
+	let itemBytes = L.drop (L.length afterPadding) afterItems
+	
+	ST.put s
+	return (paddingBytes, itemBytes)
+
+@ Unmarshaling is much easier
+
+<<DBus/Wire.hs>>=
+unmarshalArray :: T.Type -> Unmarshal T.Array
+unmarshalArray itemType = do
+	let getOffset = do
+		(UnmarshalState _ _ o) <- ST.get
+		return o
+	byteCount <- unmarshalWord32
+	skipPadding (alignment itemType)
+	start <- getOffset
+	let end = start + fromIntegral byteCount
+	vs <- untilM (fmap (>= end) getOffset) (unmarshalType itemType)
+	end' <- getOffset
+	when (end' > end) $
+		E.throwError ArraySizeMismatch
+	fromMaybe "array" (T.arrayFromItems itemType) vs
+
+@ \subsubsection{Dictionaries}
+
+<<alignments>>=
+alignment (T.DBusDictionary _ _) = 4
+
+<<marshalers>>=
+marshalType (T.DBusDictionary _ _) = marshalArray (T.dictionaryToArray x)
+
+<<unmarshalers>>=
+unmarshalType (T.DBusDictionary kt vt) = do
+	let pairType = T.DBusStructure [kt, vt]
+	array <- unmarshalArray pairType
+	fromMaybe' "dictionary" T.arrayToDictionary array
+
+@ \subsubsection{Structures}
+
+<<alignments>>=
+alignment (T.DBusStructure _) = 8
+
+<<marshalers>>=
+marshalType (T.DBusStructure _) = do
+	let T.Structure vs = x
+	pad 8
+	mapM_ marshal' vs
+
+<<unmarshalers>>=
+unmarshalType (T.DBusStructure ts) = do
+	skipPadding 8
+	fmap (T.toVariant . T.Structure) $ mapM unmarshalType ts
+
+@ \subsubsection{Variants}
+
+<<alignments>>=
+alignment T.DBusVariant = 1
+
+<<marshalers>>=
+marshalType T.DBusVariant = do
+	let rawSig = T.typeCode . T.variantType $ x
+	sig <- case T.mkSignature rawSig of
+		Just x' -> return x'
+		Nothing -> E.throwError $ InvalidVariantSignature rawSig
+	marshalSignature sig
+	marshal' x
+
+<<unmarshalers>>=
+unmarshalType T.DBusVariant = do
+	let getType sig = case T.signatureTypes sig of
+		[t] -> Just t
+		_   -> Nothing
+	
+	t <- fromMaybe "variant signature" getType =<< unmarshalSignature
+	fmap T.toVariant $ unmarshalType t
+
