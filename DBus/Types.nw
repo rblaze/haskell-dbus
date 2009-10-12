@@ -124,7 +124,7 @@ class Variable a => Atomic a where
 	toAtom   :: a -> Atom
 	fromAtom :: Atom -> Maybe a
 
-data Atom = forall a. (Builtin a, Show a, Eq a) => Atom a
+data Atom = forall a. (Builtin a, Atomic a, Show a, Eq a) => Atom a
 
 instance Show Atom where
 	showsPrec d (Atom x) = showParen (d > 10) $
@@ -212,6 +212,8 @@ a {\tt Variant} containing a built-in type.
 variantType :: Variant -> Type
 variantType (Variant x) = builtinDBusType x
 
+atomToVariant :: Atom -> Variant
+atomToVariant (Atom x) = toVariant x
 
 @ By default, there are instances of {\tt Variable} for all built-in types.
 
@@ -239,6 +241,7 @@ BUILTIN_VARIABLE(Variant)
 , Variant
 , Variable (..)
 , variantType
+, atomToVariant
 
 @ \subsubsection{Arrays}
 
