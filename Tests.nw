@@ -349,6 +349,9 @@ prop_DictionaryHomogeneous ks = forAll (vector (length ks)) $ \vs -> let
 			(dictionaryValueType x)
 			(dictionaryItems x)
 	, testProperty "Dictionary homogeneity" prop_DictionaryHomogeneous
+	, testProperty "Dictionary must have atomic keys" 
+		$ \vt -> forAll containerType $ \kt ->
+			isNothing (dictionaryFromItems kt vt [])
 	]
 
 <<Tests.hs>>=

@@ -23,7 +23,7 @@
 module DBus.Types (<<exports>>) where
 
 import Control.Arrow ((***))
-import Control.Monad (forM)
+import Control.Monad (forM, unless)
 import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
 import Data.List (intercalate)
@@ -114,6 +114,22 @@ typeCode DBusDouble     = "d"
 typeCode DBusString     = "s"
 typeCode DBusSignature  = "g"
 typeCode DBusObjectPath = "o"
+
+<<DBus/Types.hs>>=
+isAtomicType :: Type -> Bool
+isAtomicType DBusBoolean    = True
+isAtomicType DBusByte       = True
+isAtomicType DBusInt16      = True
+isAtomicType DBusInt32      = True
+isAtomicType DBusInt64      = True
+isAtomicType DBusWord16     = True
+isAtomicType DBusWord32     = True
+isAtomicType DBusWord64     = True
+isAtomicType DBusDouble     = True
+isAtomicType DBusString     = True
+isAtomicType DBusSignature  = True
+isAtomicType DBusObjectPath = True
+isAtomicType _              = False
 
 @ The {\tt Atom} type is used to store any type which must be atomic, such
 as dictionary keys. The constructor is not exported outside of this module,
@@ -350,6 +366,7 @@ toDictionary kt vt map' = dictionaryFromItems kt vt pairs where
 
 dictionaryFromItems :: Type -> Type -> [(Atom, Variant)] -> Maybe Dictionary
 dictionaryFromItems kt vt pairs = do
+	unless (isAtomicType kt) Nothing
 	mkSignature (typeCode kt)
 	mkSignature (typeCode vt)
 	
