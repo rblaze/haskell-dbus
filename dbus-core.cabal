@@ -46,6 +46,7 @@ library
   exposed-modules:
     DBus.Address
     DBus.Constants
+    DBus.Introspection
     DBus.Types
 
   other-modules:
