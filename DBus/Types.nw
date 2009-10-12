@@ -23,7 +23,7 @@
 module DBus.Types (<<exports>>) where
 
 import Control.Arrow ((***))
-import Control.Monad (forM, unless)
+import Control.Monad (forM, unless, msum)
 import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
 import Data.List (intercalate)
@@ -231,6 +231,27 @@ variantType (Variant x) = builtinDBusType x
 atomToVariant :: Atom -> Variant
 atomToVariant (Atom x) = toVariant x
 
+variantToAtom :: Variant -> Maybe Atom
+variantToAtom v = msum as where
+	v' :: Variable a => Maybe a
+	v' = fromVariant v
+	fa :: (Atomic a, Functor f) => f a -> f Atom
+	fa = fmap toAtom
+	
+	as = [fa (v' :: Maybe Bool)
+	     ,fa (v' :: Maybe Word8)
+	     ,fa (v' :: Maybe Word16)
+	     ,fa (v' :: Maybe Word32)
+	     ,fa (v' :: Maybe Word64)
+	     ,fa (v' :: Maybe Int16)
+	     ,fa (v' :: Maybe Int32)
+	     ,fa (v' :: Maybe Int64)
+	     ,fa (v' :: Maybe Double)
+	     ,fa (v' :: Maybe String)
+	     ,fa (v' :: Maybe ObjectPath)
+	     ,fa (v' :: Maybe Signature)
+	     ]
+
 @ By default, there are instances of {\tt Variable} for all built-in types.
 
 <<DBus/Types.hs>>=
@@ -375,6 +396,27 @@ dictionaryFromItems kt vt pairs = do
 		then Just $ Dictionary kt vt pairs
 		else Nothing
 
+dictionaryToArray :: Dictionary -> Array
+dictionaryToArray (Dictionary kt vt items) = array where
+	Just array = arrayFromItems itemType $ map toVariant structs
+	itemType = DBusStructure [kt, vt]
+	structs = [Structure [atomToVariant k, v] | (k, v) <- items]
+
+arrayToDictionary :: Array -> Maybe Dictionary
+arrayToDictionary (Array t items) = do
+	let toPair v = do
+		struct <- fromVariant v
+		case struct of
+			Structure [k, v'] -> do
+				k' <- variantToAtom k
+				return (k', v')
+			_                -> Nothing
+	(kt, vt) <- case t of
+		DBusStructure [kt, vt] -> Just (kt, vt)
+		_                      -> Nothing
+	pairs <- mapM toPair items
+	dictionaryFromItems kt vt pairs
+
 <<exports>>=
 , Dictionary
 , dictionaryItems
@@ -383,6 +425,8 @@ dictionaryFromItems kt vt pairs = do
 , fromDictionary
 , toDictionary
 , dictionaryFromItems
+, dictionaryToArray
+, arrayToDictionary
 
 @ \subsubsection{Structures}
 
