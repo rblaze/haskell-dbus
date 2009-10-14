@@ -119,12 +119,8 @@ containerType = do
 			kt <- atomicType
 			vt <- arbitrary
 			return $ DBusDictionary kt vt
-		2 -> sized structType
+		2 -> fmap DBusStructure $ shrinkingGen arbitrary
 		3 -> return DBusVariant
-
-structType :: Int -> Gen Type
-structType n | n >= 0 = fmap DBusStructure $ resize (n `div` 2) arbitrary
-structType _ = return $ DBusStructure []
 
 instance Arbitrary Type where
 	arbitrary = oneof [atomicType, containerType]
@@ -358,7 +354,7 @@ prop_DictionaryHomogeneous ks = forAll (vector (length ks)) $ \vs -> let
 <<Tests.hs>>=
 instance Arbitrary Structure where
 	arbitrary = sized $ \n ->
-		fmap Structure $ resize (n `div` 2) arbitrary
+		fmap Structure $ shrinkingGen arbitrary
 
 <<container tests>>=
 , testGroup "Structure" $ commonVariantTests (arbitrary :: Gen Structure)
@@ -522,5 +518,11 @@ clampedSize :: Arbitrary a => Int -> Gen String -> (String -> a) -> Gen a
 clampedSize maxSize gen f = do
 	s <- gen
 	if length s > maxSize
-		then sized $ \n -> resize (n `div` 2) arbitrary
+		then shrinkingGen arbitrary
 		else return . f $ s
+
+shrinkingGen :: Gen a -> Gen a
+shrinkingGen gen = sized $ \n -> if n > 0 then
+	resize (n `div` 2) gen
+	else gen
+
