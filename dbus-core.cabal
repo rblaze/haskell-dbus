@@ -47,6 +47,7 @@ library
     DBus.Address
     DBus.Constants
     DBus.Introspection
+    DBus.Message
     DBus.Types
 
   other-modules:
