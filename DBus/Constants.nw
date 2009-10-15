@@ -17,7 +17,7 @@
 <<copyright>>
 module DBus.Constants where
 import qualified DBus.Types as T
-import Data.Word (Word8)
+import Data.Word (Word8, Word32)
 
 @
 \section{Constants}
@@ -25,6 +25,12 @@ import Data.Word (Word8)
 <<DBus/Constants.hs>>=
 protocolVersion :: Word8
 protocolVersion = 1
+
+messageMaximumLength :: Word32
+messageMaximumLength = 134217728
+
+arrayMaximumLength :: Word32
+arrayMaximumLength = 67108864
 
 @ \subsection{The message bus}
 

@@ -33,6 +33,7 @@ import Data.Word (Word8, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
 
 import qualified DBus.Types as T
+import DBus.Constants (arrayMaximumLength)
 
 @ \subsection{Endianness}
 
@@ -146,12 +147,6 @@ Marshaling can fail for four reasons:
 \end{itemize}
 
 <<DBus/Wire.hs>>=
-messageMaximumLength :: Word32
-messageMaximumLength = 134217728
-
-arrayMaximumLength :: Word32
-arrayMaximumLength = 67108864
-
 data MarshalError
 	= MessageTooLong Word32
 	| ArrayTooLong Word32
