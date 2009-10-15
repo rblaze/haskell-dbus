@@ -74,24 +74,7 @@ padding current count = required where
 
 @ \subsection{Marshaling}
 
-Clients can perform marshaling via {\tt marshal}, which will generate
-a {\tt ByteString} with the fully marshaled data.
-
-<<DBus/Wire.hs>>=
-marshal :: Endianness -> [T.Variant] -> Either MarshalError L.ByteString
-marshal e vs = runMarshal (mapM_ marshal' vs) e
-
-marshal' :: T.Variant -> Marshal
-marshal' v = marshalType (T.variantType v) where
-	x :: T.Variable a => a
-	x = fromJust . T.fromVariant $ v
-	marshalType :: T.Type -> Marshal
-	<<marshalers>>
-
-<<exports>>=
-, marshal
-
-@ Marshaling is implemented using an error transformer over an internal
+Marshaling is implemented using an error transformer over an internal
 state.
 
 <<DBus/Wire.hs>>=
@@ -100,11 +83,32 @@ newtype MarshalM a = MarshalM (E.ErrorT MarshalError (ST.State MarshalState) a)
 	deriving (Monad, E.MonadError MarshalError, ST.MonadState MarshalState)
 type Marshal = MarshalM ()
 
+@ Clients can perform marshaling via {\tt marshal} and {\tt runMarshal},
+which will generate a {\tt ByteString} with the fully marshaled data.
+
+<<exports>>=
+, MarshalM
+, Marshal
+, marshal
+, runMarshal
+
+<<DBus/Wire.hs>>=
 runMarshal :: Marshal -> Endianness -> Either MarshalError L.ByteString
 runMarshal (MarshalM m) e = case ST.runState (E.runErrorT m) initialState of
 	(Right _, MarshalState _ bytes) -> Right bytes
 	(Left  x, _) -> Left x
 	where initialState = MarshalState e L.empty
+
+<<DBus/Wire.hs>>=
+marshal :: [T.Variant] -> Marshal
+marshal = mapM_ marshal'
+
+marshal' :: T.Variant -> Marshal
+marshal' v = marshalType (T.variantType v) where
+	x :: T.Variable a => a
+	x = fromJust . T.fromVariant $ v
+	marshalType :: T.Type -> Marshal
+	<<marshalers>>
 
 @ TODO: describe these functions
 
@@ -171,27 +175,29 @@ instance E.Error MarshalError
 
 @ \subsection{Unmarshaling}
 
-<<DBus/Wire.hs>>=
-unmarshal :: Endianness -> T.Signature -> L.ByteString
-          -> Either UnmarshalError [T.Variant]
-unmarshal e sig = runUnmarshal (mapM unmarshalType $ T.signatureTypes sig) e
-
-unmarshalType :: T.Type -> Unmarshal T.Variant
-<<unmarshalers>>
+Unmarshaling also uses an error transformer and internal state.
 
 <<exports>>=
+, Unmarshal
 , unmarshal
-
-@ Unmarshaling also uses an error transformer and internal state.
+, runUnmarshal
 
 <<DBus/Wire.hs>>=
 data UnmarshalState = UnmarshalState Endianness L.ByteString Word64
 newtype Unmarshal a = Unmarshal (E.ErrorT UnmarshalError (ST.State UnmarshalState) a)
 	deriving (Monad, Functor, E.MonadError UnmarshalError, ST.MonadState UnmarshalState)
 
+<<DBus/Wire.hs>>=
 runUnmarshal :: Unmarshal a -> Endianness -> L.ByteString -> Either UnmarshalError a
 runUnmarshal (Unmarshal m) e bytes = ST.evalState (E.runErrorT m) state where
 	state = UnmarshalState e bytes 0
+
+<<DBus/Wire.hs>>=
+unmarshal :: T.Signature -> Unmarshal [T.Variant]
+unmarshal = mapM unmarshalType . T.signatureTypes
+
+unmarshalType :: T.Type -> Unmarshal T.Variant
+<<unmarshalers>>
 
 @ TODO: describe these functions
 

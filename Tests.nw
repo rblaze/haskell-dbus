@@ -456,11 +456,11 @@ prop_Unmarshal e x = valid ==> unmarshaled == Right [x] where
 	sig = mkSignature . typeCode . variantType $ x
 	Just sig' = sig
 	
-	bytes = marshal e [x]
+	bytes = runMarshal (marshal [x]) e
 	Right bytes' = bytes
 	
 	valid = isJust sig && isRight bytes
-	unmarshaled = unmarshal e sig' bytes'
+	unmarshaled = runUnmarshal (unmarshal sig') e bytes'
 
 instance Arbitrary Endianness where
 	arbitrary = elements [LittleEndian, BigEndian]
