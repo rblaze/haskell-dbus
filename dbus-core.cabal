@@ -69,6 +69,7 @@ executable tests
 
   other-modules:
     DBus.Address
+    DBus.Introspection
     DBus.Types
     DBus.Wire
     DBus.Util

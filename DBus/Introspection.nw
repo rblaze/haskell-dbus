@@ -27,11 +27,12 @@ module DBus.Introspection
 	, fromXML
 	) where
 
-import Control.Arrow ((>>>), (&&&), (<+>))
+import Control.Arrow ((>>>), (&&&), (<+>), arr)
 import Control.Monad (mapM)
+import Data.List (isPrefixOf)
 import Data.Maybe (listToMaybe, maybeToList)
 import qualified Text.XML.HXT.Arrow as A
-import Text.XML.HXT.Arrow.ParserInterface (parseXmlDoc)
+import qualified Text.XML.HXT.Arrow.ParserInterface as P
 import qualified Text.XML.HXT.DOM.XmlNode as XN
 import qualified DBus.Types as T
 
@@ -44,22 +45,22 @@ a mostly standardised but undocumented format.
 
 <<DBus/Introspection.hs>>=
 data Object = Object T.ObjectPath [Interface] [Object]
-	deriving (Show)
+	deriving (Show, Eq)
 
 data Interface = Interface T.InterfaceName [Method] [Signal] [Property]
-	deriving (Show)
+	deriving (Show, Eq)
 
 data Method = Method T.MemberName [Parameter] [Parameter]
-	deriving (Show)
+	deriving (Show, Eq)
 
 data Signal = Signal T.MemberName [Parameter]
-	deriving (Show)
+	deriving (Show, Eq)
 
 data Parameter = Parameter String T.Signature
-	deriving (Show)
+	deriving (Show, Eq)
 
 data Property = Property String T.Signature [PropertyAccess]
-	deriving (Show)
+	deriving (Show, Eq)
 
 data PropertyAccess = Read | Write
 	deriving (Show, Eq)
@@ -97,10 +98,10 @@ document's validity because there is no DTD as of yet.
 
 <<DBus/Introspection.hs>>=
 fromXML :: T.ObjectPath -> String -> Maybe Object
-fromXML path text = listToMaybe $ (A.runLA arrow) ("", text) where
-	arrow = parseXmlDoc
-	        >>> A.removeAllWhiteSpace
+fromXML path text = listToMaybe $ (A.runLA arrow) text where
+	arrow = parseXML
 	        >>> A.single (A.hasName "node")
+	        >>> A.removeAllWhiteSpace
 	        >>> A.arrL (maybeToList . parseRoot path)
 
 @ Even though the root object's {\tt name} is optional, if present, it must
@@ -222,40 +223,54 @@ isParam dirs = A.hasName "arg"
 
 @ \subsection{Generating XML}
 
+Generating XML can fail also; if a child object's path is not a sub-path of
+the parent, {\tt toXML} will return {\tt Nothing}.
+
 <<DBus/Introspection.hs>>=
-toXML :: Object -> String
-toXML obj = concat $ A.runLA (A.xshow (dtd <+> xmlRoot obj)) () where
+toXML :: Object -> Maybe String
+toXML obj = xml where
 	dtd = A.mkDTDDoctype
 		[ ("name", "node")
 		, ("SYSTEM", "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd")
 		, ("PUBLIC", "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN")
 		] A.none
+	
+	xml = do
+		root <- xmlRoot obj
+		return . concat $ A.runLA (A.xshowEscapeXml (dtd <+> root)) ()
 
 @ When writing objects to {\tt node}s, the root object must have an absolute
 path, and children must have paths relative to their parent.
 
 <<DBus/Introspection.hs>>=
-xmlRoot :: A.ArrowXml a => Object -> a n A.XmlTree
-xmlRoot (Object path interfaces children') = A.mkElement (A.mkName "node")
-	(mkAttr "name" (T.strObjectPath path))
-	(A.catA . concat $
-		[ map xmlInterface interfaces
-		, map (xmlObject path) children'
-		])
+xmlRoot :: A.ArrowXml a => Object -> Maybe (a n A.XmlTree)
+xmlRoot (Object path interfaces children') = do
+	children'' <- mapM (xmlObject path) children'
+	return $ A.mkElement (A.mkName "node")
+		(mkAttr "name" (T.strObjectPath path))
+		(A.catA . concat $
+			[ map xmlInterface interfaces
+			, children''
+			])
 
 <<DBus/Introspection.hs>>=
-xmlObject :: A.ArrowXml a => T.ObjectPath -> Object -> a n A.XmlTree
-xmlObject parentPath (Object path interfaces children') =
-	A.mkElement (A.mkName "node")
+xmlObject :: A.ArrowXml a => T.ObjectPath -> Object -> Maybe (a n A.XmlTree)
+xmlObject parentPath (Object path interfaces children') = do
+	let path' = T.strObjectPath path
+	    parent' = T.strObjectPath parentPath
+	relpath <- if isPrefixOf parent' path'
+		then Just $ if parent' == "/"
+			then drop 1 path'
+			else drop (length parent' + 1) path'
+		else Nothing
+
+	children'' <- mapM (xmlObject path) children'
+	return $ A.mkElement (A.mkName "node")
 		(mkAttr "name" relpath)
 		(A.catA . concat $
 			[ map xmlInterface interfaces
-			, map (xmlObject path) children'
+			, children''
 			])
-	where
-		path' = T.strObjectPath path
-		parent' = T.strObjectPath parentPath
-		relpath = drop (length parent') path'
 
 <<DBus/Introspection.hs>>=
 xmlInterface :: A.ArrowXml a => Interface -> a n A.XmlTree
@@ -310,3 +325,9 @@ xmlAccess access = read ++ write where
 <<DBus/Introspection.hs>>=
 mkAttr :: A.ArrowXml a => String -> String -> a n A.XmlTree
 mkAttr name value = A.mkAttr (A.mkName name) (A.txt value)
+
+<<DBus/Introspection.hs>>=
+parseXML :: A.ArrowXml a => a String A.XmlTree
+parseXML = arr (\x -> ("", x))
+	>>> P.parseXmlDoc
+	>>> P.substXmlEntityRefs

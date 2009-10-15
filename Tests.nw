@@ -24,6 +24,7 @@ import Test.Framework.Providers.QuickCheck2 (testProperty)
 
 import Control.Arrow ((&&&))
 import Control.Monad (replicateM)
+import Data.Char (isPrint)
 import Data.List (intercalate, isInfixOf)
 import Data.Maybe (fromJust, isJust, isNothing)
 import qualified Data.Map as Map
@@ -33,6 +34,7 @@ import Data.Int (Int16, Int32, Int64)
 import DBus.Address
 import DBus.Types
 import DBus.Wire
+import qualified DBus.Introspection as I
 
 @ \section{Tests}
 
@@ -467,6 +469,83 @@ instance Arbitrary Endianness where
 , testGroup "Wire format"
 	[ testProperty "Marshal -> Ummarshal" prop_Unmarshal
 	]
+
+@ \subsection{Introspection}
+
+<<Tests.hs>>=
+<<tests>>=
+, testGroup "Introspection"
+	[ testProperty "Generate -> Parse"
+		$ \x@(I.Object path _ _) -> let
+		xml = I.toXML x
+		Just xml' = xml
+		parsed = I.fromXML path xml'
+		in isJust xml ==> I.fromXML path xml' == Just x
+	]
+
+<<Tests.hs>>=
+subObject :: ObjectPath -> Gen I.Object
+subObject parentPath = sized $ \n -> resize (min n 4) $ do
+	let nonRoot = do
+		x <- arbitrary
+		case strObjectPath x of
+			"/" -> nonRoot
+			x'  -> return x'
+	
+	thisPath <- nonRoot
+	let path' = case strObjectPath parentPath of
+		"/" -> thisPath
+		x   -> x ++ thisPath
+	let path = mkObjectPath' path'
+	ifaces <- arbitrary
+	children <- shrinkingGen . listOf . subObject $ path
+	return $ I.Object path ifaces children
+
+instance Arbitrary I.Object where
+	arbitrary = arbitrary >>= subObject
+
+instance Arbitrary I.Interface where
+	arbitrary = do
+		name <- arbitrary
+		methods <- arbitrary
+		signals <- arbitrary
+		properties <- arbitrary
+		return $ I.Interface name methods signals properties
+
+instance Arbitrary I.Method where
+	arbitrary = do
+		name <- arbitrary
+		inParams <- arbitrary
+		outParams <- arbitrary
+		return $ I.Method name inParams outParams
+
+instance Arbitrary I.Signal where
+	arbitrary = do
+		name <- arbitrary
+		params <- arbitrary
+		return $ I.Signal name params
+
+singleType :: Gen Signature
+singleType = do
+	t <- arbitrary
+	case mkSignature $ typeCode t of
+		Just x -> return x
+		Nothing -> singleType
+
+instance Arbitrary I.Parameter where
+	arbitrary = do
+		name <- listOf $ arbitrary `suchThat` isPrint
+		sig <- singleType
+		return $ I.Parameter name sig
+
+instance Arbitrary I.Property where
+	arbitrary = do
+		name <- listOf $ arbitrary `suchThat` isPrint
+		sig <- singleType
+		access <- elements
+			[[], [I.Read], [I.Write],
+			 [I.Read, I.Write]]
+		return $ I.Property name sig access
 
 @ \subsection{Other instances}
 
