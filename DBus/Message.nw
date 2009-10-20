@@ -39,15 +39,8 @@ class Message a where
 	messageFlags        :: a -> S.Set Flag
 	messageBody         :: a -> [T.Variant]
 
-@ {\tt messageTypeCode} is an internal detail of the marshaling process,
-and isn't exposed to clients. All other methods of {\tt Message} are
-generally useful.
-
 <<exports>>=
-Message ( messageHeaderFields
-        , messageFlags
-        , messageBody
-        )
+Message (..)
 
 @ \subsection{Flags}
 
@@ -230,7 +223,8 @@ instance Message Signal where
 
 Unknown messages are used for storing information about messages without
 a recognized type code. They are not instances of {\tt Message}, because
-if they were, then clients could send invalid messages over the bus.
+if they were, then clients could accidentally send invalid messages over
+the bus.
 
 <<DBus/Message.hs>>=
 data Unknown = Unknown
