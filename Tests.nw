@@ -24,14 +24,17 @@ import Test.Framework.Providers.QuickCheck2 (testProperty)
 
 import Control.Arrow ((&&&))
 import Control.Monad (replicateM)
+import qualified Data.Binary.Get as G
 import Data.Char (isPrint)
 import Data.List (intercalate, isInfixOf)
 import Data.Maybe (fromJust, isJust, isNothing)
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
 
 import DBus.Address
+import DBus.Message
 import DBus.Types
 import DBus.Wire
 import qualified DBus.Introspection as I
@@ -445,6 +448,63 @@ instance Arbitrary Address where
 			let Just [addr] = mkAddresses addrStr
 			return addr
 
+@ \subsection{Messages}
+
+<<Tests.hs>>=
+instance Arbitrary Serial where
+	arbitrary = fmap Serial arbitrary
+
+instance Arbitrary Flag where
+	arbitrary = elements [NoReplyExpected, NoAutoStart]
+
+instance Arbitrary HeaderField where
+	arbitrary = choose (1, 8) >>= \x -> case (x :: Int) of
+		1 -> fmap Path arbitrary
+		2 -> fmap Interface arbitrary
+		3 -> fmap Member arbitrary
+		4 -> fmap ErrorName arbitrary
+		5 -> fmap ReplySerial arbitrary
+		6 -> fmap Destination arbitrary
+		7 -> fmap Sender arbitrary
+		8 -> fmap Signature arbitrary
+
+instance Arbitrary MethodCall where
+	arbitrary = do
+		path   <- arbitrary
+		member <- arbitrary
+		iface  <- arbitrary
+		dest   <- arbitrary
+		flags  <- fmap Set.fromList arbitrary
+		Structure body <- arbitrary
+		return $ MethodCall path member iface dest flags body
+
+instance Arbitrary MethodReturn where
+	arbitrary = do
+		serial <- arbitrary
+		dest   <- arbitrary
+		flags  <- fmap Set.fromList arbitrary
+		Structure body <- arbitrary
+		return $ MethodReturn serial dest flags body
+
+instance Arbitrary Error where
+	arbitrary = do
+		name   <- arbitrary
+		serial <- arbitrary
+		dest   <- arbitrary
+		flags  <- fmap Set.fromList arbitrary
+		Structure body <- arbitrary
+		return $ Error name serial dest flags body
+
+instance Arbitrary Signal where
+	arbitrary = do
+		path   <- arbitrary
+		member <- arbitrary
+		iface  <- arbitrary
+		dest   <- arbitrary
+		flags  <- fmap Set.fromList arbitrary
+		Structure body <- arbitrary
+		return $ Signal path member iface dest flags body
+
 @ \subsection{Wire format}
 
 <<Tests.hs>>=
@@ -456,23 +516,51 @@ prop_Unmarshal e x = valid ==> unmarshaled == Right [x] where
 	sig = mkSignature . typeCode . variantType $ x
 	Just sig' = sig
 	
-	bytes = runMarshal (marshal [x]) e
+	bytes = runMarshal (marshal x) e
 	Right bytes' = bytes
 	
 	valid = isJust sig && isRight bytes
 	unmarshaled = runUnmarshal (unmarshal sig') e bytes'
 
-instance Arbitrary Endianness where
-	arbitrary = elements [LittleEndian, BigEndian]
+prop_MarshalMessage e serial msg expected = valid ==> correct where
+	bytes = marshalMessage e serial msg
+	Right bytes' = bytes
+	
+	getBytes = G.getLazyByteString . fromIntegral
+	unmarshaled = G.runGet (unmarshalMessage getBytes) bytes'
+	
+	valid = isRight bytes
+	correct = unmarshaled == Right expected
+
+prop_WireMethodCall e serial msg = prop_MarshalMessage e serial msg
+	$ ReceivedMethodCall serial Nothing msg
+
+prop_WireMethodReturn e serial msg = prop_MarshalMessage e serial msg
+	$ ReceivedMethodReturn serial Nothing msg
+
+prop_WireError e serial msg = prop_MarshalMessage e serial msg
+	$ ReceivedError serial Nothing msg
+
+prop_WireSignal e serial msg = prop_MarshalMessage e serial msg
+	$ ReceivedSignal serial Nothing msg
 
 <<tests>>=
 , testGroup "Wire format"
 	[ testProperty "Marshal -> Ummarshal" prop_Unmarshal
+	, testGroup "Messages"
+		[ testProperty "Method calls" prop_WireMethodCall
+		, testProperty "Method returns" prop_WireMethodReturn
+		, testProperty "Errors" prop_WireError
+		, testProperty "Signals" prop_WireSignal
+		]
 	]
+
+<<Tests.hs>>=
+instance Arbitrary Endianness where
+	arbitrary = elements [LittleEndian, BigEndian]
 
 @ \subsection{Introspection}
 
-<<Tests.hs>>=
 <<tests>>=
 , testGroup "Introspection"
 	[ testProperty "Generate -> Parse"
