@@ -45,6 +45,8 @@ library
 
   exposed-modules:
     DBus.Address
+    DBus.Bus
+    DBus.Connection
     DBus.Constants
     DBus.Introspection
     DBus.Message

@@ -13,8 +13,11 @@
 % You should have received a copy of the GNU General Public License
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-\ignore{
-\begin{code}
+@
+\section{Connecting to a message bus}
+
+<<DBus/Bus.hs>>=
+<<copyright>>
 module DBus.Bus
 	( getSystemBus
 	, getSessionBus
@@ -34,28 +37,22 @@ import qualified DBus.Connection as C
 import DBus.Constants (dbusName, dbusPath, dbusInterface)
 import qualified DBus.Message as M
 import qualified DBus.Types as T
-\end{code}
-}
 
-\clearpage
-\section{Connecting to a message bus}
-
-Connecting to a message bus is a bit more involved than just connecting
+@ Connecting to a message bus is a bit more involved than just connecting
 over an app-to-app connection: the bus must be notified of the new client,
 using a "hello message", before it will begin forwarding messages.
 
-\begin{code}
+<<DBus/Bus.hs>>=
 getBus :: A.Address -> IO (C.Connection, T.BusName)
 getBus addr = do
 	c <- C.connect addr
 	name <- sendHello c
 	return (c, name)
-\end{code}
 
-Optionally, multiple addresses may be provided. The first successfully
+@ Optionally, multiple addresses may be provided. The first successfully
 connected bus will be returned.
 
-\begin{code}
+<<DBus/Bus.hs>>=
 getFirstBus :: [A.Address] -> IO (C.Connection, T.BusName)
 getFirstBus as = getFirstBus' as as
 
@@ -64,45 +61,40 @@ getFirstBus' orig     [] = E.throwIO $ C.NoWorkingAddress orig
 getFirstBus' orig (a:as) = E.catch (getBus a) onError where
 	onError :: E.SomeException -> IO (C.Connection, T.BusName)
 	onError _ = getFirstBus' orig as
-\end{code}
 
-\subsection{Default connections}
+@ \subsection{Default connections}
 
 Two default buses are defined, the ``system'' and ``session'' buses. The system
 bus is global for the OS, while the session bus runs only for the duration
 of the user's session.
 
-\begin{code}
+<<DBus/Bus.hs>>=
 getSystemBus :: IO (C.Connection, T.BusName)
 getSystemBus = getBus' $ fromEnv `E.catch` noEnv where
 	defaultAddr = "unix:path=/var/run/dbus/system_bus_socket"
 	fromEnv = getEnv "DBUS_SYSTEM_BUS_ADDRESS"
 	noEnv (E.SomeException _) = return defaultAddr
-\end{code}
 
-\begin{code}
+<<DBus/Bus.hs>>=
 getSessionBus :: IO (C.Connection, T.BusName)
 getSessionBus = getBus' $ getEnv "DBUS_SESSION_BUS_ADDRESS"
-\end{code}
 
-\begin{code}
+<<DBus/Bus.hs>>=
 getStarterBus :: IO (C.Connection, T.BusName)
 getStarterBus = getBus' $ getEnv "DBUS_STARTER_ADDRESS"
-\end{code}
 
-\begin{code}
+<<DBus/Bus.hs>>=
 getBus' :: IO String -> IO (C.Connection, T.BusName)
 getBus' io = do
 	addr <- io
-	case A.parseAddresses addr of
+	case A.mkAddresses addr of
 		Just [x] -> getBus x
 		Just  x  -> getFirstBus x
 		_        -> E.throwIO $ C.InvalidAddress addr
-\end{code}
 
-\subsection{Sending the ``hello'' message}
+@ \subsection{Sending the ``hello'' message}
 
-\begin{code}
+<<DBus/Bus.hs>>=
 hello :: M.MethodCall
 hello = M.MethodCall dbusPath
 	(T.mkMemberName' "Hello")
@@ -110,9 +102,8 @@ hello = M.MethodCall dbusPath
 	(Just dbusName)
 	Set.empty
 	[]
-\end{code}
 
-\begin{code}
+<<DBus/Bus.hs>>=
 sendHello :: C.Connection -> IO T.BusName
 sendHello c = do
 	serial <- C.send c return hello
@@ -126,10 +117,9 @@ sendHello c = do
 		return ()
 	
 	return . fromJust $ name
-\end{code}
 
-\begin{code}
-waitForReply :: C.Connection -> T.Serial -> IO M.MethodReturn
+<<DBus/Bus.hs>>=
+waitForReply :: C.Connection -> M.Serial -> IO M.MethodReturn
 waitForReply c serial = do
 	msg <- C.receive c
 	case msg of
@@ -138,5 +128,3 @@ waitForReply c serial = do
 				then return reply
 				else waitForReply c serial
 		_ -> waitForReply c serial
-\end{code}
-

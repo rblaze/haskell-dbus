@@ -13,8 +13,11 @@
 % You should have received a copy of the GNU General Public License
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-\ignore{
-\begin{code}
+@
+\section{Connections}
+
+<<DBus/Connection.hs>>=
+<<copyright>>
 {-# LANGUAGE DeriveDataTypeable #-}
 module DBus.Connection
 	( Connection
@@ -27,118 +30,110 @@ module DBus.Connection
 import qualified Control.Concurrent as C
 import qualified Control.Exception as E
 
+import Data.Char (ord)
 import Data.Word (Word32)
 import qualified Data.ByteString.Lazy as L
 import Data.ByteString.Lazy.UTF8 (toString, fromString)
 import qualified Data.Map as Map
 import Data.Typeable (Typeable)
+import Data.List (isPrefixOf)
+import Text.Printf (printf)
 
 import qualified Network as N
 import qualified System.IO as I
+import System.Posix.User (getRealUserID)
 
 import qualified DBus.Address as A
-import qualified DBus.Types as T
-import DBus.Message (Message, ReceivedMessage, marshal, unmarshal)
-import DBus.Authentication (authenticate)
-\end{code}
-}
+import qualified DBus.Wire as W
+import qualified DBus.Message as M
 
-\clearpage
-\section{Connections}
-
-A {\tt Connection} is an opaque handle to an open DBus channel, with
+@ A {\tt Connection} is an opaque handle to an open DBus channel, with
 an internal state for maintaining the current message serial.
 
-\begin{code}
-data Connection = Connection A.Address Transport (C.MVar T.Serial)
-\end{code}
+<<DBus/Connection.hs>>=
+data Connection = Connection A.Address Transport (C.MVar M.Serial)
 
-While not particularly useful for other functions, being able to {\tt show}
-a {\tt Connection} is useful when debugging.
+@ While not particularly useful for other functions, being able to
+{\tt show} a {\tt Connection} is useful when debugging.
 
-\begin{code}
+<<DBus/Connection.hs>>=
 instance Show Connection where
 	showsPrec d (Connection a _ _) = showParen (d > 10) $
 		showString' ["<connection \"", A.strAddress a, "\">"] where
 		showString' = foldr (.) id . map showString
-\end{code}
 
-A connection can be opened to any valid address, though actually connecting
+@ A connection can be opened to any valid address, though actually connecting
 might fail due to external factors.
 
-\begin{code}
+<<DBus/Connection.hs>>=
 connect :: A.Address -> IO Connection
 connect a = do
 	t <- connectTransport a
 	let putS = transportSend t . fromString
 	let getS = fmap toString . transportRecv t
 	authenticate putS getS
-	serialMVar <- C.newMVar T.firstSerial
+	serialMVar <- C.newMVar M.firstSerial
 	return $ Connection a t serialMVar
-\end{code}
 
-Sending a message will increment the connection's internal serial state.
+@ Sending a message will increment the connection's internal serial state.
 The second parameter is present to allow registration of a callback before
 the message has actually been sent, which avoids race conditions in
 multi-threaded clients.
 
-\begin{code}
-send :: Message a => Connection -> (T.Serial -> IO b) -> a -> IO b
+<<DBus/Connection.hs>>=
+send :: M.Message a => Connection -> (M.Serial -> IO b) -> a -> IO b
 send (Connection _ t mvar) io msg = withSerial mvar $ \serial -> do
 	x <- io serial
-	case marshal T.LittleEndian serial $ msg of
+	case W.marshalMessage W.LittleEndian serial msg of
 		Right bytes -> transportSend t bytes
 		Left  err   -> E.throwIO err
 	return x
 
-withSerial :: C.MVar T.Serial -> (T.Serial -> IO a) -> IO a
+<<DBus/Connection.hs>>=
+withSerial :: C.MVar M.Serial -> (M.Serial -> IO a) -> IO a
 withSerial m io = E.block $ do
 	s <- C.takeMVar m
-	let s' = T.nextSerial s
+	let s' = M.nextSerial s
 	x <- E.unblock (io s) `E.onException` C.putMVar m s'
 	C.putMVar m s'
 	return x
-\end{code}
 
-Messages are received wrapped in a {\tt ReceivedMessage} value. If an error
-is encountered while unmarshaling, an exception will be thrown.
+@ Messages are received wrapped in a {\tt ReceivedMessage} value. If an
+error is encountered while unmarshaling, an exception will be thrown.
 
-\begin{code}
-receive :: Connection -> IO ReceivedMessage
+<<DBus/Connection.hs>>=
+receive :: Connection -> IO M.ReceivedMessage
 receive (Connection _ t _) = do
-	either' <- unmarshal $ transportRecv t
+	either' <- W.unmarshalMessage $ transportRecv t
 	case either' of
 		Right x -> return x
 		Left err -> E.throwIO err
-\end{code}
 
-\section{Transports}
+@ \section{Transports}
 
 A transport is anything which can send and receive bytestrings, typically
 over a socket.
 
-\begin{code}
+<<DBus/Connection.hs>>=
 data Transport = Transport
 	{ transportSend :: L.ByteString -> IO ()
 	, transportRecv :: Word32 -> IO L.ByteString
 	}
-\end{code}
 
-\begin{code}
+<<DBus/Connection.hs>>=
 connectTransport :: A.Address -> IO Transport
 connectTransport a = transport' (A.addressMethod a) a where
 	transport' "unix" = unix
 	transport' _      = unknownTransport
-\end{code}
 
-\subsection{UNIX}
+@ \subsection{UNIX}
 
 The {\sc unix} transport accepts two parameters: {\tt path}, which is a
 simple filesystem path, and {\tt abstract}, which is a path in the
 Linux-specific abstract domain. One, and only one, of these parameters must
 be specified.
 
-\begin{code}
+<<DBus/Connection.hs>>=
 unix :: A.Address -> IO Transport
 unix a = handleTransport . N.connectTo "localhost" =<< port where
 	params = A.addressParameters a
@@ -156,9 +151,8 @@ unix a = handleTransport . N.connectTo "localhost" =<< port where
 		(Nothing, Nothing) -> E.throwIO $ BadParameters a tooFew
 		(Just x, Nothing) -> return x
 		(Nothing, Just x) -> return $ '\x00':x
-\end{code}
 
-\subsection{TCP}
+@ \subsection{TCP}
 
 known parameters:
 
@@ -170,7 +164,7 @@ known parameters:
 
 TCP support is TODO
 
-\begin{otherCode}
+<<TODO>>=
 tcp :: A.Address -> IO Transport
 tcp a@(A.Address _ params) = handleTransport a connect' where
 	host = lookup "host" params
@@ -184,38 +178,35 @@ tcp a@(A.Address _ params) = handleTransport a connect' where
 parsePort :: String -> Maybe PortNumber
 
 parseFamily :: String -> Maybe Family
-\end{otherCode}
 
-\subsection{Generic handle-based transport}
+@ \subsection{Generic handle-based transport}
 
 Both UNIX and TCP are backed by standard handles, and can therefore use
 a shared handle-based transport backend.
 
-\begin{code}
+<<DBus/Connection.hs>>=
 handleTransport :: IO I.Handle -> IO Transport
 handleTransport io = do
 	h <- io
 	I.hSetBuffering h I.NoBuffering
 	I.hSetBinaryMode h True
 	return $ Transport (L.hPut h) (L.hGet h . fromIntegral)
-\end{code}
 
-\subsection{Unknown transports}
+@ \subsection{Unknown transports}
 
 If a method has no known transport, attempting to connect using it will
 just result in an exception.
 
-\begin{code}
+<<DBus/Connection.hs>>=
 unknownTransport :: A.Address -> IO Transport
 unknownTransport = E.throwIO . UnknownMethod
-\end{code}
 
-\subsection{Errors}
+@ \subsection{Errors}
 
 If connecting to DBus fails, a {\tt ConnectionException} will be thrown.
 The constructor describes which exception occurred.
 
-\begin{code}
+<<DBus/Connection.hs>>=
 data ConnectionException
 	= InvalidAddress String
 	| BadParameters A.Address String
@@ -224,4 +215,45 @@ data ConnectionException
 	deriving (Show, Typeable)
 
 instance E.Exception ConnectionException
-\end{code}
+instance E.Exception W.MarshalError
+instance E.Exception W.UnmarshalError
+
+@ \subsection{Authentication}
+
+<<DBus/Connection.hs>>=
+authenticate :: (String -> IO ()) -> (Word32 -> IO String)
+                -> IO ()
+authenticate put get = do
+	put "\x00"
+
+@ {\sc external} authentication is performed using the process's real user
+ID, converted to a string, and then hex-encoded.
+
+<<DBus/Connection.hs>>=
+	uid <- getRealUserID
+	let authToken = concatMap (printf "%02X" . ord) (show uid)
+	put $ "AUTH EXTERNAL " ++ authToken ++ "\r\n"
+
+@ If authentication was successful, the server responds with {\tt OK
+<server GUID>}.  The GUID is intended to enable connection sharing, which
+is currently unimplemented, so it's ignored.
+
+<<DBus/Connection.hs>>=
+	response <- readUntil '\n' get
+	if "OK" `isPrefixOf` response
+		then put "BEGIN\r\n"
+		else do
+			putStrLn $ "response = " ++ show response
+			error "Server rejected authentication token."
+
+<<DBus/Connection.hs>>=
+readUntil :: Monad m => Char -> (Word32 -> m String) -> m String
+readUntil = readUntil' ""
+
+readUntil' :: Monad m => String -> Char -> (Word32 -> m String) -> m String
+readUntil' xs c f = do
+	[x] <- f 1
+	let xs' = xs ++ [x]
+	if x == c
+		then return xs'
+		else readUntil' xs' c f
