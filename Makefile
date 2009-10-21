@@ -1,6 +1,10 @@
 TEX_SOURCES=tex/DBus/Address.tex \
-            tex/DBus/Types.tex \
+            tex/DBus/Bus.tex \
+            tex/DBus/Connection.tex \
             tex/DBus/Constants.tex \
+            tex/DBus/Introspection.tex \
+            tex/DBus/Message.tex \
+            tex/DBus/Types.tex \
             tex/DBus/Util.tex \
             tex/DBus/Wire.tex \
             tex/Tests.tex \
