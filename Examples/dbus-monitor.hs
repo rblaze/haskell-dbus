@@ -56,7 +56,7 @@ findBus []    = getSessionBus
 findBus (o:_) = case o of
 	BusOption Session -> getSessionBus
 	BusOption System  -> getSystemBus
-	AddressOption addr -> case parseAddresses addr of
+	AddressOption addr -> case mkAddresses addr of
 			Just [x] -> getBus x
 			Just  x  -> getFirstBus x
 			_        -> error $ "Invalid address: " ++ show addr
@@ -171,7 +171,7 @@ formatMessage (ReceivedSignal serial sender msg) = concat
 	, formatBody msg
 	]
 
-formatMessage (ReceivedUnknown serial sender) = concat
+formatMessage (ReceivedUnknown serial sender _) = concat
 	[ "unknown"
 	, " sender="
 	, fromMaybe "(null)" . fmap strBusName $ sender
@@ -196,49 +196,48 @@ collapseTree d (Children xs)  = concatMap (collapseTree (d + 1)) xs
 
 -- Formatting for various kinds of variants, keyed to their signature type.
 formatVariant :: Variant -> StringTree
-formatVariant v = formatVariant' type' v where
-	[type'] = signatureTypes . variantSignature $ v
+formatVariant v = formatVariant' (variantType v) v where
 
 formatVariant' :: Type -> Variant -> StringTree
 
-formatVariant' BooleanT x = Line $ "boolean " ++ strX where
+formatVariant' DBusBoolean x = Line $ "boolean " ++ strX where
 	x' = fromJust . fromVariant $ x :: Bool
 	strX = if x' then "true" else "false"
 
-formatVariant' ByteT x = Line $ "byte " ++ show x' where
+formatVariant' DBusByte x = Line $ "byte " ++ show x' where
 	x' = fromJust . fromVariant $ x :: Word8
 
-formatVariant' Int16T x = Line $ "int16 " ++ show x' where
+formatVariant' DBusInt16 x = Line $ "int16 " ++ show x' where
 	x' = fromJust . fromVariant $ x :: Int16
 
-formatVariant' Int32T x = Line $ "int32 " ++ show x' where
+formatVariant' DBusInt32 x = Line $ "int32 " ++ show x' where
 	x' = fromJust . fromVariant $ x :: Int32
 
-formatVariant' Int64T x = Line $ "int64 " ++ show x' where
+formatVariant' DBusInt64 x = Line $ "int64 " ++ show x' where
 	x' = fromJust . fromVariant $ x :: Int64
 
-formatVariant' UInt16T x = Line $ "uint16 " ++ show x' where
+formatVariant' DBusWord16 x = Line $ "uint16 " ++ show x' where
 	x' = fromJust . fromVariant $ x :: Word16
 
-formatVariant' UInt32T x = Line $ "uint32 " ++ show x' where
+formatVariant' DBusWord32 x = Line $ "uint32 " ++ show x' where
 	x' = fromJust . fromVariant $ x :: Word32
 
-formatVariant' UInt64T x = Line $ "uint64 " ++ show x' where
+formatVariant' DBusWord64 x = Line $ "uint64 " ++ show x' where
 	x' = fromJust . fromVariant $ x :: Word64
 
-formatVariant' DoubleT x = Line $ "double " ++ show x' where
+formatVariant' DBusDouble x = Line $ "double " ++ show x' where
 	x' = fromJust . fromVariant $ x :: Double
 
-formatVariant' StringT x = Line $ "string " ++ show x' where
+formatVariant' DBusString x = Line $ "string " ++ show x' where
 	x' = fromJust . fromVariant $ x :: String
 
-formatVariant' ObjectPathT x = Line $ "object path " ++ show x' where
+formatVariant' DBusObjectPath x = Line $ "object path " ++ show x' where
 	x' = strObjectPath . fromJust . fromVariant $ x
 
-formatVariant' SignatureT x = Line $ "signature " ++ show x' where
+formatVariant' DBusSignature x = Line $ "signature " ++ show x' where
 	x' = strSignature . fromJust . fromVariant $ x
 
-formatVariant' (ArrayT _) x = MultiLine lines' where
+formatVariant' (DBusArray _) x = MultiLine lines' where
 	items = arrayItems . fromJust . fromVariant $ x
 	lines' =
 		[ Line "array ["
@@ -246,7 +245,7 @@ formatVariant' (ArrayT _) x = MultiLine lines' where
 		, Line "]"
 		]
 
-formatVariant' (DictionaryT _ _) x = MultiLine lines' where
+formatVariant' (DBusDictionary _ _) x = MultiLine lines' where
 	items = dictionaryItems . fromJust . fromVariant $ x
 	lines' = [ Line "dictionary {"
 		, Children . map formatItem $ items
@@ -258,7 +257,7 @@ formatVariant' (DictionaryT _ _) x = MultiLine lines' where
 		vHead = head v'
 		vTail = map Line $ tail v'
 
-formatVariant' (StructureT _) x = MultiLine lines' where
+formatVariant' (DBusStructure _) x = MultiLine lines' where
 	Structure items = fromJust . fromVariant $ x
 	lines' =
 		[ Line "struct ("
@@ -266,4 +265,4 @@ formatVariant' (StructureT _) x = MultiLine lines' where
 		, Line ")"
 		]
 
-formatVariant' VariantT x = formatVariant . fromJust . fromVariant $ x
+formatVariant' DBusVariant x = formatVariant . fromJust . fromVariant $ x
