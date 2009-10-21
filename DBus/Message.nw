@@ -13,21 +13,19 @@
 % You should have received a copy of the GNU General Public License
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+@
+\section{Messages}
+
 <<DBus/Message.hs>>=
 <<copyright>>
 module DBus.Message
 	(<<exports>>
 	) where
-
 import qualified Data.Set as S
 import Data.Word (Word8, Word32)
-
 import qualified DBus.Types as T
 
-@
-\section{Messages}
-
-A message represents a single message, with a header and body. Some parts
+@ A message represents a single message, with a header and body. Some parts
 of the header, such as the serial, endianness, and body length, are not
 included in the message --- instead, they are generated when a message is
 marshalled.

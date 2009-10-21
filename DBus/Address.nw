@@ -13,6 +13,9 @@
 % You should have received a copy of the GNU General Public License
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+@
+\section{Addresses}
+
 <<DBus/Address.hs>>=
 <<copyright>>
 module DBus.Address
@@ -31,10 +34,7 @@ import qualified Text.Parsec as P
 import Text.Parsec ((<|>))
 import DBus.Util (hexToInt, eitherToMaybe)
 
-@
-\section{Addresses}
-
-\subsection{Address syntax}
+@ \subsection{Address syntax}
 
 A bus address is in the format {\tt $method$:$key$=$value$,$key$=$value$...}
 where the method may be empty and parameters are optional. An address's

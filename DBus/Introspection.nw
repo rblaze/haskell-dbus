@@ -13,6 +13,9 @@
 % You should have received a copy of the GNU General Public License
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+@
+\section{Introspection}
+
 <<DBus/Introspection.hs>>=
 <<copyright>>
 module DBus.Introspection
@@ -36,12 +39,11 @@ import qualified Text.XML.HXT.Arrow.ParserInterface as P
 import qualified Text.XML.HXT.DOM.XmlNode as XN
 import qualified DBus.Types as T
 
-@
-\section{Introspection}
-
-DBus objects may be ``introspected'' to determine which methods, signals,
+@ DBus objects may be ``introspected'' to determine which methods, signals,
 etc they support. Intospection data is sent over the bus in {\sc xml}, in
 a mostly standardised but undocumented format.
+
+@ \subsection{Data types}
 
 <<DBus/Introspection.hs>>=
 data Object = Object T.ObjectPath [Interface] [Object]

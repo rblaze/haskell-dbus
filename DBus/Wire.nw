@@ -13,7 +13,8 @@
 % You should have received a copy of the GNU General Public License
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-@ \section{Wire format}
+@
+\section{Wire format}
 
 <<DBus/Wire.hs>>=
 <<copyright>>
@@ -577,6 +578,8 @@ unmarshalType T.DBusVariant = do
 
 @ \subsection{Messages}
 
+@ \subsubsection{Flags}
+
 <<DBus/Wire.hs>>=
 encodeFlags :: Set.Set M.Flag -> Word8
 encodeFlags flags = foldr (.|.) 0 $ map flagValue $ Set.toList flags where
@@ -590,6 +593,7 @@ decodeFlags word = Set.fromList flags where
 	          ]
 	flags = flagSet >>= \(x, y) -> [y | word .&. x > 0]
 
+@ \subsubsection{Header fields}
 
 <<DBus/Wire.hs>>=
 encodeField :: M.HeaderField -> T.Structure
@@ -628,6 +632,7 @@ decodeField' x f label = case T.fromVariant x of
 	Just x' -> return [f x']
 	Nothing -> E.throwError $ InvalidHeaderField label x
 
+<<DBus/Wire.hs>>=
 unpackField :: T.Structure -> (Word8, T.Variant)
 unpackField struct = (c', v') where
 	T.Structure [c, v] = struct

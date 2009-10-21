@@ -13,14 +13,14 @@
 % You should have received a copy of the GNU General Public License
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+@
+\section{Constants}
+
 <<DBus/Constants.hs>>=
 <<copyright>>
 module DBus.Constants where
 import qualified DBus.Types as T
 import Data.Word (Word8, Word32)
-
-@
-\section{Constants}
 
 <<DBus/Constants.hs>>=
 protocolVersion :: Word8
