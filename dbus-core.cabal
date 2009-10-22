@@ -12,10 +12,11 @@ stability: experimental
 bug-reports: mailto:jmillikin@gmail.com
 
 extra-source-files:
-  dbus-core.tex
+  DBus/*.nw
+  DBus.nw
+  Tests.nw
   Examples/*.hs
-  Tests/*.hs
-  Tests.hs
+  dbus-core.tex
 
 source-repository head
   type: darcs
