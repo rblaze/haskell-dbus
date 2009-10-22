@@ -319,6 +319,10 @@ Arrays are homogenous sequences of any valid DBus type. An array's type
 code is ``a'' followed by the type it contains. For example, an array of
 booleans would have the type string ``ab''.
 
+TODO: There ought to be a specialised constructor for arrays of bytes, based
+on the {\tt ByteString} type. Storing bytes individually in a list of
+{\tt Variant}s is insane.
+
 <<container type codes>>=
 typeCode (DBusArray t) = 'a' : typeCode t
 
