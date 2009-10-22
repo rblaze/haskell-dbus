@@ -30,6 +30,8 @@ import Data.Int (Int16, Int32, Int64)
 import Data.List (intercalate)
 import qualified Data.Map as Map
 import Data.Typeable (Typeable, cast)
+import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
 import Text.Parsec ((<|>))
 import qualified Text.Parsec as P
 import DBus.Util (checkLength, parseMaybe, mkUnsafe)
@@ -179,9 +181,30 @@ BUILTIN_ATOMIC(Word16, DBusWord16)
 BUILTIN_ATOMIC(Word32, DBusWord32)
 BUILTIN_ATOMIC(Word64, DBusWord64)
 BUILTIN_ATOMIC(Double, DBusDouble)
-BUILTIN_ATOMIC(String, DBusString)
 
-@ A few are DBus-specific; they are defined later.
+@ Strings are a weird case; the built-in type, {\tt String}, is horribly
+inefficent. To provide better performance for large strings, the types
+defined in {\tt Data.Text} are used internally.
+
+There's two different {\tt Text} types, strict and lazy, so instances
+are added for each. Only lazy {\tt Text} values are actually stored; other
+text-like types are converted.
+
+<<DBus/Types.hs>>=
+BUILTIN_ATOMIC(TL.Text, DBusString)
+
+instance Atomic T.Text where
+	toAtom = toAtom . TL.fromChunks . (:[])
+	fromAtom = fmap (T.concat . TL.toChunks) . fromAtom
+
+@ Built-in {\tt String}s can still be stored, of course.
+
+<<DBus/Types.hs>>=
+instance Atomic String where
+	toAtom = toAtom . TL.pack
+	fromAtom = fmap TL.unpack . fromAtom
+
+@ A few types are DBus-specific; they are defined later.
 
 <<DBus/Types.hs>>=
 BUILTIN_ATOMIC(Signature, DBusSignature)
@@ -248,7 +271,7 @@ variantToAtom v = msum as where
 	     ,fa (v' :: Maybe Int32)
 	     ,fa (v' :: Maybe Int64)
 	     ,fa (v' :: Maybe Double)
-	     ,fa (v' :: Maybe String)
+	     ,fa (v' :: Maybe TL.Text)
 	     ,fa (v' :: Maybe ObjectPath)
 	     ,fa (v' :: Maybe Signature)
 	     ]
@@ -270,10 +293,19 @@ BUILTIN_VARIABLE(Word16)
 BUILTIN_VARIABLE(Word32)
 BUILTIN_VARIABLE(Word64)
 BUILTIN_VARIABLE(Double)
-BUILTIN_VARIABLE(String)
+BUILTIN_VARIABLE(TL.Text)
 BUILTIN_VARIABLE(Signature)
 BUILTIN_VARIABLE(ObjectPath)
 BUILTIN_VARIABLE(Variant)
+
+<<DBus/Types.hs>>=
+instance Variable T.Text where
+	toVariant = toVariant . TL.fromChunks . (:[])
+	fromVariant = fmap (T.concat . TL.toChunks) . fromVariant
+
+instance Variable String where
+	toVariant = toVariant . TL.pack
+	fromVariant = fmap TL.unpack . fromVariant
 
 <<exports>>=
 , Variant

@@ -29,7 +29,8 @@ import qualified Data.Binary.Put as P
 import qualified Data.Binary.Get as G
 import qualified Data.Binary.IEEE754 as IEEE
 import qualified Data.ByteString.Lazy as L
-import Data.ByteString.Lazy.UTF8 (toString, fromString)
+import qualified Data.Text.Lazy as TL
+import Data.Text.Lazy.Encoding (decodeUtf8, encodeUtf8)
 import Data.Bits ((.|.), (.&.))
 import Data.Maybe (fromJust, listToMaybe, fromMaybe)
 import Data.Word (Word8, Word32, Word64)
@@ -401,34 +402,35 @@ their length. Object paths are marshaled just like strings, though additional
 checks are required when unmarshaling.
 
 <<DBus/Wire.hs>>=
-marshalString :: String -> Marshal
-marshalString x = do
-	let bytes = fromString x
+marshalText :: TL.Text -> Marshal
+marshalText x = do
+	let bytes = encodeUtf8 x
 	marshalWord32 . fromIntegral . L.length $ bytes
 	append bytes
 	append (L.singleton 0)
 
 <<DBus/Wire.hs>>=
-unmarshalString :: Unmarshal String
-unmarshalString = do
+unmarshalText :: Unmarshal TL.Text
+unmarshalText = do
 	byteCount <- unmarshalWord32
 	bytes <- consume . fromIntegral $ byteCount
 	skipTerminator
-	return . toString $ bytes
+	return . decodeUtf8 $ bytes
 
 <<alignments>>=
 alignment T.DBusString     = 4
 alignment T.DBusObjectPath = 4
 
 <<marshalers>>=
-marshalType T.DBusString = marshalString x
-marshalType T.DBusObjectPath = marshalString . T.strObjectPath $ x
+marshalType T.DBusString = marshalText x
+marshalType T.DBusObjectPath = marshalText . TL.pack . T.strObjectPath $ x
 
 <<unmarshalers>>=
-unmarshalType T.DBusString = fmap T.toVariant unmarshalString
+unmarshalType T.DBusString = fmap T.toVariant unmarshalText
 
-unmarshalType T.DBusObjectPath = unmarshalString >>=
-	fromMaybeU' "object path" T.mkObjectPath
+unmarshalType T.DBusObjectPath = do
+	string <- fmap TL.unpack unmarshalText
+	fromMaybeU' "object path" T.mkObjectPath string
 
 @ \subsection{Signatures}
 
@@ -438,7 +440,7 @@ characters and is therefore stored as a single byte.
 <<DBus/Wire.hs>>=
 marshalSignature :: T.Signature -> Marshal
 marshalSignature x = do
-	let bytes = fromString . T.strSignature $ x
+	let bytes = encodeUtf8 . TL.pack . T.strSignature $ x
 	let size = fromIntegral . L.length $ bytes
 	append (L.singleton size)
 	append bytes
@@ -448,9 +450,9 @@ marshalSignature x = do
 unmarshalSignature :: Unmarshal T.Signature
 unmarshalSignature = do
 	byteCount <- fmap L.head $ consume 1
-	sigStr <- fmap toString $ consume . fromIntegral $ byteCount
+	sigText <- fmap decodeUtf8 $ consume . fromIntegral $ byteCount
 	skipTerminator
-	fromMaybeU "signature" T.mkSignature sigStr
+	fromMaybeU "signature" T.mkSignature $ TL.unpack sigText
 
 <<alignments>>=
 alignment T.DBusSignature  = 1

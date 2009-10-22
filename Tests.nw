@@ -30,6 +30,8 @@ import Data.List (intercalate, isInfixOf)
 import Data.Maybe (fromJust, isJust, isNothing)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
 import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
 
@@ -96,7 +98,20 @@ commonAtomTests gen =
 , testGroup "Int32"   $ commonAtomTests (arbitrary :: Gen Int32)
 , testGroup "Int64"   $ commonAtomTests (arbitrary :: Gen Int64)
 , testGroup "Double"  $ commonAtomTests (arbitrary :: Gen Double)
-, testGroup "String"  $ commonAtomTests (arbitrary :: Gen String)
+, testGroup "String"  $ commonAtomTests (arbitrary :: Gen String) ++
+	[ testProperty "String -> strict Text"
+		$ \x -> (fromAtom . toAtom) x == (Just $ T.pack x)
+	, testProperty "String <- strict Text"
+		$ \x -> (fromAtom . toAtom) x == (Just $ T.unpack x)
+	, testProperty "String -> lazy Text"
+		$ \x -> (fromAtom . toAtom) x == (Just $ TL.pack x)
+	, testProperty "String <- lazy Text"
+		$ \x -> (fromAtom . toAtom) x == (Just $ TL.unpack x)
+	, testProperty "Strict Text -> lazy Text"
+		$ \x -> (fromAtom . toAtom) x == (Just $ TL.pack . T.unpack $ x)
+	, testProperty "Strict Text <- lazy Text"
+		$ \x -> (fromAtom . toAtom) x == (Just $ T.pack . TL.unpack $ x)
+	]
 
 <<Tests.hs>>=
 atomicType :: Gen Type
@@ -675,6 +690,12 @@ instance Arbitrary Int64 where
 	arbitrary = fmap fromIntegral gen where
 		gen = choose (0, max') :: Gen Integer
 		max' = iexp 2 64 - 1
+
+instance Arbitrary T.Text where
+	arbitrary = fmap T.pack arbitrary
+
+instance Arbitrary TL.Text where
+	arbitrary = fmap TL.pack arbitrary
 
 sized' :: Int -> Gen a -> Gen [a]
 sized' atLeast g = sized $ \n -> do
