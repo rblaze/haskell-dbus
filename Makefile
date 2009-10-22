@@ -1,19 +1,34 @@
-TEX_SOURCES=tex/DBus/Address.tex \
-            tex/DBus/Bus.tex \
-            tex/DBus/Connection.tex \
-            tex/DBus/Constants.tex \
-            tex/DBus/Introspection.tex \
-            tex/DBus/Message.tex \
-            tex/DBus/Types.tex \
-            tex/DBus/Util.tex \
-            tex/DBus/Wire.tex \
-            tex/Tests.tex \
-            dbus-core.tex
+HS_SOURCES=\
+	hs/DBus/Address.hs \
+	hs/DBus/Bus.hs \
+	hs/DBus/Connection.hs \
+	hs/DBus/Constants.hs \
+	hs/DBus/Introspection.hs \
+	hs/DBus/Message.hs \
+	hs/DBus/Types.hs \
+	hs/DBus/Util.hs \
+	hs/DBus/Wire.hs \
+	hs/Tests.hs
 
-tex/%.tex : %.nw
-	mkdir -p tex/DBus
-	noweave -n "$<" | cpif "$@"
+all: $(HS_SOURCES)
 
-dbus-core.pdf: $(TEX_SOURCES)
+%.tex: %.nw
+	noweave -delay "$<" | cpif "$@"
+
+hs/%.hs: dbus-core.nw hs/DBus
+	notangle -R"$*.hs" "$<" | cpphs --hashes --noline | cpif "$@"
+
+hs/Tests.hs: Tests.nw hs/DBus
+	notangle -R"Tests.hs" "$<" dbus-core.nw | cpphs --hashes --noline | cpif "$@"
+
+hs/DBus: hs
+	mkdir -p hs/DBus
+
+hs:
+	mkdir -p hs
+
+dbus-core.pdf: dbus-core.tex
 	xelatex dbus-core.tex
 	xelatex dbus-core.tex
+
+pdf: dbus-core.pdf

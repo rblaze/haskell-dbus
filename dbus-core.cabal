@@ -12,11 +12,9 @@ stability: experimental
 bug-reports: mailto:jmillikin@gmail.com
 
 extra-source-files:
-  DBus/*.nw
-  DBus.nw
+  dbus-core.nw
   Tests.nw
   Examples/*.hs
-  dbus-core.tex
 
 source-repository head
   type: darcs
@@ -30,6 +28,7 @@ flag hpc
 
 library
   ghc-options: -Wall
+  hs-source-dirs: hs
 
   build-depends:
     base >=4 && < 5,
@@ -59,6 +58,7 @@ library
 
 executable tests
   main-is: Tests.hs
+  hs-source-dirs: hs
 
   if flag(test)
     build-depends:

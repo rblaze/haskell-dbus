@@ -1,0 +1,2919 @@
+
+% Copyright (C) 2009 John Millikin <jmillikin@gmail.com>
+% 
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+\documentclass[12pt]{article}
+
+\usepackage{color}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{noweb}
+
+% Smaller margins
+\usepackage[left=1.5cm,top=2cm,right=1.5cm,nohead,nofoot]{geometry}
+
+% Remove boxes from hyperlinks
+\hypersetup{
+    colorlinks,
+    linkcolor=blue,
+}
+
+\makeindex
+
+\begin{document}
+
+\addcontentsline{toc}{section}{Contents}
+\tableofcontents
+
+<<copyright>>=
+{-
+  Copyright (C) 2009 John Millikin <jmillikin@gmail.com>
+  
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  any later version.
+  
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+  
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+-}
+
+@
+\section{Types}
+
+<<DBus/Types.hs>>=
+<<copyright>>
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
+module DBus.Types (<<type exports>>) where
+
+import Control.Arrow ((***))
+import Control.Monad (forM, unless, msum)
+import Data.Word (Word8, Word16, Word32, Word64)
+import Data.Int (Int16, Int32, Int64)
+import Data.List (intercalate)
+import qualified Data.Map as Map
+import Data.Typeable (Typeable, cast)
+import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
+import Text.Parsec ((<|>))
+import qualified Text.Parsec as P
+import DBus.Util (checkLength, parseMaybe, mkUnsafe)
+
+@ DBus types are divided into two categories, ``atomic'' and ``container''
+types. Atoms are actual values -- strings, numbers, etc. Containers store
+atoms and other containers. The most interesting difference between the two
+is that atoms may be used as the keys in associative mappings
+(``dictionaries'').
+
+Internally, types are represented using an enumerated type.
+
+<<DBus/Types.hs>>=
+data Type
+	= DBusBoolean
+	| DBusByte
+	| DBusInt16
+	| DBusInt32
+	| DBusInt64
+	| DBusWord16
+	| DBusWord32
+	| DBusWord64
+	| DBusDouble
+	| DBusString
+	| DBusSignature
+	| DBusObjectPath
+	| DBusVariant
+	| DBusArray Type
+	| DBusDictionary Type Type
+	| DBusStructure [Type]
+	deriving (Show, Eq)
+
+class Typeable a => Builtin a where
+	builtinDBusType :: a -> Type
+
+typeCode :: Type -> TL.Text
+<<atomic type codes>>
+<<container type codes>>
+
+<<type exports>>=
+  Type (..)
+, typeCode
+
+@ \subsection{Atoms}
+
+Every atomic type is identified by a unique ``type code'', which is a single
+letter.
+
+\begin{table}[h]
+\caption{Atomic types}
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Type        & Code & Description \\
+\midrule
+Boolean     &  b   & Either {\tt True} or {\tt False} \\
+Byte        &  y   & 8-bit unsigned integer \\
+Int16       &  n   & 16-bit signed integer \\
+Int32       &  i   & 32-bit signed integer \\
+Int64       &  x   & 64-bit signed integer \\
+Word16      &  q   & 16-bit unsigned integer \\
+Word32      &  u   & 32-bit unsigned integer \\
+Word64      &  t   & 64-bit unsigned integer \\
+Double      &  d   & 64-bit IEEE754 floating-point \\
+String      &  s   & Unicode string with no {\tt NUL} bytes \\
+Signature   &  g   & Type signature; see ``Signatures'' \\
+Object path &  o   & Path to a remote object; see ``Object paths'' \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+<<atomic type codes>>=
+typeCode DBusBoolean    = "b"
+typeCode DBusByte       = "y"
+typeCode DBusInt16      = "n"
+typeCode DBusInt32      = "i"
+typeCode DBusInt64      = "x"
+typeCode DBusWord16     = "q"
+typeCode DBusWord32     = "u"
+typeCode DBusWord64     = "t"
+typeCode DBusDouble     = "d"
+typeCode DBusString     = "s"
+typeCode DBusSignature  = "g"
+typeCode DBusObjectPath = "o"
+
+<<DBus/Types.hs>>=
+isAtomicType :: Type -> Bool
+isAtomicType DBusBoolean    = True
+isAtomicType DBusByte       = True
+isAtomicType DBusInt16      = True
+isAtomicType DBusInt32      = True
+isAtomicType DBusInt64      = True
+isAtomicType DBusWord16     = True
+isAtomicType DBusWord32     = True
+isAtomicType DBusWord64     = True
+isAtomicType DBusDouble     = True
+isAtomicType DBusString     = True
+isAtomicType DBusSignature  = True
+isAtomicType DBusObjectPath = True
+isAtomicType _              = False
+
+@ The {\tt Atom} type is used to store any type which must be atomic, such
+as dictionary keys. The constructor is not exported outside of this module,
+so clients aren't allowed to invent their own atomic types.
+
+<<DBus/Types.hs>>=
+class Variable a => Atomic a where
+	toAtom   :: a -> Atom
+	fromAtom :: Atom -> Maybe a
+
+data Atom = forall a. (Builtin a, Atomic a, Show a, Eq a) => Atom a
+
+instance Show Atom where
+	showsPrec d (Atom x) = showParen (d > 10) $
+		s "Atom " . showSig . s " " . showsPrec 11 x
+		where showSig = shows . typeCode . builtinDBusType $ x
+		      s       = showString
+
+instance Eq Atom where
+	(Atom x) == (Atom y) = cast x == Just y
+
+atomType :: Atom -> Type
+atomType (Atom x) = builtinDBusType x
+
+<<type exports>>=
+, Atom
+, Atomic (..)
+, atomType
+
+@ Most atomic types map directly to a built-in Haskell type.
+
+<<DBus/Types.hs>>=
+#define BUILTIN_ATOMIC(HASKELL, DBUS) \
+	instance Builtin HASKELL where \
+		{ builtinDBusType _ = DBUS }; \
+	instance Atomic HASKELL where \
+		{ toAtom = Atom \
+		; fromAtom (Atom x) = cast x };
+
+BUILTIN_ATOMIC(Bool,   DBusBoolean)
+BUILTIN_ATOMIC(Word8,  DBusByte)
+BUILTIN_ATOMIC(Int16,  DBusInt16)
+BUILTIN_ATOMIC(Int32,  DBusInt32)
+BUILTIN_ATOMIC(Int64,  DBusInt64)
+BUILTIN_ATOMIC(Word16, DBusWord16)
+BUILTIN_ATOMIC(Word32, DBusWord32)
+BUILTIN_ATOMIC(Word64, DBusWord64)
+BUILTIN_ATOMIC(Double, DBusDouble)
+
+@ Strings are a weird case; the built-in type, {\tt String}, is horribly
+inefficent. To provide better performance for large strings, the types
+defined in {\tt Data.Text} are used internally.
+
+There's two different {\tt Text} types, strict and lazy, so instances
+are added for each. Only lazy {\tt Text} values are actually stored; other
+text-like types are converted.
+
+<<DBus/Types.hs>>=
+BUILTIN_ATOMIC(TL.Text, DBusString)
+
+instance Atomic T.Text where
+	toAtom = toAtom . TL.fromChunks . (:[])
+	fromAtom = fmap (T.concat . TL.toChunks) . fromAtom
+
+@ Built-in {\tt String}s can still be stored, of course.
+
+<<DBus/Types.hs>>=
+instance Atomic String where
+	toAtom = toAtom . TL.pack
+	fromAtom = fmap TL.unpack . fromAtom
+
+@ A few types are DBus-specific; they are defined later.
+
+<<DBus/Types.hs>>=
+BUILTIN_ATOMIC(Signature, DBusSignature)
+BUILTIN_ATOMIC(ObjectPath, DBusObjectPath)
+
+@ \subsection{Containers}
+Container types are identified by a (generally) multi-character type code,
+depending in which types they contain. There are four kinds of containers:
+
+@ \subsubsection{Variants}
+
+Variants may store any DBus value, including other variants. Their type code
+is ``v'', which does not change depending on the type they contain. Variants
+can be used to store heterogenous values in an array or dictionary.
+
+<<container type codes>>=
+typeCode DBusVariant = "v"
+
+<<DBus/Types.hs>>=
+class Variable a where
+	toVariant :: a -> Variant
+	fromVariant :: Variant -> Maybe a
+
+data Variant = forall a. (Builtin a, Show a, Eq a) => Variant a
+	deriving (Typeable)
+
+instance Show Variant where
+	showsPrec d (Variant x) = showParen (d > 10) $
+		s "Variant " . showSig . s " " . showsPrec 11 x
+		where showSig = shows . typeCode . builtinDBusType $ x
+		      s       = showString
+
+instance Eq Variant where
+	(Variant x) == (Variant y) = cast x == Just y
+
+instance Builtin Variant where
+	builtinDBusType _ = DBusVariant
+
+@ Any instance of {\tt Variable} can be stored in a {\tt Variant}.
+``Built-in'' types, defined below, have direct access to the {\tt Variant}
+value constructor. Other types may implement {\tt toVariant} by constructing
+a {\tt Variant} containing a built-in type.
+
+<<DBus/Types.hs>>=
+variantType :: Variant -> Type
+variantType (Variant x) = builtinDBusType x
+
+atomToVariant :: Atom -> Variant
+atomToVariant (Atom x) = toVariant x
+
+variantToAtom :: Variant -> Maybe Atom
+variantToAtom v = msum as where
+	v' :: Variable a => Maybe a
+	v' = fromVariant v
+	fa :: (Atomic a, Functor f) => f a -> f Atom
+	fa = fmap toAtom
+	
+	as = [fa (v' :: Maybe Bool)
+	     ,fa (v' :: Maybe Word8)
+	     ,fa (v' :: Maybe Word16)
+	     ,fa (v' :: Maybe Word32)
+	     ,fa (v' :: Maybe Word64)
+	     ,fa (v' :: Maybe Int16)
+	     ,fa (v' :: Maybe Int32)
+	     ,fa (v' :: Maybe Int64)
+	     ,fa (v' :: Maybe Double)
+	     ,fa (v' :: Maybe TL.Text)
+	     ,fa (v' :: Maybe ObjectPath)
+	     ,fa (v' :: Maybe Signature)
+	     ]
+
+@ By default, there are instances of {\tt Variable} for all built-in types.
+
+<<DBus/Types.hs>>=
+#define BUILTIN_VARIABLE(T) \
+	instance Variable T where \
+		{ toVariant = Variant \
+		; fromVariant (Variant x) = cast x }
+
+BUILTIN_VARIABLE(Bool)
+BUILTIN_VARIABLE(Word8)
+BUILTIN_VARIABLE(Int16)
+BUILTIN_VARIABLE(Int32)
+BUILTIN_VARIABLE(Int64)
+BUILTIN_VARIABLE(Word16)
+BUILTIN_VARIABLE(Word32)
+BUILTIN_VARIABLE(Word64)
+BUILTIN_VARIABLE(Double)
+BUILTIN_VARIABLE(TL.Text)
+BUILTIN_VARIABLE(Signature)
+BUILTIN_VARIABLE(ObjectPath)
+BUILTIN_VARIABLE(Variant)
+
+<<DBus/Types.hs>>=
+instance Variable T.Text where
+	toVariant = toVariant . TL.fromChunks . (:[])
+	fromVariant = fmap (T.concat . TL.toChunks) . fromVariant
+
+instance Variable String where
+	toVariant = toVariant . TL.pack
+	fromVariant = fmap TL.unpack . fromVariant
+
+<<type exports>>=
+, Variant
+, Variable (..)
+, variantType
+, atomToVariant
+
+@ \subsubsection{Arrays}
+
+Arrays are homogenous sequences of any valid DBus type. An array's type
+code is ``a'' followed by the type it contains. For example, an array of
+booleans would have the type string ``ab''.
+
+TODO: There ought to be a specialised constructor for arrays of bytes, based
+on the {\tt ByteString} type. Storing bytes individually in a list of
+{\tt Variant}s is insane.
+
+<<container type codes>>=
+typeCode (DBusArray t) = TL.cons 'a' $ typeCode t
+
+<<DBus/Types.hs>>=
+data Array = Array Type [Variant]
+	deriving (Eq, Typeable)
+
+instance Show Array where
+	showsPrec d (Array t vs) = showParen (d > 10) $
+		s "Array " . showSig . s " [" . s valueString . s "]" where
+			s = showString
+			showSig = shows $ typeCode t
+			vs' = [show x | (Variant x) <- vs]
+			valueString = intercalate ", " vs'
+
+instance Builtin Array where
+	builtinDBusType (Array t _) = DBusArray t
+
+BUILTIN_VARIABLE(Array)
+
+arrayType :: Array -> Type
+arrayType (Array t _) = t
+
+arrayItems :: Array -> [Variant]
+arrayItems (Array _ vs) = vs
+
+fromArray :: Variable a => Array -> Maybe [a]
+fromArray (Array _ vs) = mapM fromVariant vs
+
+toArray :: Variable a => Type -> [a] -> Maybe Array
+toArray t = arrayFromItems t . map toVariant
+
+arrayFromItems :: Type -> [Variant] -> Maybe Array
+arrayFromItems t vs = do
+	mkSignature (typeCode t)
+	if all (\x -> variantType x == t) vs
+		then Just $ Array t vs
+		else Nothing
+
+<<type exports>>=
+, Array
+, arrayType
+, arrayItems
+, fromArray
+, toArray
+, arrayFromItems
+
+@ \subsubsection{Dictionaries}
+
+A homogenous (key $\rightarrow$ value) mapping, where the key type must be
+atomic. Values may be of any valid DBus type, but must have an identical
+type. A dictionary's type code is ``a\{$key\_type$ $value\_type$\}''. For
+example, a dictionary of bytes to booleans would have the type string
+``a{yb}''.
+
+<<container type codes>>=
+typeCode (DBusDictionary k v) = TL.concat ["a{", typeCode k, typeCode v, "}"]
+
+<<DBus/Types.hs>>=
+data Dictionary = Dictionary Type Type [(Atom, Variant)]
+	deriving (Eq, Typeable)
+
+instance Show Dictionary where
+	showsPrec d (Dictionary kt vt pairs) = showParen (d > 10) $
+		s "Dictionary " . showSig . s " {" . s valueString . s "}" where
+			s = showString
+			showSig = shows $ TL.append (typeCode kt) (typeCode vt)
+			valueString = intercalate ", " $ map showPair pairs
+			showPair ((Atom k), (Variant v)) =
+				show k ++ " -> " ++ show v
+
+instance Builtin Dictionary where
+	builtinDBusType (Dictionary kt vt _) = DBusDictionary kt vt
+
+BUILTIN_VARIABLE(Dictionary)
+
+dictionaryKeyType :: Dictionary -> Type
+dictionaryKeyType (Dictionary t _ _) = t
+
+dictionaryValueType :: Dictionary -> Type
+dictionaryValueType (Dictionary _ t _) = t
+
+dictionaryItems :: Dictionary -> [(Atom, Variant)]
+dictionaryItems (Dictionary _ _ vs) = vs
+
+fromDictionary :: (Atomic a, Ord a, Variable b) => Dictionary
+               -> Maybe (Map.Map a b)
+fromDictionary (Dictionary _ _ vs) = do
+	pairs <- forM vs $ \(k, v) -> do
+		k' <- fromAtom k
+		v' <- fromVariant v
+		return (k', v')
+	return $ Map.fromList pairs
+
+toDictionary :: (Atomic a, Variable b) => Type -> Type -> Map.Map a b
+             -> Maybe Dictionary
+toDictionary kt vt map' = dictionaryFromItems kt vt pairs where
+	pairs = map (toAtom *** toVariant) $ Map.toList map'
+
+dictionaryFromItems :: Type -> Type -> [(Atom, Variant)] -> Maybe Dictionary
+dictionaryFromItems kt vt pairs = do
+	unless (isAtomicType kt) Nothing
+	mkSignature (typeCode kt)
+	mkSignature (typeCode vt)
+	
+	let sameType (k, v) = atomType k == kt && variantType v == vt
+	if all sameType pairs
+		then Just $ Dictionary kt vt pairs
+		else Nothing
+
+dictionaryToArray :: Dictionary -> Array
+dictionaryToArray (Dictionary kt vt items) = array where
+	Just array = arrayFromItems itemType $ map toVariant structs
+	itemType = DBusStructure [kt, vt]
+	structs = [Structure [atomToVariant k, v] | (k, v) <- items]
+
+arrayToDictionary :: Array -> Maybe Dictionary
+arrayToDictionary (Array t items) = do
+	let toPair v = do
+		struct <- fromVariant v
+		case struct of
+			Structure [k, v'] -> do
+				k' <- variantToAtom k
+				return (k', v')
+			_                -> Nothing
+	(kt, vt) <- case t of
+		DBusStructure [kt, vt] -> Just (kt, vt)
+		_                      -> Nothing
+	pairs <- mapM toPair items
+	dictionaryFromItems kt vt pairs
+
+<<type exports>>=
+, Dictionary
+, dictionaryItems
+, dictionaryKeyType
+, dictionaryValueType
+, fromDictionary
+, toDictionary
+, dictionaryFromItems
+, dictionaryToArray
+, arrayToDictionary
+
+@ \subsubsection{Structures}
+
+A heterogeneous, fixed-length structure; equivalent in purpose to a Haskell
+tuple. A structure's type code is the concatenation of its contained types,
+wrapped by ``('' and ``)''. Structures may be empty, in which case their
+type code is simply ``()''.
+
+<<container type codes>>=
+typeCode (DBusStructure ts) = TL.concat $
+	["("] ++ map typeCode ts ++ [")"]
+
+<<DBus/Types.hs>>=
+data Structure = Structure [Variant]
+	deriving (Show, Eq, Typeable)
+
+instance Builtin Structure where
+	builtinDBusType (Structure vs) = DBusStructure $ map variantType vs
+
+BUILTIN_VARIABLE(Structure)
+
+<<type exports>>=
+, Structure (..)
+
+@ \subsection{Signatures}
+
+@ Valid DBus type signatures must obey certain rules, such as ``dict keys
+must be atomic'', which are difficult to express in the Haskell type system.
+A signature is guaranteed to be valid according to these rules. Creating them
+requires using the {\tt mkSignature} function, which will convert a valid
+DBus signature string into a {\tt Signature}.
+
+<<DBus/Types.hs>>=
+data Signature = Signature { signatureTypes :: [Type] }
+	deriving (Eq, Typeable)
+
+instance Show Signature where
+	showsPrec d x = showParen (d > 10) $
+		showString "Signature " . shows (strSignature x)
+
+strSignature :: Signature -> TL.Text
+strSignature (Signature ts) = TL.concat $ map typeCode ts
+
+@ Additional restrictions apply to signatures, in addition to those imposed
+by the DBus type definitions:
+
+\begin{itemize}
+\item Signatures may be at most 255 characters long.
+\end{itemize}
+
+<<DBus/Types.hs>>=
+mkSignature :: TL.Text -> Maybe Signature
+mkSignature = (parseMaybe sigParser =<<) . checkLength 255 . TL.unpack where
+	sigParser = do
+		types <- P.many parseType
+		P.eof
+		return $ Signature types
+	parseType = parseAtom <|> parseContainer
+	parseContainer =
+		    parseArray
+		<|> parseStruct
+		<|> (P.char 'v' >> return DBusVariant)
+	parseAtom =
+		    (P.char 'b' >> return DBusBoolean)
+		<|> (P.char 'y' >> return DBusByte)
+		<|> (P.char 'n' >> return DBusInt16)
+		<|> (P.char 'i' >> return DBusInt32)
+		<|> (P.char 'x' >> return DBusInt64)
+		<|> (P.char 'q' >> return DBusWord16)
+		<|> (P.char 'u' >> return DBusWord32)
+		<|> (P.char 't' >> return DBusWord64)
+		<|> (P.char 'd' >> return DBusDouble)
+		<|> (P.char 's' >> return DBusString)
+		<|> (P.char 'g' >> return DBusSignature)
+		<|> (P.char 'o' >> return DBusObjectPath)
+	parseArray = do
+		P.char 'a'
+		parseDict <|> do
+		t <- parseType
+		return $ DBusArray t
+	parseDict = do
+		P.char '{'
+		keyType <- parseAtom
+		valueType <- parseType
+		P.char '}'
+		return $ DBusDictionary keyType valueType
+	parseStruct = do
+		P.char '('
+		types <- P.many parseType
+		P.char ')'
+		return $ DBusStructure types
+
+@ Since many signatures are defined as string literals, it's useful to
+have a helper function to construct a signature directly from a string.
+If the input string is invalid, {\tt error} will be called.
+
+<<DBus/Types.hs>>=
+mkSignature' :: TL.Text -> Signature
+mkSignature' = mkUnsafe "signature" mkSignature
+
+@ Most of these are available for use by clients, with the exception of the
+{\tt Signature} value constructor.
+
+<<type exports>>=
+, Signature
+, signatureTypes
+, strSignature
+, mkSignature
+, mkSignature'
+
+@ \subsection{Object paths}
+
+<<DBus/Types.hs>>=
+newtype ObjectPath = ObjectPath TL.Text
+	deriving (Show, Eq, Ord, Typeable)
+
+strObjectPath :: ObjectPath -> TL.Text
+strObjectPath (ObjectPath x) = x
+
+@ An object path may be one of
+
+\begin{itemize}
+\item The root path, {\tt "/"}.
+\item {\tt '/'}, followed by one or more element names. Each element name
+      contains characters in the set {\tt [a-zA-Z0-9\_]}, and must have at
+      least one character.
+\end{itemize}
+
+Element names are separated by {\tt '/'}, and the path may not end in
+{\tt '/'} unless it is the root path.
+
+<<DBus/Types.hs>>=
+mkObjectPath :: TL.Text -> Maybe ObjectPath
+mkObjectPath s = parseMaybe path' (TL.unpack s) where
+	c = P.oneOf $ ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_"
+	path = P.char '/' >>= P.optional . P.sepBy (P.many1 c) . P.char
+	path' = path >> P.eof >> return (ObjectPath s)
+
+mkObjectPath' :: TL.Text -> ObjectPath
+mkObjectPath' = mkUnsafe "object path" mkObjectPath
+
+<<type exports>>=
+, ObjectPath
+, mkObjectPath
+, mkObjectPath'
+, strObjectPath
+
+@ \subsection{Names}
+
+Various aspects of DBus require the use of specially-formatted strings,
+called ``names''. All names are limited to 255 characters, and use subsets
+of ASCII.
+
+Since all names have basically the same structure (a {\tt newtype}
+declaration and some helper functions), I define a macro to automate
+the definitions.
+
+<<DBus/Types.hs>>=
+#define NAME_TYPE(TYPE, NAME) \
+	newtype TYPE = TYPE TL.Text \
+		deriving (Show, Eq, Ord); \
+		                          \
+	instance Variable TYPE where \
+		{ toVariant = toVariant . str##TYPE \
+		; fromVariant = (mk##TYPE =<<) . fromVariant }; \
+		                                                \
+	instance Atomic TYPE where \
+		{ toAtom = toAtom . str##TYPE \
+		; fromAtom = (mk##TYPE =<<) . fromAtom }; \
+		                                          \
+	str##TYPE :: TYPE -> TL.Text; \
+	str##TYPE (TYPE x) = x; \
+	                        \
+	mk##TYPE##' :: TL.Text -> TYPE; \
+	mk##TYPE##' = mkUnsafe NAME mk##TYPE
+
+@ \subsubsection{Bus names}
+
+TODO: describe format of bus names
+
+<<DBus/Types.hs>>=
+NAME_TYPE(BusName, "bus name")
+
+mkBusName :: TL.Text -> Maybe BusName
+mkBusName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
+	c = ['a'..'z'] ++ ['A'..'Z'] ++ "_-"
+	c' = c ++ ['0'..'9']
+	parser = (unique <|> wellKnown) >> P.eof >> return (BusName s)
+	unique = P.char ':' >> elems c'
+	wellKnown = elems c
+	elems start = elem' start >> P.many1 (P.char '.' >> elem' start)
+	elem' start = P.oneOf start >> P.many (P.oneOf c')
+
+<<type exports>>=
+, BusName
+, mkBusName
+, mkBusName'
+, strBusName
+
+@ \subsubsection{Interface names}
+
+An interface name consists of two or more {\tt '.'}-separated elements. Each
+element constists of characters from the set {\tt [a-zA-Z0-9\_]}, may not
+start with a digit, and must have at least one character.
+
+<<DBus/Types.hs>>=
+NAME_TYPE(InterfaceName, "interface name")
+
+mkInterfaceName :: TL.Text -> Maybe InterfaceName
+mkInterfaceName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
+	c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
+	c' = c ++ ['0'..'9']
+	element = P.oneOf c >> P.many (P.oneOf c')
+	name = element >> P.many1 (P.char '.' >> element)
+	parser = name >> P.eof >> return (InterfaceName s)
+
+<<type exports>>=
+, InterfaceName
+, mkInterfaceName
+, mkInterfaceName'
+, strInterfaceName
+
+@ \subsubsection{Error names}
+
+Error names have the same format as interface names, so the parser logic
+can just be re-purposed.
+
+<<DBus/Types.hs>>=
+NAME_TYPE(ErrorName, "error name")
+
+mkErrorName :: TL.Text -> Maybe ErrorName
+mkErrorName = fmap (ErrorName . strInterfaceName) . mkInterfaceName
+
+<<type exports>>=
+, ErrorName
+, mkErrorName
+, mkErrorName'
+, strErrorName
+
+@ \subsubsection{Member names}
+
+TODO: describe format of member names
+
+<<DBus/Types.hs>>=
+NAME_TYPE(MemberName, "member name")
+
+mkMemberName :: TL.Text -> Maybe MemberName
+mkMemberName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
+	c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
+	c' = c ++ ['0'..'9']
+	name = P.oneOf c >> P.many (P.oneOf c')
+	parser = name >> P.eof >> return (MemberName s)
+
+<<type exports>>=
+, MemberName
+, mkMemberName
+, mkMemberName'
+, strMemberName
+
+@
+\section{Messages}
+
+<<DBus/Message.hs>>=
+<<copyright>>
+module DBus.Message
+	(<<message exports>>
+	) where
+import qualified Data.Set as S
+import Data.Word (Word8, Word32)
+import qualified DBus.Types as T
+
+@ A message represents a single message, with a header and body. Some parts
+of the header, such as the serial, endianness, and body length, are not
+included in the message --- instead, they are generated when a message is
+marshalled.
+
+<<DBus/Message.hs>>=
+class Message a where
+	messageTypeCode     :: a -> Word8
+	messageHeaderFields :: a -> [HeaderField]
+	messageFlags        :: a -> S.Set Flag
+	messageBody         :: a -> [T.Variant]
+
+<<message exports>>=
+Message (..)
+
+@ \subsection{Flags}
+
+The instance of {\tt Ord} only exists for storing flags in a set. Flags have
+no inherent ordering.
+
+<<DBus/Message.hs>>=
+data Flag
+	= NoReplyExpected
+	| NoAutoStart
+	deriving (Show, Eq, Ord)
+
+<<message exports>>=
+, Flag (..)
+
+@ \subsection{Header fields}
+
+<<DBus/Message.hs>>=
+data HeaderField
+	= Path        T.ObjectPath
+	| Interface   T.InterfaceName
+	| Member      T.MemberName
+	| ErrorName   T.ErrorName
+	| ReplySerial Serial
+	| Destination T.BusName
+	| Sender      T.BusName
+	| Signature   T.Signature
+	deriving (Show, Eq)
+
+<<message exports>>=
+, HeaderField (..)
+
+@ \subsection{Serials}
+
+{\tt Serial} is just a wrapper around {\tt Word32}, to provide a bit of
+added type-safety.
+
+<<DBus/Message.hs>>=
+newtype Serial = Serial Word32
+	deriving (Eq, Ord)
+
+instance Show Serial where
+	show (Serial x) = show x
+
+instance T.Atomic Serial where
+	toAtom (Serial x) = T.toAtom x
+	fromAtom = fmap Serial . T.fromAtom
+
+instance T.Variable Serial where
+	toVariant (Serial x) = T.toVariant x
+	fromVariant = fmap Serial . T.fromVariant
+
+@ Additionally, some useful functions exist for incrementing serials.
+
+<<DBus/Message.hs>>=
+firstSerial :: Serial
+firstSerial = Serial 1
+
+nextSerial :: Serial -> Serial
+nextSerial (Serial x) = Serial (x + 1)
+
+<<message exports>>=
+, Serial (..)
+, firstSerial
+, nextSerial
+
+@ \subsection{Message types}
+
+<<DBus/Message.hs>>=
+maybe' :: (a -> b) -> Maybe a -> [b]
+maybe' f = maybe [] (\x' -> [f x'])
+
+@ \subsubsection{Method calls}
+
+<<DBus/Message.hs>>=
+data MethodCall = MethodCall
+	{ methodCallPath        :: T.ObjectPath
+	, methodCallMember      :: T.MemberName
+	, methodCallInterface   :: Maybe T.InterfaceName
+	, methodCallDestination :: Maybe T.BusName
+	, methodCallFlags       :: S.Set Flag
+	, methodCallBody        :: [T.Variant]
+	}
+	deriving (Show, Eq)
+
+instance Message MethodCall where
+	messageTypeCode _ = 1
+	messageFlags      = methodCallFlags
+	messageBody       = methodCallBody
+	messageHeaderFields m = concat
+		[ [ Path    $ methodCallPath m
+		  ,  Member $ methodCallMember m
+		  ]
+		, maybe' Interface . methodCallInterface $ m
+		, maybe' Destination . methodCallDestination $ m
+		]
+
+<<message exports>>=
+, MethodCall (..)
+
+@ \subsubsection{Method returns}
+
+<<DBus/Message.hs>>=
+data MethodReturn = MethodReturn
+	{ methodReturnSerial      :: Serial
+	, methodReturnDestination :: Maybe T.BusName
+	, methodReturnFlags       :: S.Set Flag
+	, methodReturnBody        :: [T.Variant]
+	}
+	deriving (Show, Eq)
+
+instance Message MethodReturn where
+	messageTypeCode _ = 2
+	messageFlags      = methodReturnFlags
+	messageBody       = methodReturnBody
+	messageHeaderFields m = concat
+		[ [ ReplySerial $ methodReturnSerial m
+		  ]
+		, maybe' Destination . methodReturnDestination $ m
+		]
+
+<<message exports>>=
+, MethodReturn (..)
+
+@ \subsubsection{Errors}
+
+<<DBus/Message.hs>>=
+data Error = Error
+	{ errorName        :: T.ErrorName
+	, errorSerial      :: Serial
+	, errorDestination :: Maybe T.BusName
+	, errorFlags       :: S.Set Flag
+	, errorBody        :: [T.Variant]
+	}
+	deriving (Show, Eq)
+
+instance Message Error where
+	messageTypeCode _ = 3
+	messageFlags      = errorFlags
+	messageBody       = errorBody
+	messageHeaderFields m = concat
+		[ [ ErrorName   $ errorName m
+		  , ReplySerial $ errorSerial m
+		  ]
+		, maybe' Destination . errorDestination $ m
+		]
+
+<<message exports>>=
+, Error (..)
+
+@ \subsubsection{Signals}
+
+<<DBus/Message.hs>>=
+data Signal = Signal
+	{ signalPath        :: T.ObjectPath
+	, signalMember      :: T.MemberName
+	, signalInterface   :: T.InterfaceName
+	, signalDestination :: Maybe T.BusName
+	, signalFlags       :: S.Set Flag
+	, signalBody        :: [T.Variant]
+	}
+	deriving (Show, Eq)
+
+instance Message Signal where
+	messageTypeCode _ = 4
+	messageFlags      = signalFlags
+	messageBody       = signalBody
+	messageHeaderFields m = concat
+		[ [ Path      $ signalPath m
+		  , Member    $ signalMember m
+		  , Interface $ signalInterface m
+		  ]
+		, maybe' Destination . signalDestination $ m
+		]
+
+<<message exports>>=
+, Signal (..)
+
+@ \subsubsection{Unknown messages}
+
+Unknown messages are used for storing information about messages without
+a recognized type code. They are not instances of {\tt Message}, because
+if they were, then clients could accidentally send invalid messages over
+the bus.
+
+<<DBus/Message.hs>>=
+data Unknown = Unknown
+	{ unknownType    :: Word8
+	, unknownHeaders :: [HeaderField]
+	, unknownFlags   :: S.Set Flag
+	, unknownBody    :: [T.Variant]
+	}
+	deriving (Show, Eq)
+
+<<message exports>>=
+, Unknown (..)
+
+@ \subsection{Received messages}
+
+Messages received from a bus have additional fields which do not make sense
+when sending.
+
+If a message has an unknown type, its serial and origin are still useful
+for sending an error reply.
+
+<<DBus/Message.hs>>=
+data ReceivedMessage
+	= ReceivedMethodCall   Serial (Maybe T.BusName) MethodCall
+	| ReceivedMethodReturn Serial (Maybe T.BusName) MethodReturn
+	| ReceivedError        Serial (Maybe T.BusName) Error
+	| ReceivedSignal       Serial (Maybe T.BusName) Signal
+	| ReceivedUnknown      Serial (Maybe T.BusName) Unknown
+	deriving (Show, Eq)
+
+<<DBus/Message.hs>>=
+receivedSerial :: ReceivedMessage -> Serial
+receivedSerial (ReceivedMethodCall   s _ _) = s
+receivedSerial (ReceivedMethodReturn s _ _) = s
+receivedSerial (ReceivedError        s _ _) = s
+receivedSerial (ReceivedSignal       s _ _) = s
+receivedSerial (ReceivedUnknown      s _ _) = s
+
+<<DBus/Message.hs>>=
+receivedSender :: ReceivedMessage -> Maybe T.BusName
+receivedSender (ReceivedMethodCall   _ s _) = s
+receivedSender (ReceivedMethodReturn _ s _) = s
+receivedSender (ReceivedError        _ s _) = s
+receivedSender (ReceivedSignal       _ s _) = s
+receivedSender (ReceivedUnknown      _ s _) = s
+
+<<message exports>>=
+, ReceivedMessage (..)
+, receivedSerial
+, receivedSender
+
+@
+\section{Wire format}
+
+<<DBus/Wire.hs>>=
+<<copyright>>
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE OverloadedStrings #-}
+module DBus.Wire (<<wire exports>>) where
+
+import Control.Monad (when, unless)
+import qualified Control.Monad.State as ST
+import qualified Control.Monad.Error as E
+import qualified Data.Binary.Put as P
+import qualified Data.Binary.Get as G
+import qualified Data.Binary.IEEE754 as IEEE
+import qualified Data.ByteString.Lazy as L
+import Data.Text.Lazy (Text)
+import qualified Data.Text.Lazy as TL
+import Data.Text.Lazy.Encoding (decodeUtf8, encodeUtf8)
+import Data.Bits ((.|.), (.&.))
+import Data.Maybe (fromJust, listToMaybe, fromMaybe)
+import Data.Word (Word8, Word32, Word64)
+import Data.Int (Int16, Int32, Int64)
+import Data.Typeable (Typeable)
+import qualified Data.Set as Set
+
+import qualified DBus.Constants as C
+import qualified DBus.Message as M
+import qualified DBus.Types as T
+
+@ \subsection{Endianness}
+
+<<DBus/Wire.hs>>=
+data Endianness = LittleEndian | BigEndian
+	deriving (Show, Eq)
+
+encodeEndianness :: Endianness -> Word8
+encodeEndianness LittleEndian = 108
+encodeEndianness BigEndian    = 66
+
+decodeEndianness :: Word8 -> Maybe Endianness
+decodeEndianness 108 = Just LittleEndian
+decodeEndianness 66  = Just BigEndian
+decodeEndianness _   = Nothing
+
+<<wire exports>>=
+  Endianness (..)
+
+@ \subsection{Alignment}
+
+Every built-in type has an associated alignment. If a value of the given
+type is marshaled, it must have {\sc nul} bytes inserted until it starts
+on a byte index divisible by its alignment.
+
+<<DBus/Wire.hs>>=
+alignment :: T.Type -> Word8
+<<alignments>>
+
+padding :: Word64 -> Word8 -> Word64
+padding current count = required where
+	count' = fromIntegral count
+	missing = mod current count'
+	required = if missing > 0
+		then count' - missing
+		else 0
+
+<<wire exports>>=
+, alignment
+
+@ \subsection{Marshaling}
+
+Marshaling is implemented using an error transformer over an internal
+state.
+
+<<DBus/Wire.hs>>=
+data MarshalState = MarshalState Endianness L.ByteString
+newtype MarshalM a = MarshalM (E.ErrorT MarshalError (ST.State MarshalState) a)
+	deriving (Monad, E.MonadError MarshalError, ST.MonadState MarshalState)
+type Marshal = MarshalM ()
+
+@ Clients can perform marshaling via {\tt marshal} and {\tt runMarshal},
+which will generate a {\tt ByteString} with the fully marshaled data.
+
+<<wire exports>>=
+, MarshalM
+, Marshal
+, marshal
+, runMarshal
+
+<<DBus/Wire.hs>>=
+runMarshal :: Marshal -> Endianness -> Either MarshalError L.ByteString
+runMarshal (MarshalM m) e = case ST.runState (E.runErrorT m) initialState of
+	(Right _, MarshalState _ bytes) -> Right bytes
+	(Left  x, _) -> Left x
+	where initialState = MarshalState e L.empty
+
+<<DBus/Wire.hs>>=
+marshal :: T.Variant -> Marshal
+marshal v = marshalType (T.variantType v) where
+	x :: T.Variable a => a
+	x = fromJust . T.fromVariant $ v
+	marshalType :: T.Type -> Marshal
+	<<marshalers>>
+
+@ TODO: describe these functions
+
+<<DBus/Wire.hs>>=
+append :: L.ByteString -> Marshal
+append bs = do
+	(MarshalState e bs') <- ST.get
+	ST.put $ MarshalState e (L.append bs' bs)
+
+<<DBus/Wire.hs>>=
+pad :: Word8 -> Marshal
+pad count = do
+	(MarshalState _ bytes) <- ST.get
+	let padding' = padding (fromIntegral . L.length $ bytes) count
+	append $ L.replicate (fromIntegral padding') 0
+
+@ Most numeric values already have marshalers implemented in the
+{\tt Data.Binary.Put} module; this function lets them be re-used easily.
+
+<<DBus/Wire.hs>>=
+marshalPut :: (a -> P.Put) -> a -> Marshal
+marshalPut put x = do
+	let bytes = P.runPut $ put x
+	(MarshalState e _) <- ST.get
+	pad . fromIntegral . L.length $ bytes
+	append $ case e of
+		BigEndian -> bytes
+		LittleEndian -> L.reverse bytes
+
+@ \subsubsection{Errors}
+
+Marshaling can fail for four reasons:
+
+\begin{itemize}
+\item The message exceeds the maximum message size of $2^{27}$ bytes.
+\item An array in the message exceeds the maximum array size of $2^{26}$ bytes.
+\item The body's signature is not valid (for example, more than 255 fields).
+\item A variant's signature is not valid -- same causes as an invalid body
+      signature.
+\end{itemize}
+
+<<DBus/Wire.hs>>=
+data MarshalError
+	= MessageTooLong Word64
+	| ArrayTooLong Word64
+	| InvalidBodySignature Text
+	| InvalidVariantSignature Text
+	deriving (Eq, Typeable)
+
+instance Show MarshalError where
+	show (MessageTooLong x) = concat
+		["Message too long (", show x, " bytes)."]
+	show (ArrayTooLong x) = concat
+		["Array too long (", show x, " bytes)."]
+	show (InvalidBodySignature x) = concat
+		["Invalid body signature: ", show x]
+	show (InvalidVariantSignature x) = concat
+		["Invalid variant signature: ", show x]
+
+instance E.Error MarshalError
+
+<<wire exports>>=
+, MarshalError (..)
+
+@ \subsection{Unmarshaling}
+
+Unmarshaling also uses an error transformer and internal state.
+
+<<wire exports>>=
+, Unmarshal
+, unmarshal
+, runUnmarshal
+
+<<DBus/Wire.hs>>=
+data UnmarshalState = UnmarshalState Endianness L.ByteString Word64
+newtype Unmarshal a = Unmarshal (E.ErrorT UnmarshalError (ST.State UnmarshalState) a)
+	deriving (Monad, Functor, E.MonadError UnmarshalError, ST.MonadState UnmarshalState)
+
+<<DBus/Wire.hs>>=
+runUnmarshal :: Unmarshal a -> Endianness -> L.ByteString -> Either UnmarshalError a
+runUnmarshal (Unmarshal m) e bytes = ST.evalState (E.runErrorT m) state where
+	state = UnmarshalState e bytes 0
+
+<<DBus/Wire.hs>>=
+unmarshal :: T.Signature -> Unmarshal [T.Variant]
+unmarshal = mapM unmarshalType . T.signatureTypes
+
+unmarshalType :: T.Type -> Unmarshal T.Variant
+<<unmarshalers>>
+
+@ TODO: describe these functions
+
+<<DBus/Wire.hs>>=
+consume :: Word64 -> Unmarshal L.ByteString
+consume count = do
+	(UnmarshalState e bytes offset) <- ST.get
+	let bytes' = L.drop (fromIntegral offset) bytes
+	let x = L.take (fromIntegral count) bytes'
+	unless (L.length x == fromIntegral count) $
+		E.throwError $ UnexpectedEOF offset
+	
+	ST.put $ UnmarshalState e bytes (offset + count)
+	return x
+
+<<DBus/Wire.hs>>=
+skipPadding :: Word8 -> Unmarshal ()
+skipPadding count = do
+	(UnmarshalState _ _ offset) <- ST.get
+	bytes <- consume $ padding offset count
+	unless (L.all (== 0) bytes) $
+		E.throwError $ InvalidPadding offset
+
+<<DBus/Wire.hs>>=
+skipTerminator :: Unmarshal ()
+skipTerminator = do
+	(UnmarshalState _ _ offset) <- ST.get
+	bytes <- consume 1
+	unless (L.all (== 0) bytes) $
+		E.throwError $ MissingTerminator offset
+
+<<DBus/Wire.hs>>=
+fromMaybeU :: Show a => Text -> (a -> Maybe b) -> a -> Unmarshal b
+fromMaybeU label f x = case f x of
+	Just x' -> return x'
+	Nothing -> E.throwError . Invalid label . TL.pack . show $ x
+
+fromMaybeU' :: (Show a, T.Variable b) => Text -> (a -> Maybe b) -> a
+           -> Unmarshal T.Variant
+fromMaybeU' label f x = do
+	x' <- fromMaybeU label f x
+	return $ T.toVariant x'
+
+<<DBus/Wire.hs>>=
+unmarshalGet :: Word8 -> G.Get a -> G.Get a -> Unmarshal a
+unmarshalGet count be le = do
+	skipPadding count
+	(UnmarshalState e _ _) <- ST.get
+	bs <- consume . fromIntegral $ count
+	let get' = case e of
+		BigEndian -> be
+		LittleEndian -> le
+	return $ G.runGet get' bs
+
+unmarshalGet' :: T.Variable a => Word8 -> G.Get a -> G.Get a
+              -> Unmarshal T.Variant
+unmarshalGet' count be le = fmap T.toVariant $ unmarshalGet count be le
+
+<<DBus/Wire.hs>>=
+untilM :: Monad m => m Bool -> m a -> m [a]
+untilM test comp = do
+	done <- test
+	if done
+		then return []
+		else do
+			x <- comp
+			xs <- untilM test comp
+			return $ x:xs
+
+@ \subsubsection{Errors}
+
+Unmarshaling can fail for four reasons:
+
+\begin{itemize}
+\item The message's declared protocol version is unsupported.
+\item Unexpected {\sc eof}, when there are less bytes remaining than are
+      required.
+\item An invalid byte sequence for a given value type.
+\item Missing required header fields for the declared message type.
+\item Non-zero bytes were found where padding was expected.
+\item A string, signature, or object path was not {\sc null}-terminated.
+\item An array's size didn't match the number of elements
+\end{itemize}
+
+<<DBus/Wire.hs>>=
+data UnmarshalError
+	= UnsupportedProtocolVersion Word8
+	| UnexpectedEOF Word64
+	| Invalid Text Text
+	| MissingHeaderField Text
+	| InvalidHeaderField Text T.Variant
+	| InvalidPadding Word64
+	| MissingTerminator Word64
+	| ArraySizeMismatch
+	deriving (Eq, Typeable)
+
+instance Show UnmarshalError where
+	show (UnsupportedProtocolVersion x) = concat
+		["Unsupported protocol version: ", show x]
+	show (UnexpectedEOF pos) = concat
+		["Unexpected EOF at position ", show pos]
+	show (Invalid label x) = TL.unpack $ TL.concat
+		["Invalid ", label, ": ", x]
+	show (MissingHeaderField x) = concat
+		["Required field " , show x , " is missing."]
+	show (InvalidHeaderField x got) = concat
+		[ "Invalid header field ", show x, ": ", show got]
+	show (InvalidPadding pos) = concat
+		["Invalid padding at position ", show pos]
+	show (MissingTerminator pos) = concat
+		["Missing NUL terminator at position ", show pos]
+	show ArraySizeMismatch = "Array size mismatch"
+
+instance E.Error UnmarshalError
+
+<<wire exports>>=
+, UnmarshalError (..)
+
+@ \subsection{Numerics}
+
+Numeric values are fixed-length, and aligned ``naturally'' -- ie, a 4-byte
+integer will have a 4-byte alignment.
+
+<<alignments>>=
+alignment T.DBusByte    = 1
+alignment T.DBusWord16  = 2
+alignment T.DBusWord32  = 4
+alignment T.DBusWord64  = 8
+alignment T.DBusInt16   = 2
+alignment T.DBusInt32   = 4
+alignment T.DBusInt64   = 8
+alignment T.DBusDouble  = 8
+
+@ Because {\tt Word32}s are often used for other types, there's
+separate functions for handling them.
+
+<<DBus/Wire.hs>>=
+marshalWord32 :: Word32 -> Marshal
+marshalWord32 = marshalPut P.putWord32be
+
+unmarshalWord32 :: Unmarshal Word32
+unmarshalWord32 = unmarshalGet 4 G.getWord32be G.getWord32le
+
+<<marshalers>>=
+marshalType T.DBusByte   = append $ L.singleton x
+marshalType T.DBusWord16 = marshalPut P.putWord16be x
+marshalType T.DBusWord32 = marshalPut P.putWord32be x
+marshalType T.DBusWord64 = marshalPut P.putWord64be x
+marshalType T.DBusInt16  = marshalPut P.putWord16be $ fromIntegral (x :: Int16)
+marshalType T.DBusInt32  = marshalPut P.putWord32be $ fromIntegral (x :: Int32)
+marshalType T.DBusInt64  = marshalPut P.putWord64be $ fromIntegral (x :: Int64)
+marshalType T.DBusDouble = marshalPut IEEE.putFloat64be x
+
+<<unmarshalers>>=
+unmarshalType T.DBusByte = fmap (T.toVariant . L.head) $ consume 1
+unmarshalType T.DBusWord16 = unmarshalGet' 2 G.getWord16be G.getWord16le
+unmarshalType T.DBusWord32 = unmarshalGet' 4 G.getWord32be G.getWord32le
+unmarshalType T.DBusWord64 = unmarshalGet' 8 G.getWord64be G.getWord64le
+unmarshalType T.DBusDouble = unmarshalGet' 8 IEEE.getFloat64be IEEE.getFloat64le
+
+unmarshalType T.DBusInt16  = do
+	x <- unmarshalGet 2 G.getWord16be G.getWord16le
+	return . T.toVariant $ (fromIntegral x :: Int16)
+
+unmarshalType T.DBusInt32  = do
+	x <- unmarshalGet 4 G.getWord32be G.getWord32le
+	return . T.toVariant $ (fromIntegral x :: Int32)
+
+unmarshalType T.DBusInt64  = do
+	x <- unmarshalGet 8 G.getWord64be G.getWord64le
+	return . T.toVariant $ (fromIntegral x :: Int64)
+
+@ \subsection{Booleans}
+
+Booleans are marshaled as 4-byte unsigned integers containing either of
+the values 0 or 1. Yes, really.
+
+<<alignments>>=
+alignment T.DBusBoolean = 4
+
+<<marshalers>>=
+marshalType T.DBusBoolean = marshalWord32 $ if x then 1 else 0
+
+<<unmarshalers>>=
+unmarshalType T.DBusBoolean = unmarshalWord32 >>=
+	fromMaybeU' "boolean" (\x -> case x of
+		0 -> Just False
+		1 -> Just True
+		_ -> Nothing)
+
+@ \subsection{Strings and object paths}
+
+Strings are encoded in {\sc utf-8}, terminated with {\tt NUL}, and prefixed
+with their length as an unsigned 32-bit integer. Their alignment is that of
+their length. Object paths are marshaled just like strings, though additional
+checks are required when unmarshaling.
+
+<<DBus/Wire.hs>>=
+marshalText :: Text -> Marshal
+marshalText x = do
+	let bytes = encodeUtf8 x
+	marshalWord32 . fromIntegral . L.length $ bytes
+	append bytes
+	append (L.singleton 0)
+
+<<DBus/Wire.hs>>=
+unmarshalText :: Unmarshal Text
+unmarshalText = do
+	byteCount <- unmarshalWord32
+	bytes <- consume . fromIntegral $ byteCount
+	skipTerminator
+	return . decodeUtf8 $ bytes
+
+<<alignments>>=
+alignment T.DBusString     = 4
+alignment T.DBusObjectPath = 4
+
+<<marshalers>>=
+marshalType T.DBusString = marshalText x
+marshalType T.DBusObjectPath = marshalText . T.strObjectPath $ x
+
+<<unmarshalers>>=
+unmarshalType T.DBusString = fmap T.toVariant unmarshalText
+
+unmarshalType T.DBusObjectPath = do
+	text <- unmarshalText
+	fromMaybeU' "object path" T.mkObjectPath text
+
+@ \subsection{Signatures}
+
+Signatures are similar to strings, except their length is limited to 255
+characters and is therefore stored as a single byte.
+
+<<DBus/Wire.hs>>=
+marshalSignature :: T.Signature -> Marshal
+marshalSignature x = do
+	let bytes = encodeUtf8 . T.strSignature $ x
+	let size = fromIntegral . L.length $ bytes
+	append (L.singleton size)
+	append bytes
+	append (L.singleton 0)
+
+<<DBus/Wire.hs>>=
+unmarshalSignature :: Unmarshal T.Signature
+unmarshalSignature = do
+	byteCount <- fmap L.head $ consume 1
+	sigText <- fmap decodeUtf8 $ consume . fromIntegral $ byteCount
+	skipTerminator
+	fromMaybeU "signature" T.mkSignature sigText
+
+<<alignments>>=
+alignment T.DBusSignature  = 1
+
+<<marshalers>>=
+marshalType T.DBusSignature = marshalSignature x
+
+<<unmarshalers>>=
+unmarshalType T.DBusSignature = fmap T.toVariant unmarshalSignature
+
+@ \subsection{Containers}
+
+@ \subsubsection{Arrays}
+
+<<alignments>>=
+alignment (T.DBusArray _) = 4
+
+<<marshalers>>=
+marshalType (T.DBusArray _) = marshalArray x
+
+<<unmarshalers>>=
+unmarshalType (T.DBusArray t) = fmap T.toVariant $ unmarshalArray t
+
+@ Marshaling arrays is complicated, because the array body must be marshaled
+\emph{first} to calculate the array length. This requires building a
+temporary marshaler, to get the padding right.
+
+<<DBus/Wire.hs>>=
+marshalArray :: T.Array -> Marshal
+marshalArray x = do
+	(arrayPadding, arrayBytes) <- getArrayBytes x
+	let arrayLen = L.length arrayBytes
+	when (arrayLen > fromIntegral C.arrayMaximumLength)
+		(E.throwError $ ArrayTooLong $ fromIntegral arrayLen)
+	marshalWord32 $ fromIntegral arrayLen
+	append arrayPadding
+	append arrayBytes
+
+<<DBus/Wire.hs>>=
+getArrayBytes :: T.Array -> MarshalM (L.ByteString, L.ByteString)
+getArrayBytes x = do
+	let vs = T.arrayItems x
+	let itemType = T.arrayType x
+	s <- ST.get
+	(MarshalState _ afterLength) <- marshalWord32 0 >> ST.get
+	(MarshalState _ afterPadding) <- pad (alignment itemType) >> ST.get
+	(MarshalState _ afterItems) <- mapM_ marshal vs >> ST.get
+	
+	let paddingBytes = L.drop (L.length afterLength) afterPadding
+	let itemBytes = L.drop (L.length afterPadding) afterItems
+	
+	ST.put s
+	return (paddingBytes, itemBytes)
+
+@ Unmarshaling is much easier
+
+<<DBus/Wire.hs>>=
+unmarshalArray :: T.Type -> Unmarshal T.Array
+unmarshalArray itemType = do
+	let getOffset = do
+		(UnmarshalState _ _ o) <- ST.get
+		return o
+	byteCount <- unmarshalWord32
+	skipPadding (alignment itemType)
+	start <- getOffset
+	let end = start + fromIntegral byteCount
+	vs <- untilM (fmap (>= end) getOffset) (unmarshalType itemType)
+	end' <- getOffset
+	when (end' > end) $
+		E.throwError ArraySizeMismatch
+	fromMaybeU "array" (T.arrayFromItems itemType) vs
+
+@ \subsubsection{Dictionaries}
+
+<<alignments>>=
+alignment (T.DBusDictionary _ _) = 4
+
+<<marshalers>>=
+marshalType (T.DBusDictionary _ _) = marshalArray (T.dictionaryToArray x)
+
+<<unmarshalers>>=
+unmarshalType (T.DBusDictionary kt vt) = do
+	let pairType = T.DBusStructure [kt, vt]
+	array <- unmarshalArray pairType
+	fromMaybeU' "dictionary" T.arrayToDictionary array
+
+@ \subsubsection{Structures}
+
+<<alignments>>=
+alignment (T.DBusStructure _) = 8
+
+<<marshalers>>=
+marshalType (T.DBusStructure _) = do
+	let T.Structure vs = x
+	pad 8
+	mapM_ marshal vs
+
+<<unmarshalers>>=
+unmarshalType (T.DBusStructure ts) = do
+	skipPadding 8
+	fmap (T.toVariant . T.Structure) $ mapM unmarshalType ts
+
+@ \subsubsection{Variants}
+
+<<alignments>>=
+alignment T.DBusVariant = 1
+
+<<marshalers>>=
+marshalType T.DBusVariant = do
+	let rawSig = T.typeCode . T.variantType $ x
+	sig <- case T.mkSignature rawSig of
+		Just x' -> return x'
+		Nothing -> E.throwError $ InvalidVariantSignature rawSig
+	marshalSignature sig
+	marshal x
+
+<<unmarshalers>>=
+unmarshalType T.DBusVariant = do
+	let getType sig = case T.signatureTypes sig of
+		[t] -> Just t
+		_   -> Nothing
+	
+	t <- fromMaybeU "variant signature" getType =<< unmarshalSignature
+	fmap T.toVariant $ unmarshalType t
+
+@ \subsection{Messages}
+
+@ \subsubsection{Flags}
+
+<<DBus/Wire.hs>>=
+encodeFlags :: Set.Set M.Flag -> Word8
+encodeFlags flags = foldr (.|.) 0 $ map flagValue $ Set.toList flags where
+	flagValue M.NoReplyExpected = 0x1
+	flagValue M.NoAutoStart     = 0x2
+
+decodeFlags :: Word8 -> Set.Set M.Flag
+decodeFlags word = Set.fromList flags where
+	flagSet = [ (0x1, M.NoReplyExpected)
+	          , (0x2, M.NoAutoStart)
+	          ]
+	flags = flagSet >>= \(x, y) -> [y | word .&. x > 0]
+
+@ \subsubsection{Header fields}
+
+<<DBus/Wire.hs>>=
+encodeField :: M.HeaderField -> T.Structure
+encodeField (M.Path x)        = encodeField' 1 x
+encodeField (M.Interface x)   = encodeField' 2 x
+encodeField (M.Member x)      = encodeField' 3 x
+encodeField (M.ErrorName x)   = encodeField' 4 x
+encodeField (M.ReplySerial x) = encodeField' 5 x
+encodeField (M.Destination x) = encodeField' 6 x
+encodeField (M.Sender x)      = encodeField' 7 x
+encodeField (M.Signature x)   = encodeField' 8 x
+
+encodeField' :: T.Variable a => Word8 -> a -> T.Structure
+encodeField' code x = T.Structure
+	[ T.toVariant code
+	, T.toVariant $ T.toVariant x
+	]
+
+<<DBus/Wire.hs>>=
+decodeField :: Monad m => T.Structure
+            -> E.ErrorT UnmarshalError m [M.HeaderField]
+decodeField struct = case unpackField struct of
+	(1, x) -> decodeField' x M.Path "path"
+	(2, x) -> decodeField' x M.Interface "interface"
+	(3, x) -> decodeField' x M.Member "member"
+	(4, x) -> decodeField' x M.ErrorName "error name"
+	(5, x) -> decodeField' x M.ReplySerial "reply serial"
+	(6, x) -> decodeField' x M.Destination "destination"
+	(7, x) -> decodeField' x M.Sender "sender"
+	(8, x) -> decodeField' x M.Signature "signature"
+	_      -> return []
+
+decodeField' :: (Monad m, T.Variable a) => T.Variant -> (a -> b) -> Text
+             -> E.ErrorT UnmarshalError m [b]
+decodeField' x f label = case T.fromVariant x of
+	Just x' -> return [f x']
+	Nothing -> E.throwError $ InvalidHeaderField label x
+
+<<DBus/Wire.hs>>=
+unpackField :: T.Structure -> (Word8, T.Variant)
+unpackField struct = (c', v') where
+	T.Structure [c, v] = struct
+	c' = fromJust . T.fromVariant $ c
+	v' = fromJust . T.fromVariant $ v
+
+@ \subsubsection{Header layout}
+
+TODO: describe header layout here
+
+@ \subsubsection{Marshaling}
+
+<<wire exports>>=
+, marshalMessage
+
+<<DBus/Wire.hs>>=
+marshalMessage :: M.Message a => Endianness -> M.Serial -> a
+               -> Either MarshalError L.ByteString
+marshalMessage e serial msg = runMarshal marshaler e where
+	body = M.messageBody msg
+	marshaler = do
+		sig <- checkBodySig body
+		empty <- ST.get
+		mapM_ marshal body
+		(MarshalState _ bodyBytes) <- ST.get
+		ST.put empty
+		marshalEndianness e
+		marshalHeader msg serial sig
+			$ fromIntegral . L.length $ bodyBytes
+		pad 8
+		append bodyBytes
+		checkMaximumSize
+
+checkBodySig :: [T.Variant] -> MarshalM T.Signature
+checkBodySig vs = let
+	sigStr = TL.concat . map (T.typeCode . T.variantType) $ vs
+	invalid = E.throwError $ InvalidBodySignature sigStr
+	in case T.mkSignature sigStr of
+		Just x -> return x
+		Nothing -> invalid
+
+marshalHeader :: M.Message a => a -> M.Serial -> T.Signature -> Word32
+              -> Marshal
+marshalHeader msg serial bodySig bodyLength = do
+	let fields = M.Signature bodySig : M.messageHeaderFields msg
+	marshal . T.toVariant . M.messageTypeCode $ msg
+	marshal . T.toVariant . encodeFlags . M.messageFlags $ msg
+	marshal . T.toVariant $ C.protocolVersion
+	marshalWord32 bodyLength
+	marshal . T.toVariant $ serial
+	let fieldType = T.DBusStructure [T.DBusByte, T.DBusVariant]
+	marshal . T.toVariant . fromJust . T.toArray fieldType
+	        $ map encodeField fields
+
+marshalEndianness :: Endianness -> Marshal
+marshalEndianness = marshal . T.toVariant . encodeEndianness
+
+checkMaximumSize :: Marshal
+checkMaximumSize = do
+	(MarshalState _ messageBytes) <- ST.get
+	let messageLength = L.length messageBytes
+	when (messageLength > fromIntegral C.messageMaximumLength)
+		(E.throwError $ MessageTooLong $ fromIntegral messageLength)
+
+@ \subsubsection{Unmarshaling}
+
+<<wire exports>>=
+, unmarshalMessage
+
+<<DBus/Wire.hs>>=
+unmarshalMessage :: Monad m => (Word32 -> m L.ByteString)
+                 -> m (Either UnmarshalError M.ReceivedMessage)
+unmarshalMessage getBytes' = E.runErrorT $ do
+	let getBytes = E.lift . getBytes'
+	
+	<<read fixed-length header>>
+	<<read full header>>
+	<<read body>>
+	<<build message>>
+
+@ The first part of the header has a fixed size of 16 bytes, so it can be
+retrieved without any size calculations.
+
+<<read fixed-length header>>=
+let fixedSig = T.mkSignature' "yyyyuuu"
+fixedBytes <- getBytes 16
+
+@ The first field of interest is the protocol version; if the incoming
+message's version is different from this library, the message cannot be
+parsed.
+
+<<read fixed-length header>>=
+let messageVersion = L.index fixedBytes 3
+when (messageVersion /= C.protocolVersion) $
+	E.throwError $ UnsupportedProtocolVersion messageVersion
+
+@ Next is the endianness, used for parsing pretty much every other field.
+
+<<read fixed-length header>>=
+let eByte = L.index fixedBytes 0
+endianness <- case decodeEndianness eByte of
+	Just x' -> return x'
+	Nothing -> E.throwError . Invalid "endianness" . TL.pack . show $ eByte
+
+@ With the endianness out of the way, the rest of the fixed header
+can be decoded
+
+<<read fixed-length header>>=
+let unmarshal' x bytes = case runUnmarshal (unmarshal x) endianness bytes of
+	Right x' -> return x'
+	Left  e  -> E.throwError e
+fixed <- unmarshal' fixedSig fixedBytes
+let typeCode = fromJust . T.fromVariant $ fixed !! 1
+let flags = decodeFlags . fromJust . T.fromVariant $ fixed !! 2
+let bodyLength = fromJust . T.fromVariant $ fixed !! 4
+let serial = fromJust . T.fromVariant $ fixed !! 5
+
+@ The last field of the fixed header is actually part of the field array,
+but is treated as a single {\tt Word32} so it'll be known how many bytes
+to retrieve.
+
+<<read fixed-length header>>=
+let fieldByteCount = fromJust . T.fromVariant $ fixed !! 6
+
+@ With the field byte count, the remainder of the header bytes can be
+pulled out of the monad.
+
+<<read full header>>=
+let headerSig  = T.mkSignature' "yyyyuua(yv)"
+fieldBytes <- getBytes fieldByteCount
+let headerBytes = L.append fixedBytes fieldBytes
+header <- unmarshal' headerSig headerBytes
+
+@ And the header fields can be parsed.
+
+<<read full header>>=
+let fieldArray = fromJust . T.fromVariant $ header !! 6
+let fieldStructures = fromJust . T.fromArray $ fieldArray
+fields <- fmap concat $ mapM decodeField fieldStructures
+
+@ The body is always aligned to 8 bytes, so pull out the padding before
+unmarshaling it.
+
+<<read body>>=
+let bodyPadding = padding (fromIntegral fieldByteCount + 16) 8
+getBytes . fromIntegral $ bodyPadding
+
+<<DBus/Wire.hs>>=
+findBodySignature :: [M.HeaderField] -> T.Signature
+findBodySignature fields = fromMaybe empty signature where
+	empty = T.mkSignature' ""
+	signature = listToMaybe [x | M.Signature x <- fields]
+
+<<read body>>=
+let bodySig = findBodySignature fields
+
+@ Then pull the body bytes, and unmarshal it.
+
+<<read body>>=
+bodyBytes <- getBytes bodyLength
+body <- unmarshal' bodySig bodyBytes
+
+@ Even if the received message was structurally valid, building the
+{\tt ReceivedMessage} can still fail due to missing header fields.
+
+<<build message>>=
+y <- case buildReceivedMessage typeCode fields of
+	Right x -> return x
+	Left x -> E.throwError $ MissingHeaderField x
+
+<<build message>>=
+return $ y serial flags body
+
+@ This really belongs in the Message section...
+
+<<DBus/Wire.hs>>=
+buildReceivedMessage :: Word8 -> [M.HeaderField] -> Either Text 
+                        (M.Serial -> (Set.Set M.Flag) -> [T.Variant]
+                         -> M.ReceivedMessage)
+
+@ Method calls
+
+<<DBus/Wire.hs>>=
+buildReceivedMessage 1 fields = do
+	path <- require "path" [x | M.Path x <- fields]
+	member <- require "member name" [x | M.Member x <- fields]
+	return $ \serial flags body -> let
+		iface = listToMaybe [x | M.Interface x <- fields]
+		dest = listToMaybe [x | M.Destination x <- fields]
+		sender = listToMaybe [x | M.Sender x <- fields]
+		msg = M.MethodCall path member iface dest flags body
+		in M.ReceivedMethodCall serial sender msg
+
+@ Method returns
+
+<<DBus/Wire.hs>>=
+buildReceivedMessage 2 fields = do
+	replySerial <- require "reply serial" [x | M.ReplySerial x <- fields]
+	return $ \serial flags body -> let
+		dest = listToMaybe [x | M.Destination x <- fields]
+		sender = listToMaybe [x | M.Sender x <- fields]
+		msg = M.MethodReturn replySerial dest flags body
+		in M.ReceivedMethodReturn serial sender msg
+
+@ Errors
+
+<<DBus/Wire.hs>>=
+buildReceivedMessage 3 fields = do
+	name <- require "error name" [x | M.ErrorName x <- fields]
+	replySerial <- require "reply serial" [x | M.ReplySerial x <- fields]
+	return $ \serial flags body -> let
+		dest = listToMaybe [x | M.Destination x <- fields]
+		sender = listToMaybe [x | M.Sender x <- fields]
+		msg = M.Error name replySerial dest flags body
+		in M.ReceivedError serial sender msg
+
+@ Signals
+
+<<DBus/Wire.hs>>=
+buildReceivedMessage 4 fields = do
+	path <- require "path" [x | M.Path x <- fields]
+	member <- require "member name" [x | M.Member x <- fields]
+	iface <- require "interface" [x | M.Interface x <- fields]
+	return $ \serial flags body -> let
+		dest = listToMaybe [x | M.Destination x <- fields]
+		sender = listToMaybe [x | M.Sender x <- fields]
+		msg = M.Signal path member iface dest flags body
+		in M.ReceivedSignal serial sender msg
+
+@ Unknown
+
+<<DBus/Wire.hs>>=
+buildReceivedMessage typeCode fields = return $ \serial flags body -> let
+	sender = listToMaybe [x | M.Sender x <- fields]
+	msg = M.Unknown typeCode fields flags body
+	in M.ReceivedUnknown serial sender msg
+
+<<DBus/Wire.hs>>=
+require :: Text -> [a] -> Either Text a
+require _     (x:_) = Right x
+require label _     = Left label
+
+@ This is just needed for the Monad instance of {\tt Either Text}
+
+<<DBus/Wire.hs>>=
+instance E.Error Text where
+	strMsg = TL.pack
+
+@
+\section{Connections}
+
+<<DBus/Connection.hs>>=
+<<copyright>>
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE OverloadedStrings #-}
+module DBus.Connection
+	( Connection
+	, ConnectionException (..)
+	, connect
+	, send
+	, receive
+	) where
+
+import qualified Control.Concurrent as C
+import qualified Control.Exception as E
+
+import Data.Char (ord)
+import Data.Word (Word32)
+import qualified Data.ByteString.Lazy as L
+import Data.Text.Lazy (Text)
+import qualified Data.Text.Lazy as TL
+import Data.Text.Lazy.Encoding (decodeUtf8, encodeUtf8)
+import qualified Data.Map as Map
+import Data.Typeable (Typeable)
+import Data.List (isPrefixOf)
+import Text.Printf (printf)
+
+import qualified Network as N
+import qualified System.IO as I
+import System.Posix.User (getRealUserID)
+
+import qualified DBus.Address as A
+import qualified DBus.Wire as W
+import qualified DBus.Message as M
+
+@ A {\tt Connection} is an opaque handle to an open DBus channel, with
+an internal state for maintaining the current message serial.
+
+<<DBus/Connection.hs>>=
+data Connection = Connection A.Address Transport (C.MVar M.Serial)
+
+@ While not particularly useful for other functions, being able to
+{\tt show} a {\tt Connection} is useful when debugging.
+
+<<DBus/Connection.hs>>=
+instance Show Connection where
+	showsPrec d (Connection a _ _) = showParen (d > 10) $
+		showString' ["<connection ", show $ A.strAddress a, ">"] where
+		showString' = foldr (.) id . map showString
+
+@ A connection can be opened to any valid address, though actually connecting
+might fail due to external factors.
+
+<<DBus/Connection.hs>>=
+connect :: A.Address -> IO Connection
+connect a = do
+	t <- connectTransport a
+	let putS = transportSend t . encodeUtf8 . TL.pack
+	let getS = fmap (TL.unpack . decodeUtf8) . transportRecv t
+	authenticate putS getS
+	serialMVar <- C.newMVar M.firstSerial
+	return $ Connection a t serialMVar
+
+@ Sending a message will increment the connection's internal serial state.
+The second parameter is present to allow registration of a callback before
+the message has actually been sent, which avoids race conditions in
+multi-threaded clients.
+
+<<DBus/Connection.hs>>=
+send :: M.Message a => Connection -> (M.Serial -> IO b) -> a -> IO b
+send (Connection _ t mvar) io msg = withSerial mvar $ \serial -> do
+	x <- io serial
+	case W.marshalMessage W.LittleEndian serial msg of
+		Right bytes -> transportSend t bytes
+		Left  err   -> E.throwIO err
+	return x
+
+<<DBus/Connection.hs>>=
+withSerial :: C.MVar M.Serial -> (M.Serial -> IO a) -> IO a
+withSerial m io = E.block $ do
+	s <- C.takeMVar m
+	let s' = M.nextSerial s
+	x <- E.unblock (io s) `E.onException` C.putMVar m s'
+	C.putMVar m s'
+	return x
+
+@ Messages are received wrapped in a {\tt ReceivedMessage} value. If an
+error is encountered while unmarshaling, an exception will be thrown.
+
+<<DBus/Connection.hs>>=
+receive :: Connection -> IO M.ReceivedMessage
+receive (Connection _ t _) = do
+	either' <- W.unmarshalMessage $ transportRecv t
+	case either' of
+		Right x -> return x
+		Left err -> E.throwIO err
+
+@ \section{Transports}
+
+A transport is anything which can send and receive bytestrings, typically
+over a socket.
+
+<<DBus/Connection.hs>>=
+data Transport = Transport
+	{ transportSend :: L.ByteString -> IO ()
+	, transportRecv :: Word32 -> IO L.ByteString
+	}
+
+<<DBus/Connection.hs>>=
+connectTransport :: A.Address -> IO Transport
+connectTransport a = transport' (A.addressMethod a) a where
+	transport' "unix" = unix
+	transport' _      = unknownTransport
+
+@ \subsection{UNIX}
+
+The {\sc unix} transport accepts two parameters: {\tt path}, which is a
+simple filesystem path, and {\tt abstract}, which is a path in the
+Linux-specific abstract domain. One, and only one, of these parameters must
+be specified.
+
+<<DBus/Connection.hs>>=
+unix :: A.Address -> IO Transport
+unix a = handleTransport . N.connectTo "localhost" =<< port where
+	params = A.addressParameters a
+	path = Map.lookup "path" params
+	abstract = Map.lookup "abstract" params
+	
+	tooMany = "Only one of `path' or `abstract' may be specified for the\
+	          \ `unix' method."
+	tooFew = "One of `path' or `abstract' must be specified for the\
+	         \ `unix' transport."
+	
+	port = fmap N.UnixSocket path'
+	path' = case (path, abstract) of
+		(Just _, Just _) -> E.throwIO $ BadParameters a tooMany
+		(Nothing, Nothing) -> E.throwIO $ BadParameters a tooFew
+		(Just x, Nothing) -> return $ TL.unpack x
+		(Nothing, Just x) -> return $ '\x00' : TL.unpack x
+
+@ \subsection{TCP}
+
+known parameters:
+
+\begin{itemize}
+\item {\tt host} (optional, default "{\tt localhost}")
+\item {\tt port}
+\item {\tt family} (optional, choices are "{\tt ipv4}" or "{\tt ipv6}"
+\end{itemize}
+
+TCP support is TODO
+
+<<TODO>>=
+tcp :: A.Address -> IO Transport
+tcp a@(A.Address _ params) = handleTransport a connect' where
+	host = lookup "host" params
+	port = parsePort =<< lookup "post" params
+	family = parseFamily =<< lookup "family" params
+	connect' = do
+		-- check host
+		-- check port
+		-- check family
+		-- return handle
+parsePort :: String -> Maybe PortNumber
+
+parseFamily :: String -> Maybe Family
+
+@ \subsection{Generic handle-based transport}
+
+Both UNIX and TCP are backed by standard handles, and can therefore use
+a shared handle-based transport backend.
+
+<<DBus/Connection.hs>>=
+handleTransport :: IO I.Handle -> IO Transport
+handleTransport io = do
+	h <- io
+	I.hSetBuffering h I.NoBuffering
+	I.hSetBinaryMode h True
+	return $ Transport (L.hPut h) (L.hGet h . fromIntegral)
+
+@ \subsection{Unknown transports}
+
+If a method has no known transport, attempting to connect using it will
+just result in an exception.
+
+<<DBus/Connection.hs>>=
+unknownTransport :: A.Address -> IO Transport
+unknownTransport = E.throwIO . UnknownMethod
+
+@ \subsection{Errors}
+
+If connecting to DBus fails, a {\tt ConnectionException} will be thrown.
+The constructor describes which exception occurred.
+
+<<DBus/Connection.hs>>=
+data ConnectionException
+	= InvalidAddress Text
+	| BadParameters A.Address Text
+	| UnknownMethod A.Address
+	| NoWorkingAddress [A.Address]
+	deriving (Show, Typeable)
+
+instance E.Exception ConnectionException
+instance E.Exception W.MarshalError
+instance E.Exception W.UnmarshalError
+
+@ \subsection{Authentication}
+
+<<DBus/Connection.hs>>=
+authenticate :: (String -> IO ()) -> (Word32 -> IO String)
+                -> IO ()
+authenticate put get = do
+	put "\x00"
+
+@ {\sc external} authentication is performed using the process's real user
+ID, converted to a string, and then hex-encoded.
+
+<<DBus/Connection.hs>>=
+	uid <- getRealUserID
+	let authToken = concatMap (printf "%02X" . ord) (show uid)
+	put $ "AUTH EXTERNAL " ++ authToken ++ "\r\n"
+
+@ If authentication was successful, the server responds with {\tt OK
+<server GUID>}.  The GUID is intended to enable connection sharing, which
+is currently unimplemented, so it's ignored.
+
+<<DBus/Connection.hs>>=
+	response <- readUntil '\n' get
+	if "OK" `isPrefixOf` response
+		then put "BEGIN\r\n"
+		else do
+			putStrLn $ "response = " ++ show response
+			error "Server rejected authentication token."
+
+<<DBus/Connection.hs>>=
+readUntil :: Monad m => Char -> (Word32 -> m String) -> m String
+readUntil = readUntil' ""
+
+readUntil' :: Monad m => String -> Char -> (Word32 -> m String) -> m String
+readUntil' xs c f = do
+	[x] <- f 1
+	let xs' = xs ++ [x]
+	if x == c
+		then return xs'
+		else readUntil' xs' c f
+
+@
+\section{Connecting to a message bus}
+
+<<DBus/Bus.hs>>=
+<<copyright>>
+{-# LANGUAGE OverloadedStrings #-}
+module DBus.Bus
+	( getSystemBus
+	, getSessionBus
+	, getStarterBus
+	, getFirstBus
+	, getBus
+	) where
+
+import qualified Control.Exception as E
+import Control.Monad (when)
+import Data.Maybe (fromJust, isNothing)
+import qualified Data.Set as Set
+import qualified Data.Text.Lazy as TL
+import System.Environment (getEnv)
+
+import qualified DBus.Address as A
+import qualified DBus.Connection as C
+import DBus.Constants (dbusName, dbusPath, dbusInterface)
+import qualified DBus.Message as M
+import qualified DBus.Types as T
+
+@ Connecting to a message bus is a bit more involved than just connecting
+over an app-to-app connection: the bus must be notified of the new client,
+using a "hello message", before it will begin forwarding messages.
+
+<<DBus/Bus.hs>>=
+getBus :: A.Address -> IO (C.Connection, T.BusName)
+getBus addr = do
+	c <- C.connect addr
+	name <- sendHello c
+	return (c, name)
+
+@ Optionally, multiple addresses may be provided. The first successfully
+connected bus will be returned.
+
+<<DBus/Bus.hs>>=
+getFirstBus :: [A.Address] -> IO (C.Connection, T.BusName)
+getFirstBus as = getFirstBus' as as
+
+getFirstBus' :: [A.Address] -> [A.Address] -> IO (C.Connection, T.BusName)
+getFirstBus' orig     [] = E.throwIO $ C.NoWorkingAddress orig
+getFirstBus' orig (a:as) = E.catch (getBus a) onError where
+	onError :: E.SomeException -> IO (C.Connection, T.BusName)
+	onError _ = getFirstBus' orig as
+
+@ \subsection{Default connections}
+
+Two default buses are defined, the ``system'' and ``session'' buses. The system
+bus is global for the OS, while the session bus runs only for the duration
+of the user's session.
+
+<<DBus/Bus.hs>>=
+getSystemBus :: IO (C.Connection, T.BusName)
+getSystemBus = getBus' $ fromEnv `E.catch` noEnv where
+	defaultAddr = "unix:path=/var/run/dbus/system_bus_socket"
+	fromEnv = getEnv "DBUS_SYSTEM_BUS_ADDRESS"
+	noEnv (E.SomeException _) = return defaultAddr
+
+<<DBus/Bus.hs>>=
+getSessionBus :: IO (C.Connection, T.BusName)
+getSessionBus = getBus' $ getEnv "DBUS_SESSION_BUS_ADDRESS"
+
+<<DBus/Bus.hs>>=
+getStarterBus :: IO (C.Connection, T.BusName)
+getStarterBus = getBus' $ getEnv "DBUS_STARTER_ADDRESS"
+
+<<DBus/Bus.hs>>=
+getBus' :: IO String -> IO (C.Connection, T.BusName)
+getBus' io = do
+	addr <- fmap TL.pack io
+	case A.mkAddresses addr of
+		Just [x] -> getBus x
+		Just  x  -> getFirstBus x
+		_        -> E.throwIO $ C.InvalidAddress addr
+
+@ \subsection{Sending the ``hello'' message}
+
+<<DBus/Bus.hs>>=
+hello :: M.MethodCall
+hello = M.MethodCall dbusPath
+	(T.mkMemberName' "Hello")
+	(Just dbusInterface)
+	(Just dbusName)
+	Set.empty
+	[]
+
+<<DBus/Bus.hs>>=
+sendHello :: C.Connection -> IO T.BusName
+sendHello c = do
+	serial <- C.send c return hello
+	reply <- waitForReply c serial
+	let name = case M.methodReturnBody reply of
+		(x:_) -> T.fromVariant x
+		_     -> Nothing
+	
+	when (isNothing name) $ do
+		E.throwIO $ E.AssertionFailed "Invalid response to Hello()"
+		return ()
+	
+	return . fromJust $ name
+
+<<DBus/Bus.hs>>=
+waitForReply :: C.Connection -> M.Serial -> IO M.MethodReturn
+waitForReply c serial = do
+	msg <- C.receive c
+	case msg of
+		(M.ReceivedMethodReturn _ _ reply) ->
+			if M.methodReturnSerial reply == serial
+				then return reply
+				else waitForReply c serial
+		_ -> waitForReply c serial
+
+@
+\section{Addresses}
+
+<<DBus/Address.hs>>=
+<<copyright>>
+{-# LANGUAGE OverloadedStrings #-}
+module DBus.Address
+	( Address
+	, addressMethod
+	, addressParameters
+	, mkAddresses
+	, strAddress
+	) where
+
+import Data.Char (ord, chr)
+import qualified Data.Map as M
+import Data.List (intercalate)
+import Data.Text.Lazy (Text)
+import qualified Data.Text.Lazy as TL
+import Text.Printf (printf)
+import qualified Text.Parsec as P
+import Text.Parsec ((<|>))
+import DBus.Util (hexToInt, eitherToMaybe)
+
+@ \subsection{Address syntax}
+
+A bus address is in the format {\tt $method$:$key$=$value$,$key$=$value$...}
+where the method may be empty and parameters are optional. An address's
+parameter list, if present, may end with a comma. Addresses in environment
+variables are separated by semicolons, and the full address list may end
+in a semicolon. Multiple parameters may have the same key; in this case,
+only the first parameter for each key will be stored.
+
+The bytes allowed in each component of the address are given by the following
+chart, where each character is understood to be its ASCII value:
+
+\begin{table}[h]
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Component   & Allowed Characters \\
+\midrule
+Method      & Any except {\tt `;'} and {\tt `:'} \\
+Param key   & Any except {\tt `;'}, {\tt `,'}, and {\tt `='} \\
+Param value & {\tt `0'} to {\tt `9'} \\
+            & {\tt `a'} to {\tt `z'} \\
+            & {\tt `A'} to {\tt `Z'} \\
+            & Any of: {\tt - \textunderscore{} / \textbackslash{} * . \%} \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+In parameter values, any byte may be encoded by prepending the \% character
+to its value in hexadecimal. \% is not allowed to appear unless it is
+followed by two hexadecimal digits. Every other allowed byte is termed
+an ``optionally encoded'' byte, and may appear unescaped in parameter
+values.
+
+<<DBus/Address.hs>>=
+optionallyEncoded :: [Char]
+optionallyEncoded = ['0'..'9'] ++ ['a'..'z'] ++ ['A'..'Z'] ++ "-_/\\*."
+
+@
+The address simply stores its method and parameter map, with a custom
+{\tt Show} instance to provide easier debugging.
+
+<<DBus/Address.hs>>=
+data Address = Address
+	{ addressMethod     :: Text
+	, addressParameters :: M.Map Text Text
+	} deriving (Eq)
+
+instance Show Address where
+	showsPrec d x = showParen (d> 10) $
+		showString "Address " . shows (strAddress x)
+
+@
+Parsing is straightforward; the input string is divided into addresses by
+semicolons, then further by colons and commas. Parsing will fail if any
+of the addresses in the input failed to parse.
+
+<<DBus/Address.hs>>=
+mkAddresses :: Text -> Maybe [Address]
+mkAddresses s = eitherToMaybe . P.parse parser "" . TL.unpack $ s where
+	address = do
+		method <- P.many (P.noneOf ":;")
+		P.char ':'
+		params <- P.sepEndBy param (P.char ',')
+		return $ Address (TL.pack method) (M.fromList params)
+	
+	param = do
+		key <- P.many1 (P.noneOf "=;,")
+		P.char '='
+		value <- P.many1 (encodedValue <|> unencodedValue)
+		return (TL.pack key, TL.pack value)
+	
+	parser = do
+		as <- P.sepEndBy1 address (P.char ';')
+		P.eof
+		return as
+	
+	unencodedValue = P.oneOf optionallyEncoded
+	encodedValue = do
+		P.char '%'
+		hex <- P.count 2 P.hexDigit
+		return . chr . hexToInt $ hex
+
+@
+Converting an {\tt Address} back to a {\tt String} is just the reverse
+operation. Note that because the original parameter order is not preserved,
+the string produced might differ from the original input.
+
+<<DBus/Address.hs>>=
+strAddress :: Address -> Text
+strAddress (Address t ps) = TL.concat [t, ":", ps'] where
+	ps' = TL.intercalate "," $ do
+		(k, v) <- M.toList ps
+		return $ TL.concat [k, "=", TL.concatMap encode v]
+	encode c | elem c optionallyEncoded = TL.singleton c
+	         | otherwise       = TL.pack $ printf "%%%02X" (ord c)
+
+
+@
+\section{Introspection}
+
+<<DBus/Introspection.hs>>=
+<<copyright>>
+{-# LANGUAGE OverloadedStrings #-}
+module DBus.Introspection
+	( Object (..)
+	, Interface (..)
+	, Method (..)
+	, Signal (..)
+	, Parameter (..)
+	, Property (..)
+	, PropertyAccess (..)
+	, toXML
+	, fromXML
+	) where
+
+import Control.Arrow ((>>>), (&&&), (<+>), arr)
+import Control.Monad (mapM)
+import Data.Maybe (listToMaybe, maybeToList)
+import Data.Text.Lazy (Text)
+import qualified Data.Text.Lazy as TL
+import qualified Text.XML.HXT.Arrow as A
+import qualified Text.XML.HXT.Arrow.ParserInterface as P
+import qualified Text.XML.HXT.DOM.XmlNode as XN
+import qualified DBus.Types as T
+
+@ DBus objects may be ``introspected'' to determine which methods, signals,
+etc they support. Intospection data is sent over the bus in {\sc xml}, in
+a mostly standardised but undocumented format.
+
+@ \subsection{Data types}
+
+<<DBus/Introspection.hs>>=
+data Object = Object T.ObjectPath [Interface] [Object]
+	deriving (Show, Eq)
+
+data Interface = Interface T.InterfaceName [Method] [Signal] [Property]
+	deriving (Show, Eq)
+
+data Method = Method T.MemberName [Parameter] [Parameter]
+	deriving (Show, Eq)
+
+data Signal = Signal T.MemberName [Parameter]
+	deriving (Show, Eq)
+
+data Parameter = Parameter Text T.Signature
+	deriving (Show, Eq)
+
+data Property = Property Text T.Signature [PropertyAccess]
+	deriving (Show, Eq)
+
+data PropertyAccess = Read | Write
+	deriving (Show, Eq)
+
+@ \subsection{Parsing XML}
+
+An XML introspection document looks like this:
+
+\begin{verbatim}
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+         "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<node name="/org/example/example">
+	<interface name="org.example.ExampleInterface">
+		<method name="Echo">
+			<arg name="text" type="s" direction="in"/>
+			<arg type="s" direction="out"/>
+		</method>
+		<signal name="Echoed">
+			<arg type="s"/>
+		</signal>
+		<property name="EchoCount" type="u" access="read"/>
+	</interface>
+	<node name="child_a"/>
+	<node name="child/b"/>
+</node>
+\end{verbatim}
+
+The root {\tt node} is special, in that it's the only {\tt node} which is
+not required to have a {\tt name} attribute. If the root has no {\tt name},
+its path will default to the path of the introspected object.
+
+If parsing fails, {\tt fromXML} will return {\tt Nothing}. Aside from the
+elements directly accessed by the parser, no effort is made to check the
+document's validity because there is no DTD as of yet.
+
+<<DBus/Introspection.hs>>=
+fromXML :: T.ObjectPath -> Text -> Maybe Object
+fromXML path text = listToMaybe $ (A.runLA arrow) text where
+	arrow = parseXML
+	        >>> A.single (A.hasName "node")
+	        >>> A.removeAllWhiteSpace
+	        >>> A.arrL (maybeToList . parseRoot path)
+
+@ Even though the root object's {\tt name} is optional, if present, it must
+still be a valid object path.
+
+<<DBus/Introspection.hs>>=
+parseRoot :: T.ObjectPath -> A.XmlTree -> Maybe Object
+parseRoot defaultPath t = do
+	path <- case getAttr "name" t of
+		"" -> Just defaultPath
+		x  -> T.mkObjectPath x
+	parseObject' path t
+
+@ Child {\tt nodes} have ``relative'' paths -- that is, their {\tt name}
+attribute is not a valid object path, but should be valid when appended to
+the root object's path.
+
+<<DBus/Introspection.hs>>=
+parseChild :: T.ObjectPath -> A.XmlTree -> Maybe Object
+parseChild parentPath t = do
+	let parentPath' = case T.strObjectPath parentPath of
+		"/" -> "/"
+		x   -> TL.append x "/"
+	pathSegment <- case getAttr "name" t of
+		"" -> Nothing
+		x  -> Just x
+	path <- T.mkObjectPath $ TL.append parentPath' pathSegment
+	parseObject' path t
+
+@ Other than the name, both root and non-root {\tt nodes} have identical
+contents.  They may contain interface definitions, and child {\tt node}s.
+
+<<DBus/Introspection.hs>>=
+parseObject' :: T.ObjectPath -> A.XmlTree -> Maybe Object
+parseObject' path t = do
+	interfaces <- children parseInterface (A.hasName "interface") t
+	children' <- children (parseChild path) (A.hasName "node") t
+	return $ Object path interfaces children'
+
+@ Interfaces may contain methods, signals, and properties.
+
+<<DBus/Introspection.hs>>=
+parseInterface :: A.XmlTree -> Maybe Interface
+parseInterface t = do
+	name <- T.mkInterfaceName $ getAttr "name" t
+	methods <- children parseMethod (A.hasName "method") t
+	signals <- children parseSignal (A.hasName "signal") t
+	properties <- children parseProperty (A.hasName "property") t
+	return $ Interface name methods signals properties
+
+@ Methods contain a list of parameters, which default to ``in'' parameters
+if no direction is specified.
+
+<<DBus/Introspection.hs>>=
+parseMethod :: A.XmlTree -> Maybe Method
+parseMethod t = do
+	name <- T.mkMemberName $ getAttr "name" t
+	paramsIn <- children parseParameter (isParam ["in", ""]) t
+	paramsOut <- children parseParameter (isParam ["out"]) t
+	return $ Method name paramsIn paramsOut
+
+@ Signals are similar to methods, except they have no ``in'' parameters.
+
+<<DBus/Introspection.hs>>=
+parseSignal :: A.XmlTree -> Maybe Signal
+parseSignal t = do
+	name <- T.mkMemberName $ getAttr "name" t
+	params <- children parseParameter (isParam ["out", ""]) t
+	return $ Signal name params
+
+@ A parameter has a free-form name, and a single valid type.
+
+<<DBus/Introspection.hs>>=
+parseParameter :: A.XmlTree -> Maybe Parameter
+parseParameter t = do
+	let name = getAttr "name" t
+	sig <- parseType t
+	return $ Parameter name sig
+
+<<DBus/Introspection.hs>>=
+parseType :: A.XmlTree -> Maybe T.Signature
+parseType t = do
+	sig <- T.mkSignature $ getAttr "type" t
+	case T.signatureTypes sig of
+		[_] -> Just sig
+		_   -> Nothing
+
+@ Properties are used by the {\tt org.freedesktop.DBus.Properties} interface.
+Each property may be read, written, or both, and has an associated type.
+
+<<DBus/Introspection.hs>>=
+parseProperty :: A.XmlTree -> Maybe Property
+parseProperty t = do
+	let name = getAttr "name" t
+	sig <- parseType t
+	access <- case getAttr "access" t of
+		""          -> Just []
+		"read"      -> Just [Read]
+		"write"     -> Just [Write]
+		"readwrite" -> Just [Read, Write]
+		_           -> Nothing
+	return $ Property name sig access
+
+@ Some helper functions for dealing with HXT xml arrows.
+
+<<DBus/Introspection.hs>>=
+getAttr :: String -> A.XmlTree -> Text
+getAttr name t = case A.runLA (A.getAttrValue name) t of
+	(x:_) -> TL.pack x
+	_     -> ""
+
+children :: Monad m => (a -> m b) -> A.LA A.XmlTree a -> A.XmlTree -> m [b]
+children f a = mapM f . A.runLA (A.getChildren >>> a)
+
+isParam :: A.ArrowXml a => [String] -> a A.XmlTree A.XmlTree
+isParam dirs = A.hasName "arg"
+               >>> (A.arr id &&& A.getAttrValue "direction")
+               >>> A.arrL (\(t, p) -> if elem p dirs then [t] else [])
+
+@ \subsection{Generating XML}
+
+Generating XML can fail also; if a child object's path is not a sub-path of
+the parent, {\tt toXML} will return {\tt Nothing}.
+
+<<DBus/Introspection.hs>>=
+toXML :: Object -> Maybe Text
+toXML obj = fmap TL.pack xml where
+	dtd = A.mkDTDDoctype
+		[ ("name", "node")
+		, ("SYSTEM", "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd")
+		, ("PUBLIC", "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN")
+		] A.none
+	
+	xml = do
+		root <- xmlRoot obj
+		return . concat $ A.runLA (A.xshowEscapeXml (dtd <+> root)) ()
+
+@ When writing objects to {\tt node}s, the root object must have an absolute
+path, and children must have paths relative to their parent.
+
+<<DBus/Introspection.hs>>=
+xmlRoot :: A.ArrowXml a => Object -> Maybe (a n A.XmlTree)
+xmlRoot (Object path interfaces children') = do
+	children'' <- mapM (xmlObject path) children'
+	return $ A.mkElement (A.mkName "node")
+		(mkAttr "name" . TL.unpack . T.strObjectPath $ path)
+		(A.catA . concat $
+			[ map xmlInterface interfaces
+			, children''
+			])
+
+<<DBus/Introspection.hs>>=
+xmlObject :: A.ArrowXml a => T.ObjectPath -> Object -> Maybe (a n A.XmlTree)
+xmlObject parentPath (Object path interfaces children') = do
+	let path' = T.strObjectPath path
+	    parent' = T.strObjectPath parentPath
+	relpath <- if TL.isPrefixOf parent' path'
+		then Just $ if parent' == "/"
+			then TL.drop 1 path'
+			else TL.drop (TL.length parent' + 1) path'
+		else Nothing
+
+	children'' <- mapM (xmlObject path) children'
+	return $ A.mkElement (A.mkName "node")
+		(mkAttr "name" (TL.unpack relpath))
+		(A.catA . concat $
+			[ map xmlInterface interfaces
+			, children''
+			])
+
+<<DBus/Introspection.hs>>=
+xmlInterface :: A.ArrowXml a => Interface -> a n A.XmlTree
+xmlInterface (Interface name methods signals properties) =
+	A.mkElement (A.mkName "interface")
+		(mkAttr "name" . TL.unpack . T.strInterfaceName $ name)
+		(A.catA . concat $
+			[ map xmlMethod methods
+			, map xmlSignal signals
+			, map xmlProperty properties
+			])
+
+<<DBus/Introspection.hs>>=
+xmlMethod :: A.ArrowXml a => Method -> a n A.XmlTree
+xmlMethod (Method name inParams outParams) = A.mkElement (A.mkName "method")
+	(mkAttr "name" . TL.unpack . T.strMemberName $ name)
+	(A.catA . concat $
+		[ map (xmlParameter "in") inParams
+		, map (xmlParameter "out") outParams
+		])
+
+<<DBus/Introspection.hs>>=
+xmlSignal :: A.ArrowXml a => Signal -> a n A.XmlTree
+xmlSignal (Signal name params) = A.mkElement (A.mkName "signal")
+	(mkAttr "name" . TL.unpack . T.strMemberName $ name)
+	(A.catA (map (xmlParameter "out") params))
+
+<<DBus/Introspection.hs>>=
+xmlParameter :: A.ArrowXml a => String -> Parameter -> a n A.XmlTree
+xmlParameter direction (Parameter name sig) = A.mkElement (A.mkName "arg")
+	(A.catA [ mkAttr "name" . TL.unpack $ name
+	        , mkAttr "type" . TL.unpack . T.strSignature $ sig
+	        , mkAttr "direction" direction
+	        ])
+	A.none
+
+<<DBus/Introspection.hs>>=
+xmlProperty :: A.ArrowXml a => Property -> a n A.XmlTree
+xmlProperty (Property name sig access) = A.mkElement (A.mkName "property")
+	(A.catA [ mkAttr "name" . TL.unpack $ name
+	        , mkAttr "type" . TL.unpack . T.strSignature $ sig
+	        , mkAttr "access" $ xmlAccess access
+	        ])
+	A.none
+
+<<DBus/Introspection.hs>>=
+xmlAccess :: [PropertyAccess] -> String
+xmlAccess access = read ++ write where
+	read = if elem Read access then "read" else ""
+	write = if elem Write access then "write" else ""
+
+<<DBus/Introspection.hs>>=
+mkAttr :: A.ArrowXml a => String -> String -> a n A.XmlTree
+mkAttr name value = A.mkAttr (A.mkName name) (A.txt value)
+
+<<DBus/Introspection.hs>>=
+parseXML :: A.ArrowXml a => a Text A.XmlTree
+parseXML = arr (\x -> ("", TL.unpack x))
+	>>> P.parseXmlDoc
+	>>> P.substXmlEntityRefs
+
+@
+\section{Constants}
+
+<<DBus/Constants.hs>>=
+<<copyright>>
+{-# LANGUAGE OverloadedStrings #-}
+module DBus.Constants where
+import qualified DBus.Types as T
+import Data.Word (Word8, Word32)
+
+<<DBus/Constants.hs>>=
+protocolVersion :: Word8
+protocolVersion = 1
+
+messageMaximumLength :: Word32
+messageMaximumLength = 134217728
+
+arrayMaximumLength :: Word32
+arrayMaximumLength = 67108864
+
+@ \subsection{The message bus}
+
+<<DBus/Constants.hs>>=
+dbusName :: T.BusName
+dbusName = T.mkBusName' "org.freedesktop.DBus"
+
+dbusPath :: T.ObjectPath
+dbusPath = T.mkObjectPath' "/org/freedesktop/DBus"
+
+dbusInterface :: T.InterfaceName
+dbusInterface = T.mkInterfaceName' "org.freedesktop.DBus"
+
+@ \subsection{Pre-defined interfaces}
+
+<<DBus/Constants.hs>>=
+interfaceIntrospectable :: T.InterfaceName
+interfaceIntrospectable = T.mkInterfaceName' "org.freedesktop.DBus.Introspectable"
+
+interfaceProperties :: T.InterfaceName
+interfaceProperties = T.mkInterfaceName' "org.freedesktop.DBus.Properties"
+
+interfacePeer :: T.InterfaceName
+interfacePeer = T.mkInterfaceName' "org.freedesktop.DBus.Peer"
+
+@ \subsection{Pre-defined error names}
+
+<<DBus/Constants.hs>>=
+errorFailed :: T.ErrorName
+errorFailed = T.mkErrorName' "org.freedesktop.DBus.Error.Failed"
+
+errorNoMemory :: T.ErrorName
+errorNoMemory = T.mkErrorName' "org.freedesktop.DBus.Error.NoMemory"
+
+errorServiceUnknown :: T.ErrorName
+errorServiceUnknown = T.mkErrorName' "org.freedesktop.DBus.Error.ServiceUnknown"
+
+errorNameHasNoOwner :: T.ErrorName
+errorNameHasNoOwner = T.mkErrorName' "org.freedesktop.DBus.Error.NameHasNoOwner"
+
+errorNoReply :: T.ErrorName
+errorNoReply = T.mkErrorName' "org.freedesktop.DBus.Error.NoReply"
+
+errorIOError :: T.ErrorName
+errorIOError = T.mkErrorName' "org.freedesktop.DBus.Error.IOError"
+
+errorBadAddress :: T.ErrorName
+errorBadAddress = T.mkErrorName' "org.freedesktop.DBus.Error.BadAddress"
+
+errorNotSupported :: T.ErrorName
+errorNotSupported = T.mkErrorName' "org.freedesktop.DBus.Error.NotSupported"
+
+errorLimitsExceeded :: T.ErrorName
+errorLimitsExceeded = T.mkErrorName' "org.freedesktop.DBus.Error.LimitsExceeded"
+
+errorAccessDenied :: T.ErrorName
+errorAccessDenied = T.mkErrorName' "org.freedesktop.DBus.Error.AccessDenied"
+
+errorAuthFailed :: T.ErrorName
+errorAuthFailed = T.mkErrorName' "org.freedesktop.DBus.Error.AuthFailed"
+
+errorNoServer :: T.ErrorName
+errorNoServer = T.mkErrorName' "org.freedesktop.DBus.Error.NoServer"
+
+errorTimeout :: T.ErrorName
+errorTimeout = T.mkErrorName' "org.freedesktop.DBus.Error.Timeout"
+
+errorNoNetwork :: T.ErrorName
+errorNoNetwork = T.mkErrorName' "org.freedesktop.DBus.Error.NoNetwork"
+
+errorAddressInUse :: T.ErrorName
+errorAddressInUse = T.mkErrorName' "org.freedesktop.DBus.Error.AddressInUse"
+
+errorDisconnected :: T.ErrorName
+errorDisconnected = T.mkErrorName' "org.freedesktop.DBus.Error.Disconnected"
+
+errorInvalidArgs :: T.ErrorName
+errorInvalidArgs = T.mkErrorName' "org.freedesktop.DBus.Error.InvalidArgs"
+
+errorFileNotFound :: T.ErrorName
+errorFileNotFound = T.mkErrorName' "org.freedesktop.DBus.Error.FileNotFound"
+
+errorFileExists :: T.ErrorName
+errorFileExists = T.mkErrorName' "org.freedesktop.DBus.Error.FileExists"
+
+errorUnknownMethod :: T.ErrorName
+errorUnknownMethod = T.mkErrorName' "org.freedesktop.DBus.Error.UnknownMethod"
+
+errorTimedOut :: T.ErrorName
+errorTimedOut = T.mkErrorName' "org.freedesktop.DBus.Error.TimedOut"
+
+errorMatchRuleNotFound :: T.ErrorName
+errorMatchRuleNotFound = T.mkErrorName' "org.freedesktop.DBus.Error.MatchRuleNotFound"
+
+errorMatchRuleInvalid :: T.ErrorName
+errorMatchRuleInvalid = T.mkErrorName' "org.freedesktop.DBus.Error.MatchRuleInvalid"
+
+errorSpawnExecFailed :: T.ErrorName
+errorSpawnExecFailed = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.ExecFailed"
+
+errorSpawnForkFailed :: T.ErrorName
+errorSpawnForkFailed = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.ForkFailed"
+
+errorSpawnChildExited :: T.ErrorName
+errorSpawnChildExited = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.ChildExited"
+
+errorSpawnChildSignaled :: T.ErrorName
+errorSpawnChildSignaled = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.ChildSignaled"
+
+errorSpawnFailed :: T.ErrorName
+errorSpawnFailed = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.Failed"
+
+errorSpawnFailedToSetup :: T.ErrorName
+errorSpawnFailedToSetup = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.FailedToSetup"
+
+errorSpawnConfigInvalid :: T.ErrorName
+errorSpawnConfigInvalid = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.ConfigInvalid"
+
+errorSpawnServiceNotValid :: T.ErrorName
+errorSpawnServiceNotValid = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.ServiceNotValid"
+
+errorSpawnServiceNotFound :: T.ErrorName
+errorSpawnServiceNotFound = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.ServiceNotFound"
+
+errorSpawnPermissionsInvalid :: T.ErrorName
+errorSpawnPermissionsInvalid = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.PermissionsInvalid"
+
+errorSpawnFileInvalid :: T.ErrorName
+errorSpawnFileInvalid = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.FileInvalid"
+
+errorSpawnNoMemory :: T.ErrorName
+errorSpawnNoMemory = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.NoMemory"
+
+errorUnixProcessIdUnknown :: T.ErrorName
+errorUnixProcessIdUnknown = T.mkErrorName' "org.freedesktop.DBus.Error.UnixProcessIdUnknown"
+
+errorInvalidFileContent :: T.ErrorName
+errorInvalidFileContent = T.mkErrorName' "org.freedesktop.DBus.Error.InvalidFileContent"
+
+errorSELinuxSecurityContextUnknown :: T.ErrorName
+errorSELinuxSecurityContextUnknown = T.mkErrorName' "org.freedesktop.DBus.Error.SELinuxSecurityContextUnknown"
+
+errorAdtAuditDataUnknown :: T.ErrorName
+errorAdtAuditDataUnknown = T.mkErrorName' "org.freedesktop.DBus.Error.AdtAuditDataUnknown"
+
+errorObjectPathInUse :: T.ErrorName
+errorObjectPathInUse = T.mkErrorName' "org.freedesktop.DBus.Error.ObjectPathInUse"
+
+errorInconsistentMessage :: T.ErrorName
+errorInconsistentMessage = T.mkErrorName' "org.freedesktop.DBus.Error.InconsistentMessage"
+
+@
+\section{Misc. utility functions}
+
+<<DBus/Util.hs>>=
+<<copyright>>
+module DBus.Util
+	( checkLength
+	, parseMaybe
+	, mkUnsafe
+	, hexToInt
+	, eitherToMaybe
+	) where
+import Text.Parsec (Parsec, parse)
+import Data.Char (digitToInt)
+
+checkLength :: Int -> String -> Maybe String
+checkLength length' s | length s <= length' = Just s
+checkLength _ _ = Nothing
+
+parseMaybe :: Parsec String () a -> String -> Maybe a
+parseMaybe p = either (const Nothing) Just . parse p ""
+
+mkUnsafe :: Show a => String -> (a -> Maybe b) -> a -> b
+mkUnsafe label f x = case f x of
+	Just x' -> x'
+	Nothing -> error $ "Invalid " ++ label ++ ": " ++ show x
+
+hexToInt :: String -> Int
+hexToInt = foldl ((+) . (16 *)) 0 . map digitToInt
+
+eitherToMaybe :: Either a b -> Maybe b
+eitherToMaybe (Left  _) = Nothing
+eitherToMaybe (Right x) = Just x
+
+@ \end{document}
