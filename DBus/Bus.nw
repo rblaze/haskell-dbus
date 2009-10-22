@@ -18,6 +18,7 @@
 
 <<DBus/Bus.hs>>=
 <<copyright>>
+{-# LANGUAGE OverloadedStrings #-}
 module DBus.Bus
 	( getSystemBus
 	, getSessionBus
@@ -30,6 +31,7 @@ import qualified Control.Exception as E
 import Control.Monad (when)
 import Data.Maybe (fromJust, isNothing)
 import qualified Data.Set as Set
+import qualified Data.Text.Lazy as TL
 import System.Environment (getEnv)
 
 import qualified DBus.Address as A
@@ -86,7 +88,7 @@ getStarterBus = getBus' $ getEnv "DBUS_STARTER_ADDRESS"
 <<DBus/Bus.hs>>=
 getBus' :: IO String -> IO (C.Connection, T.BusName)
 getBus' io = do
-	addr <- io
+	addr <- fmap TL.pack io
 	case A.mkAddresses addr of
 		Just [x] -> getBus x
 		Just  x  -> getFirstBus x

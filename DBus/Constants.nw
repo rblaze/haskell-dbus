@@ -18,6 +18,7 @@
 
 <<DBus/Constants.hs>>=
 <<copyright>>
+{-# LANGUAGE OverloadedStrings #-}
 module DBus.Constants where
 import qualified DBus.Types as T
 import Data.Word (Word8, Word32)

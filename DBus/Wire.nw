@@ -20,6 +20,7 @@
 <<copyright>>
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE OverloadedStrings #-}
 module DBus.Wire (<<exports>>) where
 
 import Control.Monad (when, unless)
@@ -29,6 +30,7 @@ import qualified Data.Binary.Put as P
 import qualified Data.Binary.Get as G
 import qualified Data.Binary.IEEE754 as IEEE
 import qualified Data.ByteString.Lazy as L
+import Data.Text.Lazy (Text)
 import qualified Data.Text.Lazy as TL
 import Data.Text.Lazy.Encoding (decodeUtf8, encodeUtf8)
 import Data.Bits ((.|.), (.&.))
@@ -160,8 +162,8 @@ Marshaling can fail for four reasons:
 data MarshalError
 	= MessageTooLong Word64
 	| ArrayTooLong Word64
-	| InvalidBodySignature String
-	| InvalidVariantSignature String
+	| InvalidBodySignature Text
+	| InvalidVariantSignature Text
 	deriving (Eq, Typeable)
 
 instance Show MarshalError where
@@ -236,12 +238,12 @@ skipTerminator = do
 		E.throwError $ MissingTerminator offset
 
 <<DBus/Wire.hs>>=
-fromMaybeU :: Show a => String -> (a -> Maybe b) -> a -> Unmarshal b
+fromMaybeU :: Show a => Text -> (a -> Maybe b) -> a -> Unmarshal b
 fromMaybeU label f x = case f x of
 	Just x' -> return x'
-	Nothing -> E.throwError $ Invalid label $ show x
+	Nothing -> E.throwError . Invalid label . TL.pack . show $ x
 
-fromMaybeU' :: (Show a, T.Variable b) => String -> (a -> Maybe b) -> a
+fromMaybeU' :: (Show a, T.Variable b) => Text -> (a -> Maybe b) -> a
            -> Unmarshal T.Variant
 fromMaybeU' label f x = do
 	x' <- fromMaybeU label f x
@@ -292,9 +294,9 @@ Unmarshaling can fail for four reasons:
 data UnmarshalError
 	= UnsupportedProtocolVersion Word8
 	| UnexpectedEOF Word64
-	| Invalid String String
-	| MissingHeaderField String
-	| InvalidHeaderField String T.Variant
+	| Invalid Text Text
+	| MissingHeaderField Text
+	| InvalidHeaderField Text T.Variant
 	| InvalidPadding Word64
 	| MissingTerminator Word64
 	| ArraySizeMismatch
@@ -305,7 +307,7 @@ instance Show UnmarshalError where
 		["Unsupported protocol version: ", show x]
 	show (UnexpectedEOF pos) = concat
 		["Unexpected EOF at position ", show pos]
-	show (Invalid label x) = concat
+	show (Invalid label x) = TL.unpack $ TL.concat
 		["Invalid ", label, ": ", x]
 	show (MissingHeaderField x) = concat
 		["Required field " , show x , " is missing."]
@@ -402,7 +404,7 @@ their length. Object paths are marshaled just like strings, though additional
 checks are required when unmarshaling.
 
 <<DBus/Wire.hs>>=
-marshalText :: TL.Text -> Marshal
+marshalText :: Text -> Marshal
 marshalText x = do
 	let bytes = encodeUtf8 x
 	marshalWord32 . fromIntegral . L.length $ bytes
@@ -410,7 +412,7 @@ marshalText x = do
 	append (L.singleton 0)
 
 <<DBus/Wire.hs>>=
-unmarshalText :: Unmarshal TL.Text
+unmarshalText :: Unmarshal Text
 unmarshalText = do
 	byteCount <- unmarshalWord32
 	bytes <- consume . fromIntegral $ byteCount
@@ -423,14 +425,14 @@ alignment T.DBusObjectPath = 4
 
 <<marshalers>>=
 marshalType T.DBusString = marshalText x
-marshalType T.DBusObjectPath = marshalText . TL.pack . T.strObjectPath $ x
+marshalType T.DBusObjectPath = marshalText . T.strObjectPath $ x
 
 <<unmarshalers>>=
 unmarshalType T.DBusString = fmap T.toVariant unmarshalText
 
 unmarshalType T.DBusObjectPath = do
-	string <- fmap TL.unpack unmarshalText
-	fromMaybeU' "object path" T.mkObjectPath string
+	text <- unmarshalText
+	fromMaybeU' "object path" T.mkObjectPath text
 
 @ \subsection{Signatures}
 
@@ -440,7 +442,7 @@ characters and is therefore stored as a single byte.
 <<DBus/Wire.hs>>=
 marshalSignature :: T.Signature -> Marshal
 marshalSignature x = do
-	let bytes = encodeUtf8 . TL.pack . T.strSignature $ x
+	let bytes = encodeUtf8 . T.strSignature $ x
 	let size = fromIntegral . L.length $ bytes
 	append (L.singleton size)
 	append bytes
@@ -452,7 +454,7 @@ unmarshalSignature = do
 	byteCount <- fmap L.head $ consume 1
 	sigText <- fmap decodeUtf8 $ consume . fromIntegral $ byteCount
 	skipTerminator
-	fromMaybeU "signature" T.mkSignature $ TL.unpack sigText
+	fromMaybeU "signature" T.mkSignature sigText
 
 <<alignments>>=
 alignment T.DBusSignature  = 1
@@ -628,7 +630,7 @@ decodeField struct = case unpackField struct of
 	(8, x) -> decodeField' x M.Signature "signature"
 	_      -> return []
 
-decodeField' :: (Monad m, T.Variable a) => T.Variant -> (a -> b) -> String
+decodeField' :: (Monad m, T.Variable a) => T.Variant -> (a -> b) -> Text
              -> E.ErrorT UnmarshalError m [b]
 decodeField' x f label = case T.fromVariant x of
 	Just x' -> return [f x']
@@ -670,7 +672,7 @@ marshalMessage e serial msg = runMarshal marshaler e where
 
 checkBodySig :: [T.Variant] -> MarshalM T.Signature
 checkBodySig vs = let
-	sigStr = concatMap (T.typeCode . T.variantType) vs
+	sigStr = TL.concat . map (T.typeCode . T.variantType) $ vs
 	invalid = E.throwError $ InvalidBodySignature sigStr
 	in case T.mkSignature sigStr of
 		Just x -> return x
@@ -737,7 +739,7 @@ when (messageVersion /= C.protocolVersion) $
 let eByte = L.index fixedBytes 0
 endianness <- case decodeEndianness eByte of
 	Just x' -> return x'
-	Nothing -> E.throwError $ Invalid "endianness" $ show eByte
+	Nothing -> E.throwError . Invalid "endianness" . TL.pack . show $ eByte
 
 @ With the endianness out of the way, the rest of the fixed header
 can be decoded
@@ -811,7 +813,7 @@ return $ y serial flags body
 @ This really belongs in the Message section...
 
 <<DBus/Wire.hs>>=
-buildReceivedMessage :: Word8 -> [M.HeaderField] -> Either String 
+buildReceivedMessage :: Word8 -> [M.HeaderField] -> Either Text 
                         (M.Serial -> (Set.Set M.Flag) -> [T.Variant]
                          -> M.ReceivedMessage)
 
@@ -873,6 +875,12 @@ buildReceivedMessage typeCode fields = return $ \serial flags body -> let
 	in M.ReceivedUnknown serial sender msg
 
 <<DBus/Wire.hs>>=
-require :: String -> [a] -> Either String a
+require :: Text -> [a] -> Either Text a
 require _     (x:_) = Right x
 require label _     = Left label
+
+@ This is just needed for the Monad instance of {\tt Either Text}
+
+<<DBus/Wire.hs>>=
+instance E.Error Text where
+	strMsg = TL.pack

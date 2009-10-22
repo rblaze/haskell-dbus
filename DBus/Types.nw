@@ -21,6 +21,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 module DBus.Types (<<exports>>) where
 
 import Control.Arrow ((***))
@@ -67,7 +68,7 @@ data Type
 class Typeable a => Builtin a where
 	builtinDBusType :: a -> Type
 
-typeCode :: Type -> String
+typeCode :: Type -> TL.Text
 <<atomic type codes>>
 <<container type codes>>
 
@@ -324,7 +325,7 @@ on the {\tt ByteString} type. Storing bytes individually in a list of
 {\tt Variant}s is insane.
 
 <<container type codes>>=
-typeCode (DBusArray t) = 'a' : typeCode t
+typeCode (DBusArray t) = TL.cons 'a' $ typeCode t
 
 <<DBus/Types.hs>>=
 data Array = Array Type [Variant]
@@ -379,7 +380,7 @@ example, a dictionary of bytes to booleans would have the type string
 ``a{yb}''.
 
 <<container type codes>>=
-typeCode (DBusDictionary k v) = concat ["a{", typeCode k, typeCode v, "}"]
+typeCode (DBusDictionary k v) = TL.concat ["a{", typeCode k, typeCode v, "}"]
 
 <<DBus/Types.hs>>=
 data Dictionary = Dictionary Type Type [(Atom, Variant)]
@@ -389,7 +390,7 @@ instance Show Dictionary where
 	showsPrec d (Dictionary kt vt pairs) = showParen (d > 10) $
 		s "Dictionary " . showSig . s " {" . s valueString . s "}" where
 			s = showString
-			showSig = shows (typeCode kt ++ typeCode vt)
+			showSig = shows $ TL.append (typeCode kt) (typeCode vt)
 			valueString = intercalate ", " $ map showPair pairs
 			showPair ((Atom k), (Variant v)) =
 				show k ++ " -> " ++ show v
@@ -473,7 +474,8 @@ wrapped by ``('' and ``)''. Structures may be empty, in which case their
 type code is simply ``()''.
 
 <<container type codes>>=
-typeCode (DBusStructure ts) = "(" ++ concatMap typeCode ts ++ ")"
+typeCode (DBusStructure ts) = TL.concat $
+	["("] ++ map typeCode ts ++ [")"]
 
 <<DBus/Types.hs>>=
 data Structure = Structure [Variant]
@@ -503,8 +505,8 @@ instance Show Signature where
 	showsPrec d x = showParen (d > 10) $
 		showString "Signature " . shows (strSignature x)
 
-strSignature :: Signature -> String
-strSignature (Signature ts) = concatMap typeCode ts
+strSignature :: Signature -> TL.Text
+strSignature (Signature ts) = TL.concat $ map typeCode ts
 
 @ Additional restrictions apply to signatures, in addition to those imposed
 by the DBus type definitions:
@@ -514,8 +516,8 @@ by the DBus type definitions:
 \end{itemize}
 
 <<DBus/Types.hs>>=
-mkSignature :: String -> Maybe Signature
-mkSignature = (parseMaybe sigParser =<<) . checkLength 255 where
+mkSignature :: TL.Text -> Maybe Signature
+mkSignature = (parseMaybe sigParser =<<) . checkLength 255 . TL.unpack where
 	sigParser = do
 		types <- P.many parseType
 		P.eof
@@ -560,7 +562,7 @@ have a helper function to construct a signature directly from a string.
 If the input string is invalid, {\tt error} will be called.
 
 <<DBus/Types.hs>>=
-mkSignature' :: String -> Signature
+mkSignature' :: TL.Text -> Signature
 mkSignature' = mkUnsafe "signature" mkSignature
 
 @ Most of these are available for use by clients, with the exception of the
@@ -576,10 +578,10 @@ mkSignature' = mkUnsafe "signature" mkSignature
 @ \subsection{Object paths}
 
 <<DBus/Types.hs>>=
-newtype ObjectPath = ObjectPath String
+newtype ObjectPath = ObjectPath TL.Text
 	deriving (Show, Eq, Ord, Typeable)
 
-strObjectPath :: ObjectPath -> String
+strObjectPath :: ObjectPath -> TL.Text
 strObjectPath (ObjectPath x) = x
 
 @ An object path may be one of
@@ -595,13 +597,13 @@ Element names are separated by {\tt '/'}, and the path may not end in
 {\tt '/'} unless it is the root path.
 
 <<DBus/Types.hs>>=
-mkObjectPath :: String -> Maybe ObjectPath
-mkObjectPath s = parseMaybe path' s where
+mkObjectPath :: TL.Text -> Maybe ObjectPath
+mkObjectPath s = parseMaybe path' (TL.unpack s) where
 	c = P.oneOf $ ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_"
 	path = P.char '/' >>= P.optional . P.sepBy (P.many1 c) . P.char
 	path' = path >> P.eof >> return (ObjectPath s)
 
-mkObjectPath' :: String -> ObjectPath
+mkObjectPath' :: TL.Text -> ObjectPath
 mkObjectPath' = mkUnsafe "object path" mkObjectPath
 
 <<exports>>=
@@ -622,7 +624,7 @@ the definitions.
 
 <<DBus/Types.hs>>=
 #define NAME_TYPE(TYPE, NAME) \
-	newtype TYPE = TYPE String \
+	newtype TYPE = TYPE TL.Text \
 		deriving (Show, Eq, Ord); \
 		                          \
 	instance Variable TYPE where \
@@ -633,10 +635,10 @@ the definitions.
 		{ toAtom = toAtom . str##TYPE \
 		; fromAtom = (mk##TYPE =<<) . fromAtom }; \
 		                                          \
-	str##TYPE :: TYPE -> String; \
+	str##TYPE :: TYPE -> TL.Text; \
 	str##TYPE (TYPE x) = x; \
 	                        \
-	mk##TYPE##' :: String -> TYPE; \
+	mk##TYPE##' :: TL.Text -> TYPE; \
 	mk##TYPE##' = mkUnsafe NAME mk##TYPE
 
 @ \subsubsection{Bus names}
@@ -646,8 +648,8 @@ TODO: describe format of bus names
 <<DBus/Types.hs>>=
 NAME_TYPE(BusName, "bus name")
 
-mkBusName :: String -> Maybe BusName
-mkBusName s = checkLength 255 s >>= parseMaybe parser where
+mkBusName :: TL.Text -> Maybe BusName
+mkBusName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
 	c = ['a'..'z'] ++ ['A'..'Z'] ++ "_-"
 	c' = c ++ ['0'..'9']
 	parser = (unique <|> wellKnown) >> P.eof >> return (BusName s)
@@ -671,8 +673,8 @@ start with a digit, and must have at least one character.
 <<DBus/Types.hs>>=
 NAME_TYPE(InterfaceName, "interface name")
 
-mkInterfaceName :: String -> Maybe InterfaceName
-mkInterfaceName s = checkLength 255 s >>= parseMaybe parser where
+mkInterfaceName :: TL.Text -> Maybe InterfaceName
+mkInterfaceName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
 	c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
 	c' = c ++ ['0'..'9']
 	element = P.oneOf c >> P.many (P.oneOf c')
@@ -693,7 +695,7 @@ can just be re-purposed.
 <<DBus/Types.hs>>=
 NAME_TYPE(ErrorName, "error name")
 
-mkErrorName :: String -> Maybe ErrorName
+mkErrorName :: TL.Text -> Maybe ErrorName
 mkErrorName = fmap (ErrorName . strInterfaceName) . mkInterfaceName
 
 <<exports>>=
@@ -709,8 +711,8 @@ TODO: describe format of member names
 <<DBus/Types.hs>>=
 NAME_TYPE(MemberName, "member name")
 
-mkMemberName :: String -> Maybe MemberName
-mkMemberName s = checkLength 255 s >>= parseMaybe parser where
+mkMemberName :: TL.Text -> Maybe MemberName
+mkMemberName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
 	c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
 	c' = c ++ ['0'..'9']
 	name = P.oneOf c >> P.many (P.oneOf c')

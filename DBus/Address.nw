@@ -18,6 +18,7 @@
 
 <<DBus/Address.hs>>=
 <<copyright>>
+{-# LANGUAGE OverloadedStrings #-}
 module DBus.Address
 	( Address
 	, addressMethod
@@ -29,6 +30,8 @@ module DBus.Address
 import Data.Char (ord, chr)
 import qualified Data.Map as M
 import Data.List (intercalate)
+import Data.Text.Lazy (Text)
+import qualified Data.Text.Lazy as TL
 import Text.Printf (printf)
 import qualified Text.Parsec as P
 import Text.Parsec ((<|>))
@@ -70,7 +73,7 @@ an ``optionally encoded'' byte, and may appear unescaped in parameter
 values.
 
 <<DBus/Address.hs>>=
-optionallyEncoded :: String
+optionallyEncoded :: [Char]
 optionallyEncoded = ['0'..'9'] ++ ['a'..'z'] ++ ['A'..'Z'] ++ "-_/\\*."
 
 @
@@ -79,8 +82,8 @@ The address simply stores its method and parameter map, with a custom
 
 <<DBus/Address.hs>>=
 data Address = Address
-	{ addressMethod     :: String
-	, addressParameters :: M.Map String String
+	{ addressMethod     :: Text
+	, addressParameters :: M.Map Text Text
 	} deriving (Eq)
 
 instance Show Address where
@@ -93,19 +96,19 @@ semicolons, then further by colons and commas. Parsing will fail if any
 of the addresses in the input failed to parse.
 
 <<DBus/Address.hs>>=
-mkAddresses :: String -> Maybe [Address]
-mkAddresses s = eitherToMaybe $ P.parse parser "" s where
+mkAddresses :: Text -> Maybe [Address]
+mkAddresses s = eitherToMaybe . P.parse parser "" . TL.unpack $ s where
 	address = do
 		method <- P.many (P.noneOf ":;")
 		P.char ':'
 		params <- P.sepEndBy param (P.char ',')
-		return $ Address method (M.fromList params)
+		return $ Address (TL.pack method) (M.fromList params)
 	
 	param = do
 		key <- P.many1 (P.noneOf "=;,")
 		P.char '='
 		value <- P.many1 (encodedValue <|> unencodedValue)
-		return (key, value)
+		return (TL.pack key, TL.pack value)
 	
 	parser = do
 		as <- P.sepEndBy1 address (P.char ';')
@@ -124,10 +127,10 @@ operation. Note that because the original parameter order is not preserved,
 the string produced might differ from the original input.
 
 <<DBus/Address.hs>>=
-strAddress :: Address -> String
-strAddress (Address t ps) = t ++ ":" ++ ps' where
-	ps' = intercalate "," $ do
+strAddress :: Address -> Text
+strAddress (Address t ps) = TL.concat [t, ":", ps'] where
+	ps' = TL.intercalate "," $ do
 		(k, v) <- M.toList ps
-		[k ++ "=" ++ (v >>= encode)]
-	encode c | elem c optionallyEncoded = [c]
-	         | otherwise       = printf "%%%02X" (ord c)
+		return $ TL.concat [k, "=", TL.concatMap encode v]
+	encode c | elem c optionallyEncoded = TL.singleton c
+	         | otherwise       = TL.pack $ printf "%%%02X" (ord c)

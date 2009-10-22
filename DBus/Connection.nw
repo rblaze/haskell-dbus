@@ -19,6 +19,7 @@
 <<DBus/Connection.hs>>=
 <<copyright>>
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE OverloadedStrings #-}
 module DBus.Connection
 	( Connection
 	, ConnectionException (..)
@@ -33,6 +34,7 @@ import qualified Control.Exception as E
 import Data.Char (ord)
 import Data.Word (Word32)
 import qualified Data.ByteString.Lazy as L
+import Data.Text.Lazy (Text)
 import qualified Data.Text.Lazy as TL
 import Data.Text.Lazy.Encoding (decodeUtf8, encodeUtf8)
 import qualified Data.Map as Map
@@ -60,7 +62,7 @@ data Connection = Connection A.Address Transport (C.MVar M.Serial)
 <<DBus/Connection.hs>>=
 instance Show Connection where
 	showsPrec d (Connection a _ _) = showParen (d > 10) $
-		showString' ["<connection \"", A.strAddress a, "\">"] where
+		showString' ["<connection ", show $ A.strAddress a, ">"] where
 		showString' = foldr (.) id . map showString
 
 @ A connection can be opened to any valid address, though actually connecting
@@ -141,17 +143,17 @@ unix a = handleTransport . N.connectTo "localhost" =<< port where
 	path = Map.lookup "path" params
 	abstract = Map.lookup "abstract" params
 	
-	tooMany = "Only one of `path' or `abstract' may be specified for the"
-	          ++ " `unix' method."
-	tooFew = "One of `path' or `abstract' must be specified for the"
-	         ++ " `unix' transport."
+	tooMany = "Only one of `path' or `abstract' may be specified for the\
+	          \ `unix' method."
+	tooFew = "One of `path' or `abstract' must be specified for the\
+	         \ `unix' transport."
 	
 	port = fmap N.UnixSocket path'
 	path' = case (path, abstract) of
 		(Just _, Just _) -> E.throwIO $ BadParameters a tooMany
 		(Nothing, Nothing) -> E.throwIO $ BadParameters a tooFew
-		(Just x, Nothing) -> return x
-		(Nothing, Just x) -> return $ '\x00':x
+		(Just x, Nothing) -> return $ TL.unpack x
+		(Nothing, Just x) -> return $ '\x00' : TL.unpack x
 
 @ \subsection{TCP}
 
@@ -209,8 +211,8 @@ The constructor describes which exception occurred.
 
 <<DBus/Connection.hs>>=
 data ConnectionException
-	= InvalidAddress String
-	| BadParameters A.Address String
+	= InvalidAddress Text
+	| BadParameters A.Address Text
 	| UnknownMethod A.Address
 	| NoWorkingAddress [A.Address]
 	deriving (Show, Typeable)

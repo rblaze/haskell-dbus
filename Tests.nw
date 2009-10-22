@@ -15,6 +15,7 @@
 
 <<Tests.hs>>=
 <<copyright>>
+{-# LANGUAGE OverloadedStrings #-}
 module Main (tests) where
 
 import Test.QuickCheck
@@ -147,7 +148,7 @@ instance Arbitrary Type where
 
 instance Arbitrary Signature where
 	arbitrary = clampedSize 255 genSig mkSignature' where
-		genSig = fmap (concatMap typeCode) arbitrary
+		genSig = fmap (TL.concat . map typeCode) arbitrary
 
 <<atom tests>>=
 , testGroup "Signature" $ commonAtomTests (arbitrary :: Gen Signature) ++
@@ -159,7 +160,7 @@ instance Arbitrary Signature where
 
 <<Tests.hs>>=
 instance Arbitrary ObjectPath where
-	arbitrary = fmap mkObjectPath' path' where
+	arbitrary = fmap (mkObjectPath' . TL.pack) path' where
 		c = ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_"
 		path = fmap (intercalate "/" . ([] :)) genElements
 		path' = frequency [(1, return "/"), (9, path)]
@@ -179,11 +180,11 @@ instance Arbitrary BusName where
 		
 		unique = do
 			elems' <- sized' 2 $ elems c'
-			return $ ':' : intercalate "." elems'
+			return . TL.pack $ ':' : intercalate "." elems'
 		
 		wellKnown = do
 			elems' <- sized' 2 $ elems c
-			return $ intercalate "." elems'
+			return . TL.pack $ intercalate "." elems'
 		
 		elems start = do
 			x <- elements start
@@ -202,7 +203,7 @@ instance Arbitrary InterfaceName where
 		c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
 		c' = c ++ ['0'..'9']
 		
-		genName = fmap (intercalate ".") genElements
+		genName = fmap (TL.pack . intercalate ".") genElements
 		genElements = sized' 2 genElement
 		genElement = do
 			x <- elements c
@@ -234,7 +235,7 @@ instance Arbitrary MemberName where
 		genName = do
 			x <- elements c
 			xs <- sized' 0 (elements c')
-			return (x:xs)
+			return . TL.pack $ (x:xs)
 
 <<atom tests>>=
 , testGroup "MemberName" $ commonAtomTests (arbitrary :: Gen MemberName) ++
@@ -399,14 +400,14 @@ singleTests ts = singleTests' 1 ts where
 		$ \x -> mkAddresses (strAddress x) == Just [x]
 	, testProperty "Multiple addresses"
 		$ \x y -> let
-		joined = concat [strAddress x, ";", strAddress y]
+		joined = TL.concat [strAddress x, ";", strAddress y]
 		in mkAddresses joined == Just [x, y]
 	, testProperty "Ignore trailing semicolon"
-		$ \x -> mkAddresses (strAddress x ++ ";") == Just [x]
+		$ \x -> mkAddresses (TL.append (strAddress x) ";") == Just [x]
 	, testProperty "Ignore trailing comma"
 		$ \x -> let
 		hasParams = not . Map.null . addressParameters $ x
-		parsed = mkAddresses (strAddress x ++ ",")
+		parsed = mkAddresses (TL.append (strAddress x) ",")
 		in hasParams ==> parsed == Just [x]
 	, testGroup "Valid addresses" $ singleTests
 		[ isJust . mkAddresses $ ":"
@@ -460,7 +461,7 @@ instance Arbitrary Address where
 			params <- genParams
 			extraSemicolon <- elements ["", ";"]
 			let addrStr = concat [m, ":", params, extraSemicolon]
-			let Just [addr] = mkAddresses addrStr
+			let Just [addr] = mkAddresses $ TL.pack addrStr
 			return addr
 
 @ \subsection{Messages}
@@ -598,7 +599,7 @@ subObject parentPath = sized $ \n -> resize (min n 4) $ do
 	thisPath <- nonRoot
 	let path' = case strObjectPath parentPath of
 		"/" -> thisPath
-		x   -> x ++ thisPath
+		x   -> TL.append x thisPath
 	let path = mkObjectPath' path'
 	ifaces <- arbitrary
 	children <- shrinkingGen . listOf . subObject $ path
@@ -639,7 +640,7 @@ instance Arbitrary I.Parameter where
 	arbitrary = do
 		name <- listOf $ arbitrary `suchThat` isPrint
 		sig <- singleType
-		return $ I.Parameter name sig
+		return $ I.Parameter (TL.pack name) sig
 
 instance Arbitrary I.Property where
 	arbitrary = do
@@ -648,7 +649,7 @@ instance Arbitrary I.Property where
 		access <- elements
 			[[], [I.Read], [I.Write],
 			 [I.Read, I.Write]]
-		return $ I.Property name sig access
+		return $ I.Property (TL.pack name) sig access
 
 @ \subsection{Other instances}
 
@@ -702,10 +703,10 @@ sized' atLeast g = sized $ \n -> do
 	n' <- choose (atLeast, max atLeast n)
 	replicateM n' g
 
-clampedSize :: Arbitrary a => Int -> Gen String -> (String -> a) -> Gen a
+clampedSize :: Arbitrary a => Int64 -> Gen TL.Text -> (TL.Text -> a) -> Gen a
 clampedSize maxSize gen f = do
 	s <- gen
-	if length s > maxSize
+	if TL.length s > maxSize
 		then shrinkingGen arbitrary
 		else return . f $ s
 
