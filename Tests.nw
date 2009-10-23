@@ -70,48 +70,29 @@ main = F.defaultMain tests
 
 @ \subsubsection{Atoms}
 
-<<Tests.hs>>=
-commonAtomTests :: (Atomic a, Eq a, Show a, Arbitrary a) => Gen a -> [Test]
-commonAtomTests gen =
-	[<<common atom tests>>
-	]
-
-<<common atom tests>>=
-  testProperty "Atom identity" . forAll gen
-	$ \x -> (fromAtom . toAtom) x == Just x
-
-, testProperty "Atom equality" . forAll gen
-	$ \x y -> (x == y) == (toAtom x == toAtom y)
-
-, testProperty "Atom/Variant type equality" . forAll gen
-	$ \x -> atomType (toAtom x) == variantType (toVariant x)
-
-, testProperty "Atom -> Variant conversion" . forAll gen
-	$ \x -> toVariant x == atomToVariant (toAtom x)
-
 <<atom tests>>=
-  testGroup "Bool" $ commonAtomTests (arbitrary :: Gen Bool)
-, testGroup "Word8"   $ commonAtomTests (arbitrary :: Gen Word8)
-, testGroup "Word16"  $ commonAtomTests (arbitrary :: Gen Word16)
-, testGroup "Word32"  $ commonAtomTests (arbitrary :: Gen Word32)
-, testGroup "Word64"  $ commonAtomTests (arbitrary :: Gen Word64)
-, testGroup "Int16"   $ commonAtomTests (arbitrary :: Gen Int16)
-, testGroup "Int32"   $ commonAtomTests (arbitrary :: Gen Int32)
-, testGroup "Int64"   $ commonAtomTests (arbitrary :: Gen Int64)
-, testGroup "Double"  $ commonAtomTests (arbitrary :: Gen Double)
-, testGroup "String"  $ commonAtomTests (arbitrary :: Gen String) ++
+  testGroup "Bool" $ commonVariantTests (arbitrary :: Gen Bool)
+, testGroup "Word8"   $ commonVariantTests (arbitrary :: Gen Word8)
+, testGroup "Word16"  $ commonVariantTests (arbitrary :: Gen Word16)
+, testGroup "Word32"  $ commonVariantTests (arbitrary :: Gen Word32)
+, testGroup "Word64"  $ commonVariantTests (arbitrary :: Gen Word64)
+, testGroup "Int16"   $ commonVariantTests (arbitrary :: Gen Int16)
+, testGroup "Int32"   $ commonVariantTests (arbitrary :: Gen Int32)
+, testGroup "Int64"   $ commonVariantTests (arbitrary :: Gen Int64)
+, testGroup "Double"  $ commonVariantTests (arbitrary :: Gen Double)
+, testGroup "String"  $ commonVariantTests (arbitrary :: Gen String) ++
 	[ testProperty "String -> strict Text"
-		$ \x -> (fromAtom . toAtom) x == (Just $ T.pack x)
+		$ \x -> (fromVariant . toVariant) x == (Just $ T.pack x)
 	, testProperty "String <- strict Text"
-		$ \x -> (fromAtom . toAtom) x == (Just $ T.unpack x)
+		$ \x -> (fromVariant . toVariant) x == (Just $ T.unpack x)
 	, testProperty "String -> lazy Text"
-		$ \x -> (fromAtom . toAtom) x == (Just $ TL.pack x)
+		$ \x -> (fromVariant . toVariant) x == (Just $ TL.pack x)
 	, testProperty "String <- lazy Text"
-		$ \x -> (fromAtom . toAtom) x == (Just $ TL.unpack x)
+		$ \x -> (fromVariant . toVariant) x == (Just $ TL.unpack x)
 	, testProperty "Strict Text -> lazy Text"
-		$ \x -> (fromAtom . toAtom) x == (Just $ TL.pack . T.unpack $ x)
+		$ \x -> (fromVariant . toVariant) x == (Just $ TL.pack . T.unpack $ x)
 	, testProperty "Strict Text <- lazy Text"
-		$ \x -> (fromAtom . toAtom) x == (Just $ T.pack . TL.unpack $ x)
+		$ \x -> (fromVariant . toVariant) x == (Just $ T.pack . TL.unpack $ x)
 	]
 
 <<Tests.hs>>=
@@ -151,7 +132,7 @@ instance Arbitrary Signature where
 		genSig = fmap (TL.concat . map typeCode) arbitrary
 
 <<atom tests>>=
-, testGroup "Signature" $ commonAtomTests (arbitrary :: Gen Signature) ++
+, testGroup "Signature" $ commonVariantTests (arbitrary :: Gen Signature) ++
 	[ testProperty "Signature identity"
 		$ \x -> (mkSignature . strSignature) x == Just x
 	, testProperty "Signature show"
@@ -167,7 +148,7 @@ instance Arbitrary ObjectPath where
 		genElements = sized' 1 (sized' 1 (elements c))
 
 <<atom tests>>=
-, testGroup "ObjectPath" $ commonAtomTests (arbitrary :: Gen ObjectPath) ++
+, testGroup "ObjectPath" $ commonVariantTests (arbitrary :: Gen ObjectPath) ++
 	[ testProperty "ObjectPath identity"
 		$ \x -> (mkObjectPath . strObjectPath) x == Just x
 	]
@@ -192,7 +173,7 @@ instance Arbitrary BusName where
 			return (x:xs)
 
 <<atom tests>>=
-, testGroup "BusName" $ commonAtomTests (arbitrary :: Gen BusName) ++
+, testGroup "BusName" $ commonVariantTests (arbitrary :: Gen BusName) ++
 	[ testProperty "BusName identity"
 		$ \x -> (mkBusName . strBusName) x == Just x
 	]
@@ -211,7 +192,7 @@ instance Arbitrary InterfaceName where
 			return (x:xs)
 
 <<atom tests>>=
-, testGroup "InterfaceName" $ commonAtomTests (arbitrary :: Gen InterfaceName) ++
+, testGroup "InterfaceName" $ commonVariantTests (arbitrary :: Gen InterfaceName) ++
 	[ testProperty "InterfaceName identity"
 		$ \x -> (mkInterfaceName . strInterfaceName) x == Just x
 	]
@@ -221,7 +202,7 @@ instance Arbitrary ErrorName where
 	arbitrary = fmap (mkErrorName' . strInterfaceName) arbitrary
 
 <<atom tests>>=
-, testGroup "ErrorName" $ commonAtomTests (arbitrary :: Gen ErrorName) ++
+, testGroup "ErrorName" $ commonVariantTests (arbitrary :: Gen ErrorName) ++
 	[ testProperty "ErrorName identity"
 		$ \x -> (mkErrorName . strErrorName) x == Just x
 	]
@@ -238,7 +219,7 @@ instance Arbitrary MemberName where
 			return . TL.pack $ (x:xs)
 
 <<atom tests>>=
-, testGroup "MemberName" $ commonAtomTests (arbitrary :: Gen MemberName) ++
+, testGroup "MemberName" $ commonVariantTests (arbitrary :: Gen MemberName) ++
 	[ testProperty "MemberName identity"
 		$ \x -> (mkMemberName . strMemberName) x == Just x
 	]
@@ -290,22 +271,19 @@ instance Arbitrary Variant where
 	arbitrary = arbitrary >>= genVariant
 
 <<Tests.hs>>=
-genAtom :: Type -> Gen Atom
-genAtom DBusBoolean    = fmap toAtom (arbitrary :: Gen Bool)
-genAtom DBusByte       = fmap toAtom (arbitrary :: Gen Word8)
-genAtom DBusWord16     = fmap toAtom (arbitrary :: Gen Word16)
-genAtom DBusWord32     = fmap toAtom (arbitrary :: Gen Word32)
-genAtom DBusWord64     = fmap toAtom (arbitrary :: Gen Word64)
-genAtom DBusInt16      = fmap toAtom (arbitrary :: Gen Int16)
-genAtom DBusInt32      = fmap toAtom (arbitrary :: Gen Int32)
-genAtom DBusInt64      = fmap toAtom (arbitrary :: Gen Int64)
-genAtom DBusDouble     = fmap toAtom (arbitrary :: Gen Double)
-genAtom DBusString     = fmap toAtom (arbitrary :: Gen String)
-genAtom DBusObjectPath = fmap toAtom (arbitrary :: Gen ObjectPath)
-genAtom DBusSignature  = fmap toAtom (arbitrary :: Gen Signature)
-
-instance Arbitrary Atom where
-	arbitrary = atomicType >>= genAtom
+genAtom :: Type -> Gen Variant
+genAtom DBusBoolean    = fmap toVariant (arbitrary :: Gen Bool)
+genAtom DBusByte       = fmap toVariant (arbitrary :: Gen Word8)
+genAtom DBusWord16     = fmap toVariant (arbitrary :: Gen Word16)
+genAtom DBusWord32     = fmap toVariant (arbitrary :: Gen Word32)
+genAtom DBusWord64     = fmap toVariant (arbitrary :: Gen Word64)
+genAtom DBusInt16      = fmap toVariant (arbitrary :: Gen Int16)
+genAtom DBusInt32      = fmap toVariant (arbitrary :: Gen Int32)
+genAtom DBusInt64      = fmap toVariant (arbitrary :: Gen Int64)
+genAtom DBusDouble     = fmap toVariant (arbitrary :: Gen Double)
+genAtom DBusString     = fmap toVariant (arbitrary :: Gen String)
+genAtom DBusObjectPath = fmap toVariant (arbitrary :: Gen ObjectPath)
+genAtom DBusSignature  = fmap toVariant (arbitrary :: Gen Signature)
 
 <<container tests>>=
   testGroup "Variant" $ commonVariantTests (arbitrary :: Gen Variant)
@@ -348,14 +326,12 @@ instance Arbitrary Dictionary where
 		
 		return . fromJust $ dictionaryFromItems kt vt $ zip ks vs
 
-prop_DictionaryHomogeneous ks = forAll (vector (length ks)) $ \vs -> let
-	dict = dictionaryFromItems kType vType (zip ks vs)
-	(kType, vType) = if null ks
-		then (id &&& id) DBusByte
-		else (atomType (head ks), variantType (head vs))
-	homogeneousTypes = all correctType $ zip ks vs
-	correctType (k, v) = atomType k == kType && variantType v == vType
-	in isJust dict == homogeneousTypes
+prop_DictionaryHomogeneous x = all correctType pairs where
+	pairs = dictionaryItems x
+	kType = dictionaryKeyType x
+	vType = dictionaryValueType x
+	correctType (k, v) = variantType k == kType &&
+	                     variantType v == vType
 
 <<container tests>>=
 , testGroup "Dictionary" $ commonVariantTests (arbitrary :: Gen Dictionary) ++

@@ -21,6 +21,7 @@
 \usepackage{booktabs}
 \usepackage{multirow}
 \usepackage{noweb}
+\usepackage{url}
 
 % Smaller margins
 \usepackage[left=1.5cm,top=2cm,right=1.5cm,nohead,nofoot]{geometry}
@@ -37,6 +38,20 @@
 
 \addcontentsline{toc}{section}{Contents}
 \tableofcontents
+
+@
+\section{Introduction}
+
+D-Bus is a low-latency, asynchronous IPC protocol. It is primarily used on
+Linux, BSD, and other free UNIX-like systems. More information is available
+at \url{http://dbus.freedesktop.org/}.
+
+This package is an implementation of the D-Bus protocol. It is intended
+for use in either a client or server, though currently only the client
+portion of connection establishment is implemented. Additionally, it
+implements the introspection file format.
+
+All source code is licensed under the terms of the GNU GPL v3 or later.
 
 <<copyright>>=
 {-
@@ -57,28 +72,28 @@
 -}
 
 @
+\section{TODO: name section}
+
+<<text extensions>>=
+{-# LANGUAGE OverloadedStrings #-}
+
+<<text imports>>=
+import Data.Text.Lazy (Text)
+import qualified Data.Text.Lazy as TL
+
+@
 \section{Types}
+
+The {\\t DBus.Types module} defines interfaces for storing, building, and
+deconstructing D-Bus values.
 
 <<DBus/Types.hs>>=
 <<copyright>>
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE OverloadedStrings #-}
+<<text extensions>>
+<<type extensions>>
 module DBus.Types (<<type exports>>) where
-
-import Control.Arrow ((***))
-import Control.Monad (forM, unless, msum)
-import Data.Word (Word8, Word16, Word32, Word64)
-import Data.Int (Int16, Int32, Int64)
-import Data.List (intercalate)
-import qualified Data.Map as Map
-import Data.Typeable (Typeable, cast)
-import qualified Data.Text as T
-import qualified Data.Text.Lazy as TL
-import Text.Parsec ((<|>))
-import qualified Text.Parsec as P
-import DBus.Util (checkLength, parseMaybe, mkUnsafe)
+<<text imports>>
+<<type imports>>
 
 @ DBus types are divided into two categories, ``atomic'' and ``container''
 types. Atoms are actual values -- strings, numbers, etc. Containers store
@@ -86,7 +101,7 @@ atoms and other containers. The most interesting difference between the two
 is that atoms may be used as the keys in associative mappings
 (``dictionaries'').
 
-Internally, types are represented using an enumerated type.
+Internally, types are represented using an enumeration.
 
 <<DBus/Types.hs>>=
 data Type
@@ -108,60 +123,6 @@ data Type
 	| DBusStructure [Type]
 	deriving (Show, Eq)
 
-class Typeable a => Builtin a where
-	builtinDBusType :: a -> Type
-
-typeCode :: Type -> TL.Text
-<<atomic type codes>>
-<<container type codes>>
-
-<<type exports>>=
-  Type (..)
-, typeCode
-
-@ \subsection{Atoms}
-
-Every atomic type is identified by a unique ``type code'', which is a single
-letter.
-
-\begin{table}[h]
-\caption{Atomic types}
-\begin{center}
-\begin{tabular}{lll}
-\toprule
-Type        & Code & Description \\
-\midrule
-Boolean     &  b   & Either {\tt True} or {\tt False} \\
-Byte        &  y   & 8-bit unsigned integer \\
-Int16       &  n   & 16-bit signed integer \\
-Int32       &  i   & 32-bit signed integer \\
-Int64       &  x   & 64-bit signed integer \\
-Word16      &  q   & 16-bit unsigned integer \\
-Word32      &  u   & 32-bit unsigned integer \\
-Word64      &  t   & 64-bit unsigned integer \\
-Double      &  d   & 64-bit IEEE754 floating-point \\
-String      &  s   & Unicode string with no {\tt NUL} bytes \\
-Signature   &  g   & Type signature; see ``Signatures'' \\
-Object path &  o   & Path to a remote object; see ``Object paths'' \\
-\bottomrule
-\end{tabular}
-\end{center}
-\end{table}
-
-<<atomic type codes>>=
-typeCode DBusBoolean    = "b"
-typeCode DBusByte       = "y"
-typeCode DBusInt16      = "n"
-typeCode DBusInt32      = "i"
-typeCode DBusInt64      = "x"
-typeCode DBusWord16     = "q"
-typeCode DBusWord32     = "u"
-typeCode DBusWord64     = "t"
-typeCode DBusDouble     = "d"
-typeCode DBusString     = "s"
-typeCode DBusSignature  = "g"
-typeCode DBusObjectPath = "o"
-
 <<DBus/Types.hs>>=
 isAtomicType :: Type -> Bool
 isAtomicType DBusBoolean    = True
@@ -178,369 +139,192 @@ isAtomicType DBusSignature  = True
 isAtomicType DBusObjectPath = True
 isAtomicType _              = False
 
-@ The {\tt Atom} type is used to store any type which must be atomic, such
-as dictionary keys. The constructor is not exported outside of this module,
-so clients aren't allowed to invent their own atomic types.
+@ Each type can be converted to a textual representation, used in ``type
+signatures'' or for debugging.
 
 <<DBus/Types.hs>>=
-class Variable a => Atomic a where
-	toAtom   :: a -> Atom
-	fromAtom :: Atom -> Maybe a
-
-data Atom = forall a. (Builtin a, Atomic a, Show a, Eq a) => Atom a
-
-instance Show Atom where
-	showsPrec d (Atom x) = showParen (d > 10) $
-		s "Atom " . showSig . s " " . showsPrec 11 x
-		where showSig = shows . typeCode . builtinDBusType $ x
-		      s       = showString
-
-instance Eq Atom where
-	(Atom x) == (Atom y) = cast x == Just y
-
-atomType :: Atom -> Type
-atomType (Atom x) = builtinDBusType x
+typeCode :: Type -> Text
 
 <<type exports>>=
-, Atom
-, Atomic (..)
-, atomType
+  Type (..)
+, typeCode
 
-@ Most atomic types map directly to a built-in Haskell type.
-
-<<DBus/Types.hs>>=
-#define BUILTIN_ATOMIC(HASKELL, DBUS) \
-	instance Builtin HASKELL where \
-		{ builtinDBusType _ = DBUS }; \
-	instance Atomic HASKELL where \
-		{ toAtom = Atom \
-		; fromAtom (Atom x) = cast x };
-
-BUILTIN_ATOMIC(Bool,   DBusBoolean)
-BUILTIN_ATOMIC(Word8,  DBusByte)
-BUILTIN_ATOMIC(Int16,  DBusInt16)
-BUILTIN_ATOMIC(Int32,  DBusInt32)
-BUILTIN_ATOMIC(Int64,  DBusInt64)
-BUILTIN_ATOMIC(Word16, DBusWord16)
-BUILTIN_ATOMIC(Word32, DBusWord32)
-BUILTIN_ATOMIC(Word64, DBusWord64)
-BUILTIN_ATOMIC(Double, DBusDouble)
-
-@ Strings are a weird case; the built-in type, {\tt String}, is horribly
-inefficent. To provide better performance for large strings, the types
-defined in {\tt Data.Text} are used internally.
-
-There's two different {\tt Text} types, strict and lazy, so instances
-are added for each. Only lazy {\tt Text} values are actually stored; other
-text-like types are converted.
+@ Certain Haskell types are considered ``built-in'' D-Bus types; that is,
+they are directly represented in the D-Bus protocol.
 
 <<DBus/Types.hs>>=
-BUILTIN_ATOMIC(TL.Text, DBusString)
+class (Show a, Eq a) => Builtin a where
+	builtinDBusType :: a -> Type
 
-instance Atomic T.Text where
-	toAtom = toAtom . TL.fromChunks . (:[])
-	fromAtom = fmap (T.concat . TL.toChunks) . fromAtom
+@ \subsection{Variants}
 
-@ Built-in {\tt String}s can still be stored, of course.
+A wrapper type is needed for safely storing generic D-Bus values in Haskell.
+The D-Bus ``variant'' type is perfect for this, because variants may store
+any D-Bus value.
 
-<<DBus/Types.hs>>=
-instance Atomic String where
-	toAtom = toAtom . TL.pack
-	fromAtom = fmap TL.unpack . fromAtom
+To cleanly store any D-Bus type, without exposing the internal storage
+mechanism, requires existential quantification and some run-time casting.
 
-@ A few types are DBus-specific; they are defined later.
+<<type extensions>>=
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE ExistentialQuantification #-}
 
-<<DBus/Types.hs>>=
-BUILTIN_ATOMIC(Signature, DBusSignature)
-BUILTIN_ATOMIC(ObjectPath, DBusObjectPath)
+<<type imports>>=
+import Data.Typeable (Typeable, cast)
 
-@ \subsection{Containers}
-Container types are identified by a (generally) multi-character type code,
-depending in which types they contain. There are four kinds of containers:
-
-@ \subsubsection{Variants}
-
-Variants may store any DBus value, including other variants. Their type code
-is ``v'', which does not change depending on the type they contain. Variants
-can be used to store heterogenous values in an array or dictionary.
-
-<<container type codes>>=
-typeCode DBusVariant = "v"
+@ Any type which is an instance of {\tt Variable} is considered a valid
+D-Bus value, because it can be used to construct {\tt Variant}s. However,
+outside of this module, {\tt Variant}s can only be constructed from
+pre-defined types.
 
 <<DBus/Types.hs>>=
+data Variant = forall a. (Variable a, Builtin a, Typeable a) => Variant a
+	deriving (Typeable)
+
 class Variable a where
 	toVariant :: a -> Variant
 	fromVariant :: Variant -> Maybe a
 
-data Variant = forall a. (Builtin a, Show a, Eq a) => Variant a
-	deriving (Typeable)
+<<type exports>>=
+, Variant
+, Variable (..)
 
+@ Variants can be printed, for debugging purposes -- this instance shouldn't
+be parsed or inspected or anything like that, since the output format might
+change drastically.
+
+<<DBus/Types.hs>>=
 instance Show Variant where
 	showsPrec d (Variant x) = showParen (d > 10) $
-		s "Variant " . showSig . s " " . showsPrec 11 x
-		where showSig = shows . typeCode . builtinDBusType $ x
-		      s       = showString
+		s "Variant " . shows code . s " " . showsPrec 11 x
+		where code = typeCode . builtinDBusType $ x
+		      s    = showString
 
+@ In the test suite, it's useful to test that two variants have the same
+value.
+
+<<DBus/Types.hs>>=
 instance Eq Variant where
 	(Variant x) == (Variant y) = cast x == Just y
 
-instance Builtin Variant where
-	builtinDBusType _ = DBusVariant
-
-@ Any instance of {\tt Variable} can be stored in a {\tt Variant}.
-``Built-in'' types, defined below, have direct access to the {\tt Variant}
-value constructor. Other types may implement {\tt toVariant} by constructing
-a {\tt Variant} containing a built-in type.
+@ Since many operations on D-Bus values depend on having the correct type,
+{\tt variantType} is used to retrieve which type is actually stored within
+a {\tt Variant}.
 
 <<DBus/Types.hs>>=
 variantType :: Variant -> Type
 variantType (Variant x) = builtinDBusType x
 
-atomToVariant :: Atom -> Variant
-atomToVariant (Atom x) = toVariant x
+<<type exports>>=
+, variantType
 
-variantToAtom :: Variant -> Maybe Atom
-variantToAtom v = msum as where
-	v' :: Variable a => Maybe a
-	v' = fromVariant v
-	fa :: (Atomic a, Functor f) => f a -> f Atom
-	fa = fmap toAtom
-	
-	as = [fa (v' :: Maybe Bool)
-	     ,fa (v' :: Maybe Word8)
-	     ,fa (v' :: Maybe Word16)
-	     ,fa (v' :: Maybe Word32)
-	     ,fa (v' :: Maybe Word64)
-	     ,fa (v' :: Maybe Int16)
-	     ,fa (v' :: Maybe Int32)
-	     ,fa (v' :: Maybe Int64)
-	     ,fa (v' :: Maybe Double)
-	     ,fa (v' :: Maybe TL.Text)
-	     ,fa (v' :: Maybe ObjectPath)
-	     ,fa (v' :: Maybe Signature)
-	     ]
-
-@ By default, there are instances of {\tt Variable} for all built-in types.
+@ These helper macros will be used for defining instances of Haskell types.
 
 <<DBus/Types.hs>>=
-#define BUILTIN_VARIABLE(T) \
-	instance Variable T where \
-		{ toVariant = Variant \
-		; fromVariant (Variant x) = cast x }
+#define INSTANCE_BUILTIN(HASKELL, DBUS) \
+	instance Builtin HASKELL where \
+		{ builtinDBusType _ = DBUS };
 
-BUILTIN_VARIABLE(Bool)
-BUILTIN_VARIABLE(Word8)
-BUILTIN_VARIABLE(Int16)
-BUILTIN_VARIABLE(Int32)
-BUILTIN_VARIABLE(Int64)
-BUILTIN_VARIABLE(Word16)
-BUILTIN_VARIABLE(Word32)
-BUILTIN_VARIABLE(Word64)
-BUILTIN_VARIABLE(Double)
-BUILTIN_VARIABLE(TL.Text)
-BUILTIN_VARIABLE(Signature)
-BUILTIN_VARIABLE(ObjectPath)
-BUILTIN_VARIABLE(Variant)
+#define INSTANCE_VARIABLE(HASKELL) \
+	instance Variable HASKELL where \
+		{ toVariant = Variant \
+		; fromVariant (Variant x) = cast x };
+
+#define BUILTIN_VARIABLE(HASKELL, DBUS) \
+	INSTANCE_BUILTIN(HASKELL, DBUS) \
+	INSTANCE_VARIABLE(HASKELL)
+
+@ Since {\tt Variant}s are D-Bus values themselves, they have a type.
+
+<<DBus/Types.hs>>=
+BUILTIN_VARIABLE(Variant, DBusVariant)
+
+@ \subsection{Numerics}
+
+D-Bus supports most common numeric types:
+
+\begin{table}[h]
+\caption{D-Bus Numeric types}
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Type        & Description \\
+\midrule
+Boolean     & Either {\tt True} or {\tt False} \\
+Byte        & 8-bit unsigned integer \\
+Int16       & 16-bit signed integer \\
+Int32       & 32-bit signed integer \\
+Int64       & 64-bit signed integer \\
+Word16      & 16-bit unsigned integer \\
+Word32      & 32-bit unsigned integer \\
+Word64      & 64-bit unsigned integer \\
+Double      & 64-bit IEEE754 floating-point \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+All D-Bus numeric types are fixed-length, so the {\tt Int} and {\tt Integer}
+types can't be used. Instead, instances for the fixed-length integer types
+are defined and any others will have to be converted.
+
+<<type imports>>=
+import Data.Word (Word8, Word16, Word32, Word64)
+import Data.Int (Int16, Int32, Int64)
+
+<<DBus/Types.hs>>=
+BUILTIN_VARIABLE(Bool,   DBusBoolean)
+BUILTIN_VARIABLE(Word8,  DBusByte)
+BUILTIN_VARIABLE(Int16,  DBusInt16)
+BUILTIN_VARIABLE(Int32,  DBusInt32)
+BUILTIN_VARIABLE(Int64,  DBusInt64)
+BUILTIN_VARIABLE(Word16, DBusWord16)
+BUILTIN_VARIABLE(Word32, DBusWord32)
+BUILTIN_VARIABLE(Word64, DBusWord64)
+BUILTIN_VARIABLE(Double, DBusDouble)
+
+@ \subsection{Strings}
+
+Strings are a weird case; the built-in type, {\tt String}, is horribly
+inefficent. To provide better performance for large strings, packed Unicode
+strings defined in {\tt Data.Text} are used internally.
+
+<<DBus/Types.hs>>=
+BUILTIN_VARIABLE(TL.Text, DBusString)
+
+@ There's two different {\tt Text} types, strict and lazy. It'd be a pain
+to store both and have to convert later, so instead, all strict {\tt Text}
+values are converted to lazy values.
+
+<<type imports>>=
+import qualified Data.Text as T
 
 <<DBus/Types.hs>>=
 instance Variable T.Text where
 	toVariant = toVariant . TL.fromChunks . (:[])
 	fromVariant = fmap (T.concat . TL.toChunks) . fromVariant
 
+@ Built-in {\tt String}s can still be stored, of course, but it requires
+a language extension.
+
+<<type extensions>>=
+{-# LANGUAGE TypeSynonymInstances #-}
+
+<<DBus/Types.hs>>=
 instance Variable String where
 	toVariant = toVariant . TL.pack
 	fromVariant = fmap TL.unpack . fromVariant
 
-<<type exports>>=
-, Variant
-, Variable (..)
-, variantType
-, atomToVariant
-
-@ \subsubsection{Arrays}
-
-Arrays are homogenous sequences of any valid DBus type. An array's type
-code is ``a'' followed by the type it contains. For example, an array of
-booleans would have the type string ``ab''.
-
-TODO: There ought to be a specialised constructor for arrays of bytes, based
-on the {\tt ByteString} type. Storing bytes individually in a list of
-{\tt Variant}s is insane.
-
-<<container type codes>>=
-typeCode (DBusArray t) = TL.cons 'a' $ typeCode t
-
-<<DBus/Types.hs>>=
-data Array = Array Type [Variant]
-	deriving (Eq, Typeable)
-
-instance Show Array where
-	showsPrec d (Array t vs) = showParen (d > 10) $
-		s "Array " . showSig . s " [" . s valueString . s "]" where
-			s = showString
-			showSig = shows $ typeCode t
-			vs' = [show x | (Variant x) <- vs]
-			valueString = intercalate ", " vs'
-
-instance Builtin Array where
-	builtinDBusType (Array t _) = DBusArray t
-
-BUILTIN_VARIABLE(Array)
-
-arrayType :: Array -> Type
-arrayType (Array t _) = t
-
-arrayItems :: Array -> [Variant]
-arrayItems (Array _ vs) = vs
-
-fromArray :: Variable a => Array -> Maybe [a]
-fromArray (Array _ vs) = mapM fromVariant vs
-
-toArray :: Variable a => Type -> [a] -> Maybe Array
-toArray t = arrayFromItems t . map toVariant
-
-arrayFromItems :: Type -> [Variant] -> Maybe Array
-arrayFromItems t vs = do
-	mkSignature (typeCode t)
-	if all (\x -> variantType x == t) vs
-		then Just $ Array t vs
-		else Nothing
-
-<<type exports>>=
-, Array
-, arrayType
-, arrayItems
-, fromArray
-, toArray
-, arrayFromItems
-
-@ \subsubsection{Dictionaries}
-
-A homogenous (key $\rightarrow$ value) mapping, where the key type must be
-atomic. Values may be of any valid DBus type, but must have an identical
-type. A dictionary's type code is ``a\{$key\_type$ $value\_type$\}''. For
-example, a dictionary of bytes to booleans would have the type string
-``a{yb}''.
-
-<<container type codes>>=
-typeCode (DBusDictionary k v) = TL.concat ["a{", typeCode k, typeCode v, "}"]
-
-<<DBus/Types.hs>>=
-data Dictionary = Dictionary Type Type [(Atom, Variant)]
-	deriving (Eq, Typeable)
-
-instance Show Dictionary where
-	showsPrec d (Dictionary kt vt pairs) = showParen (d > 10) $
-		s "Dictionary " . showSig . s " {" . s valueString . s "}" where
-			s = showString
-			showSig = shows $ TL.append (typeCode kt) (typeCode vt)
-			valueString = intercalate ", " $ map showPair pairs
-			showPair ((Atom k), (Variant v)) =
-				show k ++ " -> " ++ show v
-
-instance Builtin Dictionary where
-	builtinDBusType (Dictionary kt vt _) = DBusDictionary kt vt
-
-BUILTIN_VARIABLE(Dictionary)
-
-dictionaryKeyType :: Dictionary -> Type
-dictionaryKeyType (Dictionary t _ _) = t
-
-dictionaryValueType :: Dictionary -> Type
-dictionaryValueType (Dictionary _ t _) = t
-
-dictionaryItems :: Dictionary -> [(Atom, Variant)]
-dictionaryItems (Dictionary _ _ vs) = vs
-
-fromDictionary :: (Atomic a, Ord a, Variable b) => Dictionary
-               -> Maybe (Map.Map a b)
-fromDictionary (Dictionary _ _ vs) = do
-	pairs <- forM vs $ \(k, v) -> do
-		k' <- fromAtom k
-		v' <- fromVariant v
-		return (k', v')
-	return $ Map.fromList pairs
-
-toDictionary :: (Atomic a, Variable b) => Type -> Type -> Map.Map a b
-             -> Maybe Dictionary
-toDictionary kt vt map' = dictionaryFromItems kt vt pairs where
-	pairs = map (toAtom *** toVariant) $ Map.toList map'
-
-dictionaryFromItems :: Type -> Type -> [(Atom, Variant)] -> Maybe Dictionary
-dictionaryFromItems kt vt pairs = do
-	unless (isAtomicType kt) Nothing
-	mkSignature (typeCode kt)
-	mkSignature (typeCode vt)
-	
-	let sameType (k, v) = atomType k == kt && variantType v == vt
-	if all sameType pairs
-		then Just $ Dictionary kt vt pairs
-		else Nothing
-
-dictionaryToArray :: Dictionary -> Array
-dictionaryToArray (Dictionary kt vt items) = array where
-	Just array = arrayFromItems itemType $ map toVariant structs
-	itemType = DBusStructure [kt, vt]
-	structs = [Structure [atomToVariant k, v] | (k, v) <- items]
-
-arrayToDictionary :: Array -> Maybe Dictionary
-arrayToDictionary (Array t items) = do
-	let toPair v = do
-		struct <- fromVariant v
-		case struct of
-			Structure [k, v'] -> do
-				k' <- variantToAtom k
-				return (k', v')
-			_                -> Nothing
-	(kt, vt) <- case t of
-		DBusStructure [kt, vt] -> Just (kt, vt)
-		_                      -> Nothing
-	pairs <- mapM toPair items
-	dictionaryFromItems kt vt pairs
-
-<<type exports>>=
-, Dictionary
-, dictionaryItems
-, dictionaryKeyType
-, dictionaryValueType
-, fromDictionary
-, toDictionary
-, dictionaryFromItems
-, dictionaryToArray
-, arrayToDictionary
-
-@ \subsubsection{Structures}
-
-A heterogeneous, fixed-length structure; equivalent in purpose to a Haskell
-tuple. A structure's type code is the concatenation of its contained types,
-wrapped by ``('' and ``)''. Structures may be empty, in which case their
-type code is simply ``()''.
-
-<<container type codes>>=
-typeCode (DBusStructure ts) = TL.concat $
-	["("] ++ map typeCode ts ++ [")"]
-
-<<DBus/Types.hs>>=
-data Structure = Structure [Variant]
-	deriving (Show, Eq, Typeable)
-
-instance Builtin Structure where
-	builtinDBusType (Structure vs) = DBusStructure $ map variantType vs
-
-BUILTIN_VARIABLE(Structure)
-
-<<type exports>>=
-, Structure (..)
-
 @ \subsection{Signatures}
 
-@ Valid DBus type signatures must obey certain rules, such as ``dict keys
-must be atomic'', which are difficult to express in the Haskell type system.
-A signature is guaranteed to be valid according to these rules. Creating them
-requires using the {\tt mkSignature} function, which will convert a valid
+@ Valid DBus types must obey certain rules, such as ``dict keys must be
+atomic'', which are difficult to express in the Haskell type system.  A
+{\tt Signature} is guaranteed to be valid according to these rules. Creating
+one requires using the {\tt mkSignature} function, which will convert a valid
 DBus signature string into a {\tt Signature}.
 
 <<DBus/Types.hs>>=
+BUILTIN_VARIABLE(Signature, DBusSignature)
 data Signature = Signature { signatureTypes :: [Type] }
 	deriving (Eq, Typeable)
 
@@ -548,18 +332,83 @@ instance Show Signature where
 	showsPrec d x = showParen (d > 10) $
 		showString "Signature " . shows (strSignature x)
 
-strSignature :: Signature -> TL.Text
+@ Signatures can also be converted back into text, by concatenating the
+type codes of their contained types.
+
+<<DBus/Types.hs>>=
+strSignature :: Signature -> Text
 strSignature (Signature ts) = TL.concat $ map typeCode ts
 
-@ Additional restrictions apply to signatures, in addition to those imposed
-by the DBus type definitions:
+@ It doesn't make much sense to sort signatures, but since they can be used
+as dictionary keys, it's useful to have them as an instance of {\tt Ord}.
+
+<<DBus/Types.hs>>=
+instance Ord Signature where
+	compare x y = compare (strSignature x) (strSignature y)
+
+<<type exports>>=
+, Signature
+, signatureTypes
+, strSignature
+
+@ \subsubsection{Type codes}
+
+@ For atomic types, the type code is a single letter. Arrays, structures,
+and dictionary types are multiple characters.
+
+<<DBus/Types.hs>>=
+typeCode DBusBoolean    = "b"
+typeCode DBusByte       = "y"
+typeCode DBusInt16      = "n"
+typeCode DBusInt32      = "i"
+typeCode DBusInt64      = "x"
+typeCode DBusWord16     = "q"
+typeCode DBusWord32     = "u"
+typeCode DBusWord64     = "t"
+typeCode DBusDouble     = "d"
+typeCode DBusString     = "s"
+typeCode DBusSignature  = "g"
+typeCode DBusObjectPath = "o"
+typeCode DBusVariant    = "v"
+
+@ An array's type code is ``a'' followed by the type it contains. For example,
+an array of booleans would have the type string ``ab''.
+
+<<DBus/Types.hs>>=
+typeCode (DBusArray t) = TL.cons 'a' $ typeCode t
+
+@ A dictionary's type code is ``a\{$key\_type$ $value\_type$\}''. For example,
+a dictionary of bytes to booleans would have the type string ``a{yb}''.
+
+<<DBus/Types.hs>>=
+typeCode (DBusDictionary k v) = TL.concat ["a{", typeCode k, typeCode v, "}"]
+
+@ A structure's type code is the concatenation of its contained types,
+wrapped by ``('' and ``)''. Structures may be empty, in which case their
+type code is simply ``()''.
+
+<<DBus/Types.hs>>=
+typeCode (DBusStructure ts) = TL.concat $
+	["("] ++ map typeCode ts ++ [")"]
+
+@ \subsubsection{Parsing}
+
+When parsing, additional restrictions apply which are not inherent to the
+D-Bus type system:
 
 \begin{itemize}
 \item Signatures may be at most 255 characters long.
 \end{itemize}
 
+Parsec is used to parse signatures.
+
+<<type imports>>=
+import Text.Parsec ((<|>))
+import qualified Text.Parsec as P
+import DBus.Util (checkLength, parseMaybe)
+
 <<DBus/Types.hs>>=
-mkSignature :: TL.Text -> Maybe Signature
+mkSignature :: Text -> Maybe Signature
 mkSignature = (parseMaybe sigParser =<<) . checkLength 255 . TL.unpack where
 	sigParser = do
 		types <- P.many parseType
@@ -604,28 +453,29 @@ mkSignature = (parseMaybe sigParser =<<) . checkLength 255 . TL.unpack where
 have a helper function to construct a signature directly from a string.
 If the input string is invalid, {\tt error} will be called.
 
+<<type imports>>=
+import DBus.Util (mkUnsafe)
+
 <<DBus/Types.hs>>=
-mkSignature' :: TL.Text -> Signature
+mkSignature' :: Text -> Signature
 mkSignature' = mkUnsafe "signature" mkSignature
 
-@ Most of these are available for use by clients, with the exception of the
-{\tt Signature} value constructor.
+@ Most signature-related functions are exposed to clients, except the
+{\tt Signature} value constructor. If that were exposed, clients could
+construct invalid signatures.
 
 <<type exports>>=
-, Signature
-, signatureTypes
-, strSignature
 , mkSignature
 , mkSignature'
 
 @ \subsection{Object paths}
 
 <<DBus/Types.hs>>=
-newtype ObjectPath = ObjectPath TL.Text
+BUILTIN_VARIABLE(ObjectPath, DBusObjectPath)
+newtype ObjectPath = ObjectPath
+	{ strObjectPath :: Text
+	}
 	deriving (Show, Eq, Ord, Typeable)
-
-strObjectPath :: ObjectPath -> TL.Text
-strObjectPath (ObjectPath x) = x
 
 @ An object path may be one of
 
@@ -640,20 +490,223 @@ Element names are separated by {\tt '/'}, and the path may not end in
 {\tt '/'} unless it is the root path.
 
 <<DBus/Types.hs>>=
-mkObjectPath :: TL.Text -> Maybe ObjectPath
+mkObjectPath :: Text -> Maybe ObjectPath
 mkObjectPath s = parseMaybe path' (TL.unpack s) where
 	c = P.oneOf $ ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_"
 	path = P.char '/' >>= P.optional . P.sepBy (P.many1 c) . P.char
 	path' = path >> P.eof >> return (ObjectPath s)
 
-mkObjectPath' :: TL.Text -> ObjectPath
+mkObjectPath' :: Text -> ObjectPath
 mkObjectPath' = mkUnsafe "object path" mkObjectPath
 
 <<type exports>>=
 , ObjectPath
+, strObjectPath
 , mkObjectPath
 , mkObjectPath'
-, strObjectPath
+
+@ \subsection{Arrays}
+
+Arrays are homogenous sequences of any valid DBus type. Arrays might be
+empty, so the type they contain is stored instead of being calculated from
+their contents (as in {\tt variantType}).
+
+TODO: There ought to be a specialised constructor for arrays of bytes, based
+on the {\tt ByteString} type. Storing bytes individually in a list of
+{\tt Variant}s is inefficient.
+
+<<DBus/Types.hs>>=
+INSTANCE_VARIABLE(Array)
+data Array = Array
+	{ arrayType  :: Type
+	, arrayItems :: [Variant]
+	}
+	deriving (Eq, Typeable)
+
+instance Builtin Array where
+	builtinDBusType = DBusArray . arrayType
+
+<<type exports>>=
+, Array
+, arrayType
+, arrayItems
+
+@ Like {\tt Variant}s, deriving {\tt Show} for {\tt Array}s is mostly
+just useful for debugging.
+
+<<DBus/Types.hs>>=
+instance Show Array where
+	showsPrec d (Array t vs) = showParen (d > 10) $
+		s "Array " . showSig . s " [" . s valueString . s "]" where
+			s = showString
+			showSig = shows $ typeCode t
+			vs' = [show x | (Variant x) <- vs]
+			valueString = intercalate ", " vs'
+
+@ Clients constructing an array must provide the expected item type, which
+will be checked for validity. Every item in the array will be checked against
+the item type, to ensure the array is homogenous.
+
+<<DBus/Types.hs>>=
+arrayFromItems :: Type -> [Variant] -> Maybe Array
+arrayFromItems t vs = do
+	mkSignature (typeCode t)
+	if all (\x -> variantType x == t) vs
+		then Just $ Array t vs
+		else Nothing
+
+@ Additionally, for ease of use, {\tt Array}s can be converted directly
+to/from lists of {\tt Variable} values.
+
+<<DBus/Types.hs>>=
+toArray :: Variable a => Type -> [a] -> Maybe Array
+toArray t = arrayFromItems t . map toVariant
+
+fromArray :: Variable a => Array -> Maybe [a]
+fromArray = mapM fromVariant . arrayItems
+
+<<type exports>>=
+, toArray
+, fromArray
+, arrayFromItems
+
+@ \subsection{Dictionaries}
+
+Dictionaries are a homogenous (key $\rightarrow$ value) mapping, where the
+key type must be atomic. Values may be of any valid DBus type. Like
+{\tt Array}s, {\tt Dictionary}s store their contained types.
+
+<<DBus/Types.hs>>=
+INSTANCE_VARIABLE(Dictionary)
+data Dictionary = Dictionary
+	{ dictionaryKeyType   :: Type
+	, dictionaryValueType :: Type
+	, dictionaryItems     :: [(Variant, Variant)]
+	}
+	deriving (Eq, Typeable)
+
+instance Builtin Dictionary where
+	builtinDBusType (Dictionary kt vt _) = DBusDictionary kt vt
+
+<<type exports>>=
+, Dictionary
+, dictionaryItems
+, dictionaryKeyType
+, dictionaryValueType
+
+@ {\tt show}ing a {\tt Dictionary} displays the mapping in a more readable
+format than a list of pairs.
+
+<<type imports>>=
+import Data.List (intercalate)
+
+<<DBus/Types.hs>>=
+instance Show Dictionary where
+	showsPrec d (Dictionary kt vt pairs) = showParen (d > 10) $
+		s "Dictionary " . showSig . s " {" . s valueString . s "}" where
+			s = showString
+			showSig = shows $ TL.append (typeCode kt) (typeCode vt)
+			valueString = intercalate ", " $ map showPair pairs
+			showPair ((Variant k), (Variant v)) =
+				show k ++ " -> " ++ show v
+
+@ Constructing a {\tt Dictionary} works like constructing an {\tt Array},
+except that there are two types to check, and the key type must be atomic.
+
+<<type imports>>=
+import Control.Monad (unless)
+
+<<DBus/Types.hs>>=
+dictionaryFromItems :: Type -> Type -> [(Variant, Variant)] -> Maybe Dictionary
+dictionaryFromItems kt vt pairs = do
+	unless (isAtomicType kt) Nothing
+	mkSignature (typeCode kt)
+	mkSignature (typeCode vt)
+	
+	let sameType (k, v) = variantType k == kt &&
+	                      variantType v == vt
+	if all sameType pairs
+		then Just $ Dictionary kt vt pairs
+		else Nothing
+
+@ The closest match for dictionary semantics in Haskell is the
+{\tt Data.Map.Map} type. Therefore, the utility conversion functions work
+with {\tt Map}s instead of pair lists.
+
+<<type imports>>=
+import Control.Arrow ((***))
+import qualified Data.Map as Map
+
+<<DBus/Types.hs>>=
+toDictionary :: (Variable a, Variable b) => Type -> Type -> Map.Map a b
+             -> Maybe Dictionary
+toDictionary kt vt = dictionaryFromItems kt vt . pairs where
+	pairs = map (toVariant *** toVariant) . Map.toList
+
+<<type imports>>=
+import Control.Monad (forM)
+
+<<DBus/Types.hs>>=
+fromDictionary :: (Variable a, Ord a, Variable b) => Dictionary
+               -> Maybe (Map.Map a b)
+fromDictionary (Dictionary _ _ vs) = do
+	pairs <- forM vs $ \(k, v) -> do
+		k' <- fromVariant k
+		v' <- fromVariant v
+		return (k', v')
+	return $ Map.fromList pairs
+
+<<type exports>>=
+, toDictionary
+, fromDictionary
+, dictionaryFromItems
+
+@ \subsubsection{Dictionary <-> Array conversion}
+
+Converting between {\tt Array}s and {\tt Dictionary}s is useful when
+(un)marshaling -- dictionaries can be thought of as arrays of two-element
+structures, much as a {\tt Map} is a list of pairs.
+
+<<DBus/Types.hs>>=
+dictionaryToArray :: Dictionary -> Array
+dictionaryToArray (Dictionary kt vt items) = array where
+	Just array = toArray itemType structs
+	itemType = DBusStructure [kt, vt]
+	structs = [Structure [k, v] | (k, v) <- items]
+
+<<DBus/Types.hs>>=
+arrayToDictionary :: Array -> Maybe Dictionary
+arrayToDictionary (Array t items) = do
+	let toPair x = do
+		struct <- fromVariant x
+		case struct of
+			Structure [k, v] -> Just (k, v)
+			_                -> Nothing
+	(kt, vt) <- case t of
+		DBusStructure [kt, vt] -> Just (kt, vt)
+		_                      -> Nothing
+	pairs <- mapM toPair items
+	dictionaryFromItems kt vt pairs
+
+<<type exports>>=
+, dictionaryToArray
+, arrayToDictionary
+
+@ \subsection{Structures}
+
+A heterogeneous, fixed-length container; equivalent in purpose to a Haskell
+tuple.
+
+<<DBus/Types.hs>>=
+INSTANCE_VARIABLE(Structure)
+data Structure = Structure [Variant]
+	deriving (Show, Eq, Typeable)
+
+instance Builtin Structure where
+	builtinDBusType (Structure vs) = DBusStructure $ map variantType vs
+
+<<type exports>>=
+, Structure (..)
 
 @ \subsection{Names}
 
@@ -667,31 +720,32 @@ the definitions.
 
 <<DBus/Types.hs>>=
 #define NAME_TYPE(TYPE, NAME) \
-	newtype TYPE = TYPE TL.Text \
+	newtype TYPE = TYPE {str##TYPE :: Text} \
 		deriving (Show, Eq, Ord); \
 		                          \
 	instance Variable TYPE where \
 		{ toVariant = toVariant . str##TYPE \
 		; fromVariant = (mk##TYPE =<<) . fromVariant }; \
 		                                                \
-	instance Atomic TYPE where \
-		{ toAtom = toAtom . str##TYPE \
-		; fromAtom = (mk##TYPE =<<) . fromAtom }; \
-		                                          \
-	str##TYPE :: TYPE -> TL.Text; \
-	str##TYPE (TYPE x) = x; \
-	                        \
-	mk##TYPE##' :: TL.Text -> TYPE; \
+	mk##TYPE##' :: Text -> TYPE; \
 	mk##TYPE##' = mkUnsafe NAME mk##TYPE
 
 @ \subsubsection{Bus names}
 
-TODO: describe format of bus names
+There are two forms of bus names, ``unique'' and ``well-known''.
+
+Unique names begin with {\tt `:'} and contain two or more elements, separated
+by {\tt `.'}. Each element consists of characters from the set
+{\tt [a-zA-Z0-9\_-]}.
+
+Well-known names contain two or more elements, separated by {\tt `.'}. Each
+element consists of characters from the set {\tt [a-zA-Z0-9\_-]}, and must
+not start with a digit.
 
 <<DBus/Types.hs>>=
 NAME_TYPE(BusName, "bus name")
 
-mkBusName :: TL.Text -> Maybe BusName
+mkBusName :: Text -> Maybe BusName
 mkBusName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
 	c = ['a'..'z'] ++ ['A'..'Z'] ++ "_-"
 	c' = c ++ ['0'..'9']
@@ -703,9 +757,9 @@ mkBusName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
 
 <<type exports>>=
 , BusName
+, strBusName
 , mkBusName
 , mkBusName'
-, strBusName
 
 @ \subsubsection{Interface names}
 
@@ -716,7 +770,7 @@ start with a digit, and must have at least one character.
 <<DBus/Types.hs>>=
 NAME_TYPE(InterfaceName, "interface name")
 
-mkInterfaceName :: TL.Text -> Maybe InterfaceName
+mkInterfaceName :: Text -> Maybe InterfaceName
 mkInterfaceName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
 	c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
 	c' = c ++ ['0'..'9']
@@ -726,9 +780,9 @@ mkInterfaceName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
 
 <<type exports>>=
 , InterfaceName
+, strInterfaceName
 , mkInterfaceName
 , mkInterfaceName'
-, strInterfaceName
 
 @ \subsubsection{Error names}
 
@@ -738,23 +792,24 @@ can just be re-purposed.
 <<DBus/Types.hs>>=
 NAME_TYPE(ErrorName, "error name")
 
-mkErrorName :: TL.Text -> Maybe ErrorName
+mkErrorName :: Text -> Maybe ErrorName
 mkErrorName = fmap (ErrorName . strInterfaceName) . mkInterfaceName
 
 <<type exports>>=
 , ErrorName
+, strErrorName
 , mkErrorName
 , mkErrorName'
-, strErrorName
 
 @ \subsubsection{Member names}
 
-TODO: describe format of member names
+Member names must contain only characters from the set {\tt [a-zA-Z0-9\_]},
+may not begin with a digit, and must be at least one character long.
 
 <<DBus/Types.hs>>=
 NAME_TYPE(MemberName, "member name")
 
-mkMemberName :: TL.Text -> Maybe MemberName
+mkMemberName :: Text -> Maybe MemberName
 mkMemberName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
 	c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
 	c' = c ++ ['0'..'9']
@@ -763,9 +818,9 @@ mkMemberName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
 
 <<type exports>>=
 , MemberName
+, strMemberName
 , mkMemberName
 , mkMemberName'
-, strMemberName
 
 @
 \section{Messages}
@@ -843,10 +898,6 @@ newtype Serial = Serial Word32
 
 instance Show Serial where
 	show (Serial x) = show x
-
-instance T.Atomic Serial where
-	toAtom (Serial x) = T.toAtom x
-	fromAtom = fmap Serial . T.fromAtom
 
 instance T.Variable Serial where
 	toVariant (Serial x) = T.toVariant x
