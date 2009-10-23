@@ -770,21 +770,25 @@ mkMemberName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
 @
 \section{Messages}
 
+@ To prevent internal details of messages from leaking out to clients,
+declarations are contained in an internal module and then re-exported
+in the public module.
+
 <<DBus/Message.hs>>=
 <<copyright>>
 module DBus.Message
 	(<<message exports>>
 	) where
+import DBus.Message.Internal
+
+<<DBus/Message/Internal.hs>>=
+<<copyright>>
+module DBus.Message.Internal where
 import qualified Data.Set as S
 import Data.Word (Word8, Word32)
 import qualified DBus.Types as T
 
-@ A message represents a single message, with a header and body. Some parts
-of the header, such as the serial, endianness, and body length, are not
-included in the message --- instead, they are generated when a message is
-marshalled.
-
-<<DBus/Message.hs>>=
+<<DBus/Message/Internal.hs>>=
 class Message a where
 	messageTypeCode     :: a -> Word8
 	messageHeaderFields :: a -> [HeaderField]
@@ -792,14 +796,17 @@ class Message a where
 	messageBody         :: a -> [T.Variant]
 
 <<message exports>>=
-Message (..)
+Message ( messageHeaderFields
+        , messageFlags
+        , messageBody
+        )
 
 @ \subsection{Flags}
 
 The instance of {\tt Ord} only exists for storing flags in a set. Flags have
 no inherent ordering.
 
-<<DBus/Message.hs>>=
+<<DBus/Message/Internal.hs>>=
 data Flag
 	= NoReplyExpected
 	| NoAutoStart
@@ -810,7 +817,7 @@ data Flag
 
 @ \subsection{Header fields}
 
-<<DBus/Message.hs>>=
+<<DBus/Message/Internal.hs>>=
 data HeaderField
 	= Path        T.ObjectPath
 	| Interface   T.InterfaceName
@@ -830,7 +837,7 @@ data HeaderField
 {\tt Serial} is just a wrapper around {\tt Word32}, to provide a bit of
 added type-safety.
 
-<<DBus/Message.hs>>=
+<<DBus/Message/Internal.hs>>=
 newtype Serial = Serial Word32
 	deriving (Eq, Ord)
 
@@ -847,7 +854,7 @@ instance T.Variable Serial where
 
 @ Additionally, some useful functions exist for incrementing serials.
 
-<<DBus/Message.hs>>=
+<<DBus/Message/Internal.hs>>=
 firstSerial :: Serial
 firstSerial = Serial 1
 
@@ -861,13 +868,13 @@ nextSerial (Serial x) = Serial (x + 1)
 
 @ \subsection{Message types}
 
-<<DBus/Message.hs>>=
+<<DBus/Message/Internal.hs>>=
 maybe' :: (a -> b) -> Maybe a -> [b]
 maybe' f = maybe [] (\x' -> [f x'])
 
 @ \subsubsection{Method calls}
 
-<<DBus/Message.hs>>=
+<<DBus/Message/Internal.hs>>=
 data MethodCall = MethodCall
 	{ methodCallPath        :: T.ObjectPath
 	, methodCallMember      :: T.MemberName
@@ -895,7 +902,7 @@ instance Message MethodCall where
 
 @ \subsubsection{Method returns}
 
-<<DBus/Message.hs>>=
+<<DBus/Message/Internal.hs>>=
 data MethodReturn = MethodReturn
 	{ methodReturnSerial      :: Serial
 	, methodReturnDestination :: Maybe T.BusName
@@ -919,7 +926,7 @@ instance Message MethodReturn where
 
 @ \subsubsection{Errors}
 
-<<DBus/Message.hs>>=
+<<DBus/Message/Internal.hs>>=
 data Error = Error
 	{ errorName        :: T.ErrorName
 	, errorSerial      :: Serial
@@ -945,7 +952,7 @@ instance Message Error where
 
 @ \subsubsection{Signals}
 
-<<DBus/Message.hs>>=
+<<DBus/Message/Internal.hs>>=
 data Signal = Signal
 	{ signalPath        :: T.ObjectPath
 	, signalMember      :: T.MemberName
@@ -978,7 +985,7 @@ a recognized type code. They are not instances of {\tt Message}, because
 if they were, then clients could accidentally send invalid messages over
 the bus.
 
-<<DBus/Message.hs>>=
+<<DBus/Message/Internal.hs>>=
 data Unknown = Unknown
 	{ unknownType    :: Word8
 	, unknownHeaders :: [HeaderField]
@@ -998,7 +1005,7 @@ when sending.
 If a message has an unknown type, its serial and origin are still useful
 for sending an error reply.
 
-<<DBus/Message.hs>>=
+<<DBus/Message/Internal.hs>>=
 data ReceivedMessage
 	= ReceivedMethodCall   Serial (Maybe T.BusName) MethodCall
 	| ReceivedMethodReturn Serial (Maybe T.BusName) MethodReturn
@@ -1007,7 +1014,7 @@ data ReceivedMessage
 	| ReceivedUnknown      Serial (Maybe T.BusName) Unknown
 	deriving (Show, Eq)
 
-<<DBus/Message.hs>>=
+<<DBus/Message/Internal.hs>>=
 receivedSerial :: ReceivedMessage -> Serial
 receivedSerial (ReceivedMethodCall   s _ _) = s
 receivedSerial (ReceivedMethodReturn s _ _) = s
@@ -1015,7 +1022,7 @@ receivedSerial (ReceivedError        s _ _) = s
 receivedSerial (ReceivedSignal       s _ _) = s
 receivedSerial (ReceivedUnknown      s _ _) = s
 
-<<DBus/Message.hs>>=
+<<DBus/Message/Internal.hs>>=
 receivedSender :: ReceivedMessage -> Maybe T.BusName
 receivedSender (ReceivedMethodCall   _ s _) = s
 receivedSender (ReceivedMethodReturn _ s _) = s
@@ -1056,6 +1063,7 @@ import Data.Typeable (Typeable)
 import qualified Data.Set as Set
 
 import qualified DBus.Constants as C
+import DBus.Message.Internal (messageTypeCode)
 import qualified DBus.Message as M
 import qualified DBus.Types as T
 
@@ -1697,7 +1705,7 @@ marshalHeader :: M.Message a => a -> M.Serial -> T.Signature -> Word32
               -> Marshal
 marshalHeader msg serial bodySig bodyLength = do
 	let fields = M.Signature bodySig : M.messageHeaderFields msg
-	marshal . T.toVariant . M.messageTypeCode $ msg
+	marshal . T.toVariant . messageTypeCode $ msg
 	marshal . T.toVariant . encodeFlags . M.messageFlags $ msg
 	marshal . T.toVariant $ C.protocolVersion
 	marshalWord32 bodyLength
