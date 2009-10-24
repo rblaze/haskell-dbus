@@ -84,7 +84,7 @@ import qualified Data.Text.Lazy as TL
 @
 \section{Types}
 
-The {\\t DBus.Types module} defines interfaces for storing, building, and
+The {\tt DBus.Types module} defines interfaces for storing, building, and
 deconstructing D-Bus values.
 
 <<DBus/Types.hs>>=
@@ -531,7 +531,7 @@ instance Builtin Array where
 , arrayType
 , arrayItems
 
-@ Like {\tt Variant}s, deriving {\tt Show} for {\tt Array}s is mostly
+@ Like {\tt Variant}, deriving {\tt Show} for {\tt Array} is mostly
 just useful for debugging.
 
 <<DBus/Types.hs>>=
@@ -555,7 +555,7 @@ arrayFromItems t vs = do
 		then Just $ Array t vs
 		else Nothing
 
-@ Additionally, for ease of use, {\tt Array}s can be converted directly
+@ Additionally, for ease of use, an {\tt Array} can be converted directly
 to/from lists of {\tt Variable} values.
 
 <<DBus/Types.hs>>=
@@ -574,7 +574,7 @@ fromArray = mapM fromVariant . arrayItems
 
 Dictionaries are a homogenous (key $\rightarrow$ value) mapping, where the
 key type must be atomic. Values may be of any valid DBus type. Like
-{\tt Array}s, {\tt Dictionary}s store their contained types.
+{\tt Array}, {\tt Dictionary} stores its contained types.
 
 <<DBus/Types.hs>>=
 INSTANCE_VARIABLE(Dictionary)
@@ -661,9 +661,9 @@ fromDictionary (Dictionary _ _ vs) = do
 , fromDictionary
 , dictionaryFromItems
 
-@ \subsubsection{Dictionary <-> Array conversion}
+@ \subsubsection{Converting between {\tt Array} and {\tt Dictionary}}
 
-Converting between {\tt Array}s and {\tt Dictionary}s is useful when
+Converting between {\tt Array} and {\tt Dictionary} is useful when
 (un)marshaling -- dictionaries can be thought of as arrays of two-element
 structures, much as a {\tt Map} is a list of pairs.
 
@@ -1504,9 +1504,8 @@ marshalType T.DBusObjectPath = marshalText . T.strObjectPath $ x
 <<unmarshalers>>=
 unmarshalType T.DBusString = fmap T.toVariant unmarshalText
 
-unmarshalType T.DBusObjectPath = do
-	text <- unmarshalText
-	fromMaybeU' "object path" T.mkObjectPath text
+unmarshalType T.DBusObjectPath = unmarshalText >>=
+	fromMaybeU' "object path" T.mkObjectPath
 
 @ \subsection{Signatures}
 
@@ -2341,7 +2340,6 @@ module DBus.Address
 
 import Data.Char (ord, chr)
 import qualified Data.Map as M
-import Data.List (intercalate)
 import Data.Text.Lazy (Text)
 import qualified Data.Text.Lazy as TL
 import Text.Printf (printf)
@@ -2537,7 +2535,7 @@ document's validity because there is no DTD as of yet.
 
 <<DBus/Introspection.hs>>=
 fromXML :: T.ObjectPath -> Text -> Maybe Object
-fromXML path text = listToMaybe $ (A.runLA arrow) text where
+fromXML path text = listToMaybe $ A.runLA arrow text where
 	arrow = parseXML
 	        >>> A.single (A.hasName "node")
 	        >>> A.removeAllWhiteSpace
@@ -2763,7 +2761,7 @@ xmlAccess access = read ++ write where
 
 <<DBus/Introspection.hs>>=
 mkAttr :: A.ArrowXml a => String -> String -> a n A.XmlTree
-mkAttr name value = A.mkAttr (A.mkName name) (A.txt value)
+mkAttr name = A.mkAttr (A.mkName name) . A.txt
 
 <<DBus/Introspection.hs>>=
 parseXML :: A.ArrowXml a => a Text A.XmlTree
