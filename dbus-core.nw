@@ -146,6 +146,7 @@ signatures'' or for debugging.
 typeCode :: Type -> Text
 
 <<type exports>>=
+  -- * Available types
   Type (..)
 , typeCode
 
@@ -186,6 +187,7 @@ class Variable a where
 	fromVariant :: Variant -> Maybe a
 
 <<type exports>>=
+  -- * Variants
 , Variant
 , Variable (..)
 
@@ -347,6 +349,7 @@ instance Ord Signature where
 	compare x y = compare (strSignature x) (strSignature y)
 
 <<type exports>>=
+  -- * Signatures
 , Signature
 , signatureTypes
 , strSignature
@@ -500,6 +503,7 @@ mkObjectPath' :: Text -> ObjectPath
 mkObjectPath' = mkUnsafe "object path" mkObjectPath
 
 <<type exports>>=
+  -- * Object paths
 , ObjectPath
 , strObjectPath
 , mkObjectPath
@@ -527,6 +531,7 @@ instance Builtin Array where
 	builtinDBusType = DBusArray . arrayType
 
 <<type exports>>=
+  -- * Arrays
 , Array
 , arrayType
 , arrayItems
@@ -589,6 +594,7 @@ instance Builtin Dictionary where
 	builtinDBusType (Dictionary kt vt _) = DBusDictionary kt vt
 
 <<type exports>>=
+  -- * Dictionaries
 , Dictionary
 , dictionaryItems
 , dictionaryKeyType
@@ -706,6 +712,7 @@ instance Builtin Structure where
 	builtinDBusType (Structure vs) = DBusStructure $ map variantType vs
 
 <<type exports>>=
+  -- * Structures
 , Structure (..)
 
 @ \subsection{Names}
@@ -729,6 +736,9 @@ the definitions.
 		                                                \
 	mk##TYPE##' :: Text -> TYPE; \
 	mk##TYPE##' = mkUnsafe NAME mk##TYPE
+
+<<type exports>>=
+-- * Names
 
 @ \subsubsection{Bus names}
 
@@ -756,6 +766,7 @@ mkBusName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
 	elem' start = P.oneOf start >> P.many (P.oneOf c')
 
 <<type exports>>=
+  -- ** Bus names
 , BusName
 , strBusName
 , mkBusName
@@ -779,6 +790,7 @@ mkInterfaceName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
 	parser = name >> P.eof >> return (InterfaceName s)
 
 <<type exports>>=
+  -- ** Interface names
 , InterfaceName
 , strInterfaceName
 , mkInterfaceName
@@ -796,6 +808,7 @@ mkErrorName :: Text -> Maybe ErrorName
 mkErrorName = fmap (ErrorName . strInterfaceName) . mkInterfaceName
 
 <<type exports>>=
+  -- ** Error names
 , ErrorName
 , strErrorName
 , mkErrorName
@@ -817,6 +830,7 @@ mkMemberName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
 	parser = name >> P.eof >> return (MemberName s)
 
 <<type exports>>=
+  -- ** Member names
 , MemberName
 , strMemberName
 , mkMemberName
