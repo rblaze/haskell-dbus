@@ -924,8 +924,6 @@ nextSerial (Serial x) = Serial (x + 1)
 
 <<message exports>>=
 , Serial (..)
-, firstSerial
-, nextSerial
 
 @ \subsection{Message types}
 
@@ -2001,7 +1999,7 @@ import System.Posix.User (getRealUserID)
 
 import qualified DBus.Address as A
 import qualified DBus.Wire as W
-import qualified DBus.Message as M
+import qualified DBus.Message.Internal as M
 
 @ A {\tt Connection} is an opaque handle to an open DBus channel, with
 an internal state for maintaining the current message serial.
