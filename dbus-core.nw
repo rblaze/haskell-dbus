@@ -865,8 +865,7 @@ class Message a where
 	messageBody         :: a -> [T.Variant]
 
 <<message exports>>=
-Message ( messageHeaderFields
-        , messageFlags
+Message ( messageFlags
         , messageBody
         )
 
@@ -897,9 +896,6 @@ data HeaderField
 	| Sender      T.BusName
 	| Signature   T.Signature
 	deriving (Show, Eq)
-
-<<message exports>>=
-, HeaderField (..)
 
 @ \subsection{Serials}
 
@@ -1053,7 +1049,6 @@ the bus.
 <<DBus/Message/Internal.hs>>=
 data Unknown = Unknown
 	{ unknownType    :: Word8
-	, unknownHeaders :: [HeaderField]
 	, unknownFlags   :: S.Set Flag
 	, unknownBody    :: [T.Variant]
 	}
@@ -1128,8 +1123,7 @@ import Data.Typeable (Typeable)
 import qualified Data.Set as Set
 
 import qualified DBus.Constants as C
-import DBus.Message.Internal (messageTypeCode)
-import qualified DBus.Message as M
+import qualified DBus.Message.Internal as M
 import qualified DBus.Types as T
 
 @ \subsection{Endianness}
@@ -1769,7 +1763,7 @@ marshalHeader :: M.Message a => a -> M.Serial -> T.Signature -> Word32
               -> Marshal
 marshalHeader msg serial bodySig bodyLength = do
 	let fields = M.Signature bodySig : M.messageHeaderFields msg
-	marshal . T.toVariant . messageTypeCode $ msg
+	marshal . T.toVariant . M.messageTypeCode $ msg
 	marshal . T.toVariant . encodeFlags . M.messageFlags $ msg
 	marshal . T.toVariant $ C.protocolVersion
 	marshalWord32 bodyLength
@@ -1958,7 +1952,7 @@ buildReceivedMessage 4 fields = do
 <<DBus/Wire.hs>>=
 buildReceivedMessage typeCode fields = return $ \serial flags body -> let
 	sender = listToMaybe [x | M.Sender x <- fields]
-	msg = M.Unknown typeCode fields flags body
+	msg = M.Unknown typeCode flags body
 	in M.ReceivedUnknown serial sender msg
 
 <<DBus/Wire.hs>>=

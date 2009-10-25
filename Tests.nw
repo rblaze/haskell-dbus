@@ -449,17 +449,6 @@ instance Arbitrary Serial where
 instance Arbitrary Flag where
 	arbitrary = elements [NoReplyExpected, NoAutoStart]
 
-instance Arbitrary HeaderField where
-	arbitrary = choose (1, 8) >>= \x -> case (x :: Int) of
-		1 -> fmap Path arbitrary
-		2 -> fmap Interface arbitrary
-		3 -> fmap Member arbitrary
-		4 -> fmap ErrorName arbitrary
-		5 -> fmap ReplySerial arbitrary
-		6 -> fmap Destination arbitrary
-		7 -> fmap Sender arbitrary
-		8 -> fmap Signature arbitrary
-
 instance Arbitrary MethodCall where
 	arbitrary = do
 		path   <- arbitrary
