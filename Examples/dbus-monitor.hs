@@ -15,6 +15,8 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 -}
 
+{-# LANGUAGE OverloadedStrings #-}
+
 import DBus.Address
 import DBus.Bus
 import DBus.Connection
@@ -28,6 +30,8 @@ import Data.List
 import Data.Maybe
 import Data.Int
 import Data.Word
+import Data.Text.Lazy (Text)
+import qualified Data.Text.Lazy as TL
 import System
 import System.IO
 import System.Console.GetOpt
@@ -56,7 +60,7 @@ findBus []    = getSessionBus
 findBus (o:_) = case o of
 	BusOption Session -> getSessionBus
 	BusOption System  -> getSystemBus
-	AddressOption addr -> case mkAddresses addr of
+	AddressOption addr -> case mkAddresses (TL.pack addr) of
 			Just [x] -> getBus x
 			Just  x  -> getFirstBus x
 			_        -> error $ "Invalid address: " ++ show addr
@@ -82,7 +86,7 @@ defaultFilters =
 	]
 
 onMessage :: ReceivedMessage -> IO ()
-onMessage msg = putStrLn (formatMessage msg ++ "\n")
+onMessage msg = putStrLn $ (TL.unpack $ formatMessage msg) ++ "\n"
 
 main :: IO ()
 main = do
@@ -107,17 +111,17 @@ main = do
 -- Message formatting is verbose and mostly uninteresting, except as an
 -- excersise in string manipulation.
 
-formatMessage :: ReceivedMessage -> String
+formatMessage :: ReceivedMessage -> Text
 
 -- Method call
-formatMessage (ReceivedMethodCall serial sender msg) = concat
+formatMessage (ReceivedMethodCall serial sender msg) = TL.concat
 	[ "method call"
 	, " sender="
 	, fromMaybe "(null)" . fmap strBusName $ sender
 	, " -> dest="
 	, fromMaybe "(null)" . fmap strBusName . methodCallDestination $ msg
 	, " serial="
-	, show serial
+	, TL.pack . show $ serial
 	, " path="
 	, strObjectPath . methodCallPath $ msg
 	, "; interface="
@@ -128,19 +132,19 @@ formatMessage (ReceivedMethodCall serial sender msg) = concat
 	]
 
 -- Method return
-formatMessage (ReceivedMethodReturn _ sender msg) = concat
+formatMessage (ReceivedMethodReturn _ sender msg) = TL.concat
 	[ "method return"
 	, " sender="
 	, fromMaybe "(null)" . fmap strBusName $ sender
 	, " -> dest="
 	, fromMaybe "(null)" . fmap strBusName . methodReturnDestination $ msg
 	, " reply_serial="
-	, show . methodReturnSerial $ msg
+	, TL.pack . show . methodReturnSerial $ msg
 	, formatBody msg
 	]
 
 -- Error
-formatMessage (ReceivedError _ sender msg) = concat
+formatMessage (ReceivedError _ sender msg) = TL.concat
 	[ "error"
 	, " sender="
 	, fromMaybe "(null)" . fmap strBusName $ sender
@@ -149,19 +153,19 @@ formatMessage (ReceivedError _ sender msg) = concat
 	, " error_name="
 	, strErrorName . errorName $ msg
 	, " reply_serial="
-	, show . errorSerial $ msg
+	, TL.pack . show . errorSerial $ msg
 	, formatBody msg
 	]
 
 -- Signal
-formatMessage (ReceivedSignal serial sender msg) = concat
+formatMessage (ReceivedSignal serial sender msg) = TL.concat
 	[ "signal"
 	, " sender="
 	, fromMaybe "(null)" . fmap strBusName $ sender
 	, " -> dest="
 	, fromMaybe "(null)" . fmap strBusName . signalDestination $ msg
 	, " serial="
-	, show serial
+	, TL.pack . show $ serial
 	, " path="
 	, strObjectPath . signalPath $ msg
 	, "; interface="
@@ -171,26 +175,26 @@ formatMessage (ReceivedSignal serial sender msg) = concat
 	, formatBody msg
 	]
 
-formatMessage (ReceivedUnknown serial sender _) = concat
+formatMessage (ReceivedUnknown serial sender _) = TL.concat
 	[ "unknown"
 	, " sender="
 	, fromMaybe "(null)" . fmap strBusName $ sender
 	, " serial="
-	, show serial
+	, TL.pack .  show $ serial
 	]
 
-formatBody :: Message a => a -> String
+formatBody :: Message a => a -> Text
 formatBody msg = formatted where
 	tree = Children $ map formatVariant body
 	body = messageBody msg
-	formatted = intercalate "\n" ([] : collapseTree 1 tree)
+	formatted = TL.intercalate "\n" (TL.empty : collapseTree 1 tree)
 
 -- A string tree allows easy indentation of nested structures
-data StringTree = Line String | MultiLine [StringTree] | Children [StringTree]
+data StringTree = Line Text | MultiLine [StringTree] | Children [StringTree]
 	deriving (Show)
 
-collapseTree :: Int -> StringTree -> [String]
-collapseTree d (Line x)       = [concat (replicate d "   ") ++ x]
+collapseTree :: Int64 -> StringTree -> [Text]
+collapseTree d (Line x)       = [TL.append (TL.replicate d "   ") x]
 collapseTree d (MultiLine xs) = concatMap (collapseTree d) xs
 collapseTree d (Children xs)  = concatMap (collapseTree (d + 1)) xs
 
@@ -198,43 +202,46 @@ collapseTree d (Children xs)  = concatMap (collapseTree (d + 1)) xs
 formatVariant :: Variant -> StringTree
 formatVariant v = formatVariant' (variantType v) v where
 
+showT :: Show a => a -> Text
+showT = TL.pack . show
+
 formatVariant' :: Type -> Variant -> StringTree
 
-formatVariant' DBusBoolean x = Line $ "boolean " ++ strX where
+formatVariant' DBusBoolean x = Line $ TL.append "boolean " strX where
 	x' = fromJust . fromVariant $ x :: Bool
 	strX = if x' then "true" else "false"
 
-formatVariant' DBusByte x = Line $ "byte " ++ show x' where
+formatVariant' DBusByte x = Line $ TL.append "byte " $ showT x' where
 	x' = fromJust . fromVariant $ x :: Word8
 
-formatVariant' DBusInt16 x = Line $ "int16 " ++ show x' where
+formatVariant' DBusInt16 x = Line $ TL.append "int16 " $ showT x' where
 	x' = fromJust . fromVariant $ x :: Int16
 
-formatVariant' DBusInt32 x = Line $ "int32 " ++ show x' where
+formatVariant' DBusInt32 x = Line $ TL.append "int32 " $ showT x' where
 	x' = fromJust . fromVariant $ x :: Int32
 
-formatVariant' DBusInt64 x = Line $ "int64 " ++ show x' where
+formatVariant' DBusInt64 x = Line $ TL.append "int64 " $ showT x' where
 	x' = fromJust . fromVariant $ x :: Int64
 
-formatVariant' DBusWord16 x = Line $ "uint16 " ++ show x' where
+formatVariant' DBusWord16 x = Line $ TL.append "uint16 " $ showT x' where
 	x' = fromJust . fromVariant $ x :: Word16
 
-formatVariant' DBusWord32 x = Line $ "uint32 " ++ show x' where
+formatVariant' DBusWord32 x = Line $ TL.append "uint32 " $ showT x' where
 	x' = fromJust . fromVariant $ x :: Word32
 
-formatVariant' DBusWord64 x = Line $ "uint64 " ++ show x' where
+formatVariant' DBusWord64 x = Line $ TL.append "uint64 " $ showT x' where
 	x' = fromJust . fromVariant $ x :: Word64
 
-formatVariant' DBusDouble x = Line $ "double " ++ show x' where
+formatVariant' DBusDouble x = Line $ TL.append "double " $ showT x' where
 	x' = fromJust . fromVariant $ x :: Double
 
-formatVariant' DBusString x = Line $ "string " ++ show x' where
+formatVariant' DBusString x = Line $ TL.append "string " $ showT x' where
 	x' = fromJust . fromVariant $ x :: String
 
-formatVariant' DBusObjectPath x = Line $ "object path " ++ show x' where
+formatVariant' DBusObjectPath x = Line $ TL.append "object path " $ showT x' where
 	x' = strObjectPath . fromJust . fromVariant $ x
 
-formatVariant' DBusSignature x = Line $ "signature " ++ show x' where
+formatVariant' DBusSignature x = Line $ TL.append "signature " $ showT x' where
 	x' = strSignature . fromJust . fromVariant $ x
 
 formatVariant' (DBusArray _) x = MultiLine lines' where
@@ -251,11 +258,12 @@ formatVariant' (DBusDictionary _ _) x = MultiLine lines' where
 		, Children . map formatItem $ items
 		, Line "}"
 		]
-	formatItem (k, v) = MultiLine $ [Line $ k' ++ " -> " ++ vHead] ++ vTail where
-		Line k' = formatVariant (atomToVariant k)
+	formatItem (k, v) = MultiLine $ firstLine : vTail where
+		Line k' = formatVariant k
 		v' = collapseTree 0 (formatVariant v)
 		vHead = head v'
 		vTail = map Line $ tail v'
+		firstLine = Line $ TL.concat [k', " -> ", vHead]
 
 formatVariant' (DBusStructure _) x = MultiLine lines' where
 	Structure items = fromJust . fromVariant $ x
