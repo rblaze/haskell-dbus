@@ -1974,6 +1974,8 @@ instance E.Error Text where
 module DBus.Connection
 	( Connection
 	, ConnectionException (..)
+	, W.MarshalError
+	, W.UnmarshalError
 	, connect
 	, send
 	, receive
