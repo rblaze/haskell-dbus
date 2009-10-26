@@ -72,7 +72,10 @@ All source code is licensed under the terms of the GNU GPL v3 or later.
 -}
 
 @
-\section{TODO: name section}
+\section{Text values}
+
+Most of the functions in this library use the types and functions defined
+in {\tt Data.Text}, in preference to the {\tt String} type.
 
 <<text extensions>>=
 {-# LANGUAGE OverloadedStrings #-}
@@ -1098,10 +1101,11 @@ receivedSender (ReceivedUnknown      _ s _) = s
 
 <<DBus/Wire.hs>>=
 <<copyright>>
+<<text extensions>>
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE OverloadedStrings #-}
 module DBus.Wire (<<wire exports>>) where
+<<text imports>>
 
 import Control.Monad (when, unless)
 import qualified Control.Monad.State as ST
@@ -1110,8 +1114,6 @@ import qualified Data.Binary.Put as P
 import qualified Data.Binary.Get as G
 import qualified Data.Binary.IEEE754 as IEEE
 import qualified Data.ByteString.Lazy as L
-import Data.Text.Lazy (Text)
-import qualified Data.Text.Lazy as TL
 import Data.Text.Lazy.Encoding (decodeUtf8, encodeUtf8)
 import Data.Bits ((.|.), (.&.))
 import Data.Maybe (fromJust, listToMaybe, fromMaybe)
@@ -1969,8 +1971,8 @@ instance E.Error Text where
 
 <<DBus/Connection.hs>>=
 <<copyright>>
+<<text extensions>>
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE OverloadedStrings #-}
 module DBus.Connection
 	( Connection
 	, ConnectionError (..)
@@ -1980,6 +1982,7 @@ module DBus.Connection
 	, send
 	, receive
 	) where
+<<text imports>>
 
 import qualified Control.Concurrent as C
 import qualified Control.Exception as E
@@ -1987,8 +1990,6 @@ import qualified Control.Exception as E
 import Data.Char (ord)
 import Data.Word (Word32)
 import qualified Data.ByteString.Lazy as L
-import Data.Text.Lazy (Text)
-import qualified Data.Text.Lazy as TL
 import Data.Text.Lazy.Encoding (decodeUtf8, encodeUtf8)
 import qualified Data.Map as Map
 import Data.Typeable (Typeable)
@@ -2219,7 +2220,7 @@ readUntil' xs c f = do
 
 <<DBus/Bus.hs>>=
 <<copyright>>
-{-# LANGUAGE OverloadedStrings #-}
+<<text extensions>>
 module DBus.Bus
 	( getSystemBus
 	, getSessionBus
@@ -2227,12 +2228,12 @@ module DBus.Bus
 	, getFirstBus
 	, getBus
 	) where
+<<text imports>>
 
 import qualified Control.Exception as E
 import Control.Monad (when)
 import Data.Maybe (fromJust, isNothing)
 import qualified Data.Set as Set
-import qualified Data.Text.Lazy as TL
 import System.Environment (getEnv)
 
 import qualified DBus.Address as A
@@ -2337,7 +2338,7 @@ waitForReply c serial = do
 
 <<DBus/Address.hs>>=
 <<copyright>>
-{-# LANGUAGE OverloadedStrings #-}
+<<text extensions>>
 module DBus.Address
 	( Address
 	, addressMethod
@@ -2345,11 +2346,10 @@ module DBus.Address
 	, mkAddresses
 	, strAddress
 	) where
+<<text imports>>
 
 import Data.Char (ord, chr)
 import qualified Data.Map as M
-import Data.Text.Lazy (Text)
-import qualified Data.Text.Lazy as TL
 import Text.Printf (printf)
 import qualified Text.Parsec as P
 import Text.Parsec ((<|>))
@@ -2459,7 +2459,7 @@ strAddress (Address t ps) = TL.concat [t, ":", ps'] where
 
 <<DBus/Introspection.hs>>=
 <<copyright>>
-{-# LANGUAGE OverloadedStrings #-}
+<<text extensions>>
 module DBus.Introspection
 	( Object (..)
 	, Interface (..)
@@ -2471,12 +2471,11 @@ module DBus.Introspection
 	, toXML
 	, fromXML
 	) where
+<<text imports>>
 
 import Control.Arrow ((>>>), (&&&), (<+>), arr)
 import Control.Monad (mapM)
 import Data.Maybe (listToMaybe, maybeToList)
-import Data.Text.Lazy (Text)
-import qualified Data.Text.Lazy as TL
 import qualified Text.XML.HXT.Arrow as A
 import qualified Text.XML.HXT.Arrow.ParserInterface as P
 import qualified Text.XML.HXT.DOM.XmlNode as XN
