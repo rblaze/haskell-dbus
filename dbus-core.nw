@@ -906,7 +906,7 @@ data HeaderField
 added type-safety.
 
 <<DBus/Message/Internal.hs>>=
-newtype Serial = Serial Word32
+newtype Serial = Serial { serialValue :: Word32 }
 	deriving (Eq, Ord)
 
 instance Show Serial where
@@ -925,8 +925,12 @@ firstSerial = Serial 1
 nextSerial :: Serial -> Serial
 nextSerial (Serial x) = Serial (x + 1)
 
+@ The {\tt Serial} constructor isn't useful to clients, because building
+arbitrary serials doesn't make any sense.
+
 <<message exports>>=
-, Serial (..)
+, Serial
+, serialValue
 
 @ \subsection{Message types}
 

@@ -37,7 +37,7 @@ import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
 
 import DBus.Address
-import DBus.Message
+import DBus.Message.Internal
 import DBus.Types
 import DBus.Wire
 import qualified DBus.Introspection as I
