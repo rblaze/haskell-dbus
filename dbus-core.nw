@@ -1973,9 +1973,9 @@ instance E.Error Text where
 {-# LANGUAGE OverloadedStrings #-}
 module DBus.Connection
 	( Connection
-	, ConnectionException (..)
-	, W.MarshalError
-	, W.UnmarshalError
+	, ConnectionError (..)
+	, W.MarshalError (..)
+	, W.UnmarshalError (..)
 	, connect
 	, send
 	, receive
@@ -2159,18 +2159,18 @@ unknownTransport = E.throwIO . UnknownMethod
 
 @ \subsection{Errors}
 
-If connecting to DBus fails, a {\tt ConnectionException} will be thrown.
+If connecting to DBus fails, a {\tt ConnectionError} will be thrown.
 The constructor describes which exception occurred.
 
 <<DBus/Connection.hs>>=
-data ConnectionException
+data ConnectionError
 	= InvalidAddress Text
 	| BadParameters A.Address Text
 	| UnknownMethod A.Address
 	| NoWorkingAddress [A.Address]
 	deriving (Show, Typeable)
 
-instance E.Exception ConnectionException
+instance E.Exception ConnectionError
 instance E.Exception W.MarshalError
 instance E.Exception W.UnmarshalError
 
