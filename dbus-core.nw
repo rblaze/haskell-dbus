@@ -2562,14 +2562,20 @@ module DBus.Introspection
 	, fromXML
 	) where
 <<text imports>>
-
-import Control.Arrow ((>>>), (&&&), (<+>), arr)
-import Control.Monad (mapM)
-import Data.Maybe (listToMaybe, maybeToList)
-import qualified Text.XML.HXT.Arrow as A
-import qualified Text.XML.HXT.Arrow.ParserInterface as P
-import qualified Text.XML.HXT.DOM.XmlNode as XN
+<<introspection imports>>
 import qualified DBus.Types as T
+
+@ HaXml is used to do the heavy lifting of XML parsing because HXT cannot
+be combined with Parsec 3.
+
+<<introspection imports>>=
+import qualified Text.XML.HaXml as H
+
+@ TODO: remove these
+
+<<DBus/Introspection.hs>>=
+import Control.Arrow ((>>>), (&&&), (<+>), arr)
+import qualified Text.XML.HXT.Arrow as A
 
 @ \subsection{Data types}
 
@@ -2605,95 +2611,97 @@ If parsing fails, {\tt fromXML} will return {\tt Nothing}. Aside from the
 elements directly accessed by the parser, no effort is made to check the
 document's validity because there is no DTD as of yet.
 
+<<introspection imports>>=
+import Text.XML.HaXml.Parse (xmlParse')
+import DBus.Util (eitherToMaybe)
+
 <<DBus/Introspection.hs>>=
 fromXML :: T.ObjectPath -> Text -> Maybe Object
-fromXML path text = listToMaybe $ A.runLA arrow text where
-	arrow = parseXML
-	        >>> A.single (A.hasName "node")
-	        >>> A.removeAllWhiteSpace
-	        >>> A.arrL (maybeToList . parseRoot path)
+fromXML path text = do
+	doc <- eitherToMaybe . xmlParse' "" . TL.unpack $ text
+	let (H.Document _ _ root _) = doc
+	parseRoot path root
 
 @ Even though the root object's {\tt name} is optional, if present, it must
 still be a valid object path.
 
 <<DBus/Introspection.hs>>=
-parseRoot :: T.ObjectPath -> A.XmlTree -> Maybe Object
-parseRoot defaultPath t = do
-	path <- case getAttr "name" t of
-		"" -> Just defaultPath
-		x  -> T.mkObjectPath x
-	parseObject' path t
+parseRoot :: T.ObjectPath -> H.Element a -> Maybe Object
+parseRoot defaultPath e = do
+	path <- case getAttr "name" e of
+		Nothing -> Just defaultPath
+		Just x  -> T.mkObjectPath x
+	parseObject' path e
 
 @ Child {\tt nodes} have ``relative'' paths -- that is, their {\tt name}
 attribute is not a valid object path, but should be valid when appended to
 the root object's path.
 
 <<DBus/Introspection.hs>>=
-parseChild :: T.ObjectPath -> A.XmlTree -> Maybe Object
-parseChild parentPath t = do
+parseChild :: T.ObjectPath -> H.Element a -> Maybe Object
+parseChild parentPath e = do
 	let parentPath' = case T.strObjectPath parentPath of
 		"/" -> "/"
 		x   -> TL.append x "/"
-	pathSegment <- case getAttr "name" t of
-		"" -> Nothing
-		x  -> Just x
+	pathSegment <- getAttr "name" e
 	path <- T.mkObjectPath $ TL.append parentPath' pathSegment
-	parseObject' path t
+	parseObject' path e
 
 @ Other than the name, both root and non-root {\tt nodes} have identical
 contents.  They may contain interface definitions, and child {\tt node}s.
 
 <<DBus/Introspection.hs>>=
-parseObject' :: T.ObjectPath -> A.XmlTree -> Maybe Object
-parseObject' path t = do
-	interfaces <- children parseInterface (A.hasName "interface") t
-	children' <- children (parseChild path) (A.hasName "node") t
+parseObject' :: T.ObjectPath -> H.Element a -> Maybe Object
+parseObject' path e@(H.Elem "node" _ _)  = do
+	interfaces <- children parseInterface (H.tag "interface") e
+	children' <- children (parseChild path) (H.tag "node") e
 	return $ Object path interfaces children'
+parseObject' _ _ = Nothing
 
 @ Interfaces may contain methods, signals, and properties.
 
 <<DBus/Introspection.hs>>=
-parseInterface :: A.XmlTree -> Maybe Interface
-parseInterface t = do
-	name <- T.mkInterfaceName $ getAttr "name" t
-	methods <- children parseMethod (A.hasName "method") t
-	signals <- children parseSignal (A.hasName "signal") t
-	properties <- children parseProperty (A.hasName "property") t
+parseInterface :: H.Element a -> Maybe Interface
+parseInterface e = do
+	name <- T.mkInterfaceName =<< getAttr "name" e
+	methods <- children parseMethod (H.tag "method") e
+	signals <- children parseSignal (H.tag "signal") e
+	properties <- children parseProperty (H.tag "property") e
 	return $ Interface name methods signals properties
 
 @ Methods contain a list of parameters, which default to ``in'' parameters
 if no direction is specified.
 
 <<DBus/Introspection.hs>>=
-parseMethod :: A.XmlTree -> Maybe Method
-parseMethod t = do
-	name <- T.mkMemberName $ getAttr "name" t
-	paramsIn <- children parseParameter (isParam ["in", ""]) t
-	paramsOut <- children parseParameter (isParam ["out"]) t
+parseMethod :: H.Element a -> Maybe Method
+parseMethod e = do
+	name <- T.mkMemberName =<< getAttr "name" e
+	paramsIn <- children parseParameter (isParam ["in", ""]) e
+	paramsOut <- children parseParameter (isParam ["out"]) e
 	return $ Method name paramsIn paramsOut
 
 @ Signals are similar to methods, except they have no ``in'' parameters.
 
 <<DBus/Introspection.hs>>=
-parseSignal :: A.XmlTree -> Maybe Signal
-parseSignal t = do
-	name <- T.mkMemberName $ getAttr "name" t
-	params <- children parseParameter (isParam ["out", ""]) t
+parseSignal :: H.Element a -> Maybe Signal
+parseSignal e = do
+	name <- T.mkMemberName =<< getAttr "name" e
+	params <- children parseParameter (isParam ["out", ""]) e
 	return $ Signal name params
 
 @ A parameter has a free-form name, and a single valid type.
 
 <<DBus/Introspection.hs>>=
-parseParameter :: A.XmlTree -> Maybe Parameter
-parseParameter t = do
-	let name = getAttr "name" t
-	sig <- parseType t
+parseParameter :: H.Element a -> Maybe Parameter
+parseParameter e = do
+	let name = getAttr' "name" e
+	sig <- parseType e
 	return $ Parameter name sig
 
 <<DBus/Introspection.hs>>=
-parseType :: A.XmlTree -> Maybe T.Signature
-parseType t = do
-	sig <- T.mkSignature $ getAttr "type" t
+parseType :: H.Element a -> Maybe T.Signature
+parseType e = do
+	sig <- T.mkSignature =<< getAttr "type" e
 	case T.signatureTypes sig of
 		[_] -> Just sig
 		_   -> Nothing
@@ -2702,11 +2710,11 @@ parseType t = do
 Each property may be read, written, or both, and has an associated type.
 
 <<DBus/Introspection.hs>>=
-parseProperty :: A.XmlTree -> Maybe Property
-parseProperty t = do
-	let name = getAttr "name" t
-	sig <- parseType t
-	access <- case getAttr "access" t of
+parseProperty :: H.Element a -> Maybe Property
+parseProperty e = do
+	let name = getAttr' "name" e
+	sig <- parseType e
+	access <- case getAttr' "access" e of
 		""          -> Just []
 		"read"      -> Just [Read]
 		"write"     -> Just [Write]
@@ -2714,21 +2722,52 @@ parseProperty t = do
 		_           -> Nothing
 	return $ Property name sig access
 
-@ Some helper functions for dealing with HXT xml arrows.
+@ HaXml doesn't seem to have any way to retrieve the ``real'' value of an
+attribute, so {\tt attrValue} implements this.
+
+<<introspection imports>>=
+import Data.Char (chr)
 
 <<DBus/Introspection.hs>>=
-getAttr :: String -> A.XmlTree -> Text
-getAttr name t = case A.runLA (A.getAttrValue name) t of
-	(x:_) -> TL.pack x
-	_     -> ""
+attrValue :: H.AttValue -> Maybe Text
+attrValue attr = fmap (TL.pack . concat) $ mapM unescape parts where
+	(H.AttValue parts) = attr
+	
+	unescape (Left x) = Just x
+	unescape (Right (H.RefEntity x)) = lookup x namedRefs
+	unescape (Right (H.RefChar x)) = Just [chr x]
+	
+	namedRefs =
+		[ ("lt", "<")
+		, ("gt", ">")
+		, ("amp", "&")
+		, ("apos", "'")
+		, ("quot", "\"")
+		]
 
-children :: Monad m => (a -> m b) -> A.LA A.XmlTree a -> A.XmlTree -> m [b]
-children f a = mapM f . A.runLA (A.getChildren >>> a)
+@ Some helper functions for dealing with HaXml filters
 
-isParam :: A.ArrowXml a => [String] -> a A.XmlTree A.XmlTree
-isParam dirs = A.hasName "arg"
-               >>> (A.arr id &&& A.getAttrValue "direction")
-               >>> A.arrL (\(t, p) -> if elem p dirs then [t] else [])
+<<introspection imports>>=
+import Data.Maybe (fromMaybe)
+
+<<DBus/Introspection.hs>>=
+getAttr :: String -> H.Element a -> Maybe Text
+getAttr name (H.Elem _ attrs _) = lookup name attrs >>= attrValue
+
+getAttr' :: String -> H.Element a -> Text
+getAttr' = (fromMaybe "" .) . getAttr
+
+<<DBus/Introspection.hs>>=
+isParam :: [Text] -> H.CFilter a
+isParam dirs content = do
+	arg@(H.CElem e _) <- H.tag "arg" content
+	let direction = getAttr' "direction" e
+	[arg | direction `elem` dirs]
+
+<<DBus/Introspection.hs>>=
+children :: Monad m => (H.Element a -> m b) -> H.CFilter a -> H.Element a -> m [b]
+children f filt (H.Elem _ _ contents) = do
+	mapM f [x | (H.CElem x _) <- concatMap filt contents]
 
 @ \subsection{Generating XML}
 
@@ -2834,12 +2873,6 @@ xmlAccess access = read ++ write where
 <<DBus/Introspection.hs>>=
 mkAttr :: A.ArrowXml a => String -> String -> a n A.XmlTree
 mkAttr name = A.mkAttr (A.mkName name) . A.txt
-
-<<DBus/Introspection.hs>>=
-parseXML :: A.ArrowXml a => a Text A.XmlTree
-parseXML = arr (\x -> ("", TL.unpack x))
-	>>> P.parseXmlDoc
-	>>> P.substXmlEntityRefs
 
 @
 \section{Constants}

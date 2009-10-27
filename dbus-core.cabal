@@ -37,6 +37,7 @@ library
     bytestring,
     data-binary-ieee754 >= 0.3,
     hxt,
+    HaXml >= 1.19.7,
     text,
     mtl,
     containers,
