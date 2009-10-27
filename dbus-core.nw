@@ -2040,7 +2040,138 @@ instance Show Connection where
 		showString' ["<connection ", show $ A.strAddress a, ">"] where
 		showString' = foldr (.) id . map showString
 
-@ A connection can be opened to any valid address, though actually connecting
+@ \subsection{Transports}
+
+A transport is anything which can send and receive bytestrings, typically
+over a socket.
+
+<<connection imports>>=
+import qualified Data.ByteString.Lazy as L
+import Data.Word (Word32)
+
+<<DBus/Connection.hs>>=
+data Transport = Transport
+	{ transportSend :: L.ByteString -> IO ()
+	, transportRecv :: Word32 -> IO L.ByteString
+	}
+
+<<DBus/Connection.hs>>=
+connectTransport :: A.Address -> IO Transport
+connectTransport a = transport' (A.addressMethod a) a where
+	transport' "unix" = unix
+	transport' _      = unknownTransport
+
+@ \subsubsection{UNIX}
+
+The {\sc unix} transport accepts two parameters: {\tt path}, which is a
+simple filesystem path, and {\tt abstract}, which is a path in the
+Linux-specific abstract domain. One, and only one, of these parameters must
+be specified.
+
+<<connection imports>>=
+import qualified Network as N
+import qualified Data.Map as Map
+
+<<DBus/Connection.hs>>=
+unix :: A.Address -> IO Transport
+unix a = handleTransport . N.connectTo "localhost" =<< port where
+	params = A.addressParameters a
+	path = Map.lookup "path" params
+	abstract = Map.lookup "abstract" params
+	
+	tooMany = "Only one of `path' or `abstract' may be specified for the\
+	          \ `unix' method."
+	tooFew = "One of `path' or `abstract' must be specified for the\
+	         \ `unix' transport."
+	
+	port = fmap N.UnixSocket path'
+	path' = case (path, abstract) of
+		(Just _, Just _) -> E.throwIO $ BadParameters a tooMany
+		(Nothing, Nothing) -> E.throwIO $ BadParameters a tooFew
+		(Just x, Nothing) -> return $ TL.unpack x
+		(Nothing, Just x) -> return $ '\x00' : TL.unpack x
+
+@ \subsubsection{TCP}
+
+known parameters:
+
+\begin{itemize}
+\item {\tt host} (optional, default "{\tt localhost}")
+\item {\tt port}
+\item {\tt family} (optional, choices are "{\tt ipv4}" or "{\tt ipv6}"
+\end{itemize}
+
+TCP support is TODO
+
+<<TODO>>=
+tcp :: A.Address -> IO Transport
+tcp a@(A.Address _ params) = handleTransport a connect' where
+	host = lookup "host" params
+	port = parsePort =<< lookup "post" params
+	family = parseFamily =<< lookup "family" params
+	connect' = do
+		-- check host
+		-- check port
+		-- check family
+		-- return handle
+parsePort :: String -> Maybe PortNumber
+
+parseFamily :: String -> Maybe Family
+
+@ \subsubsection{Generic handle-based transport}
+
+Both UNIX and TCP are backed by standard handles, and can therefore use
+a shared handle-based transport backend.
+
+<<connection imports>>=
+import qualified System.IO as I
+
+<<DBus/Connection.hs>>=
+handleTransport :: IO I.Handle -> IO Transport
+handleTransport io = do
+	h <- io
+	I.hSetBuffering h I.NoBuffering
+	I.hSetBinaryMode h True
+	return $ Transport (L.hPut h) (L.hGet h . fromIntegral)
+
+@ \subsubsection{Unknown transports}
+
+If a method has no known transport, attempting to connect using it will
+just result in an exception.
+
+<<DBus/Connection.hs>>=
+unknownTransport :: A.Address -> IO Transport
+unknownTransport = E.throwIO . UnknownMethod
+
+@ \subsection{Errors}
+
+If connecting to DBus fails, a {\tt ConnectionError} will be thrown.
+The constructor describes which exception occurred.
+
+<<connection imports>>=
+import qualified Control.Exception as E
+import Data.Typeable (Typeable)
+
+<<DBus/Connection.hs>>=
+data ConnectionError
+	= InvalidAddress Text
+	| BadParameters A.Address Text
+	| UnknownMethod A.Address
+	| NoWorkingAddress [A.Address]
+	deriving (Show, Typeable)
+
+instance E.Exception ConnectionError
+instance E.Exception W.MarshalError
+instance E.Exception W.UnmarshalError
+
+<<connection exports>>=
+, ConnectionError (..)
+, W.MarshalError (..)
+, W.UnmarshalError (..)
+
+@ \subsection{Establishing a connection}
+
+A connection can be opened to any valid address, though actually connecting
 might fail due to external factors.
 
 <<connection imports>>=
@@ -2059,7 +2190,55 @@ connect a = do
 <<connection exports>>=
 , connect
 
-@ Sending a message will increment the connection's internal serial state.
+@ \subsection{Authentication}
+
+<<DBus/Connection.hs>>=
+authenticate :: (String -> IO ()) -> (Word32 -> IO String)
+                -> IO ()
+authenticate put get = do
+	put "\x00"
+
+@ {\sc external} authentication is performed using the process's real user
+ID, converted to a string, and then hex-encoded.
+
+<<connection imports>>=
+import System.Posix.User (getRealUserID)
+import Data.Char (ord)
+import Text.Printf (printf)
+
+<<DBus/Connection.hs>>=
+	uid <- getRealUserID
+	let authToken = concatMap (printf "%02X" . ord) (show uid)
+	put $ "AUTH EXTERNAL " ++ authToken ++ "\r\n"
+
+@ If authentication was successful, the server responds with {\tt OK
+<server GUID>}.  The GUID is intended to enable connection sharing, which
+is currently unimplemented, so it's ignored.
+
+<<connection imports>>=
+import Data.List (isPrefixOf)
+
+<<DBus/Connection.hs>>=
+	response <- readUntil '\n' get
+	if "OK" `isPrefixOf` response
+		then put "BEGIN\r\n"
+		else do
+			putStrLn $ "response = " ++ show response
+			error "Server rejected authentication token."
+
+<<DBus/Connection.hs>>=
+readUntil :: Monad m => Char -> (Word32 -> m String) -> m String
+readUntil = readUntil' "" where
+	readUntil' xs c f = do
+		[x] <- f 1
+		let xs' = xs ++ [x]
+		if x == c
+			then return xs'
+			else readUntil' xs' c f
+
+@ \subsection{Sending and receiving messages}
+
+Sending a message will increment the connection's internal serial state.
 The second parameter is present to allow registration of a callback before
 the message has actually been sent, which avoids race conditions in
 multi-threaded clients.
@@ -2102,185 +2281,8 @@ receive (Connection _ t _) = do
 <<connection exports>>=
 , receive
 
-@ \section{Transports}
-
-A transport is anything which can send and receive bytestrings, typically
-over a socket.
-
-<<connection imports>>=
-import qualified Data.ByteString.Lazy as L
-import Data.Word (Word32)
-
-<<DBus/Connection.hs>>=
-data Transport = Transport
-	{ transportSend :: L.ByteString -> IO ()
-	, transportRecv :: Word32 -> IO L.ByteString
-	}
-
-<<DBus/Connection.hs>>=
-connectTransport :: A.Address -> IO Transport
-connectTransport a = transport' (A.addressMethod a) a where
-	transport' "unix" = unix
-	transport' _      = unknownTransport
-
-@ \subsection{UNIX}
-
-The {\sc unix} transport accepts two parameters: {\tt path}, which is a
-simple filesystem path, and {\tt abstract}, which is a path in the
-Linux-specific abstract domain. One, and only one, of these parameters must
-be specified.
-
-<<connection imports>>=
-import qualified Network as N
-import qualified Data.Map as Map
-
-<<DBus/Connection.hs>>=
-unix :: A.Address -> IO Transport
-unix a = handleTransport . N.connectTo "localhost" =<< port where
-	params = A.addressParameters a
-	path = Map.lookup "path" params
-	abstract = Map.lookup "abstract" params
-	
-	tooMany = "Only one of `path' or `abstract' may be specified for the\
-	          \ `unix' method."
-	tooFew = "One of `path' or `abstract' must be specified for the\
-	         \ `unix' transport."
-	
-	port = fmap N.UnixSocket path'
-	path' = case (path, abstract) of
-		(Just _, Just _) -> E.throwIO $ BadParameters a tooMany
-		(Nothing, Nothing) -> E.throwIO $ BadParameters a tooFew
-		(Just x, Nothing) -> return $ TL.unpack x
-		(Nothing, Just x) -> return $ '\x00' : TL.unpack x
-
-@ \subsection{TCP}
-
-known parameters:
-
-\begin{itemize}
-\item {\tt host} (optional, default "{\tt localhost}")
-\item {\tt port}
-\item {\tt family} (optional, choices are "{\tt ipv4}" or "{\tt ipv6}"
-\end{itemize}
-
-TCP support is TODO
-
-<<TODO>>=
-tcp :: A.Address -> IO Transport
-tcp a@(A.Address _ params) = handleTransport a connect' where
-	host = lookup "host" params
-	port = parsePort =<< lookup "post" params
-	family = parseFamily =<< lookup "family" params
-	connect' = do
-		-- check host
-		-- check port
-		-- check family
-		-- return handle
-parsePort :: String -> Maybe PortNumber
-
-parseFamily :: String -> Maybe Family
-
-@ \subsection{Generic handle-based transport}
-
-Both UNIX and TCP are backed by standard handles, and can therefore use
-a shared handle-based transport backend.
-
-<<connection imports>>=
-import qualified System.IO as I
-
-<<DBus/Connection.hs>>=
-handleTransport :: IO I.Handle -> IO Transport
-handleTransport io = do
-	h <- io
-	I.hSetBuffering h I.NoBuffering
-	I.hSetBinaryMode h True
-	return $ Transport (L.hPut h) (L.hGet h . fromIntegral)
-
-@ \subsection{Unknown transports}
-
-If a method has no known transport, attempting to connect using it will
-just result in an exception.
-
-<<DBus/Connection.hs>>=
-unknownTransport :: A.Address -> IO Transport
-unknownTransport = E.throwIO . UnknownMethod
-
-@ \subsection{Errors}
-
-If connecting to DBus fails, a {\tt ConnectionError} will be thrown.
-The constructor describes which exception occurred.
-
-<<connection imports>>=
-import qualified Control.Exception as E
-import Data.Typeable (Typeable)
-
-<<DBus/Connection.hs>>=
-data ConnectionError
-	= InvalidAddress Text
-	| BadParameters A.Address Text
-	| UnknownMethod A.Address
-	| NoWorkingAddress [A.Address]
-	deriving (Show, Typeable)
-
-instance E.Exception ConnectionError
-instance E.Exception W.MarshalError
-instance E.Exception W.UnmarshalError
-
-<<connection exports>>=
-, ConnectionError (..)
-, W.MarshalError (..)
-, W.UnmarshalError (..)
-
-@ \subsection{Authentication}
-
-<<DBus/Connection.hs>>=
-authenticate :: (String -> IO ()) -> (Word32 -> IO String)
-                -> IO ()
-authenticate put get = do
-	put "\x00"
-
-@ {\sc external} authentication is performed using the process's real user
-ID, converted to a string, and then hex-encoded.
-
-<<connection imports>>=
-import System.Posix.User (getRealUserID)
-import Data.Char (ord)
-import Text.Printf (printf)
-
-<<DBus/Connection.hs>>=
-	uid <- getRealUserID
-	let authToken = concatMap (printf "%02X" . ord) (show uid)
-	put $ "AUTH EXTERNAL " ++ authToken ++ "\r\n"
-
-@ If authentication was successful, the server responds with {\tt OK
-<server GUID>}.  The GUID is intended to enable connection sharing, which
-is currently unimplemented, so it's ignored.
-
-<<connection imports>>=
-import Data.List (isPrefixOf)
-
-<<DBus/Connection.hs>>=
-	response <- readUntil '\n' get
-	if "OK" `isPrefixOf` response
-		then put "BEGIN\r\n"
-		else do
-			putStrLn $ "response = " ++ show response
-			error "Server rejected authentication token."
-
-<<DBus/Connection.hs>>=
-readUntil :: Monad m => Char -> (Word32 -> m String) -> m String
-readUntil = readUntil' ""
-
-readUntil' :: Monad m => String -> Char -> (Word32 -> m String) -> m String
-readUntil' xs c f = do
-	[x] <- f 1
-	let xs' = xs ++ [x]
-	if x == c
-		then return xs'
-		else readUntil' xs' c f
-
 @
-\section{Connecting to a message bus}
+\section{The central bus}
 
 <<DBus/Bus.hs>>=
 <<copyright>>
@@ -2380,9 +2382,8 @@ sendHello c = do
 		(x:_) -> T.fromVariant x
 		_     -> Nothing
 	
-	when (isNothing name) $ do
+	when (isNothing name) $
 		E.throwIO $ E.AssertionFailed "Invalid response to Hello()"
-		return ()
 	
 	return . fromJust $ name
 
@@ -2521,6 +2522,31 @@ strAddress (Address t ps) = TL.concat [t, ":", ps'] where
 @
 \section{Introspection}
 
+@ DBus objects may be ``introspected'' to determine which methods, signals,
+etc they support. Intospection data is sent over the bus in {\sc xml}, in
+a mostly standardised but undocumented format.
+
+An XML introspection document looks like this:
+
+\begin{verbatim}
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+         "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<node name="/org/example/example">
+	<interface name="org.example.ExampleInterface">
+		<method name="Echo">
+			<arg name="text" type="s" direction="in"/>
+			<arg type="s" direction="out"/>
+		</method>
+		<signal name="Echoed">
+			<arg type="s"/>
+		</signal>
+		<property name="EchoCount" type="u" access="read"/>
+	</interface>
+	<node name="child_a"/>
+	<node name="child/b"/>
+</node>
+\end{verbatim}
+
 <<DBus/Introspection.hs>>=
 <<copyright>>
 <<text extensions>>
@@ -2544,10 +2570,6 @@ import qualified Text.XML.HXT.Arrow as A
 import qualified Text.XML.HXT.Arrow.ParserInterface as P
 import qualified Text.XML.HXT.DOM.XmlNode as XN
 import qualified DBus.Types as T
-
-@ DBus objects may be ``introspected'' to determine which methods, signals,
-etc they support. Intospection data is sent over the bus in {\sc xml}, in
-a mostly standardised but undocumented format.
 
 @ \subsection{Data types}
 
@@ -2574,27 +2596,6 @@ data PropertyAccess = Read | Write
 	deriving (Show, Eq)
 
 @ \subsection{Parsing XML}
-
-An XML introspection document looks like this:
-
-\begin{verbatim}
-<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
-         "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
-<node name="/org/example/example">
-	<interface name="org.example.ExampleInterface">
-		<method name="Echo">
-			<arg name="text" type="s" direction="in"/>
-			<arg type="s" direction="out"/>
-		</method>
-		<signal name="Echoed">
-			<arg type="s"/>
-		</signal>
-		<property name="EchoCount" type="u" access="read"/>
-	</interface>
-	<node name="child_a"/>
-	<node name="child/b"/>
-</node>
-\end{verbatim}
 
 The root {\tt node} is special, in that it's the only {\tt node} which is
 not required to have a {\tt name} attribute. If the root has no {\tt name},
