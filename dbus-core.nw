@@ -2571,12 +2571,6 @@ be combined with Parsec 3.
 <<introspection imports>>=
 import qualified Text.XML.HaXml as H
 
-@ TODO: remove these
-
-<<DBus/Introspection.hs>>=
-import Control.Arrow ((>>>), (&&&), (<+>), arr)
-import qualified Text.XML.HXT.Arrow as A
-
 @ \subsection{Data types}
 
 <<DBus/Introspection.hs>>=
@@ -2771,39 +2765,43 @@ children f filt (H.Elem _ _ contents) = do
 
 @ \subsection{Generating XML}
 
-Generating XML can fail also; if a child object's path is not a sub-path of
-the parent, {\tt toXML} will return {\tt Nothing}.
+<<DBus/Introspection.hs>>=
+dtdPublicID, dtdSystemID :: String
+dtdPublicID = "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+dtdSystemID = "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd"
+
+@ HaXml punts to the {\tt pretty} package for serialising XML.
+
+<<introspection imports>>=
+import Text.XML.HaXml.Pretty (document)
+import Text.PrettyPrint.HughesPJ (render)
+
+@ Generating XML can fail; if a child object's path is not a sub-path of the
+parent, {\tt toXML} will return {\tt Nothing}.
 
 <<DBus/Introspection.hs>>=
 toXML :: Object -> Maybe Text
-toXML obj = fmap TL.pack xml where
-	dtd = A.mkDTDDoctype
-		[ ("name", "node")
-		, ("SYSTEM", "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd")
-		, ("PUBLIC", "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN")
-		] A.none
-	
-	xml = do
+toXML obj = fmap (TL.pack . render . document) doc where
+	prolog = H.Prolog Nothing [] (Just doctype) []
+	doctype = H.DTD "node" (Just (H.PUBLIC
+		(H.PubidLiteral dtdPublicID)
+		(H.SystemLiteral dtdSystemID))) []
+	doc = do
 		root <- xmlRoot obj
-		return . concat $ A.runLA (A.xshowEscapeXml (dtd <+> root)) ()
+		return $ H.Document prolog H.emptyST root []
 
 @ When writing objects to {\tt node}s, the root object must have an absolute
 path, and children must have paths relative to their parent.
 
 <<DBus/Introspection.hs>>=
-xmlRoot :: A.ArrowXml a => Object -> Maybe (a n A.XmlTree)
-xmlRoot (Object path interfaces children') = do
-	children'' <- mapM (xmlObject path) children'
-	return $ A.mkElement (A.mkName "node")
-		(mkAttr "name" . TL.unpack . T.strObjectPath $ path)
-		(A.catA . concat $
-			[ map xmlInterface interfaces
-			, children''
-			])
+xmlRoot :: Object -> Maybe (H.Element a)
+xmlRoot obj@(Object path _ _) = do
+	(H.CElem root _) <- xmlObject' (T.strObjectPath path) obj
+	return $ root
 
 <<DBus/Introspection.hs>>=
-xmlObject :: A.ArrowXml a => T.ObjectPath -> Object -> Maybe (a n A.XmlTree)
-xmlObject parentPath (Object path interfaces children') = do
+xmlObject :: T.ObjectPath -> Object -> Maybe (H.Content a)
+xmlObject parentPath obj@(Object path _ _) = do
 	let path' = T.strObjectPath path
 	    parent' = T.strObjectPath parentPath
 	relpath <- if TL.isPrefixOf parent' path'
@@ -2811,58 +2809,60 @@ xmlObject parentPath (Object path interfaces children') = do
 			then TL.drop 1 path'
 			else TL.drop (TL.length parent' + 1) path'
 		else Nothing
-
-	children'' <- mapM (xmlObject path) children'
-	return $ A.mkElement (A.mkName "node")
-		(mkAttr "name" (TL.unpack relpath))
-		(A.catA . concat $
-			[ map xmlInterface interfaces
-			, children''
-			])
+	xmlObject' relpath obj
 
 <<DBus/Introspection.hs>>=
-xmlInterface :: A.ArrowXml a => Interface -> a n A.XmlTree
+xmlObject' :: Text -> Object -> Maybe (H.Content a)
+xmlObject' path (Object fullPath interfaces children') = do
+	children'' <- mapM (xmlObject fullPath) children'
+	return $ mkElement "node"
+		[mkAttr "name" $ TL.unpack path]
+		$ concat
+			[ map xmlInterface interfaces
+			, children''
+			]
+
+<<DBus/Introspection.hs>>=
+xmlInterface :: Interface -> H.Content a
 xmlInterface (Interface name methods signals properties) =
-	A.mkElement (A.mkName "interface")
-		(mkAttr "name" . TL.unpack . T.strInterfaceName $ name)
-		(A.catA . concat $
+	mkElement "interface"
+		[mkAttr "name" . TL.unpack . T.strInterfaceName $ name]
+		$ concat
 			[ map xmlMethod methods
 			, map xmlSignal signals
 			, map xmlProperty properties
-			])
+			]
 
 <<DBus/Introspection.hs>>=
-xmlMethod :: A.ArrowXml a => Method -> a n A.XmlTree
-xmlMethod (Method name inParams outParams) = A.mkElement (A.mkName "method")
-	(mkAttr "name" . TL.unpack . T.strMemberName $ name)
-	(A.catA . concat $
+xmlMethod :: Method -> H.Content a
+xmlMethod (Method name inParams outParams) = mkElement "method"
+	[mkAttr "name" . TL.unpack . T.strMemberName $ name]
+	$ concat
 		[ map (xmlParameter "in") inParams
 		, map (xmlParameter "out") outParams
-		])
+		]
 
 <<DBus/Introspection.hs>>=
-xmlSignal :: A.ArrowXml a => Signal -> a n A.XmlTree
-xmlSignal (Signal name params) = A.mkElement (A.mkName "signal")
-	(mkAttr "name" . TL.unpack . T.strMemberName $ name)
-	(A.catA (map (xmlParameter "out") params))
+xmlSignal :: Signal -> H.Content a
+xmlSignal (Signal name params) = mkElement "signal"
+	[mkAttr "name" . TL.unpack . T.strMemberName $ name]
+	$ map (xmlParameter "out") params
 
 <<DBus/Introspection.hs>>=
-xmlParameter :: A.ArrowXml a => String -> Parameter -> a n A.XmlTree
-xmlParameter direction (Parameter name sig) = A.mkElement (A.mkName "arg")
-	(A.catA [ mkAttr "name" . TL.unpack $ name
-	        , mkAttr "type" . TL.unpack . T.strSignature $ sig
-	        , mkAttr "direction" direction
-	        ])
-	A.none
+xmlParameter :: String -> Parameter -> H.Content a
+xmlParameter direction (Parameter name sig) = mkElement "arg"
+	[ mkAttr "name" . TL.unpack $ name
+	, mkAttr "type" . TL.unpack . T.strSignature $ sig
+	, mkAttr "direction" direction
+	] []
 
 <<DBus/Introspection.hs>>=
-xmlProperty :: A.ArrowXml a => Property -> a n A.XmlTree
-xmlProperty (Property name sig access) = A.mkElement (A.mkName "property")
-	(A.catA [ mkAttr "name" . TL.unpack $ name
-	        , mkAttr "type" . TL.unpack . T.strSignature $ sig
-	        , mkAttr "access" $ xmlAccess access
-	        ])
-	A.none
+xmlProperty :: Property -> H.Content a
+xmlProperty (Property name sig access) = mkElement "property"
+	[ mkAttr "name" . TL.unpack $ name
+	, mkAttr "type" . TL.unpack . T.strSignature $ sig
+	, mkAttr "access" $ xmlAccess access
+	] []
 
 <<DBus/Introspection.hs>>=
 xmlAccess :: [PropertyAccess] -> String
@@ -2871,8 +2871,14 @@ xmlAccess access = read ++ write where
 	write = if elem Write access then "write" else ""
 
 <<DBus/Introspection.hs>>=
-mkAttr :: A.ArrowXml a => String -> String -> a n A.XmlTree
-mkAttr name = A.mkAttr (A.mkName name) . A.txt
+mkElement :: String -> [H.Attribute] -> [H.Content a] -> H.Content a
+mkElement name attrs contents = H.CElem (H.Elem name attrs contents) undefined
+
+<<DBus/Introspection.hs>>=
+mkAttr :: String -> String -> H.Attribute
+mkAttr name value = (name, H.AttValue [Left escaped]) where
+	raw = H.CString True value ()
+	escaped = H.verbatim $ H.xmlEscapeContent H.stdXmlEscaper [raw]
 
 @
 \section{Constants}
