@@ -13,8 +13,9 @@ bug-reports: mailto:jmillikin@gmail.com
 
 extra-source-files:
   dbus-core.nw
-  Tests.nw
   Examples/*.hs
+  Makefile
+  Tests.nw
 
 source-repository head
   type: darcs
