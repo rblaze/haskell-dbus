@@ -2161,8 +2161,6 @@ data ConnectionError
 	deriving (Show, Typeable)
 
 instance E.Exception ConnectionError
-instance E.Exception W.MarshalError
-instance E.Exception W.UnmarshalError
 
 <<connection exports>>=
 , ConnectionError (..)
@@ -2247,13 +2245,15 @@ multi-threaded clients.
 import qualified DBus.Wire as W
 
 <<DBus/Connection.hs>>=
-send :: M.Message a => Connection -> (M.Serial -> IO b) -> a -> IO b
-send (Connection _ t mvar) io msg = withSerial mvar $ \serial -> do
-	x <- io serial
+send :: M.Message a => Connection -> (M.Serial -> IO b) -> a
+     -> IO (Either W.MarshalError b)
+send (Connection _ t mvar) io msg = withSerial mvar $ \serial ->
 	case W.marshalMessage W.LittleEndian serial msg of
-		Right bytes -> transportSend t bytes
-		Left  err   -> E.throwIO err
-	return x
+		Right bytes -> do
+			x <- io serial
+			transportSend t bytes
+			return $ Right x
+		Left  err   -> return $ Left err
 
 <<connection exports>>=
 , send
@@ -2271,12 +2271,8 @@ withSerial m io = E.block $ do
 error is encountered while unmarshaling, an exception will be thrown.
 
 <<DBus/Connection.hs>>=
-receive :: Connection -> IO M.ReceivedMessage
-receive (Connection _ t _) = do
-	either' <- W.unmarshalMessage $ transportRecv t
-	case either' of
-		Right x -> return x
-		Left err -> E.throwIO err
+receive :: Connection -> IO (Either W.UnmarshalError M.ReceivedMessage)
+receive (Connection _ t _) = W.unmarshalMessage $ transportRecv t
 
 <<connection exports>>=
 , receive
@@ -2307,6 +2303,7 @@ import qualified DBus.Connection as C
 import DBus.Constants (dbusName, dbusPath, dbusInterface)
 import qualified DBus.Message as M
 import qualified DBus.Types as T
+import DBus.Util (fromRight)
 
 @ Connecting to a message bus is a bit more involved than just connecting
 over an app-to-app connection: the bus must be notified of the new client,
@@ -2376,7 +2373,7 @@ hello = M.MethodCall dbusPath
 <<DBus/Bus.hs>>=
 sendHello :: C.Connection -> IO T.BusName
 sendHello c = do
-	serial <- C.send c return hello
+	serial <- fromRight `fmap` C.send c return hello
 	reply <- waitForReply c serial
 	let name = case M.methodReturnBody reply of
 		(x:_) -> T.fromVariant x
@@ -2390,7 +2387,10 @@ sendHello c = do
 <<DBus/Bus.hs>>=
 waitForReply :: C.Connection -> M.Serial -> IO M.MethodReturn
 waitForReply c serial = do
-	msg <- C.receive c
+	received <- C.receive c
+	msg <- case received of
+		Right x -> return x
+		Left err -> E.throwIO $ E.AssertionFailed "Invalid response to Hello()"
 	case msg of
 		(M.ReceivedMethodReturn _ _ reply) ->
 			if M.methodReturnSerial reply == serial
@@ -3055,13 +3055,7 @@ errorInconsistentMessage = T.mkErrorName' "org.freedesktop.DBus.Error.Inconsiste
 
 <<DBus/Util.hs>>=
 <<copyright>>
-module DBus.Util
-	( checkLength
-	, parseMaybe
-	, mkUnsafe
-	, hexToInt
-	, eitherToMaybe
-	) where
+module DBus.Util where
 import Text.Parsec (Parsec, parse)
 import Data.Char (digitToInt)
 
@@ -3083,5 +3077,9 @@ hexToInt = foldl ((+) . (16 *)) 0 . map digitToInt
 eitherToMaybe :: Either a b -> Maybe b
 eitherToMaybe (Left  _) = Nothing
 eitherToMaybe (Right x) = Just x
+
+fromRight :: Either a b -> b
+fromRight (Right x) = x
+fromRight _ = error "DBus.Util.fromRight: Left"
 
 @ \end{document}
