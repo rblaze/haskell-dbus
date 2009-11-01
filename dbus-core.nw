@@ -384,7 +384,7 @@ an array of booleans would have the type string ``ab''.
 typeCode (DBusArray t) = TL.cons 'a' $ typeCode t
 
 @ A dictionary's type code is ``a\{$key\_type$ $value\_type$\}''. For example,
-a dictionary of bytes to booleans would have the type string ``a{yb}''.
+a dictionary of bytes to booleans would have the type string ``a\{yb\}''.
 
 <<DBus/Types.hs>>=
 typeCode (DBusDictionary k v) = TL.concat ["a{", typeCode k, typeCode v, "}"]
