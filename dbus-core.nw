@@ -1351,7 +1351,7 @@ unmarshalGet count be le = do
 
 unmarshalGet' :: T.Variable a => Word8 -> G.Get a -> G.Get a
               -> Unmarshal T.Variant
-unmarshalGet' count be le = fmap T.toVariant $ unmarshalGet count be le
+unmarshalGet' count be le = T.toVariant `fmap` unmarshalGet count be le
 
 <<DBus/Wire.hs>>=
 untilM :: Monad m => m Bool -> m a -> m [a]
@@ -1556,7 +1556,7 @@ marshalSignature x = do
 <<DBus/Wire.hs>>=
 unmarshalSignature :: Unmarshal T.Signature
 unmarshalSignature = do
-	byteCount <- fmap L.head $ consume 1
+	byteCount <- L.head `fmap` consume 1
 	sigText <- fmap decodeUtf8 $ consume . fromIntegral $ byteCount
 	skipTerminator
 	fromMaybeU "signature" T.mkSignature sigText
@@ -1581,7 +1581,7 @@ alignment (T.DBusArray _) = 4
 marshalType (T.DBusArray _) = marshalArray x
 
 <<unmarshalers>>=
-unmarshalType (T.DBusArray t) = fmap T.toVariant $ unmarshalArray t
+unmarshalType (T.DBusArray t) = T.toVariant `fmap` unmarshalArray t
 
 @ Marshaling arrays is complicated, because the array body must be marshaled
 \emph{first} to calculate the array length. This requires building a
@@ -1686,7 +1686,7 @@ unmarshalType T.DBusVariant = do
 		_   -> Nothing
 	
 	t <- fromMaybeU "variant signature" getType =<< unmarshalSignature
-	fmap T.toVariant $ unmarshalType t
+	T.toVariant `fmap` unmarshalType t
 
 @ \subsection{Messages}
 
@@ -1894,7 +1894,7 @@ header <- unmarshal' headerSig headerBytes
 <<read full header>>=
 let fieldArray = fromJust . T.fromVariant $ header !! 6
 let fieldStructures = fromJust . T.fromArray $ fieldArray
-fields <- fmap concat $ mapM decodeField fieldStructures
+fields <- concat `fmap` mapM decodeField fieldStructures
 
 @ The body is always aligned to 8 bytes, so pull out the padding before
 unmarshaling it.
@@ -2080,7 +2080,7 @@ unix a = handleTransport . N.connectTo "localhost" =<< port where
 	abstract = Map.lookup "abstract" params
 	
 	tooMany = "Only one of `path' or `abstract' may be specified for the\
-	          \ `unix' method."
+	          \ `unix' transport."
 	tooFew = "One of `path' or `abstract' must be specified for the\
 	         \ `unix' transport."
 	
@@ -2284,11 +2284,11 @@ receive (Connection _ t _) = W.unmarshalMessage $ transportRecv t
 <<copyright>>
 <<text extensions>>
 module DBus.Bus
-	( getSystemBus
+	( getBus
+	, getFirstBus
+	, getSystemBus
 	, getSessionBus
 	, getStarterBus
-	, getFirstBus
-	, getBus
 	) where
 <<text imports>>
 
@@ -2321,13 +2321,10 @@ connected bus will be returned.
 
 <<DBus/Bus.hs>>=
 getFirstBus :: [A.Address] -> IO (C.Connection, T.BusName)
-getFirstBus as = getFirstBus' as as
-
-getFirstBus' :: [A.Address] -> [A.Address] -> IO (C.Connection, T.BusName)
-getFirstBus' orig     [] = E.throwIO $ C.NoWorkingAddress orig
-getFirstBus' orig (a:as) = E.catch (getBus a) onError where
-	onError :: E.SomeException -> IO (C.Connection, T.BusName)
-	onError _ = getFirstBus' orig as
+getFirstBus orig = getFirstBus' orig where
+	getFirstBus'     [] = E.throwIO $ C.NoWorkingAddress orig
+	getFirstBus' (a:as) = E.catch (getBus a) $
+		\(E.SomeException _)  -> getFirstBus' as
 
 @ \subsection{Default connections}
 
@@ -2390,7 +2387,7 @@ waitForReply c serial = do
 	received <- C.receive c
 	msg <- case received of
 		Right x -> return x
-		Left err -> E.throwIO $ E.AssertionFailed "Invalid response to Hello()"
+		Left _  -> E.throwIO $ E.AssertionFailed "Invalid response to Hello()"
 	case msg of
 		(M.ReceivedMethodReturn _ _ reply) ->
 			if M.methodReturnSerial reply == serial
@@ -2760,7 +2757,7 @@ isParam dirs content = do
 
 <<DBus/Introspection.hs>>=
 children :: Monad m => (H.Element a -> m b) -> H.CFilter a -> H.Element a -> m [b]
-children f filt (H.Elem _ _ contents) = do
+children f filt (H.Elem _ _ contents) =
 	mapM f [x | (H.CElem x _) <- concatMap filt contents]
 
 @ \subsection{Generating XML}
@@ -2797,7 +2794,7 @@ path, and children must have paths relative to their parent.
 xmlRoot :: Object -> Maybe (H.Element a)
 xmlRoot obj@(Object path _ _) = do
 	(H.CElem root _) <- xmlObject' (T.strObjectPath path) obj
-	return $ root
+	return root
 
 <<DBus/Introspection.hs>>=
 xmlObject :: T.ObjectPath -> Object -> Maybe (H.Content a)
