@@ -98,7 +98,7 @@ module DBus.Types (<<type exports>>) where
 <<text imports>>
 <<type imports>>
 
-@ DBus types are divided into two categories, ``atomic'' and ``container''
+@ D-Bus types are divided into two categories, ``atomic'' and ``container''
 types. Atoms are actual values -- strings, numbers, etc. Containers store
 atoms and other containers. The most interesting difference between the two
 is that atoms may be used as the keys in associative mappings
@@ -322,11 +322,11 @@ instance Variable String where
 
 @ \subsection{Signatures}
 
-@ Valid DBus types must obey certain rules, such as ``dict keys must be
+@ Valid D-Bus types must obey certain rules, such as ``dict keys must be
 atomic'', which are difficult to express in the Haskell type system.  A
 {\tt Signature} is guaranteed to be valid according to these rules. Creating
 one requires using the {\tt mkSignature} function, which will convert a valid
-DBus signature string into a {\tt Signature}.
+D-Bus signature string into a {\tt Signature}.
 
 <<DBus/Types.hs>>=
 BUILTIN_VARIABLE(Signature, DBusSignature)
@@ -514,7 +514,7 @@ mkObjectPath' = mkUnsafe "object path" mkObjectPath
 
 @ \subsection{Arrays}
 
-Arrays are homogenous sequences of any valid DBus type. Arrays might be
+Arrays are homogenous sequences of any valid D-Bus type. Arrays might be
 empty, so the type they contain is stored instead of being calculated from
 their contents (as in {\tt variantType}).
 
@@ -581,7 +581,7 @@ fromArray = mapM fromVariant . arrayItems
 @ \subsection{Dictionaries}
 
 Dictionaries are a homogenous (key $\rightarrow$ value) mapping, where the
-key type must be atomic. Values may be of any valid DBus type. Like
+key type must be atomic. Values may be of any valid D-Bus type. Like
 {\tt Array}, {\tt Dictionary} stores its contained types.
 
 <<DBus/Types.hs>>=
@@ -720,7 +720,7 @@ instance Builtin Structure where
 
 @ \subsection{Names}
 
-Various aspects of DBus require the use of specially-formatted strings,
+Various aspects of D-Bus require the use of specially-formatted strings,
 called ``names''. All names are limited to 255 characters, and use subsets
 of ASCII.
 
@@ -1047,7 +1047,7 @@ instance Message Signal where
 @ \subsubsection{Unknown messages}
 
 Unknown messages are used for storing information about messages without
-a recognized type code. They are not instances of {\tt Message}, because
+a recognised type code. They are not instances of {\tt Message}, because
 if they were, then clients could accidentally send invalid messages over
 the bus.
 
@@ -2017,7 +2017,7 @@ module DBus.Connection
 <<text imports>>
 <<connection imports>>
 
-@ A {\tt Connection} is an opaque handle to an open DBus channel, with
+@ A {\tt Connection} is an opaque handle to an open D-Bus channel, with
 an internal state for maintaining the current message serial.
 
 <<connection imports>>=
@@ -2145,7 +2145,7 @@ unknownTransport = E.throwIO . UnknownMethod
 
 @ \subsection{Errors}
 
-If connecting to DBus fails, a {\tt ConnectionError} will be thrown.
+If connecting to D-Bus fails, a {\tt ConnectionError} will be thrown.
 The constructor describes which exception occurred.
 
 <<connection imports>>=
@@ -2522,7 +2522,7 @@ strAddress (Address t ps) = TL.concat [t, ":", ps'] where
 @
 \section{Introspection}
 
-@ DBus objects may be ``introspected'' to determine which methods, signals,
+@ D-Bus objects may be ``introspected'' to determine which methods, signals,
 etc they support. Intospection data is sent over the bus in {\sc xml}, in
 a mostly standardised but undocumented format.
 
