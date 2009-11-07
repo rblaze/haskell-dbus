@@ -1622,7 +1622,7 @@ import qualified DBus.Constants as C
 <<DBus/Wire.hs>>=
 marshalArray :: T.Array -> Marshal
 marshalArray x = do
-	(arrayPadding, arrayBytes) <- getArrayBytes x
+	(arrayPadding, arrayBytes) <- getArrayBytes (T.arrayType x) x
 	let arrayLen = L.length arrayBytes
 	when (arrayLen > fromIntegral C.arrayMaximumLength)
 		(E.throwError $ ArrayTooLong $ fromIntegral arrayLen)
@@ -1631,10 +1631,13 @@ marshalArray x = do
 	append arrayBytes
 
 <<DBus/Wire.hs>>=
-getArrayBytes :: T.Array -> MarshalM (L.ByteString, L.ByteString)
-getArrayBytes x = do
+getArrayBytes :: T.Type -> T.Array -> MarshalM (L.ByteString, L.ByteString)
+getArrayBytes T.DBusByte x = return (L.empty, bytes) where
+	Just bytes = T.arrayToBytes x
+
+<<DBus/Wire.hs>>=
+getArrayBytes itemType x = do
 	let vs = T.arrayItems x
-	let itemType = T.arrayType x
 	s <- ST.get
 	(MarshalState _ afterLength) <- marshalWord32 0 >> ST.get
 	(MarshalState _ afterPadding) <- pad (alignment itemType) >> ST.get
@@ -1646,10 +1649,15 @@ getArrayBytes x = do
 	ST.put s
 	return (paddingBytes, itemBytes)
 
-@ Unmarshaling is much easier
+@ Unmarshaling is much easier, especially if it's a byte array.
 
 <<DBus/Wire.hs>>=
 unmarshalArray :: T.Type -> Unmarshal T.Array
+unmarshalArray T.DBusByte = do
+	byteCount <- unmarshalWord32
+	T.arrayFromBytes `fmap` consume (fromIntegral byteCount)
+
+<<DBus/Wire.hs>>=
 unmarshalArray itemType = do
 	let getOffset = do
 		(UnmarshalState _ _ o) <- ST.get
