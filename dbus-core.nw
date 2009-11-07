@@ -518,20 +518,30 @@ Arrays are homogenous sequences of any valid D-Bus type. Arrays might be
 empty, so the type they contain is stored instead of being calculated from
 their contents (as in {\tt variantType}).
 
-TODO: There ought to be a specialised constructor for arrays of bytes, based
-on the {\tt ByteString} type. Storing bytes individually in a list of
-{\tt Variant}s is inefficient.
+Many D-Bus APIs represent binary data using an array of bytes; therefore,
+there is a special constructor for {\tt ByteString}-based arrays.
+
+<<type imports>>=
+import Data.ByteString.Lazy (ByteString)
+import qualified Data.ByteString.Lazy as ByteString
 
 <<DBus/Types.hs>>=
 INSTANCE_VARIABLE(Array)
-data Array = Array
-	{ arrayType  :: Type
-	, arrayItems :: [Variant]
-	}
+data Array
+	= VariantArray Type [Variant]
+	| ByteArray ByteString
 	deriving (Eq, Typeable)
 
 instance Builtin Array where
 	builtinDBusType = DBusArray . arrayType
+
+arrayType :: Array -> Type
+arrayType (VariantArray t _) = t
+arrayType (ByteArray _) = DBusByte
+
+arrayItems :: Array -> [Variant]
+arrayItems (VariantArray _ xs) = xs
+arrayItems (ByteArray xs) = map toVariant $ ByteString.unpack xs
 
 <<type exports>>=
   -- * Arrays
@@ -544,12 +554,12 @@ just useful for debugging.
 
 <<DBus/Types.hs>>=
 instance Show Array where
-	showsPrec d (Array t vs) = showParen (d > 10) $
+	showsPrec d array = showParen (d > 10) $
 		s "Array " . showSig . s " [" . s valueString . s "]" where
 			s = showString
-			showSig = shows $ typeCode t
-			vs' = [show x | (Variant x) <- vs]
-			valueString = intercalate ", " vs'
+			showSig = shows . typeCode . arrayType $ array
+			vs = [show x | (Variant x) <- arrayItems array]
+			valueString = intercalate ", " vs
 
 @ Clients constructing an array must provide the expected item type, which
 will be checked for validity. Every item in the array will be checked against
@@ -557,10 +567,14 @@ the item type, to ensure the array is homogenous.
 
 <<DBus/Types.hs>>=
 arrayFromItems :: Type -> [Variant] -> Maybe Array
+arrayFromItems DBusByte vs = do
+	bytes <- mapM fromVariant vs
+	Just . ByteArray . ByteString.pack $ bytes
+
 arrayFromItems t vs = do
 	mkSignature (typeCode t)
 	if all (\x -> variantType x == t) vs
-		then Just $ Array t vs
+		then Just $ VariantArray t vs
 		else Nothing
 
 @ Additionally, for ease of use, an {\tt Array} can be converted directly
@@ -577,6 +591,21 @@ fromArray = mapM fromVariant . arrayItems
 , toArray
 , fromArray
 , arrayFromItems
+
+@ To provide a more efficient interface for byte array literals, these
+functions bypass the conversions in {\tt toArray} and {\tt fromArray}
+
+<<DBus/Types.hs>>=
+arrayToBytes :: Array -> Maybe ByteString
+arrayToBytes (ByteArray x) = Just x
+arrayToBytes _             = Nothing
+
+arrayFromBytes :: ByteString -> Array
+arrayFromBytes = ByteArray
+
+<<type exports>>=
+, arrayToBytes
+, arrayFromBytes
 
 @ \subsection{Dictionaries}
 
@@ -685,16 +714,16 @@ dictionaryToArray (Dictionary kt vt items) = array where
 
 <<DBus/Types.hs>>=
 arrayToDictionary :: Array -> Maybe Dictionary
-arrayToDictionary (Array t items) = do
+arrayToDictionary array = do
 	let toPair x = do
 		struct <- fromVariant x
 		case struct of
 			Structure [k, v] -> Just (k, v)
 			_                -> Nothing
-	(kt, vt) <- case t of
+	(kt, vt) <- case arrayType array of
 		DBusStructure [kt, vt] -> Just (kt, vt)
 		_                      -> Nothing
-	pairs <- mapM toPair items
+	pairs <- mapM toPair $ arrayItems array
 	dictionaryFromItems kt vt pairs
 
 <<type exports>>=
