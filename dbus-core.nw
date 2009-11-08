@@ -1310,7 +1310,7 @@ Unmarshaling also uses an error transformer and internal state.
 , runUnmarshal
 
 <<DBus/Wire.hs>>=
-data UnmarshalState = UnmarshalState Endianness L.ByteString Word64
+data UnmarshalState = UnmarshalState Endianness L.ByteString !Word64
 newtype Unmarshal a = Unmarshal (E.ErrorT UnmarshalError (ST.State UnmarshalState) a)
 	deriving (Monad, Functor, E.MonadError UnmarshalError, ST.MonadState UnmarshalState)
 
@@ -1332,12 +1332,11 @@ unmarshalType :: T.Type -> Unmarshal T.Variant
 consume :: Word64 -> Unmarshal L.ByteString
 consume count = do
 	(UnmarshalState e bytes offset) <- ST.get
-	let bytes' = L.drop (fromIntegral offset) bytes
-	let x = L.take (fromIntegral count) bytes'
+	let (x, bytes') = L.splitAt (fromIntegral count) bytes
 	unless (L.length x == fromIntegral count) $
 		E.throwError $ UnexpectedEOF offset
 	
-	ST.put $ UnmarshalState e bytes (offset + count)
+	ST.put $ UnmarshalState e bytes' (offset + count)
 	return x
 
 <<DBus/Wire.hs>>=
