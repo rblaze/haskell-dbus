@@ -2190,13 +2190,16 @@ module DBus.Connection
 @ A {\tt Connection} is an opaque handle to an open D-Bus channel, with
 an internal state for maintaining the current message serial.
 
+The second {\tt MVar} doesn't really store a value, it's just used to
+prevent two separate threads from reading from the transport at once.
+
 <<connection imports>>=
 import qualified Control.Concurrent as C
 import qualified DBus.Address as A
 import qualified DBus.Message.Internal as M
 
 <<DBus/Connection.hs>>=
-data Connection = Connection A.Address Transport (C.MVar M.Serial)
+data Connection = Connection A.Address Transport (C.MVar M.Serial) (C.MVar ())
 
 <<connection exports>>=
   Connection
@@ -2206,7 +2209,7 @@ data Connection = Connection A.Address Transport (C.MVar M.Serial)
 
 <<DBus/Connection.hs>>=
 instance Show Connection where
-	showsPrec d (Connection a _ _) = showParen (d > 10) $
+	showsPrec d (Connection a _ _ _) = showParen (d > 10) $
 		showString' ["<connection ", show $ A.strAddress a, ">"] where
 		showString' = foldr (.) id . map showString
 
@@ -2352,8 +2355,9 @@ connect a = do
 	let putS = transportSend t . encodeUtf8 . TL.pack
 	let getS = fmap (TL.unpack . decodeUtf8) . transportRecv t
 	authenticate putS getS
+	readLock <- C.newMVar ()
 	serialMVar <- C.newMVar M.firstSerial
-	return $ Connection a t serialMVar
+	return $ Connection a t serialMVar readLock
 
 <<connection exports>>=
 , connect
@@ -2417,7 +2421,7 @@ import qualified DBus.Wire as W
 <<DBus/Connection.hs>>=
 send :: M.Message a => Connection -> (M.Serial -> IO b) -> a
      -> IO (Either W.MarshalError b)
-send (Connection _ t mvar) io msg = withSerial mvar $ \serial ->
+send (Connection _ t mvar _) io msg = withSerial mvar $ \serial ->
 	case W.marshalMessage W.LittleEndian serial msg of
 		Right bytes -> do
 			x <- io serial
@@ -2442,7 +2446,8 @@ error is encountered while unmarshaling, an exception will be thrown.
 
 <<DBus/Connection.hs>>=
 receive :: Connection -> IO (Either W.UnmarshalError M.ReceivedMessage)
-receive (Connection _ t _) = W.unmarshalMessage $ transportRecv t
+receive (Connection _ t _ lock) = C.withMVar lock $ \_ ->
+	W.unmarshalMessage $ transportRecv t
 
 <<connection exports>>=
 , receive
