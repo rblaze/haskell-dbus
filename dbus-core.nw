@@ -1190,18 +1190,22 @@ padding current count = required where
 @ \subsection{Marshaling}
 
 Marshaling is implemented using an error transformer over an internal
-state.
+state. The {\tt Builder} type is used for efficient construction of lazy
+byte strings, but it doesn't provide any way to retrieve the length of its
+internal buffer, so the byte count is tracked separately.
 
 <<wire imports>>=
 import qualified Control.Monad.State as ST
 import qualified Control.Monad.Error as E
 import qualified Data.ByteString.Lazy as L
+import qualified Data.Binary.Builder as B
 
 <<wire extensions>>=
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE BangPatterns #-}
 
 <<DBus/Wire.hs>>=
-data MarshalState = MarshalState Endianness L.ByteString
+data MarshalState = MarshalState Endianness B.Builder !Word64
 newtype MarshalM a = MarshalM (E.ErrorT MarshalError (ST.State MarshalState) a)
 	deriving (Monad, E.MonadError MarshalError, ST.MonadState MarshalState)
 type Marshal = MarshalM ()
@@ -1218,9 +1222,9 @@ which will generate a {\tt ByteString} with the fully marshaled data.
 <<DBus/Wire.hs>>=
 runMarshal :: Marshal -> Endianness -> Either MarshalError L.ByteString
 runMarshal (MarshalM m) e = case ST.runState (E.runErrorT m) initialState of
-	(Right _, MarshalState _ bytes) -> Right bytes
+	(Right _, MarshalState _ builder _) -> Right (B.toLazyByteString builder)
 	(Left  x, _) -> Left x
-	where initialState = MarshalState e L.empty
+	where initialState = MarshalState e B.empty 0
 
 <<DBus/Wire.hs>>=
 marshal :: T.Variant -> Marshal
@@ -1234,32 +1238,32 @@ marshal v = marshalType (T.variantType v) where
 
 <<DBus/Wire.hs>>=
 append :: L.ByteString -> Marshal
-append bs = do
-	(MarshalState e bs') <- ST.get
-	ST.put $ MarshalState e (L.append bs' bs)
+append bytes = do
+	(MarshalState e builder count) <- ST.get
+	let builder' = B.append builder $ B.fromLazyByteString bytes
+	    count' = count + (fromIntegral $ L.length bytes)
+	ST.put $ MarshalState e builder' count'
 
 <<DBus/Wire.hs>>=
 pad :: Word8 -> Marshal
 pad count = do
-	(MarshalState _ bytes) <- ST.get
-	let padding' = padding (fromIntegral . L.length $ bytes) count
-	append $ L.replicate (fromIntegral padding') 0
+	(MarshalState _ _ existing) <- ST.get
+	let padding' = fromIntegral $ padding existing count
+	append $ L.replicate padding' 0
 
 @ Most numeric values already have marshalers implemented in the
-{\tt Data.Binary.Put} module; this function lets them be re-used easily.
-
-<<wire imports>>=
-import qualified Data.Binary.Put as P
+{\tt Data.Binary.Builder} module; this function lets them be re-used easily.
 
 <<DBus/Wire.hs>>=
-marshalPut :: (a -> P.Put) -> a -> Marshal
-marshalPut put x = do
-	let bytes = P.runPut $ put x
-	(MarshalState e _) <- ST.get
-	pad . fromIntegral . L.length $ bytes
-	append $ case e of
-		BigEndian -> bytes
-		LittleEndian -> L.reverse bytes
+marshalBuilder :: Word8 -> (a -> B.Builder) -> (a -> B.Builder) -> a -> Marshal
+marshalBuilder size be le x = do
+	pad size
+	(MarshalState e builder count) <- ST.get
+	let builder' = B.append builder $ case e of
+		BigEndian -> be x
+		LittleEndian -> le x
+	let count' = count + (fromIntegral size)
+	ST.put $ MarshalState e builder' count'
 
 @ \subsubsection{Errors}
 
@@ -1462,19 +1466,19 @@ separate functions for handling them.
 
 <<DBus/Wire.hs>>=
 marshalWord32 :: Word32 -> Marshal
-marshalWord32 = marshalPut P.putWord32be
+marshalWord32 = marshalBuilder 4 B.putWord32be B.putWord32le
 
 unmarshalWord32 :: Unmarshal Word32
 unmarshalWord32 = unmarshalGet 4 G.getWord32be G.getWord32le
 
 <<marshalers>>=
 marshalType T.DBusByte   = append $ L.singleton x
-marshalType T.DBusWord16 = marshalPut P.putWord16be x
-marshalType T.DBusWord32 = marshalPut P.putWord32be x
-marshalType T.DBusWord64 = marshalPut P.putWord64be x
-marshalType T.DBusInt16  = marshalPut P.putWord16be $ fromIntegral (x :: Int16)
-marshalType T.DBusInt32  = marshalPut P.putWord32be $ fromIntegral (x :: Int32)
-marshalType T.DBusInt64  = marshalPut P.putWord64be $ fromIntegral (x :: Int64)
+marshalType T.DBusWord16 = marshalBuilder 2 B.putWord16be B.putWord16le x
+marshalType T.DBusWord32 = marshalBuilder 4 B.putWord32be B.putWord32le x
+marshalType T.DBusWord64 = marshalBuilder 8 B.putWord64be B.putWord64le x
+marshalType T.DBusInt16  = marshalBuilder 2 B.putWord16be B.putWord16le $ fromIntegral (x :: Int16)
+marshalType T.DBusInt32  = marshalBuilder 4 B.putWord32be B.putWord32le $ fromIntegral (x :: Int32)
+marshalType T.DBusInt64  = marshalBuilder 8 B.putWord64be B.putWord64le $ fromIntegral (x :: Int64)
 
 <<unmarshalers>>=
 unmarshalType T.DBusByte = fmap (T.toVariant . L.head) $ consume 1
@@ -1497,10 +1501,18 @@ unmarshalType T.DBusInt64  = do
 @ {\tt Double}s are marshaled as in-bit IEEE-754 floating-point format.
 
 <<wire imports>>=
+import Data.Binary.Put (runPut)
 import qualified Data.Binary.IEEE754 as IEEE
 
 <<marshalers>>=
-marshalType T.DBusDouble = marshalPut IEEE.putFloat64be x
+marshalType T.DBusDouble = do
+	pad 8
+	(MarshalState e _ _) <- ST.get
+	let put = case e of
+		BigEndian -> IEEE.putFloat64be
+		LittleEndian -> IEEE.putFloat64le
+	let bytes = runPut $ put x
+	append bytes
 
 <<unmarshalers>>=
 unmarshalType T.DBusDouble = unmarshalGet' 8 IEEE.getFloat64be IEEE.getFloat64le
@@ -1627,27 +1639,29 @@ marshalArray x = do
 	when (arrayLen > fromIntegral C.arrayMaximumLength)
 		(E.throwError $ ArrayTooLong $ fromIntegral arrayLen)
 	marshalWord32 $ fromIntegral arrayLen
-	append arrayPadding
+	append $ L.replicate arrayPadding 0
 	append arrayBytes
 
 <<DBus/Wire.hs>>=
-getArrayBytes :: T.Type -> T.Array -> MarshalM (L.ByteString, L.ByteString)
-getArrayBytes T.DBusByte x = return (L.empty, bytes) where
+getArrayBytes :: T.Type -> T.Array -> MarshalM (Int64, L.ByteString)
+getArrayBytes T.DBusByte x = return (0, bytes) where
 	Just bytes = T.arrayToBytes x
 
 <<DBus/Wire.hs>>=
 getArrayBytes itemType x = do
 	let vs = T.arrayItems x
 	s <- ST.get
-	(MarshalState _ afterLength) <- marshalWord32 0 >> ST.get
-	(MarshalState _ afterPadding) <- pad (alignment itemType) >> ST.get
-	(MarshalState _ afterItems) <- mapM_ marshal vs >> ST.get
+	(MarshalState _ _ afterLength) <- marshalWord32 0 >> ST.get
+	(MarshalState e _ afterPadding) <- pad (alignment itemType) >> ST.get
 	
-	let paddingBytes = L.drop (L.length afterLength) afterPadding
-	let itemBytes = L.drop (L.length afterPadding) afterItems
+	ST.put $ MarshalState e B.empty afterPadding
+	(MarshalState _ itemBuilder _) <- mapM_ marshal vs >> ST.get
+	
+	let itemBytes = B.toLazyByteString itemBuilder
+	    paddingSize = fromIntegral $ afterPadding - afterLength
 	
 	ST.put s
-	return (paddingBytes, itemBytes)
+	return (paddingSize, itemBytes)
 
 @ Unmarshaling is much easier, especially if it's a byte array.
 
@@ -1813,9 +1827,10 @@ marshalMessage e serial msg = runMarshal marshaler e where
 		sig <- checkBodySig body
 		empty <- ST.get
 		mapM_ marshal body
-		(MarshalState _ bodyBytes) <- ST.get
+		(MarshalState _ bodyBytesB _) <- ST.get
 		ST.put empty
 		marshalEndianness e
+		let bodyBytes = B.toLazyByteString bodyBytesB
 		marshalHeader msg serial sig
 			$ fromIntegral . L.length $ bodyBytes
 		pad 8
@@ -1852,8 +1867,7 @@ marshalEndianness = marshal . T.toVariant . encodeEndianness
 <<DBus/Wire.hs>>=
 checkMaximumSize :: Marshal
 checkMaximumSize = do
-	(MarshalState _ messageBytes) <- ST.get
-	let messageLength = L.length messageBytes
+	(MarshalState _ _ messageLength) <- ST.get
 	when (messageLength > fromIntegral C.messageMaximumLength)
 		(E.throwError $ MessageTooLong $ fromIntegral messageLength)
 
