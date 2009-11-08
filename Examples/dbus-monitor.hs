@@ -85,8 +85,9 @@ defaultFilters =
 	, "type='error'"
 	]
 
-onMessage :: ReceivedMessage -> IO ()
-onMessage msg = putStrLn $ (TL.unpack $ formatMessage msg) ++ "\n"
+onMessage :: Either UnmarshalError ReceivedMessage -> IO ()
+onMessage (Right msg) = putStrLn $ (TL.unpack $ formatMessage msg) ++ "\n"
+onMessage (Left err) = error $ show err
 
 main :: IO ()
 main = do
