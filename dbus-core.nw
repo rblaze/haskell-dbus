@@ -607,6 +607,24 @@ arrayFromBytes = ByteArray
 , arrayToBytes
 , arrayFromBytes
 
+@ And to simplify inclusion of {\tt ByteString}s in message, instances of
+{\tt Variable} exist for both strict and lazy {\tt ByteString}.
+
+<<DBus/Types.hs>>=
+instance Variable ByteString where
+	toVariant = toVariant . arrayFromBytes
+	fromVariant x = fromVariant x >>= arrayToBytes
+
+<<type imports>>=
+import qualified Data.ByteString as StrictByteString
+
+<<DBus/Types.hs>>=
+instance Variable StrictByteString.ByteString where
+	toVariant x = toVariant . arrayFromBytes $ ByteString.fromChunks [x]
+	fromVariant x = do
+		chunks <- ByteString.toChunks `fmap` fromVariant x
+		return $ StrictByteString.concat chunks
+
 @ \subsection{Dictionaries}
 
 Dictionaries are a homogenous (key $\rightarrow$ value) mapping, where the
