@@ -1,0 +1,185 @@
+
+% Copyright (C) 2009 John Millikin <jmillikin@gmail.com>
+% 
+% This document is distributed under the terms of the Creative Commons
+% Attribution Share Alike 3.0 license. See
+% <http://creativecommons.org/licenses/by-sa/3.0/>.
+
+\documentclass[12pt]{article}
+
+\usepackage{color}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{noweb}
+\usepackage{url}
+\usepackage{multicol}
+
+% Smaller margins
+\usepackage[left=1.5cm,top=2cm,right=1.5cm,nohead,nofoot]{geometry}
+
+% Remove boxes from hyperlinks
+\hypersetup{
+    colorlinks,
+    linkcolor=blue,
+}
+
+\makeindex
+
+\begin{document}
+
+\addcontentsline{toc}{section}{Contents}
+\tableofcontents
+
+\section{Introduction}
+
+D-Bus is a low-latency, asynchronous IPC protocol. It is primarily used on
+Linux, BSD, and other free UNIX-like systems. More information is available
+at \url{http://dbus.freedesktop.org/}.
+
+This package is an implementation of the D-Bus protocol. It is intended
+for use in either a client or server, though currently only the client
+portion of connection establishment is implemented. Additionally, it
+implements the introspection file format.
+
+\section{The message bus}
+
+While it is possible to establish a connection between any two applications,
+D-Bus is most commonly used with a central bus. This bus authorises new
+connections, dispatches messages, broadcasts signals, and other ancilliary
+functions.
+
+\subsection{Connecting}
+
+Computations for connecting to a message bus are available in the
+{\tt DBus.Bus} module. Additionally, pre-defined computations exist for the
+standard {\sc system}, {\sc session}, and {\sc starter} buses.
+
+All bus connection computations return the opened connection, and the
+unique namd assigned by the bus to this client.
+
+\begin{verbatim}
+getBus        ::  Address  -> IO (Connection, BusName)
+getFirstBus   :: [Address] -> IO (Connection, BusName)
+getSystemBus  :: IO (Connection, BusName)
+getSessionBus :: IO (Connection, BusName)
+getStarterBus :: IO (Connection, BusName)
+\end{verbatim}
+
+\subsection{Sending and receiving messages}
+
+Once a connection has been established, messages may be sent or received
+from the bus. Received messages will be populated with their serial and
+origin, if available.
+
+If an IO error occurs, an exception will be raised. If the bytes received
+are invalid or for a different D-Bus version, a {\tt Left} value will be
+returned. See the generated API index for a list of possible error
+conditions.
+
+\begin{verbatim}
+send :: Message a => Connection -> (Serial -> IO b) -> a
+     -> IO (Either MarshalError b)
+\end{verbatim}
+\begin{verbatim}
+receive :: Connection -> IO (Either UnmarshalError ReceivedMessage)
+\end{verbatim}
+
+The second parameter to {\tt send} is useful for implementing method-call
+semantics -- it will be called before the message is sent to the bus, with
+the message's serial, and can be used to perform callback registration.
+
+\section{Types and values}
+
+To provide type-safe conversion between D-Bus and Haskell values, the
+{\tt DBus.Types} module defines types and functions for generating and
+inspecting D-Bus values. These are split into two categories, the
+``atomic'' and ``container'' types.
+
+\subsection{Containers}
+
+\subsubsection{Variants}
+
+{\tt Variant}s can store any type which is an instance of {\tt Variable}.
+Clients may implement this class to provide easier marshaling of custom
+data types. Any D-Bus value may be converted to a {\tt Variant} via the
+{\tt toVariant} function, and converted back using {\tt fromVariant}.
+
+\subsubsection{Arrays}
+
+{\tt Array}s are homogenous, arbitrary-length sequences. To ensure that
+all members have the same D-Bus type, {\tt Array}s must be built using
+{\tt toArray} or {\tt arrayFromItems}. They may be inspected using
+{\tt fromArray} and {\tt arrayItems}.
+
+To provide a more efficient interface for byte arrays, the {\tt arrayToBytes}
+and {\tt arrayFromBytes} functions convert between lazy {\tt ByteString}s
+and {\tt Array}s. Additionally, both lazy and strict {\tt ByteString}s are
+instances of {\tt Variable}.
+
+\subsubsection{Dictionaries}
+
+{\tt Dictionary} is a homogenous, arbitrary-size map. The key type must
+be atomic, but the value type may be any valid D-Bus type. Like {\tt Array},
+they are accessed via helper functions to enforce type safety.
+
+Dictionaries are constructed using {\tt toDictionary} or
+{\tt dictionaryFromItems}, and can be inspected using {\tt fromDictionary}
+or {\tt dictionaryItems}.
+
+\subsubsection{Structures}
+
+{\tt Structure}s are heterogeneous, fixed-length sequences, similar to
+Haskell tuples. They can be built using the {\tt Structure} constructor, and
+don't have any interesting functions.
+
+\subsection{Atomics}
+
+Most D-Bus atomic types map directly to an equivalent Haskell type.
+Instances of {\tt Variable} exist for the following Haskell types:
+
+\begin{multicols}{3}
+\begin{itemize}{\tt 
+\item Bool
+\item Double
+\item String
+\item Text
+\item Word8
+\item Word16
+\item Word32
+\item Word64
+\item Int16
+\item Int32
+\item Int64
+}
+\end{itemize}
+\end{multicols}
+
+In addition, there are some specially formatted text types defined in the
+D-Bus specification, so they are assigned their own types. Each text type
+has functions for parsing and display. Additionally, an ``unsafe'' parsing
+function is defined for cases where the input is known in advance to be
+valid.
+
+\begin{table}[h]
+\begin{tabular}{llll}
+\toprule
+Type & Display & Parsing & Unsafe parsing \\
+\midrule
+{\tt Signature} & {\tt strSignature} & {\tt mkSignature} & {\tt mkSignature'} \\
+{\tt ObjectPath} & {\tt strObjectPath} & {\tt mkObjectPath} & {\tt mkObjectPath'} \\
+{\tt BusName} & {\tt strBusName} & {\tt mkBusName} & {\tt mkBusName'} \\
+{\tt InterfaceName} & {\tt strInterfaceName} & {\tt mkInterfaceName} & {\tt mkInterfaceName'} \\
+{\tt ErrorName} & {\tt strErrorName} & {\tt mkErrorName} & {\tt mkErrorName'} \\
+{\tt MemberName} & {\tt strMemberName} & {\tt mkMemberName} & {\tt mkMemberName'} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Messages}
+
+Four message types are currently supported -- {\sc method\_call},
+{\sc method\_return}, {\sc error}, and {\sc signal}. Each message type has
+its own {\tt data} type, defined in {\tt DBus.Message}.
+
+\end{document}

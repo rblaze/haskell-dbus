@@ -31,8 +31,8 @@ hs/DBus:
 hs/DBus/Message:
 	mkdir -p hs/DBus/Message
 
-dbus-core.pdf: dbus-core.tex
-	xelatex dbus-core.tex
-	xelatex dbus-core.tex
+%.pdf: %.tex
+	xelatex "$<"
+	xelatex "$<"
 
-pdf: dbus-core.pdf
+pdfs: dbus-core.pdf manual.pdf
