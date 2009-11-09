@@ -3007,9 +3007,9 @@ xmlProperty (Property name sig access) = mkElement "property"
 
 <<DBus/Introspection.hs>>=
 xmlAccess :: [PropertyAccess] -> String
-xmlAccess access = read ++ write where
-	read = if elem Read access then "read" else ""
-	write = if elem Write access then "write" else ""
+xmlAccess access = readS ++ writeS where
+	readS = if elem Read access then "read" else ""
+	writeS = if elem Write access then "write" else ""
 
 <<DBus/Introspection.hs>>=
 mkElement :: String -> [H.Attribute] -> [H.Content a] -> H.Content a
