@@ -4,6 +4,7 @@ HS_SOURCES=\
 	hs/DBus/Connection.hs \
 	hs/DBus/Constants.hs \
 	hs/DBus/Introspection.hs \
+	hs/DBus/MatchRule.hs \
 	hs/DBus/Message.hs \
 	hs/DBus/Message/Internal.hs \
 	hs/DBus/Types.hs \

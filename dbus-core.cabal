@@ -51,6 +51,7 @@ library
     DBus.Connection
     DBus.Constants
     DBus.Introspection
+    DBus.MatchRule
     DBus.Message
     DBus.Types
 
