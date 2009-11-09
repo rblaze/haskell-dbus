@@ -2246,11 +2246,15 @@ data Transport = Transport
 	, transportRecv :: Word32 -> IO L.ByteString
 	}
 
+@ If a method has no known transport, attempting to connect using it will
+just result in an exception.
+
 <<DBus/Connection.hs>>=
 connectTransport :: A.Address -> IO Transport
 connectTransport a = transport' (A.addressMethod a) a where
 	transport' "unix" = unix
-	transport' _      = unknownTransport
+	transport' "tcp"  = tcp
+	transport' _      = E.throwIO . UnknownMethod
 
 @ \subsubsection{UNIX}
 
@@ -2265,7 +2269,7 @@ import qualified Data.Map as Map
 
 <<DBus/Connection.hs>>=
 unix :: A.Address -> IO Transport
-unix a = handleTransport . N.connectTo "localhost" =<< port where
+unix a = port >>= N.connectTo "localhost" >>= handleTransport where
 	params = A.addressParameters a
 	path = Map.lookup "path" params
 	abstract = Map.lookup "abstract" params
@@ -2284,30 +2288,108 @@ unix a = handleTransport . N.connectTo "localhost" =<< port where
 
 @ \subsubsection{TCP}
 
-known parameters:
+The {\sc tcp} transport has three parameters:
 
 \begin{itemize}
-\item {\tt host} (optional, default "{\tt localhost}")
-\item {\tt port}
-\item {\tt family} (optional, choices are "{\tt ipv4}" or "{\tt ipv6}"
+\item {\tt host} -- optional, defaults to {\tt "localhost"}
+\item {\tt port} -- unsigned 16-bit integer
+\item {\tt family} -- optional, defaults to {\sc unspec}, choices are
+      {\tt "ipv4"} or {\tt "ipv6"}
 \end{itemize}
 
-TCP support is TODO
+The high-level {\tt Network} module doesn't provide enough control over
+socket construction for this transport, so {\tt Network.Socket} must be
+imported.
 
-<<TODO>>=
+<<connection imports>>=
+import qualified Network.Socket as NS
+
+<<DBus/Connection.hs>>=
 tcp :: A.Address -> IO Transport
-tcp a@(A.Address _ params) = handleTransport a connect' where
-	host = lookup "host" params
-	port = parsePort =<< lookup "post" params
-	family = parseFamily =<< lookup "family" params
-	connect' = do
-		-- check host
-		-- check port
-		-- check family
-		-- return handle
-parsePort :: String -> Maybe PortNumber
+tcp a = openHandle >>= handleTransport where
+	params = A.addressParameters a
+	openHandle = do
+		port <- getPort
+		family <- getFamily
+		addresses <- getAddresses family
+		socket <- openSocket port addresses
+		NS.socketToHandle socket I.ReadWriteMode
 
-parseFamily :: String -> Maybe Family
+@ Parameter parsing...
+
+<<DBus/Connection.hs>>=
+	hostname = maybe "localhost" TL.unpack $ Map.lookup "host" params
+
+<<DBus/Connection.hs>>=
+	unknownFamily x = TL.concat ["Unknown socket family for TCP transport: ", x]
+	getFamily = case Map.lookup "family" params of
+		Just "ipv4" -> return NS.AF_INET
+		Just "ipv6" -> return NS.AF_INET6
+		Nothing     -> return NS.AF_UNSPEC
+		Just x      -> E.throwIO $ BadParameters a $ unknownFamily x
+
+<<DBus/Connection.hs>>=
+	missingPort = "TCP transport requires the ``port'' parameter."
+	badPort x = TL.concat ["Invalid socket port for TCP transport: ", x]
+	getPort = case Map.lookup "port" params of
+		Nothing -> E.throwIO $ BadParameters a missingPort
+		Just x -> case P.parse parseWord16 "" (TL.unpack x) of
+			Right x' -> return $ NS.PortNum x'
+			Left  _  -> E.throwIO $ BadParameters a $ badPort x
+
+@ Parsing the port is a bit complicated; assuming every character is an ASCII
+digit, the port is converted to an {\tt Integer} and confirmed valid.
+{\tt PortNumber} is expected to be in big-endian byte order, so the parsed
+value must be converted from host order using {\tt Data.Binary}.
+
+<<connection imports>>=
+import qualified Text.Parsec as P
+import Control.Monad (unless)
+import Data.Binary.Get (runGet, getWord16host)
+import Data.Binary.Put (runPut, putWord16be)
+
+<<DBus/Connection.hs>>=
+	parseWord16 = do
+		chars <- P.many1 P.digit
+		P.eof
+		let value = read chars :: Integer
+		unless (value > 0 && value <= 65535) $
+			P.parserFail "bad port" >> return ()
+		let word = fromIntegral value
+		return $ runGet getWord16host (runPut (putWord16be word))
+
+<<DBus/Connection.hs>>=
+	getAddresses family = do
+		let hints = NS.defaultHints
+			{ NS.addrFlags = [NS.AI_ADDRCONFIG]
+			, NS.addrFamily = family
+			, NS.addrSocketType = NS.Stream
+			}
+		NS.getAddrInfo (Just hints) (Just hostname) Nothing
+
+@ The {\tt SockAddr} values returned from {\tt getAddrInfo} don't have any
+port set, so it must be manually changed to whatever was in the {\tt port}
+option.
+
+<<DBus/Connection.hs>>=
+	setPort port (NS.SockAddrInet  _ x)     = NS.SockAddrInet port x
+	setPort port (NS.SockAddrInet6 _ x y z) = NS.SockAddrInet6 port x y z
+	setPort _    addr                       = addr
+
+@ {\tt getAddrInfo} returns multiple addresses; each one is tried in turn,
+until a valid address is found. If none are found, or are usable, an
+exception will be thrown.
+
+<<DBus/Connection.hs>>=
+	openSocket _ [] = E.throwIO $ NoWorkingAddress [a]
+	openSocket port (addr:addrs) = E.catch (openSocket' port addr) $
+		\(E.SomeException _) -> openSocket port addrs
+	openSocket' port addr = do
+		sock <- NS.socket (NS.addrFamily addr)
+		                  (NS.addrSocketType addr)
+		                  (NS.addrProtocol addr)
+		NS.connect sock . setPort port . NS.addrAddress $ addr
+		return sock
 
 @ \subsubsection{Generic handle-based transport}
 
@@ -2318,21 +2400,11 @@ a shared handle-based transport backend.
 import qualified System.IO as I
 
 <<DBus/Connection.hs>>=
-handleTransport :: IO I.Handle -> IO Transport
-handleTransport io = do
-	h <- io
+handleTransport :: I.Handle -> IO Transport
+handleTransport h = do
 	I.hSetBuffering h I.NoBuffering
 	I.hSetBinaryMode h True
 	return $ Transport (L.hPut h) (L.hGet h . fromIntegral)
-
-@ \subsubsection{Unknown transports}
-
-If a method has no known transport, attempting to connect using it will
-just result in an exception.
-
-<<DBus/Connection.hs>>=
-unknownTransport :: A.Address -> IO Transport
-unknownTransport = E.throwIO . UnknownMethod
 
 @ \subsection{Errors}
 
