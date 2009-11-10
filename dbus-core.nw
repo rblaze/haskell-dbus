@@ -1293,6 +1293,7 @@ Marshaling can fail for four reasons:
 \item The body's signature is not valid (for example, more than 255 fields).
 \item A variant's signature is not valid -- same causes as an invalid body
       signature.
+\item Some text contains {\sc nul} ({\tt '\textbackslash{}0'}).
 \end{itemize}
 
 <<DBus/Wire.hs>>=
@@ -1301,6 +1302,7 @@ data MarshalError
 	| ArrayTooLong Word64
 	| InvalidBodySignature Text
 	| InvalidVariantSignature Text
+	| TextContainsNUL Text
 	deriving (Eq, Typeable)
 
 instance Show MarshalError where
@@ -1312,6 +1314,8 @@ instance Show MarshalError where
 		["Invalid body signature: ", show x]
 	show (InvalidVariantSignature x) = concat
 		["Invalid variant signature: ", show x]
+	show (TextContainsNUL x) = concat
+		["Text contains NUL: ", show x]
 
 instance E.Error MarshalError
 
@@ -1571,6 +1575,8 @@ import Data.Text.Lazy.Encoding (encodeUtf8, decodeUtf8)
 marshalText :: Text -> Marshal
 marshalText x = do
 	let bytes = encodeUtf8 x
+	when (L.any (== 0) bytes) $
+		E.throwError $ TextContainsNUL x
 	marshalWord32 . fromIntegral . L.length $ bytes
 	append bytes
 	append (L.singleton 0)
