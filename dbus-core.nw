@@ -3039,46 +3039,51 @@ match rule strings. Eventually, it will support parsing them also.
 <<text extensions>>
 module DBus.MatchRule (
 	  MatchRule (..)
-	, Filter (..)
 	, MessageType (..)
+	, ParameterValue (..)
 	, formatRule
 	, addMatch
+	, matchAll
 	) where
 <<text imports>>
 import Data.Word (Word8)
+import Data.Maybe (catMaybes)
 import qualified Data.Set as Set
 import qualified DBus.Types as T
 import qualified DBus.Message as M
 import qualified DBus.Constants as C
 
-@ A match rule is a set of filters. Each filter has a key, and associated
-value.
+@ A match rule is a set of filters; most filters may have one possible
+value assigned, such as a single message type. The exception are parameter
+filters, which are limited in number only by the server implementation.
 
 <<DBus/MatchRule.hs>>=
-data MatchRule = MatchRule [Filter]
-	deriving (Show, Eq)
+data MatchRule = MatchRule
+	{ matchType        :: Maybe MessageType
+	, matchSender      :: Maybe T.BusName
+	, matchInterface   :: Maybe T.InterfaceName
+	, matchMember      :: Maybe T.MemberName
+	, matchPath        :: Maybe T.ObjectPath
+	, matchDestination :: Maybe T.BusName
+	, matchParameters  :: [ParameterValue]
+	}
+
+@ Parameters may match against two types, strings and object paths. It's
+probably an error to have two values for the same parameter.
+
+The constructor {\tt StringValue 3 "hello"} means that the fourth parameter
+in the message body must be the string ``hello''. {\tt PathValue} is the
+same, but its value must be an object path.
 
 <<DBus/MatchRule.hs>>=
-data Filter
-	= Type MessageType
-	| Sender T.BusName
-	| Interface T.InterfaceName
-	| Member T.MemberName
-	| Path T.ObjectPath
-	| Destination T.BusName
-	| StringArg Word8 Text
-	| PathArg Word8 T.ObjectPath
+data ParameterValue
+	= StringValue Word8 Text
+	| PathValue Word8 T.ObjectPath
 	deriving (Show, Eq)
 
-@ Most of these are self-explanatory, except for the {\tt Arg} constructors.
-The filter {\tt StringArg 3 "hello"} means that the fourth parameter in the
-message body must be the string ``hello''. {\tt PathArg} is the same, but
-the value must be an object path.
-
-Currently, the message bus only supports filtering by strings and object
-paths.
-
-Additionally, the maximum index for {\tt Arg} is 63.
+@ The set of allowed message types to filter on is separate from the set
+supported for sending over the wire. This allows the server to support
+additional types not yet implemented in the library, or vice-versa.
 
 <<DBus/MatchRule.hs>>=
 data MessageType
@@ -3093,27 +3098,31 @@ to format them.
 
 <<DBus/MatchRule.hs>>=
 formatRule :: MatchRule -> Text
-formatRule (MatchRule fs) = TL.intercalate "," $ map formatFilter fs
+formatRule rule = TL.intercalate "," filters where
+	filters = structureFilters ++ parameterFilters
+	parameterFilters = map formatParameter $ matchParameters rule
+	structureFilters = catMaybes $ map unpack
+		[ ("type", fmap formatType . matchType)
+		, ("sender", fmap T.strBusName . matchSender)
+		, ("interface", fmap T.strInterfaceName . matchInterface)
+		, ("member", fmap T.strMemberName . matchMember)
+		, ("path", fmap T.strObjectPath . matchPath)
+		, ("destination", fmap T.strBusName . matchDestination)
+		]
+	unpack (key, mkValue) = formatFilter' key `fmap` mkValue rule
 
 <<DBus/MatchRule.hs>>=
-formatFilter :: Filter -> Text
-formatFilter (Type x)        = formatFilter' "type" $ formatType x
-formatFilter (Sender x)      = formatFilter' "sender" $ T.strBusName x
-formatFilter (Interface x)   = formatFilter' "interface" $ T.strInterfaceName x
-formatFilter (Member x)      = formatFilter' "member" $ T.strMemberName x
-formatFilter (Path x)        = formatFilter' "path" $ T.strObjectPath x
-formatFilter (Destination x) = formatFilter' "destination" $ T.strBusName x
+formatParameter :: ParameterValue -> Text
+formatParameter (StringValue index x) = formatFilter' key x where
+	key = "arg" `TL.append` TL.pack (show index)
+formatParameter (PathValue index x) = formatFilter' key value where
+	key = "arg" `TL.append` TL.pack (show index) `TL.append` "path"
+	value = T.strObjectPath x
 
 @ FIXME: what are the escaping rules for match rules? Other bindings don't
 seem to perform any escaping at all.
 
 <<DBus/MatchRule.hs>>=
-formatFilter (StringArg index x) = formatFilter' key x where
-	key = "arg" `TL.append` TL.pack (show index)
-
-formatFilter (PathArg index x) = formatFilter' key $ T.strObjectPath x where
-	key = "arg" `TL.append` TL.pack (show index) `TL.append` "path"
-
 formatFilter' :: Text -> Text -> Text
 formatFilter' key value = TL.concat [key, "='", value, "'"]
 
@@ -3136,6 +3145,21 @@ addMatch rule = M.MethodCall
 	(Just C.dbusName)
 	Set.empty
 	[T.toVariant $ formatRule rule]
+
+@ Most match rules will have only one or two fields filled in, so defining
+an empty rule allows clients to set only the fields they care about.
+
+<<DBus/MatchRule.hs>>=
+matchAll :: MatchRule
+matchAll = MatchRule
+	{ matchType        = Nothing
+	, matchSender      = Nothing
+	, matchInterface   = Nothing
+	, matchMember      = Nothing
+	, matchPath        = Nothing
+	, matchDestination = Nothing
+	, matchParameters  = []
+	}
 
 @
 \section{Constants}
