@@ -3104,8 +3104,10 @@ formatFilter (Member x)      = formatFilter' "member" $ T.strMemberName x
 formatFilter (Path x)        = formatFilter' "path" $ T.strObjectPath x
 formatFilter (Destination x) = formatFilter' "destination" $ T.strBusName x
 
--- FIXME: what are the escaping rules for match rules? Other bindings don't
--- seem to perform any escaping at all.
+@ FIXME: what are the escaping rules for match rules? Other bindings don't
+seem to perform any escaping at all.
+
+<<DBus/MatchRule.hs>>=
 formatFilter (StringArg index x) = formatFilter' key x where
 	key = "arg" `TL.append` TL.pack (show index)
 
