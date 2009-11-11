@@ -3159,6 +3159,117 @@ matchAll = MatchRule
 	}
 
 @
+\section{Name reservation}
+
+The central bus allows clients to register a well-known bus name, which
+enables other clients to connect with or start a particular application.
+
+<<DBus/NameReservation.hs>>=
+<<copyright>>
+{-# LANGUAGE OverloadedStrings #-}
+module DBus.NameReservation
+	( RequestNameFlag (..)
+	, RequestNameReply (..)
+	, ReleaseNameReply (..)
+	, requestName
+	, releaseName
+	, mkRequestNameReply
+	, mkReleaseNameReply
+	) where
+import Data.Word (Word32)
+import Data.Bits ((.|.))
+import qualified Data.Set as Set
+import qualified DBus.Types as T
+import qualified DBus.Message as M
+import qualified DBus.Constants as C
+import DBus.Util (maybeIndex)
+
+<<DBus/NameReservation.hs>>=
+data RequestNameFlag
+	= AllowReplacement
+	| ReplaceExisting
+	| DoNotQueue
+	deriving (Show)
+
+<<DBus/NameReservation.hs>>=
+encodeFlags :: [RequestNameFlag] -> Word32
+encodeFlags = foldr (.|.) 0 . map flagValue where
+	flagValue AllowReplacement = 0x1
+	flagValue ReplaceExisting  = 0x2
+	flagValue DoNotQueue       = 0x4
+
+@ There are only two methods of interest here, {\tt RequestName} and
+{\tt ReleaseName}.
+
+<<DBus/NameReservation.hs>>=
+requestName :: T.BusName -> [RequestNameFlag] -> M.MethodCall
+requestName name flags = M.MethodCall
+	{ M.methodCallPath = C.dbusPath
+	, M.methodCallInterface = Just C.dbusInterface
+	, M.methodCallDestination = Just C.dbusName
+	, M.methodCallFlags = Set.empty
+	, M.methodCallMember = T.mkMemberName' "RequestName"
+	, M.methodCallBody =
+		[ T.toVariant name
+		, T.toVariant . encodeFlags $ flags]
+	}
+
+<<DBus/NameReservation.hs>>=
+data RequestNameReply
+	= PrimaryOwner
+	| InQueue
+	| Exists
+	| AlreadyOwner
+	deriving (Show)
+
+<<DBus/NameReservation.hs>>=
+mkRequestNameReply :: M.MethodReturn -> Maybe RequestNameReply
+mkRequestNameReply msg =
+	maybeIndex (M.messageBody msg) 0 >>=
+	T.fromVariant >>=
+	decodeRequestReply
+
+<<DBus/NameReservation.hs>>=
+decodeRequestReply :: Word32 -> Maybe RequestNameReply
+decodeRequestReply 1 = Just PrimaryOwner
+decodeRequestReply 2 = Just InQueue
+decodeRequestReply 3 = Just Exists
+decodeRequestReply 4 = Just AlreadyOwner
+decodeRequestReply _ = Nothing
+
+<<DBus/NameReservation.hs>>=
+releaseName :: T.BusName -> M.MethodCall
+releaseName name = M.MethodCall
+	{ M.methodCallPath = C.dbusPath
+	, M.methodCallInterface = Just C.dbusInterface
+	, M.methodCallDestination = Just C.dbusName
+	, M.methodCallFlags = Set.empty
+	, M.methodCallMember = T.mkMemberName' "ReleaseName"
+	, M.methodCallBody = [T.toVariant name]
+	}
+
+<<DBus/NameReservation.hs>>=
+data ReleaseNameReply
+	= Released
+	| NonExistent
+	| NotOwner
+	deriving (Show)
+
+<<DBus/NameReservation.hs>>=
+mkReleaseNameReply :: M.MethodReturn -> Maybe ReleaseNameReply
+mkReleaseNameReply msg =
+	maybeIndex (M.messageBody msg) 0 >>=
+	T.fromVariant >>=
+	decodeReleaseReply
+
+<<DBus/NameReservation.hs>>=
+decodeReleaseReply :: Word32 -> Maybe ReleaseNameReply
+decodeReleaseReply 1 = Just Released
+decodeReleaseReply 2 = Just NonExistent
+decodeReleaseReply 3 = Just NotOwner
+decodeReleaseReply _ = Nothing
+
+@
 \section{Constants}
 
 <<DBus/Constants.hs>>=
@@ -3359,5 +3470,10 @@ eitherToMaybe (Right x) = Just x
 fromRight :: Either a b -> b
 fromRight (Right x) = x
 fromRight _ = error "DBus.Util.fromRight: Left"
+
+maybeIndex :: [a] -> Int -> Maybe a
+maybeIndex (x:_ ) 0         = Just x
+maybeIndex (_:xs) n | n > 0 = maybeIndex xs (n - 1)
+maybeIndex _ _ = Nothing
 
 @ \end{document}

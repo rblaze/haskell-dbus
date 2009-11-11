@@ -7,6 +7,7 @@ HS_SOURCES=\
 	hs/DBus/MatchRule.hs \
 	hs/DBus/Message.hs \
 	hs/DBus/Message/Internal.hs \
+	hs/DBus/NameReservation.hs \
 	hs/DBus/Types.hs \
 	hs/DBus/Util.hs \
 	hs/DBus/Wire.hs \
