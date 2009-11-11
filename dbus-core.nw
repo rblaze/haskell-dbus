@@ -1019,14 +1019,13 @@ instance Message MethodCall where
 data MethodReturn = MethodReturn
 	{ methodReturnSerial      :: Serial
 	, methodReturnDestination :: Maybe T.BusName
-	, methodReturnFlags       :: S.Set Flag
 	, methodReturnBody        :: [T.Variant]
 	}
 	deriving (Show, Eq)
 
 instance Message MethodReturn where
 	messageTypeCode _ = 2
-	messageFlags      = methodReturnFlags
+	messageFlags    _ = S.fromList [NoReplyExpected, NoAutoStart]
 	messageBody       = methodReturnBody
 	messageHeaderFields m = concat
 		[ [ ReplySerial $ methodReturnSerial m
@@ -1044,14 +1043,13 @@ data Error = Error
 	{ errorName        :: T.ErrorName
 	, errorSerial      :: Serial
 	, errorDestination :: Maybe T.BusName
-	, errorFlags       :: S.Set Flag
 	, errorBody        :: [T.Variant]
 	}
 	deriving (Show, Eq)
 
 instance Message Error where
 	messageTypeCode _ = 3
-	messageFlags      = errorFlags
+	messageFlags    _ = S.fromList [NoReplyExpected, NoAutoStart]
 	messageBody       = errorBody
 	messageHeaderFields m = concat
 		[ [ ErrorName   $ errorName m
@@ -1071,14 +1069,13 @@ data Signal = Signal
 	, signalMember      :: T.MemberName
 	, signalInterface   :: T.InterfaceName
 	, signalDestination :: Maybe T.BusName
-	, signalFlags       :: S.Set Flag
 	, signalBody        :: [T.Variant]
 	}
 	deriving (Show, Eq)
 
 instance Message Signal where
 	messageTypeCode _ = 4
-	messageFlags      = signalFlags
+	messageFlags    _ = S.fromList [NoReplyExpected, NoAutoStart]
 	messageBody       = signalBody
 	messageHeaderFields m = concat
 		[ [ Path      $ signalPath m
@@ -2028,10 +2025,10 @@ buildReceivedMessage 1 fields = do
 <<DBus/Wire.hs>>=
 buildReceivedMessage 2 fields = do
 	replySerial <- require "reply serial" [x | M.ReplySerial x <- fields]
-	return $ \serial flags body -> let
+	return $ \serial _ body -> let
 		dest = listToMaybe [x | M.Destination x <- fields]
 		sender = listToMaybe [x | M.Sender x <- fields]
-		msg = M.MethodReturn replySerial dest flags body
+		msg = M.MethodReturn replySerial dest body
 		in M.ReceivedMethodReturn serial sender msg
 
 @ Errors
@@ -2040,10 +2037,10 @@ buildReceivedMessage 2 fields = do
 buildReceivedMessage 3 fields = do
 	name <- require "error name" [x | M.ErrorName x <- fields]
 	replySerial <- require "reply serial" [x | M.ReplySerial x <- fields]
-	return $ \serial flags body -> let
+	return $ \serial _ body -> let
 		dest = listToMaybe [x | M.Destination x <- fields]
 		sender = listToMaybe [x | M.Sender x <- fields]
-		msg = M.Error name replySerial dest flags body
+		msg = M.Error name replySerial dest body
 		in M.ReceivedError serial sender msg
 
 @ Signals
@@ -2053,10 +2050,10 @@ buildReceivedMessage 4 fields = do
 	path <- require "path" [x | M.Path x <- fields]
 	member <- require "member name" [x | M.Member x <- fields]
 	iface <- require "interface" [x | M.Interface x <- fields]
-	return $ \serial flags body -> let
+	return $ \serial _ body -> let
 		dest = listToMaybe [x | M.Destination x <- fields]
 		sender = listToMaybe [x | M.Sender x <- fields]
-		msg = M.Signal path member iface dest flags body
+		msg = M.Signal path member iface dest body
 		in M.ReceivedSignal serial sender msg
 
 @ Unknown

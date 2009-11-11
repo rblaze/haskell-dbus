@@ -463,18 +463,16 @@ instance Arbitrary MethodReturn where
 	arbitrary = do
 		serial <- arbitrary
 		dest   <- arbitrary
-		flags  <- fmap Set.fromList arbitrary
 		Structure body <- arbitrary
-		return $ MethodReturn serial dest flags body
+		return $ MethodReturn serial dest body
 
 instance Arbitrary Error where
 	arbitrary = do
 		name   <- arbitrary
 		serial <- arbitrary
 		dest   <- arbitrary
-		flags  <- fmap Set.fromList arbitrary
 		Structure body <- arbitrary
-		return $ Error name serial dest flags body
+		return $ Error name serial dest body
 
 instance Arbitrary Signal where
 	arbitrary = do
@@ -482,9 +480,8 @@ instance Arbitrary Signal where
 		member <- arbitrary
 		iface  <- arbitrary
 		dest   <- arbitrary
-		flags  <- fmap Set.fromList arbitrary
 		Structure body <- arbitrary
-		return $ Signal path member iface dest flags body
+		return $ Signal path member iface dest body
 
 @ \subsection{Wire format}
 
