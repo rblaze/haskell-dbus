@@ -2477,8 +2477,20 @@ connect a = do
 	serialMVar <- C.newMVar M.firstSerial
 	return $ Connection a t serialMVar readLock
 
+@ Since addresses usually come in a list, it's sensible to have a variant
+of {\tt connect} which tries multiple addresses. The first successfully
+opened {\tt Connection} is returned.
+
+<<DBus/Connection.hs>>=
+connectFirst :: [A.Address] -> IO Connection
+connectFirst orig = connectFirst' orig where
+	connectFirst'     [] = E.throwIO $ NoWorkingAddress orig
+	connectFirst' (a:as) = E.catch (connect a) $
+		\(E.SomeException _) -> connectFirst' as
+
 <<connection exports>>=
 , connect
+, connectFirst
 
 @ \subsection{Authentication}
 
@@ -2603,21 +2615,19 @@ over an app-to-app connection: the bus must be notified of the new client,
 using a "hello message", before it will begin forwarding messages.
 
 <<DBus/Bus.hs>>=
-getBus :: A.Address -> IO (C.Connection, T.BusName)
-getBus addr = do
-	c <- C.connect addr
-	name <- sendHello c
-	return (c, name)
+busForConnection :: C.Connection -> IO (C.Connection, T.BusName)
+busForConnection c = sendHello c >>= return . (,) c
 
-@ Optionally, multiple addresses may be provided. The first successfully
-connected bus will be returned.
+<<DBus/Bus.hs>>=
+getBus :: A.Address -> IO (C.Connection, T.BusName)
+getBus = (busForConnection =<<) . C.connect
+
+@ Optionally, multiple addresses may be provided. The first successful
+connection will be used.
 
 <<DBus/Bus.hs>>=
 getFirstBus :: [A.Address] -> IO (C.Connection, T.BusName)
-getFirstBus orig = getFirstBus' orig where
-	getFirstBus'     [] = E.throwIO $ C.NoWorkingAddress orig
-	getFirstBus' (a:as) = E.catch (getBus a) $
-		\(E.SomeException _)  -> getFirstBus' as
+getFirstBus = (busForConnection =<<) . C.connectFirst
 
 @ \subsection{Default connections}
 
