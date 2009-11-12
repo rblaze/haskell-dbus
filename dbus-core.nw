@@ -1178,7 +1178,6 @@ receivedBody _ = []
 <<copyright>>
 <<text extensions>>
 <<wire extensions>>
-{-# LANGUAGE DeriveDataTypeable #-}
 module DBus.Wire (<<wire exports>>) where
 <<text imports>>
 <<wire imports>>
@@ -1186,7 +1185,6 @@ import Control.Monad (when, unless)
 import Data.Maybe (fromJust, listToMaybe, fromMaybe)
 import Data.Word (Word8, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
-import Data.Typeable (Typeable)
 
 import qualified DBus.Types as T
 
@@ -1327,7 +1325,7 @@ data MarshalError
 	| InvalidBodySignature Text
 	| InvalidVariantSignature Text
 	| TextContainsNUL Text
-	deriving (Eq, Typeable)
+	deriving (Eq)
 
 instance Show MarshalError where
 	show (MessageTooLong x) = concat
@@ -1467,7 +1465,7 @@ data UnmarshalError
 	| InvalidPadding Word64
 	| MissingTerminator Word64
 	| ArraySizeMismatch
-	deriving (Eq, Typeable)
+	deriving (Eq)
 
 instance Show UnmarshalError where
 	show (UnsupportedProtocolVersion x) = concat
