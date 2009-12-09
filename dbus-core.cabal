@@ -61,7 +61,7 @@ library
     DBus.Wire
     DBus.Util
 
-executable tests
+executable dbus-core-tests
   main-is: Tests.hs
   hs-source-dirs: hs
 
