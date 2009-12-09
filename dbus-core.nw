@@ -2466,8 +2466,6 @@ instance E.Exception ConnectionError
 
 <<connection exports>>=
 , ConnectionError (..)
-, W.MarshalError (..)
-, W.UnmarshalError (..)
 
 @ \subsection{Establishing a connection}
 
