@@ -55,10 +55,11 @@ library
     DBus.Message
     DBus.NameReservation
     DBus.Types
+    DBus.Wire
 
   other-modules:
     DBus.Message.Internal
-    DBus.Wire
+    DBus.Wire.Internal
     DBus.Util
 
 executable dbus-core-tests

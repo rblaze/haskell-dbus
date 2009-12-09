@@ -11,6 +11,7 @@ HS_SOURCES=\
 	hs/DBus/Types.hs \
 	hs/DBus/Util.hs \
 	hs/DBus/Wire.hs \
+	hs/DBus/Wire/Internal.hs \
 	hs/Tests.hs
 
 all: $(HS_SOURCES)
@@ -18,7 +19,7 @@ all: $(HS_SOURCES)
 %.tex: %.nw
 	noweave -delay "$<" | cpif "$@"
 
-hs/%.hs: dbus-core.nw hs/DBus/Message
+hs/%.hs: dbus-core.nw hs/DBus/Message hs/DBus/Wire
 	notangle -R"$*.hs" "$<" | cpphs --hashes --noline | cpif "$@"
 
 hs/Tests.hs: Tests.nw hs
@@ -32,6 +33,9 @@ hs/DBus:
 
 hs/DBus/Message:
 	mkdir -p hs/DBus/Message
+
+hs/DBus/Wire:
+	mkdir -p hs/DBus/Wire
 
 %.pdf: %.tex
 	xelatex "$<"
