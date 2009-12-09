@@ -1313,7 +1313,8 @@ Marshaling can fail for four reasons:
 \item The body's signature is not valid (for example, more than 255 fields).
 \item A variant's signature is not valid -- same causes as an invalid body
       signature.
-\item Some text contains {\sc nul} ({\tt '\textbackslash{}0'}).
+\item Some text is invalid -- for example, it contains {\sc nul}
+      ({\tt '\textbackslash{}0'}) or invalid Unicode.
 \end{itemize}
 
 <<DBus/Wire/Internal.hs>>=
@@ -1322,7 +1323,7 @@ data MarshalError
 	| ArrayTooLong Word64
 	| InvalidBodySignature Text
 	| InvalidVariantSignature Text
-	| TextContainsNUL Text
+	| InvalidText Text
 	deriving (Eq)
 
 instance Show MarshalError where
@@ -1334,8 +1335,8 @@ instance Show MarshalError where
 		["Invalid body signature: ", show x]
 	show (InvalidVariantSignature x) = concat
 		["Invalid variant signature: ", show x]
-	show (TextContainsNUL x) = concat
-		["Text contains NUL: ", show x]
+	show (InvalidText x) = concat
+		["Text cannot be marshaled: ", show x]
 
 instance E.Error MarshalError
 
@@ -1578,20 +1579,36 @@ with their length as an unsigned 32-bit integer. Their alignment is that of
 their length. Object paths are marshaled just like strings, though additional
 checks are required when unmarshaling.
 
-TODO: If the input is invalid, these {\sc utf8} functions will raise an
-exception, rather than return an error value. Eventually they should be
-wrapped with {\tt unsafePerformIO} and be tweaked to return a proper
-{\tt Maybe} or {\tt Either}.
+Because the encoding functions from {\tt Data.Text} raise exceptions on
+error, checking their return value requires some ugly workarounds.
 
 <<wire imports>>=
 import Data.Text.Lazy.Encoding (encodeUtf8, decodeUtf8)
+import Data.Text.Encoding.Error (UnicodeException)
+import qualified Control.Exception as Exc
+import System.IO.Unsafe (unsafePerformIO)
+
+<<DBus/Wire/Internal.hs>>=
+excToMaybe :: a -> Maybe a
+excToMaybe x = unsafePerformIO $ fmap Just (Exc.evaluate x) `Exc.catch` unicodeError
+
+unicodeError :: UnicodeException -> IO (Maybe a)
+unicodeError = const $ return Nothing
+
+maybeEncodeUtf8 :: Text -> Maybe L.ByteString
+maybeEncodeUtf8 = excToMaybe . encodeUtf8
+
+maybeDecodeUtf8 :: L.ByteString -> Maybe Text
+maybeDecodeUtf8 = excToMaybe . decodeUtf8
 
 <<DBus/Wire/Internal.hs>>=
 marshalText :: Text -> Marshal
 marshalText x = do
-	let bytes = encodeUtf8 x
+	bytes <- case maybeEncodeUtf8 x of
+		Just x' -> return x'
+		Nothing -> E.throwError $ InvalidText x
 	when (L.any (== 0) bytes) $
-		E.throwError $ TextContainsNUL x
+		E.throwError $ InvalidText x
 	marshalWord32 . fromIntegral . L.length $ bytes
 	append bytes
 	append (L.singleton 0)
@@ -1602,7 +1619,7 @@ unmarshalText = do
 	byteCount <- unmarshalWord32
 	bytes <- consume . fromIntegral $ byteCount
 	skipTerminator
-	return . decodeUtf8 $ bytes
+	fromMaybeU "text" maybeDecodeUtf8 bytes
 
 <<alignments>>=
 alignment T.DBusString     = 4
@@ -1636,7 +1653,8 @@ marshalSignature x = do
 unmarshalSignature :: Unmarshal T.Signature
 unmarshalSignature = do
 	byteCount <- L.head `fmap` consume 1
-	sigText <- fmap decodeUtf8 $ consume . fromIntegral $ byteCount
+	bytes <- consume $ fromIntegral byteCount
+	sigText <- fromMaybeU "text" maybeDecodeUtf8 bytes
 	skipTerminator
 	fromMaybeU "signature" T.mkSignature sigText
 
