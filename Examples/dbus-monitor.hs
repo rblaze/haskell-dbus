@@ -23,6 +23,7 @@ import DBus.Connection
 import DBus.Constants
 import DBus.Message
 import DBus.Types
+import DBus.Wire
 
 import Control.Monad
 import qualified Data.Set as Set
