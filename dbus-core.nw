@@ -982,6 +982,8 @@ arbitrary serials doesn't make any sense.
 <<message exports>>=
 , Serial
 , serialValue
+, firstSerial
+, nextSerial
 
 @ \subsection{Message types}
 
@@ -2253,7 +2255,7 @@ prevent two separate threads from reading from the transport at once.
 <<connection imports>>=
 import qualified Control.Concurrent as C
 import qualified DBus.Address as A
-import qualified DBus.Message.Internal as M
+import qualified DBus.Message as M
 
 <<DBus/Connection.hs>>=
 data Connection = Connection A.Address Transport (C.MVar M.Serial) (C.MVar ())
