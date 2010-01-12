@@ -2473,15 +2473,14 @@ A connection can be opened to any valid address, though actually connecting
 might fail due to external factors.
 
 <<connection imports>>=
-import Data.Text.Lazy.Encoding (decodeUtf8, encodeUtf8)
+import qualified DBus.Authentication as Auth
 
 <<DBus/Connection.hs>>=
-connect :: A.Address -> IO Connection
-connect a = do
+connect :: Auth.Mechanism -> A.Address -> IO Connection
+connect mechanism a = do
 	t <- connectTransport a
-	let putS = transportSend t . encodeUtf8 . TL.pack
-	let getS = fmap (TL.unpack . decodeUtf8) . transportRecv t
-	authenticate putS getS
+	let getByte = L.head `fmap` transportRecv t 1
+	uuid <- Auth.authenticate mechanism (transportSend t) getByte
 	readLock <- C.newMVar ()
 	serialMVar <- C.newMVar M.firstSerial
 	return $ Connection a t serialMVar readLock
@@ -2491,10 +2490,11 @@ of {\tt connect} which tries multiple addresses. The first successfully
 opened {\tt Connection} is returned.
 
 <<DBus/Connection.hs>>=
-connectFirst :: [A.Address] -> IO Connection
+connectFirst :: [(Auth.Mechanism, A.Address)] -> IO Connection
 connectFirst orig = connectFirst' orig where
-	connectFirst'     [] = E.throwIO $ NoWorkingAddress orig
-	connectFirst' (a:as) = E.catch (connect a) $
+	allAddrs = [a | (_, a) <- orig]
+	connectFirst'     [] = E.throwIO $ NoWorkingAddress allAddrs
+	connectFirst' ((mech, a):as) = E.catch (connect mech a) $
 		\(E.SomeException _) -> connectFirst' as
 
 <<connection exports>>=
@@ -2503,49 +2503,132 @@ connectFirst orig = connectFirst' orig where
 
 @ \subsection{Authentication}
 
-<<DBus/Connection.hs>>=
-authenticate :: (String -> IO ()) -> (Word32 -> IO String)
-                -> IO ()
-authenticate put get = do
-	put "\x00"
+Authentication is a bit iffy; currently, there's a one specified
+authentication mechanism ({\tt DBUS_COOKIE_SHA1}), which I've never seen
+in the wild. Everybody seems to use {\tt EXTERNAL}, described below.
 
-@ {\sc external} authentication is performed using the process's real user
-ID, converted to a string, and then hex-encoded.
+To support multiple modes more easily in the future, and for user-defined
+authentication handling (eg, in proxy servers), authentication is handled by
+a separate module.
 
-<<connection imports>>=
+<<DBus/Authentication.hs>>=
+<<copyright>>
+<<text extensions>>
+{-# LANGUAGE DeriveDataTypeable #-}
+module DBus.Authentication
+	( <<authentication exports>>
+	) where
+<<text imports>>
+<<authentication imports>>
+
+@ The authentication protocol is based on {\sc ascii} text, initiated by the
+client. Commands and mechanisms are represented by a couple data types:
+
+<<authentication imports>>=
+import Data.ByteString.Lazy (ByteString)
+import qualified Data.ByteString.Lazy as ByteString
+import qualified DBus.UUID as UUID
+
+<<DBus/Authentication.hs>>=
+type Command = Text
+newtype Mechanism = Mechanism
+	{ mechanismRun :: (Command -> IO Command) -> IO UUID.UUID
+	}
+
+<<authentication exports>>=
+  Command
+, Mechanism (..)
+
+@ If authentication fails, an exception will be raised.
+
+<<authentication imports>>=
+import Data.Typeable (Typeable)
+import qualified Control.Exception as E
+
+<<DBus/Authentication.hs>>=
+data AuthenticationError
+	= AuthenticationError Text
+	deriving (Show, Typeable)
+
+instance E.Exception AuthenticationError
+
+<<authentication exports>>=
+, AuthenticationError (..)
+
+@ The process begins by the client sending a single {\sc nul} byte, followed
+by exchanges of {\sc ascii} commands until authentication is complete. Which
+commands are sent depends on the selected mechanism.
+
+<<authentication imports>>=
+import Data.Word (Word8)
+
+<<DBus/Authentication.hs>>=
+authenticate :: Mechanism -> (ByteString -> IO ()) -> IO Word8
+             -> IO UUID.UUID
+authenticate mech put getByte = do
+	put $ ByteString.singleton 0
+	uuid <- mechanismRun mech (putCommand put getByte)
+	put "BEGIN\r\n"
+	return uuid
+
+<<authentication exports>>=
+, authenticate
+
+@ TODO: describe {\tt putCommand} here
+
+<<authentication imports>>=
+import Control.Monad (liftM)
+import Data.Char (chr)
+import Data.Text.Lazy.Encoding (encodeUtf8)
+import DBus.Util (readUntil, dropEnd)
+
+<<DBus/Authentication.hs>>=
+putCommand :: Monad m => (ByteString -> m ()) -> m Word8 -> Command -> m Command
+putCommand put get cmd = do
+	let getC = liftM (chr . fromIntegral) get
+	put $ encodeUtf8 cmd
+	put "\r\n"
+	liftM (TL.pack . dropEnd 2) $ readUntil "\r\n" getC
+
+@ \subsubsection{Support authentication mechanisms}
+
+Currently, the only supported authentication mechanism is sending the local
+user's ``real user ID''.
+
+<<authentication exports>>=
+, realUserID
+
+<<authentication imports>>=
 import System.Posix.User (getRealUserID)
 import Data.Char (ord)
 import Text.Printf (printf)
 
-<<DBus/Connection.hs>>=
+<<DBus/Authentication.hs>>=
+realUserID :: Mechanism
+realUserID = Mechanism $ \sendCmd -> do
 	uid <- getRealUserID
-	let authToken = concatMap (printf "%02X" . ord) (show uid)
-	put $ "AUTH EXTERNAL " ++ authToken ++ "\r\n"
+	let token = concatMap (printf "%02X" . ord) (show uid)
+	let cmd = "AUTH EXTERNAL " ++ token
+	eitherUUID <- checkOK `fmap` sendCmd (TL.pack cmd)
+	case eitherUUID of
+		Right uuid -> return uuid
+		Left err -> E.throwIO $ AuthenticationError err
 
 @ If authentication was successful, the server responds with {\tt OK
-<server GUID>}.  The GUID is intended to enable connection sharing, which
-is currently unimplemented, so it's ignored.
+<server GUID>}.
 
-<<connection imports>>=
-import Data.List (isPrefixOf)
+<<authentication imports>>=
+import Data.Maybe (isJust)
 
-<<DBus/Connection.hs>>=
-	response <- readUntil '\n' get
-	if "OK" `isPrefixOf` response
-		then put "BEGIN\r\n"
-		else do
-			putStrLn $ "response = " ++ show response
-			error "Server rejected authentication token."
-
-<<DBus/Connection.hs>>=
-readUntil :: Monad m => Char -> (Word32 -> m String) -> m String
-readUntil = readUntil' "" where
-	readUntil' xs c f = do
-		[x] <- f 1
-		let xs' = xs ++ [x]
-		if x == c
-			then return xs'
-			else readUntil' xs' c f
+<<DBus/Authentication.hs>>=
+checkOK :: Command -> Either Text UUID.UUID
+checkOK cmd = if validUUID then Right uuid else Left errorMsg where
+	validUUID = TL.isPrefixOf "OK " cmd && isJust maybeUUID
+	maybeUUID = UUID.fromHex $ TL.drop 3 cmd
+	Just uuid = maybeUUID
+	errorMsg = if TL.isPrefixOf "ERROR " cmd
+		then TL.drop 6 cmd
+		else TL.pack $ "Unexpected response: " ++ show cmd
 
 @ \subsection{Sending and receiving messages}
 
@@ -2613,6 +2696,7 @@ import qualified Data.Set as Set
 import System.Environment (getEnv)
 
 import qualified DBus.Address as A
+import qualified DBus.Authentication as Auth
 import qualified DBus.Connection as C
 import DBus.Constants (dbusName, dbusPath, dbusInterface)
 import qualified DBus.Message as M
@@ -2628,14 +2712,14 @@ busForConnection :: C.Connection -> IO (C.Connection, T.BusName)
 busForConnection c = sendHello c >>= return . (,) c
 
 <<DBus/Bus.hs>>=
-getBus :: A.Address -> IO (C.Connection, T.BusName)
-getBus = (busForConnection =<<) . C.connect
+getBus :: Auth.Mechanism -> A.Address -> IO (C.Connection, T.BusName)
+getBus = ((busForConnection =<<) .) . C.connect
 
 @ Optionally, multiple addresses may be provided. The first successful
 connection will be used.
 
 <<DBus/Bus.hs>>=
-getFirstBus :: [A.Address] -> IO (C.Connection, T.BusName)
+getFirstBus :: [(Auth.Mechanism, A.Address)] -> IO (C.Connection, T.BusName)
 getFirstBus = (busForConnection =<<) . C.connectFirst
 
 @ \subsection{Default connections}
@@ -2664,8 +2748,8 @@ getBus' :: IO String -> IO (C.Connection, T.BusName)
 getBus' io = do
 	addr <- fmap TL.pack io
 	case A.mkAddresses addr of
-		Just [x] -> getBus x
-		Just  x  -> getFirstBus x
+		Just [x] -> getBus Auth.realUserID x
+		Just  xs -> getFirstBus [(Auth.realUserID,x) | x <- xs]
 		_        -> E.throwIO $ C.InvalidAddress addr
 
 @ \subsection{Sending the ``hello'' message}
@@ -3607,6 +3691,7 @@ validUUID text = valid where
 module DBus.Util where
 import Text.Parsec (Parsec, parse)
 import Data.Char (digitToInt)
+import Data.List (isPrefixOf)
 
 checkLength :: Int -> String -> Maybe String
 checkLength length' s | length s <= length' = Just s
@@ -3635,5 +3720,21 @@ maybeIndex :: [a] -> Int -> Maybe a
 maybeIndex (x:_ ) 0         = Just x
 maybeIndex (_:xs) n | n > 0 = maybeIndex xs (n - 1)
 maybeIndex _ _ = Nothing
+
+-- | Read values from a monad until a guard value is read; return all
+-- values, including the guard.
+--
+readUntil :: (Monad m, Eq a) => [a] -> m a -> m [a]
+readUntil guard getx = readUntil' [] where
+	guard' = reverse guard
+	step xs | isPrefixOf guard' xs = return . reverse $ xs
+	        | otherwise            = readUntil' xs
+	readUntil' xs = do
+		x <- getx
+		step $ x:xs
+
+-- | Drop /n/ items from the end of a list
+dropEnd :: Int -> [a] -> [a]
+dropEnd n xs = take (length xs - n) xs
 
 @ \end{document}

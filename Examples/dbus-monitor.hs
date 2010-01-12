@@ -18,6 +18,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 import DBus.Address
+import DBus.Authentication
 import DBus.Bus
 import DBus.Connection
 import DBus.Constants
@@ -62,8 +63,8 @@ findBus (o:_) = case o of
 	BusOption Session -> getSessionBus
 	BusOption System  -> getSystemBus
 	AddressOption addr -> case mkAddresses (TL.pack addr) of
-			Just [x] -> getBus x
-			Just  x  -> getFirstBus x
+			Just [x] -> getBus realUserID x
+			Just  xs -> getFirstBus [(realUserID, addr) | addr <- xs]
 			_        -> error $ "Invalid address: " ++ show addr
 
 addMatchMsg :: String -> MethodCall

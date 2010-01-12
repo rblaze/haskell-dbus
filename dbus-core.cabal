@@ -47,6 +47,7 @@ library
 
   exposed-modules:
     DBus.Address
+    DBus.Authentication
     DBus.Bus
     DBus.Connection
     DBus.Constants

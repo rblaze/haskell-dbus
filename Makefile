@@ -1,5 +1,6 @@
 HS_SOURCES=\
 	hs/DBus/Address.hs \
+	hs/DBus/Authentication.hs \
 	hs/DBus/Bus.hs \
 	hs/DBus/Connection.hs \
 	hs/DBus/Constants.hs \
