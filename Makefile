@@ -10,6 +10,7 @@ HS_SOURCES=\
 	hs/DBus/NameReservation.hs \
 	hs/DBus/Types.hs \
 	hs/DBus/Util.hs \
+	hs/DBus/UUID.hs \
 	hs/DBus/Wire.hs \
 	hs/DBus/Wire/Internal.hs \
 	hs/Tests.hs

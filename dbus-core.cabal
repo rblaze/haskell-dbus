@@ -55,6 +55,7 @@ library
     DBus.Message
     DBus.NameReservation
     DBus.Types
+    DBus.UUID
     DBus.Wire
 
   other-modules:
