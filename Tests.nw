@@ -128,7 +128,7 @@ instance Arbitrary Type where
 	arbitrary = oneof [atomicType, containerType]
 
 instance Arbitrary Signature where
-	arbitrary = clampedSize 255 genSig mkSignature' where
+	arbitrary = clampedSize 255 genSig mkSignature_ where
 		genSig = fmap (TL.concat . map typeCode) arbitrary
 
 <<atom tests>>=
@@ -141,7 +141,7 @@ instance Arbitrary Signature where
 
 <<Tests.hs>>=
 instance Arbitrary ObjectPath where
-	arbitrary = fmap (mkObjectPath' . TL.pack) path' where
+	arbitrary = fmap (mkObjectPath_ . TL.pack) path' where
 		c = ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_"
 		path = fmap (intercalate "/" . ([] :)) genElements
 		path' = frequency [(1, return "/"), (9, path)]
@@ -155,7 +155,7 @@ instance Arbitrary ObjectPath where
 
 <<Tests.hs>>=
 instance Arbitrary BusName where
-	arbitrary = clampedSize 255 (oneof [unique, wellKnown]) mkBusName' where
+	arbitrary = clampedSize 255 (oneof [unique, wellKnown]) mkBusName_ where
 		c = ['a'..'z'] ++ ['A'..'Z'] ++ "_-"
 		c' = c ++ ['0'..'9']
 		
@@ -180,7 +180,7 @@ instance Arbitrary BusName where
 
 <<Tests.hs>>=
 instance Arbitrary InterfaceName where
-	arbitrary = clampedSize 255 genName mkInterfaceName' where
+	arbitrary = clampedSize 255 genName mkInterfaceName_ where
 		c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
 		c' = c ++ ['0'..'9']
 		
@@ -199,7 +199,7 @@ instance Arbitrary InterfaceName where
 
 <<Tests.hs>>=
 instance Arbitrary ErrorName where
-	arbitrary = fmap (mkErrorName' . strInterfaceName) arbitrary
+	arbitrary = fmap (mkErrorName_ . strInterfaceName) arbitrary
 
 <<atom tests>>=
 , testGroup "ErrorName" $ commonVariantTests (arbitrary :: Gen ErrorName) ++
@@ -209,7 +209,7 @@ instance Arbitrary ErrorName where
 
 <<Tests.hs>>=
 instance Arbitrary MemberName where
-	arbitrary = clampedSize 255 genName mkMemberName' where
+	arbitrary = clampedSize 255 genName mkMemberName_ where
 		c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
 		c' = c ++ ['0'..'9']
 		
@@ -562,7 +562,7 @@ subObject parentPath = sized $ \n -> resize (min n 4) $ do
 	let path' = case strObjectPath parentPath of
 		"/" -> thisPath
 		x   -> TL.append x thisPath
-	let path = mkObjectPath' path'
+	let path = mkObjectPath_ path'
 	ifaces <- arbitrary
 	children <- shrinkingGen . listOf . subObject $ path
 	return $ I.Object path ifaces children

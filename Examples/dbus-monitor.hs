@@ -69,12 +69,13 @@ findBus (o:_) = case o of
 
 addMatchMsg :: String -> MethodCall
 addMatchMsg match = MethodCall
-	dbusPath
-	(mkMemberName' "AddMatch")
-	(Just dbusInterface)
-	(Just dbusName)
-	Set.empty
-	[toVariant match]
+	{ methodCallPath = dbusPath
+	, methodCallMember = "AddMatch"
+	, methodCallInterface = Just dbusInterface
+	, methodCallDestination = Just dbusName
+	, methodCallFlags = Set.empty
+	, methodCallBody = [toVariant match]
+	}
 
 addMatch :: Connection -> String -> IO ()
 addMatch c s = send c return (addMatchMsg s) >> return ()

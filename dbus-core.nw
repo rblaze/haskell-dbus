@@ -468,8 +468,15 @@ If the input string is invalid, {\tt error} will be called.
 import DBus.Util (mkUnsafe)
 
 <<DBus/Types.hs>>=
-mkSignature' :: Text -> Signature
-mkSignature' = mkUnsafe "signature" mkSignature
+mkSignature_ :: Text -> Signature
+mkSignature_ = mkUnsafe "signature" mkSignature
+
+<<type imports>>=
+import qualified Data.String as String
+
+<<DBus/Types.hs>>=
+instance String.IsString Signature where
+	fromString = mkSignature_ . TL.pack
 
 @ Most signature-related functions are exposed to clients, except the
 {\tt Signature} value constructor. If that were exposed, clients could
@@ -477,7 +484,7 @@ construct invalid signatures.
 
 <<type exports>>=
 , mkSignature
-, mkSignature'
+, mkSignature_
 
 @ \subsection{Object paths}
 
@@ -486,7 +493,14 @@ BUILTIN_VARIABLE(ObjectPath, DBusObjectPath)
 newtype ObjectPath = ObjectPath
 	{ strObjectPath :: Text
 	}
-	deriving (Show, Eq, Ord, Typeable)
+	deriving (Eq, Ord, Typeable)
+
+instance Show ObjectPath where
+	showsPrec d (ObjectPath x) = showParen (d > 10) $
+		showString "ObjectPath " . shows x
+
+instance String.IsString ObjectPath where
+	fromString = mkObjectPath_ . TL.pack
 
 @ An object path may be one of
 
@@ -507,15 +521,15 @@ mkObjectPath s = parseMaybe path' (TL.unpack s) where
 	path = P.char '/' >>= P.optional . P.sepBy (P.many1 c) . P.char
 	path' = path >> P.eof >> return (ObjectPath s)
 
-mkObjectPath' :: Text -> ObjectPath
-mkObjectPath' = mkUnsafe "object path" mkObjectPath
+mkObjectPath_ :: Text -> ObjectPath
+mkObjectPath_ = mkUnsafe "object path" mkObjectPath
 
 <<type exports>>=
   -- * Object paths
 , ObjectPath
 , strObjectPath
 , mkObjectPath
-, mkObjectPath'
+, mkObjectPath_
 
 @ \subsection{Arrays}
 
@@ -784,14 +798,22 @@ the definitions.
 <<DBus/Types.hs>>=
 #define NAME_TYPE(TYPE, NAME) \
 	newtype TYPE = TYPE {str##TYPE :: Text} \
-		deriving (Show, Eq, Ord); \
-		                          \
+		deriving (Eq, Ord); \
+		\
+	instance Show TYPE where \
+		{ showsPrec d (TYPE x) = showParen (d > 10) $ \
+			showString "TYPE " . shows x \
+		}; \
+		\
+	instance String.IsString TYPE where \
+		{ fromString = mk##TYPE##_ . TL.pack }; \
+		\
 	instance Variable TYPE where \
 		{ toVariant = toVariant . str##TYPE \
 		; fromVariant = (mk##TYPE =<<) . fromVariant }; \
 		                                                \
-	mk##TYPE##' :: Text -> TYPE; \
-	mk##TYPE##' = mkUnsafe NAME mk##TYPE
+	mk##TYPE##_ :: Text -> TYPE; \
+	mk##TYPE##_ = mkUnsafe NAME mk##TYPE
 
 <<type exports>>=
 -- * Names
@@ -826,7 +848,7 @@ mkBusName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
 , BusName
 , strBusName
 , mkBusName
-, mkBusName'
+, mkBusName_
 
 @ \subsubsection{Interface names}
 
@@ -850,7 +872,7 @@ mkInterfaceName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
 , InterfaceName
 , strInterfaceName
 , mkInterfaceName
-, mkInterfaceName'
+, mkInterfaceName_
 
 @ \subsubsection{Error names}
 
@@ -868,7 +890,7 @@ mkErrorName = fmap (ErrorName . strInterfaceName) . mkInterfaceName
 , ErrorName
 , strErrorName
 , mkErrorName
-, mkErrorName'
+, mkErrorName_
 
 @ \subsubsection{Member names}
 
@@ -890,7 +912,7 @@ mkMemberName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
 , MemberName
 , strMemberName
 , mkMemberName
-, mkMemberName'
+, mkMemberName_
 
 @
 \section{Messages}
@@ -1959,7 +1981,7 @@ unmarshalMessage getBytes' = E.runErrorT $ do
 retrieved without any size calculations.
 
 <<read fixed-length header>>=
-let fixedSig = T.mkSignature' "yyyyuuu"
+let fixedSig = "yyyyuuu"
 fixedBytes <- getBytes 16
 
 @ The first field of interest is the protocol version; if the incoming
@@ -2003,7 +2025,7 @@ let fieldByteCount = fromJust . T.fromVariant $ fixed !! 6
 pulled out of the monad.
 
 <<read full header>>=
-let headerSig  = T.mkSignature' "yyyyuua(yv)"
+let headerSig  = "yyyyuua(yv)"
 fieldBytes <- getBytes fieldByteCount
 let headerBytes = L.append fixedBytes fieldBytes
 header <- unmarshal' headerSig headerBytes
@@ -2024,8 +2046,7 @@ getBytes . fromIntegral $ bodyPadding
 
 <<DBus/Wire/Internal.hs>>=
 findBodySignature :: [M.HeaderField] -> T.Signature
-findBodySignature fields = fromMaybe empty signature where
-	empty = T.mkSignature' ""
+findBodySignature fields = fromMaybe "" signature where
 	signature = listToMaybe [x | M.Signature x <- fields]
 
 <<read body>>=
@@ -2794,7 +2815,7 @@ getBus' io = do
 <<DBus/Bus.hs>>=
 hello :: M.MethodCall
 hello = M.MethodCall dbusPath
-	(T.mkMemberName' "Hello")
+	"Hello"
 	(Just dbusInterface)
 	(Just dbusName)
 	Set.empty
@@ -3308,7 +3329,7 @@ it's useful to have a message-building function pre-defined.
 addMatch :: MatchRule -> M.MethodCall
 addMatch rule = M.MethodCall
 	C.dbusPath
-	(T.mkMemberName' "AddMatch")
+	"AddMatch"
 	(Just C.dbusInterface)
 	(Just C.dbusName)
 	Set.empty
@@ -3457,7 +3478,7 @@ requestName name flags = M.MethodCall
 	, M.methodCallInterface = Just C.dbusInterface
 	, M.methodCallDestination = Just C.dbusName
 	, M.methodCallFlags = Set.empty
-	, M.methodCallMember = T.mkMemberName' "RequestName"
+	, M.methodCallMember = "RequestName"
 	, M.methodCallBody =
 		[ T.toVariant name
 		, T.toVariant . encodeFlags $ flags]
@@ -3494,7 +3515,7 @@ releaseName name = M.MethodCall
 	, M.methodCallInterface = Just C.dbusInterface
 	, M.methodCallDestination = Just C.dbusName
 	, M.methodCallFlags = Set.empty
-	, M.methodCallMember = T.mkMemberName' "ReleaseName"
+	, M.methodCallMember = "ReleaseName"
 	, M.methodCallBody = [T.toVariant name]
 	}
 
@@ -3543,151 +3564,151 @@ arrayMaximumLength = 67108864
 
 <<DBus/Constants.hs>>=
 dbusName :: T.BusName
-dbusName = T.mkBusName' "org.freedesktop.DBus"
+dbusName = "org.freedesktop.DBus"
 
 dbusPath :: T.ObjectPath
-dbusPath = T.mkObjectPath' "/org/freedesktop/DBus"
+dbusPath = "/org/freedesktop/DBus"
 
 dbusInterface :: T.InterfaceName
-dbusInterface = T.mkInterfaceName' "org.freedesktop.DBus"
+dbusInterface = "org.freedesktop.DBus"
 
 @ \subsection{Pre-defined interfaces}
 
 <<DBus/Constants.hs>>=
 interfaceIntrospectable :: T.InterfaceName
-interfaceIntrospectable = T.mkInterfaceName' "org.freedesktop.DBus.Introspectable"
+interfaceIntrospectable = "org.freedesktop.DBus.Introspectable"
 
 interfaceProperties :: T.InterfaceName
-interfaceProperties = T.mkInterfaceName' "org.freedesktop.DBus.Properties"
+interfaceProperties = "org.freedesktop.DBus.Properties"
 
 interfacePeer :: T.InterfaceName
-interfacePeer = T.mkInterfaceName' "org.freedesktop.DBus.Peer"
+interfacePeer = "org.freedesktop.DBus.Peer"
 
 @ \subsection{Pre-defined error names}
 
 <<DBus/Constants.hs>>=
 errorFailed :: T.ErrorName
-errorFailed = T.mkErrorName' "org.freedesktop.DBus.Error.Failed"
+errorFailed = "org.freedesktop.DBus.Error.Failed"
 
 errorNoMemory :: T.ErrorName
-errorNoMemory = T.mkErrorName' "org.freedesktop.DBus.Error.NoMemory"
+errorNoMemory = "org.freedesktop.DBus.Error.NoMemory"
 
 errorServiceUnknown :: T.ErrorName
-errorServiceUnknown = T.mkErrorName' "org.freedesktop.DBus.Error.ServiceUnknown"
+errorServiceUnknown = "org.freedesktop.DBus.Error.ServiceUnknown"
 
 errorNameHasNoOwner :: T.ErrorName
-errorNameHasNoOwner = T.mkErrorName' "org.freedesktop.DBus.Error.NameHasNoOwner"
+errorNameHasNoOwner = "org.freedesktop.DBus.Error.NameHasNoOwner"
 
 errorNoReply :: T.ErrorName
-errorNoReply = T.mkErrorName' "org.freedesktop.DBus.Error.NoReply"
+errorNoReply = "org.freedesktop.DBus.Error.NoReply"
 
 errorIOError :: T.ErrorName
-errorIOError = T.mkErrorName' "org.freedesktop.DBus.Error.IOError"
+errorIOError = "org.freedesktop.DBus.Error.IOError"
 
 errorBadAddress :: T.ErrorName
-errorBadAddress = T.mkErrorName' "org.freedesktop.DBus.Error.BadAddress"
+errorBadAddress = "org.freedesktop.DBus.Error.BadAddress"
 
 errorNotSupported :: T.ErrorName
-errorNotSupported = T.mkErrorName' "org.freedesktop.DBus.Error.NotSupported"
+errorNotSupported = "org.freedesktop.DBus.Error.NotSupported"
 
 errorLimitsExceeded :: T.ErrorName
-errorLimitsExceeded = T.mkErrorName' "org.freedesktop.DBus.Error.LimitsExceeded"
+errorLimitsExceeded = "org.freedesktop.DBus.Error.LimitsExceeded"
 
 errorAccessDenied :: T.ErrorName
-errorAccessDenied = T.mkErrorName' "org.freedesktop.DBus.Error.AccessDenied"
+errorAccessDenied = "org.freedesktop.DBus.Error.AccessDenied"
 
 errorAuthFailed :: T.ErrorName
-errorAuthFailed = T.mkErrorName' "org.freedesktop.DBus.Error.AuthFailed"
+errorAuthFailed = "org.freedesktop.DBus.Error.AuthFailed"
 
 errorNoServer :: T.ErrorName
-errorNoServer = T.mkErrorName' "org.freedesktop.DBus.Error.NoServer"
+errorNoServer = "org.freedesktop.DBus.Error.NoServer"
 
 errorTimeout :: T.ErrorName
-errorTimeout = T.mkErrorName' "org.freedesktop.DBus.Error.Timeout"
+errorTimeout = "org.freedesktop.DBus.Error.Timeout"
 
 errorNoNetwork :: T.ErrorName
-errorNoNetwork = T.mkErrorName' "org.freedesktop.DBus.Error.NoNetwork"
+errorNoNetwork = "org.freedesktop.DBus.Error.NoNetwork"
 
 errorAddressInUse :: T.ErrorName
-errorAddressInUse = T.mkErrorName' "org.freedesktop.DBus.Error.AddressInUse"
+errorAddressInUse = "org.freedesktop.DBus.Error.AddressInUse"
 
 errorDisconnected :: T.ErrorName
-errorDisconnected = T.mkErrorName' "org.freedesktop.DBus.Error.Disconnected"
+errorDisconnected = "org.freedesktop.DBus.Error.Disconnected"
 
 errorInvalidArgs :: T.ErrorName
-errorInvalidArgs = T.mkErrorName' "org.freedesktop.DBus.Error.InvalidArgs"
+errorInvalidArgs = "org.freedesktop.DBus.Error.InvalidArgs"
 
 errorFileNotFound :: T.ErrorName
-errorFileNotFound = T.mkErrorName' "org.freedesktop.DBus.Error.FileNotFound"
+errorFileNotFound = "org.freedesktop.DBus.Error.FileNotFound"
 
 errorFileExists :: T.ErrorName
-errorFileExists = T.mkErrorName' "org.freedesktop.DBus.Error.FileExists"
+errorFileExists = "org.freedesktop.DBus.Error.FileExists"
 
 errorUnknownMethod :: T.ErrorName
-errorUnknownMethod = T.mkErrorName' "org.freedesktop.DBus.Error.UnknownMethod"
+errorUnknownMethod = "org.freedesktop.DBus.Error.UnknownMethod"
 
 errorTimedOut :: T.ErrorName
-errorTimedOut = T.mkErrorName' "org.freedesktop.DBus.Error.TimedOut"
+errorTimedOut = "org.freedesktop.DBus.Error.TimedOut"
 
 errorMatchRuleNotFound :: T.ErrorName
-errorMatchRuleNotFound = T.mkErrorName' "org.freedesktop.DBus.Error.MatchRuleNotFound"
+errorMatchRuleNotFound = "org.freedesktop.DBus.Error.MatchRuleNotFound"
 
 errorMatchRuleInvalid :: T.ErrorName
-errorMatchRuleInvalid = T.mkErrorName' "org.freedesktop.DBus.Error.MatchRuleInvalid"
+errorMatchRuleInvalid = "org.freedesktop.DBus.Error.MatchRuleInvalid"
 
 errorSpawnExecFailed :: T.ErrorName
-errorSpawnExecFailed = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.ExecFailed"
+errorSpawnExecFailed = "org.freedesktop.DBus.Error.Spawn.ExecFailed"
 
 errorSpawnForkFailed :: T.ErrorName
-errorSpawnForkFailed = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.ForkFailed"
+errorSpawnForkFailed = "org.freedesktop.DBus.Error.Spawn.ForkFailed"
 
 errorSpawnChildExited :: T.ErrorName
-errorSpawnChildExited = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.ChildExited"
+errorSpawnChildExited = "org.freedesktop.DBus.Error.Spawn.ChildExited"
 
 errorSpawnChildSignaled :: T.ErrorName
-errorSpawnChildSignaled = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.ChildSignaled"
+errorSpawnChildSignaled = "org.freedesktop.DBus.Error.Spawn.ChildSignaled"
 
 errorSpawnFailed :: T.ErrorName
-errorSpawnFailed = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.Failed"
+errorSpawnFailed = "org.freedesktop.DBus.Error.Spawn.Failed"
 
 errorSpawnFailedToSetup :: T.ErrorName
-errorSpawnFailedToSetup = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.FailedToSetup"
+errorSpawnFailedToSetup = "org.freedesktop.DBus.Error.Spawn.FailedToSetup"
 
 errorSpawnConfigInvalid :: T.ErrorName
-errorSpawnConfigInvalid = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.ConfigInvalid"
+errorSpawnConfigInvalid = "org.freedesktop.DBus.Error.Spawn.ConfigInvalid"
 
 errorSpawnServiceNotValid :: T.ErrorName
-errorSpawnServiceNotValid = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.ServiceNotValid"
+errorSpawnServiceNotValid = "org.freedesktop.DBus.Error.Spawn.ServiceNotValid"
 
 errorSpawnServiceNotFound :: T.ErrorName
-errorSpawnServiceNotFound = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.ServiceNotFound"
+errorSpawnServiceNotFound = "org.freedesktop.DBus.Error.Spawn.ServiceNotFound"
 
 errorSpawnPermissionsInvalid :: T.ErrorName
-errorSpawnPermissionsInvalid = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.PermissionsInvalid"
+errorSpawnPermissionsInvalid = "org.freedesktop.DBus.Error.Spawn.PermissionsInvalid"
 
 errorSpawnFileInvalid :: T.ErrorName
-errorSpawnFileInvalid = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.FileInvalid"
+errorSpawnFileInvalid = "org.freedesktop.DBus.Error.Spawn.FileInvalid"
 
 errorSpawnNoMemory :: T.ErrorName
-errorSpawnNoMemory = T.mkErrorName' "org.freedesktop.DBus.Error.Spawn.NoMemory"
+errorSpawnNoMemory = "org.freedesktop.DBus.Error.Spawn.NoMemory"
 
 errorUnixProcessIdUnknown :: T.ErrorName
-errorUnixProcessIdUnknown = T.mkErrorName' "org.freedesktop.DBus.Error.UnixProcessIdUnknown"
+errorUnixProcessIdUnknown = "org.freedesktop.DBus.Error.UnixProcessIdUnknown"
 
 errorInvalidFileContent :: T.ErrorName
-errorInvalidFileContent = T.mkErrorName' "org.freedesktop.DBus.Error.InvalidFileContent"
+errorInvalidFileContent = "org.freedesktop.DBus.Error.InvalidFileContent"
 
 errorSELinuxSecurityContextUnknown :: T.ErrorName
-errorSELinuxSecurityContextUnknown = T.mkErrorName' "org.freedesktop.DBus.Error.SELinuxSecurityContextUnknown"
+errorSELinuxSecurityContextUnknown = "org.freedesktop.DBus.Error.SELinuxSecurityContextUnknown"
 
 errorAdtAuditDataUnknown :: T.ErrorName
-errorAdtAuditDataUnknown = T.mkErrorName' "org.freedesktop.DBus.Error.AdtAuditDataUnknown"
+errorAdtAuditDataUnknown = "org.freedesktop.DBus.Error.AdtAuditDataUnknown"
 
 errorObjectPathInUse :: T.ErrorName
-errorObjectPathInUse = T.mkErrorName' "org.freedesktop.DBus.Error.ObjectPathInUse"
+errorObjectPathInUse = "org.freedesktop.DBus.Error.ObjectPathInUse"
 
 errorInconsistentMessage :: T.ErrorName
-errorInconsistentMessage = T.mkErrorName' "org.freedesktop.DBus.Error.InconsistentMessage"
+errorInconsistentMessage = "org.freedesktop.DBus.Error.InconsistentMessage"
 
 @
 \section{UUIDs}
