@@ -2040,10 +2040,21 @@ body <- unmarshal' bodySig bodyBytes
 @ Even if the received message was structurally valid, building the
 {\tt ReceivedMessage} can still fail due to missing header fields.
 
+Slightly ugly; to avoid orphan instances of either {\tt Text} or
+{\tt Either}, a newtype is used to turn {\tt Either} into a monad.
+
+<<DBus/Wire/Internal.hs>>=
+newtype EitherM a b = EitherM (Either a b)
+
+instance Monad (EitherM a) where
+	return = EitherM . Right
+	(EitherM (Left x)) >>= _ = EitherM (Left x)
+	(EitherM (Right x)) >>= k = k x
+
 <<build message>>=
 y <- case buildReceivedMessage typeCode fields of
-	Right x -> return x
-	Left x -> E.throwError $ MissingHeaderField x
+	EitherM (Right x) -> return x
+	EitherM (Left x) -> E.throwError $ MissingHeaderField x
 
 <<build message>>=
 return $ y serial flags body
@@ -2051,7 +2062,7 @@ return $ y serial flags body
 @ This really belongs in the Message section...
 
 <<DBus/Wire/Internal.hs>>=
-buildReceivedMessage :: Word8 -> [M.HeaderField] -> Either Text 
+buildReceivedMessage :: Word8 -> [M.HeaderField] -> EitherM Text
                         (M.Serial -> (Set.Set M.Flag) -> [T.Variant]
                          -> M.ReceivedMessage)
 
@@ -2113,15 +2124,9 @@ buildReceivedMessage typeCode fields = return $ \serial flags body -> let
 	in M.ReceivedUnknown serial sender msg
 
 <<DBus/Wire/Internal.hs>>=
-require :: Text -> [a] -> Either Text a
-require _     (x:_) = Right x
-require label _     = Left label
-
-@ This is just needed for the Monad instance of {\tt Either Text}
-
-<<DBus/Wire/Internal.hs>>=
-instance E.Error Text where
-	strMsg = TL.pack
+require :: Text -> [a] -> EitherM Text a
+require _     (x:_) = return x
+require label _     = EitherM $ Left label
 
 @
 \section{Addresses}
