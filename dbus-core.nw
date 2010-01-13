@@ -127,6 +127,7 @@ data Type
 	deriving (Show, Eq)
 
 <<DBus/Types.hs>>=
+<<apidoc isAtomicType>>
 isAtomicType :: Type -> Bool
 isAtomicType DBusBoolean    = True
 isAtomicType DBusByte       = True
@@ -146,7 +147,9 @@ isAtomicType _              = False
 signatures'' or for debugging.
 
 <<DBus/Types.hs>>=
+<<apidoc typeCode>>
 typeCode :: Type -> Text
+<<type codes>>
 
 <<type exports>>=
   -- * Available types
@@ -182,6 +185,7 @@ outside of this module, {\tt Variant}s can only be constructed from
 pre-defined types.
 
 <<DBus/Types.hs>>=
+<<apidoc Variant>>
 data Variant = forall a. (Variable a, Builtin a, Typeable a) => Variant a
 	deriving (Typeable)
 
@@ -217,6 +221,7 @@ instance Eq Variant where
 a {\tt Variant}.
 
 <<DBus/Types.hs>>=
+<<apidoc variantType>>
 variantType :: Variant -> Type
 variantType (Variant x) = builtinDBusType x
 
@@ -362,7 +367,7 @@ instance Ord Signature where
 @ For atomic types, the type code is a single letter. Arrays, structures,
 and dictionary types are multiple characters.
 
-<<DBus/Types.hs>>=
+<<type codes>>=
 typeCode DBusBoolean    = "b"
 typeCode DBusByte       = "y"
 typeCode DBusInt16      = "n"
@@ -380,20 +385,20 @@ typeCode DBusVariant    = "v"
 @ An array's type code is ``a'' followed by the type it contains. For example,
 an array of booleans would have the type string ``ab''.
 
-<<DBus/Types.hs>>=
+<<type codes>>=
 typeCode (DBusArray t) = TL.cons 'a' $ typeCode t
 
 @ A dictionary's type code is ``a\{$key\_type$ $value\_type$\}''. For example,
 a dictionary of bytes to booleans would have the type string ``a\{yb\}''.
 
-<<DBus/Types.hs>>=
+<<type codes>>=
 typeCode (DBusDictionary k v) = TL.concat ["a{", typeCode k, typeCode v, "}"]
 
 @ A structure's type code is the concatenation of its contained types,
 wrapped by ``('' and ``)''. Structures may be empty, in which case their
 type code is simply ``()''.
 
-<<DBus/Types.hs>>=
+<<type codes>>=
 typeCode (DBusStructure ts) = TL.concat $
 	["("] ++ map typeCode ts ++ [")"]
 
@@ -535,6 +540,7 @@ data Array
 instance Builtin Array where
 	builtinDBusType = DBusArray . arrayType
 
+<<apidoc arrayType>>
 arrayType :: Array -> Type
 arrayType (VariantArray t _) = t
 arrayType (ByteArray _) = DBusByte
@@ -957,6 +963,7 @@ data HeaderField
 added type-safety.
 
 <<DBus/Message/Internal.hs>>=
+<<apidoc Serial>>
 newtype Serial = Serial { serialValue :: Word32 }
 	deriving (Eq, Ord)
 
@@ -1135,6 +1142,7 @@ If a message has an unknown type, its serial and origin are still useful
 for sending an error reply.
 
 <<DBus/Message/Internal.hs>>=
+<<apidoc ReceivedMessage>>
 data ReceivedMessage
 	= ReceivedMethodCall   Serial (Maybe T.BusName) MethodCall
 	| ReceivedMethodReturn Serial (Maybe T.BusName) MethodReturn
@@ -1877,6 +1885,7 @@ TODO: describe header layout here
 , marshalMessage
 
 <<DBus/Wire/Internal.hs>>=
+<<apidoc marshalMessage>>
 marshalMessage :: M.Message a => Endianness -> M.Serial -> a
                -> Either MarshalError L.ByteString
 marshalMessage e serial msg = runMarshal marshaler e where
@@ -1935,6 +1944,7 @@ checkMaximumSize = do
 , unmarshalMessage
 
 <<DBus/Wire/Internal.hs>>=
+<<apidoc unmarshalMessage>>
 unmarshalMessage :: Monad m => (Word32 -> m L.ByteString)
                  -> m (Either UnmarshalError M.ReceivedMessage)
 unmarshalMessage getBytes' = E.runErrorT $ do
@@ -2285,13 +2295,14 @@ instance Show Connection where
 @ \subsection{Transports}
 
 A transport is anything which can send and receive bytestrings, typically
-over a socket.
+via a socket.
 
 <<connection imports>>=
 import qualified Data.ByteString.Lazy as L
 import Data.Word (Word32)
 
 <<DBus/Connection.hs>>=
+<<apidoc Transport>>
 data Transport = Transport
 	{ transportSend :: L.ByteString -> IO ()
 	, transportRecv :: Word32 -> IO L.ByteString
@@ -2488,6 +2499,7 @@ might fail due to external factors.
 import qualified DBus.Authentication as Auth
 
 <<DBus/Connection.hs>>=
+<<apidoc connect>>
 connect :: Auth.Mechanism -> A.Address -> IO Connection
 connect mechanism a = do
 	t <- connectTransport a
@@ -2502,6 +2514,7 @@ of {\tt connect} which tries multiple addresses. The first successfully
 opened {\tt Connection} is returned.
 
 <<DBus/Connection.hs>>=
+<<apidoc connectFirst>>
 connectFirst :: [(Auth.Mechanism, A.Address)] -> IO Connection
 connectFirst orig = connectFirst' orig where
 	allAddrs = [a | (_, a) <- orig]
@@ -2653,6 +2666,7 @@ multi-threaded clients.
 import qualified DBus.Wire as W
 
 <<DBus/Connection.hs>>=
+<<apidoc send>>
 send :: M.Message a => Connection -> (M.Serial -> IO b) -> a
      -> IO (Either W.MarshalError b)
 send (Connection _ t mvar _ _) io msg = withSerial mvar $ \serial ->
@@ -2679,6 +2693,7 @@ withSerial m io = E.block $ do
 error is encountered while unmarshaling, an exception will be thrown.
 
 <<DBus/Connection.hs>>=
+<<apidoc receive>>
 receive :: Connection -> IO (Either W.UnmarshalError M.ReceivedMessage)
 receive (Connection _ t _ lock _) = C.withMVar lock $ \_ ->
 	W.unmarshalMessage $ transportRecv t
@@ -2724,6 +2739,7 @@ busForConnection :: C.Connection -> IO (C.Connection, T.BusName)
 busForConnection c = sendHello c >>= return . (,) c
 
 <<DBus/Bus.hs>>=
+<<apidoc getBus>>
 getBus :: Auth.Mechanism -> A.Address -> IO (C.Connection, T.BusName)
 getBus = ((busForConnection =<<) .) . C.connect
 
@@ -2731,6 +2747,7 @@ getBus = ((busForConnection =<<) .) . C.connect
 connection will be used.
 
 <<DBus/Bus.hs>>=
+<<apidoc getFirstBus>>
 getFirstBus :: [(Auth.Mechanism, A.Address)] -> IO (C.Connection, T.BusName)
 getFirstBus = (busForConnection =<<) . C.connectFirst
 
@@ -2741,6 +2758,7 @@ bus is global for the OS, while the session bus runs only for the duration
 of the user's session.
 
 <<DBus/Bus.hs>>=
+<<apidoc getSystemBus>>
 getSystemBus :: IO (C.Connection, T.BusName)
 getSystemBus = getBus' $ fromEnv `E.catch` noEnv where
 	defaultAddr = "unix:path=/var/run/dbus/system_bus_socket"
@@ -2748,10 +2766,12 @@ getSystemBus = getBus' $ fromEnv `E.catch` noEnv where
 	noEnv (E.SomeException _) = return defaultAddr
 
 <<DBus/Bus.hs>>=
+<<apidoc getSessionBus>>
 getSessionBus :: IO (C.Connection, T.BusName)
 getSessionBus = getBus' $ getEnv "DBUS_SESSION_BUS_ADDRESS"
 
 <<DBus/Bus.hs>>=
+<<apidoc getStarterBus>>
 getStarterBus :: IO (C.Connection, T.BusName)
 getStarterBus = getBus' $ getEnv "DBUS_STARTER_ADDRESS"
 
@@ -3167,7 +3187,7 @@ mkAttr name value = (name, H.AttValue [Left escaped]) where
 @
 \section{Match rules}
 
-Match rules are used indicate that the client is interested in messages
+Match rules are used to indicate that the client is interested in messages
 matching a particular filter. This module provides an interface for building
 match rule strings. Eventually, it will support parsing them also.
 
@@ -3192,11 +3212,12 @@ import qualified DBus.Message as M
 import qualified DBus.Constants as C
 import DBus.Util (maybeIndex)
 
-@ A match rule is a set of filters; most filters may have one possible
-value assigned, such as a single message type. The exception are parameter
-filters, which are limited in number only by the server implementation.
 
 <<DBus/MatchRule.hs>>=
+-- | A match rule is a set of filters; most filters may have one possible
+-- value assigned, such as a single message type. The exception are parameter
+-- filters, which are limited in number only by the server implementation.
+-- 
 data MatchRule = MatchRule
 	{ matchType        :: Maybe MessageType
 	, matchSender      :: Maybe T.BusName
@@ -3206,25 +3227,26 @@ data MatchRule = MatchRule
 	, matchDestination :: Maybe T.BusName
 	, matchParameters  :: [ParameterValue]
 	}
-
-@ Parameters may match against two types, strings and object paths. It's
-probably an error to have two values for the same parameter.
-
-The constructor {\tt StringValue 3 "hello"} means that the fourth parameter
-in the message body must be the string ``hello''. {\tt PathValue} is the
-same, but its value must be an object path.
+	deriving (Show)
 
 <<DBus/MatchRule.hs>>=
+-- | Parameters may match against two types, strings and object paths. It's
+-- probably an error to have two values for the same parameter.
+-- 
+-- The constructor @StringValue 3 \"hello\"@ means that the fourth parameter
+-- in the message body must be the string @\"hello\"@. @PathValue@ is the
+-- same, but its value must be an object path.
+-- 
 data ParameterValue
 	= StringValue Word8 Text
 	| PathValue Word8 T.ObjectPath
 	deriving (Show, Eq)
 
-@ The set of allowed message types to filter on is separate from the set
-supported for sending over the wire. This allows the server to support
-additional types not yet implemented in the library, or vice-versa.
-
 <<DBus/MatchRule.hs>>=
+-- | The set of allowed message types to filter on is separate from the set
+-- supported for sending over the wire. This allows the server to support
+-- additional types not yet implemented in the library, or vice-versa.
+-- 
 data MessageType
 	= MethodCall
 	| MethodReturn
@@ -3236,6 +3258,7 @@ data MessageType
 to format them.
 
 <<DBus/MatchRule.hs>>=
+<<apidoc formatRule>>
 formatRule :: MatchRule -> Text
 formatRule rule = TL.intercalate "," filters where
 	filters = structureFilters ++ parameterFilters
@@ -3276,6 +3299,7 @@ formatType Error        = "error"
 it's useful to have a message-building function pre-defined.
 
 <<DBus/MatchRule.hs>>=
+<<apidoc addMatch>>
 addMatch :: MatchRule -> M.MethodCall
 addMatch rule = M.MethodCall
 	C.dbusPath
@@ -3289,6 +3313,7 @@ addMatch rule = M.MethodCall
 an empty rule allows clients to set only the fields they care about.
 
 <<DBus/MatchRule.hs>>=
+<<apidoc matchAll>>
 matchAll :: MatchRule
 matchAll = MatchRule
 	{ matchType        = Nothing
@@ -3304,6 +3329,7 @@ matchAll = MatchRule
 signals.
 
 <<DBus/MatchRule.hs>>=
+<<apidoc matches>>
 matches :: MatchRule -> M.ReceivedMessage -> Bool
 matches rule msg = and . catMaybes . map ($ rule) $
 	[ fmap      (typeMatches msg) . matchType
@@ -3419,6 +3445,7 @@ encodeFlags = foldr (.|.) 0 . map flagValue where
 {\tt ReleaseName}.
 
 <<DBus/NameReservation.hs>>=
+<<apidoc requestName>>
 requestName :: T.BusName -> [RequestNameFlag] -> M.MethodCall
 requestName name flags = M.MethodCall
 	{ M.methodCallPath = C.dbusPath
@@ -3455,6 +3482,7 @@ decodeRequestReply 4 = Just AlreadyOwner
 decodeRequestReply _ = Nothing
 
 <<DBus/NameReservation.hs>>=
+<<apidoc releaseName>>
 releaseName :: T.BusName -> M.MethodCall
 releaseName name = M.MethodCall
 	{ M.methodCallPath = C.dbusPath
@@ -3750,3 +3778,129 @@ dropEnd :: Int -> [a] -> [a]
 dropEnd n xs = take (length xs - n) xs
 
 @ \end{document}
+
+@
+\section{Haddock API documentation}
+
+The \LaTeX{} documentation is great for somebody reading the source code
+or trying to fix an error, but it's not useful for people who just want
+to add D-Bus support to their applications. These documentation sections
+will be included in Haddock output for public functions.
+
+There's no real order to this section; it exists only because Haddock
+can't merge documentation from external files.
+
+<<apidoc isAtomicType>>=
+-- | \"Atomic\" types are any which can't contain any other types. Only
+-- atomic types may be used as dictionary keys.
+
+<<apidoc typeCode>>=
+-- | Every type has an associated type code; a textual representation of
+-- the type, useful for debugging.
+
+<<apidoc Variant>>=
+-- | 'Variant's may contain any other built-in D-Bus value. Besides
+-- representing native @VARIANT@ values, they allow type-safe storage and
+-- deconstruction of heterogeneous collections.
+
+<<apidoc variantType>>=
+-- | Every variant is strongly-typed; that is, the type of its contained
+-- value is known at all times. This function retrieves that type, so that
+-- the correct cast can be used to retrieve the value.
+
+<<apidoc arrayType>>=
+-- | This is the type contained within the array, not the type of the array
+-- itself.
+
+<<apidoc Connection>>=
+-- | A 'Connection' is an opaque handle to an open D-Bus channel, with an
+-- internal state for maintaining the current message serial.
+
+<<apidoc Transport>>=
+-- | A 'Transport' is anything which can send and receive bytestrings,
+-- typically via a socket.
+
+<<apidoc connect>>=
+-- | Open a connection to some address, using a given authentication
+-- mechanism. If the connection fails, a 'ConnectionError' will be thrown.
+
+<<apidoc connectFirst>>=
+-- | Try to open a connection to various addresses, returning the first
+-- connection which could be successfully opened.
+
+<<apidoc send>>=
+-- | Send a single message, with a generated 'M.Serial'. The second parameter
+-- exists to prevent race conditions when registering a reply handler; it
+-- receives the serial the message /will/ be sent with, before it's actually
+-- sent.
+--
+-- Only one message may be sent at a time; if multiple threads attempt to
+-- send messages in parallel, one will block until after the other has
+-- finished.
+
+<<apidoc receive>>=
+-- | Receive the next message from the connection, blocking until one is
+-- available.
+--
+-- Only one message may be received at a time; if multiple threads attempt
+-- to receive messages in parallel, one will block until after the other has
+-- finished.
+
+<<apidoc getBus>>=
+-- | Similar to 'C.connect', but additionally sends @Hello@ messages to the
+-- central bus.
+
+<<apidoc getFirstBus>>=
+-- | Similar to 'C.connectFirst', but additionally sends @Hello@ messages to
+-- the central bus.
+
+<<apidoc getSystemBus>>=
+-- | Connect to the bus specified in the environment variable
+-- @DBUS_SYSTEM_BUS_ADDRESS@, or to
+-- @unix:path=\/var\/run\/dbus\/system_bus_socket@ if @DBUS_SYSTEM_BUS_ADDRESS@
+-- is not set.
+
+<<apidoc getSessionBus>>=
+-- | Connect to the bus specified in the environment variable
+-- @DBUS_SESSION_BUS_ADDRESS@, which must be set.
+
+<<apidoc getStarterBus>>=
+-- | Connect to the bus specified in the environment variable
+-- @DBUS_STARTER_ADDRESS@, which must be set.
+
+<<apidoc formatRule>>=
+-- | Format a 'MatchRule' as the bus expects to receive in a call to
+-- @AddMatch@.
+
+<<apidoc addMatch>>=
+-- | Build a 'M.MethodCall' for adding a match rule to the bus.
+
+<<apidoc matchAll>>=
+-- | An empty match rule, which matches everything.
+
+<<apidoc matches>>=
+-- | Whether a 'M.ReceivedMessage' matches a given rule. This is useful
+-- for implementing signal handlers.
+
+<<apidoc requestName>>=
+-- | Build a 'M.MethodCall' for requesting a registered bus name.
+
+<<apidoc releaseName>>=
+-- | Build a 'M.MethodCall' for releasing a registered bus name.
+
+<<apidoc Serial>>=
+-- | A value used to uniquely identify a particular message within a session.
+-- 'Serial's are 32-bit unsigned integers, and eventually wrap.
+
+<<apidoc ReceivedMessage>>=
+-- | Not an actual message type, but a wrapper around messages received from
+-- the bus. Each value contains the message's 'Serial' and possibly the
+-- origin's 'T.BusName'
+
+<<apidoc marshalMessage>>=
+-- | Convert a 'M.Message' into a 'L.ByteString'. Although unusual, it is
+-- possible for marshaling to fail -- if this occurs, an appropriate error
+-- will be returned instead.
+
+<<apidoc unmarshalMessage>>=
+-- | Read bytes from a monad until a complete message has been received.
