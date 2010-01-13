@@ -3803,8 +3803,6 @@ readUntil guard getx = readUntil' [] where
 dropEnd :: Int -> [a] -> [a]
 dropEnd n xs = take (length xs - n) xs
 
-@ \end{document}
-
 @
 \section{Haddock API documentation}
 
@@ -3930,3 +3928,5 @@ can't merge documentation from external files.
 
 <<apidoc unmarshalMessage>>=
 -- | Read bytes from a monad until a complete message has been received.
+
+@ \end{document}
