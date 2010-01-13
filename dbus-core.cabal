@@ -1,7 +1,7 @@
 name: dbus-core
 version: 0.8
 synopsis: Low-level D-Bus protocol implementation
-license: GPL
+license: GPL-3
 license-file: License.txt
 author: John Millikin
 maintainer: jmillikin@gmail.com
@@ -10,6 +10,8 @@ cabal-version: >=1.6
 category: Network, Desktop
 stability: experimental
 bug-reports: mailto:jmillikin@gmail.com
+homepage: http://ianen.org/haskell/dbus/
+tested-with: GHC==6.10.4
 
 extra-source-files:
   dbus-core.nw
@@ -19,7 +21,7 @@ extra-source-files:
 
 source-repository head
   type: darcs
-  location: http://patch-tag.com/r/jmillikin/dbus-core/pullrepo
+  location: http://ianen.org/haskell/dbus/core/
 
 flag test
   default: False
@@ -32,18 +34,18 @@ library
   hs-source-dirs: hs
 
   build-depends:
-    base >=4 && < 5,
-    parsec >= 3.0.0,
-    binary,
-    bytestring,
-    data-binary-ieee754 >= 0.3,
-    HaXml >= 1.19.7,
-    pretty,
-    text,
-    mtl,
-    containers,
-    unix,
-    network
+      base >=4 && < 5
+    , parsec >= 3.0.0
+    , binary
+    , bytestring
+    , data-binary-ieee754 >= 0.3
+    , HaXml >= 1.19.7
+    , pretty
+    , text
+    , mtl
+    , containers
+    , unix
+    , network
 
   exposed-modules:
     DBus.Address
