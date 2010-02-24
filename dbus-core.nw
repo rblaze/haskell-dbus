@@ -352,9 +352,12 @@ strSignature (Signature ts) = TL.concat $ map typeCode ts
 @ It doesn't make much sense to sort signatures, but since they can be used
 as dictionary keys, it's useful to have them as an instance of {\tt Ord}.
 
+<<type imports>>=
+import Data.Ord (comparing)
+
 <<DBus/Types.hs>>=
 instance Ord Signature where
-	compare x y = compare (strSignature x) (strSignature y)
+	compare = comparing strSignature
 
 <<type exports>>=
   -- * Signatures
@@ -587,9 +590,7 @@ the item type, to ensure the array is homogenous.
 
 <<DBus/Types.hs>>=
 arrayFromItems :: Type -> [Variant] -> Maybe Array
-arrayFromItems DBusByte vs = do
-	bytes <- mapM fromVariant vs
-	Just . ByteArray . ByteString.pack $ bytes
+arrayFromItems DBusByte vs = fmap (ByteArray . ByteString.pack) (mapM fromVariant vs)
 
 arrayFromItems t vs = do
 	mkSignature (typeCode t)
@@ -1278,7 +1279,6 @@ import qualified Data.Binary.Builder as B
 
 <<wire extensions>>=
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE BangPatterns #-}
 
 <<DBus/Wire/Internal.hs>>=
 data MarshalState = MarshalState Endianness B.Builder !Word64
@@ -1311,7 +1311,7 @@ append :: L.ByteString -> Marshal
 append bytes = do
 	(MarshalState e builder count) <- ST.get
 	let builder' = B.append builder $ B.fromLazyByteString bytes
-	    count' = count + (fromIntegral $ L.length bytes)
+	    count' = count + fromIntegral (L.length bytes)
 	ST.put $ MarshalState e builder' count'
 
 <<DBus/Wire/Internal.hs>>=
@@ -1332,7 +1332,7 @@ marshalBuilder size be le x = do
 	let builder' = B.append builder $ case e of
 		BigEndian -> be x
 		LittleEndian -> le x
-	let count' = count + (fromIntegral size)
+	let count' = count + fromIntegral size
 	ST.put $ MarshalState e builder' count'
 
 @ \subsubsection{Errors}
@@ -2555,7 +2555,7 @@ connectFirst orig = connectFirst' orig where
 @ \subsection{Authentication}
 
 Authentication is a bit iffy; currently, there's a one specified
-authentication mechanism ({\tt DBUS_COOKIE_SHA1}), which I've never seen
+authentication mechanism ({\tt DBUS\_COOKIE\_SHA1}), which I've never seen
 in the wild. Everybody seems to use {\tt EXTERNAL}, described below.
 
 To support multiple modes more easily in the future, and for user-defined
@@ -2762,7 +2762,7 @@ using a "hello message", before it will begin forwarding messages.
 
 <<DBus/Bus.hs>>=
 busForConnection :: C.Connection -> IO (C.Connection, T.BusName)
-busForConnection c = sendHello c >>= return . (,) c
+busForConnection c = fmap ((,) c) $ sendHello c
 
 <<DBus/Bus.hs>>=
 <<apidoc getBus>>
@@ -3231,7 +3231,7 @@ module DBus.MatchRule (
 	) where
 <<text imports>>
 import Data.Word (Word8)
-import Data.Maybe (catMaybes, fromMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import qualified Data.Set as Set
 import qualified DBus.Types as T
 import qualified DBus.Message as M
@@ -3289,7 +3289,7 @@ formatRule :: MatchRule -> Text
 formatRule rule = TL.intercalate "," filters where
 	filters = structureFilters ++ parameterFilters
 	parameterFilters = map formatParameter $ matchParameters rule
-	structureFilters = catMaybes $ map unpack
+	structureFilters = mapMaybe unpack
 		[ ("type", fmap formatType . matchType)
 		, ("sender", fmap T.strBusName . matchSender)
 		, ("interface", fmap T.strInterfaceName . matchInterface)
@@ -3357,7 +3357,7 @@ signals.
 <<DBus/MatchRule.hs>>=
 <<apidoc matches>>
 matches :: MatchRule -> M.ReceivedMessage -> Bool
-matches rule msg = and . catMaybes . map ($ rule) $
+matches rule msg = and . mapMaybe ($ rule) $
 	[ fmap      (typeMatches msg) . matchType
 	, fmap    (senderMatches msg) . matchSender
 	, fmap     (ifaceMatches msg) . matchInterface
