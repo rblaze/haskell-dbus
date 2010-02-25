@@ -64,6 +64,9 @@ library
   other-modules:
     DBus.Message.Internal
     DBus.Wire.Internal
+    DBus.Wire.Marshal
+    DBus.Wire.Unmarshal
+    DBus.Wire.Unicode
     DBus.Util
 
 executable dbus-core-tests

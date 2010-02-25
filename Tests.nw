@@ -40,6 +40,8 @@ import DBus.Address
 import DBus.Message.Internal
 import DBus.Types
 import DBus.Wire.Internal
+import DBus.Wire.Marshal
+import DBus.Wire.Unmarshal
 import qualified DBus.Introspection as I
 
 @ \section{Tests}

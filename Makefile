@@ -14,6 +14,9 @@ HS_SOURCES=\
 	hs/DBus/UUID.hs \
 	hs/DBus/Wire.hs \
 	hs/DBus/Wire/Internal.hs \
+	hs/DBus/Wire/Marshal.hs \
+	hs/DBus/Wire/Unmarshal.hs \
+	hs/DBus/Wire/Unicode.hs \
 	hs/Tests.hs
 
 all: $(HS_SOURCES)
