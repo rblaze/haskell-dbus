@@ -156,28 +156,11 @@ typeCode :: Type -> Text
   Type (..)
 , typeCode
 
-@ Certain Haskell types are considered ``built-in'' D-Bus types; that is,
-they are directly represented in the D-Bus protocol.
-
-<<DBus/Types.hs>>=
-class (Show a, Eq a) => Builtin a where
-	builtinDBusType :: a -> Type
-
 @ \subsection{Variants}
 
 A wrapper type is needed for safely storing generic D-Bus values in Haskell.
 The D-Bus ``variant'' type is perfect for this, because variants may store
 any D-Bus value.
-
-To cleanly store any D-Bus type, without exposing the internal storage
-mechanism, requires existential quantification and some run-time casting.
-
-<<type extensions>>=
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE ExistentialQuantification #-}
-
-<<type imports>>=
-import Data.Typeable (Typeable, cast)
 
 @ Any type which is an instance of {\tt Variable} is considered a valid
 D-Bus value, because it can be used to construct {\tt Variant}s. However,
@@ -186,8 +169,24 @@ pre-defined types.
 
 <<DBus/Types.hs>>=
 <<apidoc Variant>>
-data Variant = forall a. (Variable a, Builtin a, Typeable a) => Variant a
-	deriving (Typeable)
+data Variant
+	= VarBoxBool Bool
+	| VarBoxWord8 Word8
+	| VarBoxInt16 Int16
+	| VarBoxInt32 Int32
+	| VarBoxInt64 Int64
+	| VarBoxWord16 Word16
+	| VarBoxWord32 Word32
+	| VarBoxWord64 Word64
+	| VarBoxDouble Double
+	| VarBoxString Text
+	| VarBoxSignature Signature
+	| VarBoxObjectPath ObjectPath
+	| VarBoxVariant Variant
+	| VarBoxArray Array
+	| VarBoxDictionary Dictionary
+	| VarBoxStructure Structure
+	deriving (Eq)
 
 class Variable a where
 	toVariant :: a -> Variant
@@ -204,17 +203,30 @@ change drastically.
 
 <<DBus/Types.hs>>=
 instance Show Variant where
-	showsPrec d (Variant x) = showParen (d > 10) $
-		s "Variant " . shows code . s " " . showsPrec 11 x
-		where code = typeCode . builtinDBusType $ x
-		      s    = showString
+	showsPrec d var = showParen (d > 10) full where
+		full = s "Variant " . shows code . s " " . valueStr
+		code = typeCode $ variantType var
+		s = showString
+		valueStr = showsPrecVar 11 var
 
-@ In the test suite, it's useful to test that two variants have the same
-value.
-
-<<DBus/Types.hs>>=
-instance Eq Variant where
-	(Variant x) == (Variant y) = cast x == Just y
+showsPrecVar :: Int -> Variant -> ShowS
+showsPrecVar d var = case var of
+	(VarBoxBool x) -> showsPrec d x
+	(VarBoxWord8 x) -> showsPrec d x
+	(VarBoxInt16 x) -> showsPrec d x
+	(VarBoxInt32 x) -> showsPrec d x
+	(VarBoxInt64 x) -> showsPrec d x
+	(VarBoxWord16 x) -> showsPrec d x
+	(VarBoxWord32 x) -> showsPrec d x
+	(VarBoxWord64 x) -> showsPrec d x
+	(VarBoxDouble x) -> showsPrec d x
+	(VarBoxString x) -> showsPrec d x
+	(VarBoxSignature x) -> showsPrec d x
+	(VarBoxObjectPath x) -> showsPrec d x
+	(VarBoxVariant x) -> showsPrec d x
+	(VarBoxArray x) -> showsPrec d x
+	(VarBoxDictionary x) -> showsPrec d x
+	(VarBoxStructure x) -> showsPrec d x
 
 @ Since many operations on D-Bus values depend on having the correct type,
 {\tt variantType} is used to retrieve which type is actually stored within
@@ -223,31 +235,47 @@ a {\tt Variant}.
 <<DBus/Types.hs>>=
 <<apidoc variantType>>
 variantType :: Variant -> Type
-variantType (Variant x) = builtinDBusType x
+variantType var = case var of
+	(VarBoxBool _) -> DBusBoolean
+	(VarBoxWord8 _) -> DBusByte
+	(VarBoxInt16 _) -> DBusInt16
+	(VarBoxInt32 _) -> DBusInt32
+	(VarBoxInt64 _) -> DBusInt64
+	(VarBoxWord16 _) -> DBusWord16
+	(VarBoxWord32 _) -> DBusWord32
+	(VarBoxWord64 _) -> DBusWord64
+	(VarBoxDouble _) -> DBusDouble
+	(VarBoxString _) -> DBusString
+	(VarBoxSignature _) -> DBusSignature
+	(VarBoxObjectPath _) -> DBusObjectPath
+	(VarBoxVariant _) -> DBusVariant
+	(VarBoxArray x) -> DBusArray (arrayType x)
+	(VarBoxDictionary x) -> let
+		keyT = dictionaryKeyType x
+		valueT = dictionaryValueType x
+		in DBusDictionary keyT valueT
+	(VarBoxStructure x) -> let
+		Structure items = x
+		in DBusStructure (map variantType items)
 
 <<type exports>>=
 , variantType
 
-@ These helper macros will be used for defining instances of Haskell types.
+@ A macro is useful for reducing verbosity in simple {\tt Variable}
+instances.
 
 <<DBus/Types.hs>>=
-#define INSTANCE_BUILTIN(HASKELL, DBUS) \
-	instance Builtin HASKELL where \
-		{ builtinDBusType _ = DBUS };
+#define INSTANCE_VARIABLE(TYPE) \
+	instance Variable TYPE where \
+		{ toVariant = VarBox##TYPE \
+		; fromVariant (VarBox##TYPE x) = Just x \
+		; fromVariant _ = Nothing \
+		}
 
-#define INSTANCE_VARIABLE(HASKELL) \
-	instance Variable HASKELL where \
-		{ toVariant = Variant \
-		; fromVariant (Variant x) = cast x };
-
-#define BUILTIN_VARIABLE(HASKELL, DBUS) \
-	INSTANCE_BUILTIN(HASKELL, DBUS) \
-	INSTANCE_VARIABLE(HASKELL)
-
-@ Since {\tt Variant}s are D-Bus values themselves, they have a type.
+@ Since {\tt Variant}s are D-Bus values themselves, they can be stored in variants.
 
 <<DBus/Types.hs>>=
-BUILTIN_VARIABLE(Variant, DBusVariant)
+INSTANCE_VARIABLE(Variant)
 
 @ \subsection{Numerics}
 
@@ -283,15 +311,15 @@ import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
 
 <<DBus/Types.hs>>=
-BUILTIN_VARIABLE(Bool,   DBusBoolean)
-BUILTIN_VARIABLE(Word8,  DBusByte)
-BUILTIN_VARIABLE(Int16,  DBusInt16)
-BUILTIN_VARIABLE(Int32,  DBusInt32)
-BUILTIN_VARIABLE(Int64,  DBusInt64)
-BUILTIN_VARIABLE(Word16, DBusWord16)
-BUILTIN_VARIABLE(Word32, DBusWord32)
-BUILTIN_VARIABLE(Word64, DBusWord64)
-BUILTIN_VARIABLE(Double, DBusDouble)
+INSTANCE_VARIABLE(Bool)
+INSTANCE_VARIABLE(Word8)
+INSTANCE_VARIABLE(Int16)
+INSTANCE_VARIABLE(Int32)
+INSTANCE_VARIABLE(Int64)
+INSTANCE_VARIABLE(Word16)
+INSTANCE_VARIABLE(Word32)
+INSTANCE_VARIABLE(Word64)
+INSTANCE_VARIABLE(Double)
 
 @ \subsection{Strings}
 
@@ -300,7 +328,10 @@ inefficent. To provide better performance for large strings, packed Unicode
 strings defined in {\tt Data.Text} are used internally.
 
 <<DBus/Types.hs>>=
-BUILTIN_VARIABLE(TL.Text, DBusString)
+instance Variable TL.Text where
+	toVariant = VarBoxString
+	fromVariant (VarBoxString x) = Just x
+	fromVariant _ = Nothing
 
 @ There's two different {\tt Text} types, strict and lazy. It'd be a pain
 to store both and have to convert later, so instead, all strict {\tt Text}
@@ -334,9 +365,9 @@ one requires using the {\tt mkSignature} function, which will convert a valid
 D-Bus signature string into a {\tt Signature}.
 
 <<DBus/Types.hs>>=
-BUILTIN_VARIABLE(Signature, DBusSignature)
+INSTANCE_VARIABLE(Signature)
 data Signature = Signature { signatureTypes :: [Type] }
-	deriving (Eq, Typeable)
+	deriving (Eq)
 
 instance Show Signature where
 	showsPrec d x = showParen (d > 10) $
@@ -492,11 +523,11 @@ construct invalid signatures.
 @ \subsection{Object paths}
 
 <<DBus/Types.hs>>=
-BUILTIN_VARIABLE(ObjectPath, DBusObjectPath)
+INSTANCE_VARIABLE(ObjectPath)
 newtype ObjectPath = ObjectPath
 	{ strObjectPath :: Text
 	}
-	deriving (Eq, Ord, Typeable)
+	deriving (Eq, Ord)
 
 instance Show ObjectPath where
 	showsPrec d (ObjectPath x) = showParen (d > 10) $
@@ -552,10 +583,7 @@ INSTANCE_VARIABLE(Array)
 data Array
 	= VariantArray Type [Variant]
 	| ByteArray ByteString
-	deriving (Eq, Typeable)
-
-instance Builtin Array where
-	builtinDBusType = DBusArray . arrayType
+	deriving (Eq)
 
 <<apidoc arrayType>>
 arrayType :: Array -> Type
@@ -581,8 +609,8 @@ instance Show Array where
 		s "Array " . showSig . s " [" . s valueString . s "]" where
 			s = showString
 			showSig = shows . typeCode . arrayType $ array
-			vs = [show x | (Variant x) <- arrayItems array]
-			valueString = intercalate ", " vs
+			showVar var = showsPrecVar 0 var ""
+			valueString = intercalate ", " $ map showVar $ arrayItems array
 
 @ Clients constructing an array must provide the expected item type, which
 will be checked for validity. Every item in the array will be checked against
@@ -659,10 +687,7 @@ data Dictionary = Dictionary
 	, dictionaryValueType :: Type
 	, dictionaryItems     :: [(Variant, Variant)]
 	}
-	deriving (Eq, Typeable)
-
-instance Builtin Dictionary where
-	builtinDBusType (Dictionary kt vt _) = DBusDictionary kt vt
+	deriving (Eq)
 
 <<type exports>>=
   -- * Dictionaries
@@ -684,8 +709,7 @@ instance Show Dictionary where
 			s = showString
 			showSig = shows $ TL.append (typeCode kt) (typeCode vt)
 			valueString = intercalate ", " $ map showPair pairs
-			showPair ((Variant k), (Variant v)) =
-				show k ++ " -> " ++ show v
+			showPair (k, v) = (showsPrecVar 0 k . showString " -> " . showsPrecVar 0 v) ""
 
 @ Constructing a {\tt Dictionary} works like constructing an {\tt Array},
 except that there are two types to check, and the key type must be atomic.
@@ -777,10 +801,7 @@ tuple.
 <<DBus/Types.hs>>=
 INSTANCE_VARIABLE(Structure)
 data Structure = Structure [Variant]
-	deriving (Show, Eq, Typeable)
-
-instance Builtin Structure where
-	builtinDBusType (Structure vs) = DBusStructure $ map variantType vs
+	deriving (Show, Eq)
 
 <<type exports>>=
   -- * Structures
