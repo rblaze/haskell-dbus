@@ -445,7 +445,8 @@ D-Bus type system:
 \item Signatures may be at most 255 characters long.
 \end{itemize}
 
-Parsec is used to parse signatures.
+Parsec is used to parse complex signatures. Since single-type and empty
+signatures are very common, they are special-cased for performance.
 
 <<type imports>>=
 import Text.Parsec ((<|>))
@@ -454,7 +455,30 @@ import DBus.Util (checkLength, parseMaybe)
 
 <<DBus/Types.hs>>=
 mkSignature :: Text -> Maybe Signature
-mkSignature = (parseMaybe sigParser =<<) . checkLength 255 . TL.unpack where
+mkSignature text = parsed where
+	parsed = case TL.length text of
+		0 -> Just $ Signature []
+		1 -> fast
+		_ -> slow
+	
+	just t = Just $ Signature [t]
+	fast = case TL.head text of
+		'b' -> just DBusBoolean
+		'y' -> just DBusByte
+		'n' -> just DBusInt16
+		'i' -> just DBusInt32
+		'x' -> just DBusInt64
+		'q' -> just DBusWord16
+		'u' -> just DBusWord32
+		't' -> just DBusWord64
+		'd' -> just DBusDouble
+		's' -> just DBusString
+		'g' -> just DBusSignature
+		'o' -> just DBusObjectPath
+		'v' -> just DBusVariant
+		_   -> Nothing
+
+	slow = (parseMaybe sigParser =<<) . checkLength 255 . TL.unpack $ text
 	sigParser = do
 		types <- P.many parseType
 		P.eof
