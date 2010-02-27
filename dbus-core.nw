@@ -439,84 +439,98 @@ typeCode (DBusStructure ts) = TL.concat $
 @ \subsubsection{Parsing}
 
 When parsing, additional restrictions apply which are not inherent to the
-D-Bus type system:
+D-Bus type system. {\tt mkSignature} guarantees that any {\tt Signature} is
+valid according to D-Bus rules.
 
-\begin{itemize}
-\item Signatures may be at most 255 characters long.
-\end{itemize}
+<<DBus/Types.hs>>=
+mkSignature :: Text -> Maybe Signature
+mkSignature text = parsed where
+	<<fast signature parser>>
+	<<slow signature parser>>
+	parsed = case TL.length text of
+		0 -> Just $ Signature []
+		1 -> fast
+		_ -> slow
 
-Parsec is used to parse complex signatures. Since single-type and empty
-signatures are very common, they are special-cased for performance.
+@ Since single-type and empty signatures are very common, they are
+special-cased for performance.
+
+<<fast signature parser>>=
+just t = Just $ Signature [t]
+fast = case TL.head text of
+	'b' -> just DBusBoolean
+	'y' -> just DBusByte
+	'n' -> just DBusInt16
+	'i' -> just DBusInt32
+	'x' -> just DBusInt64
+	'q' -> just DBusWord16
+	'u' -> just DBusWord32
+	't' -> just DBusWord64
+	'd' -> just DBusDouble
+	's' -> just DBusString
+	'g' -> just DBusSignature
+	'o' -> just DBusObjectPath
+	'v' -> just DBusVariant
+	_   -> Nothing
+
+@ Parsec is used to parse more complex signatures.
 
 <<type imports>>=
 import Text.Parsec ((<|>))
 import qualified Text.Parsec as P
 import DBus.Util (checkLength, parseMaybe)
 
-<<DBus/Types.hs>>=
-mkSignature :: Text -> Maybe Signature
-mkSignature text = parsed where
-	parsed = case TL.length text of
-		0 -> Just $ Signature []
-		1 -> fast
-		_ -> slow
-	
-	just t = Just $ Signature [t]
-	fast = case TL.head text of
-		'b' -> just DBusBoolean
-		'y' -> just DBusByte
-		'n' -> just DBusInt16
-		'i' -> just DBusInt32
-		'x' -> just DBusInt64
-		'q' -> just DBusWord16
-		'u' -> just DBusWord32
-		't' -> just DBusWord64
-		'd' -> just DBusDouble
-		's' -> just DBusString
-		'g' -> just DBusSignature
-		'o' -> just DBusObjectPath
-		'v' -> just DBusVariant
-		_   -> Nothing
+<<slow signature parser>>=
+slow = (parseMaybe sigParser =<<) . checkLength 255 . TL.unpack $ text
+sigParser = do
+	types <- P.many parseType
+	P.eof
+	return $ Signature types
 
-	slow = (parseMaybe sigParser =<<) . checkLength 255 . TL.unpack $ text
-	sigParser = do
-		types <- P.many parseType
-		P.eof
-		return $ Signature types
-	parseType = parseAtom <|> parseContainer
-	parseContainer =
-		    parseArray
-		<|> parseStruct
-		<|> (P.char 'v' >> return DBusVariant)
-	parseAtom =
-		    (P.char 'b' >> return DBusBoolean)
-		<|> (P.char 'y' >> return DBusByte)
-		<|> (P.char 'n' >> return DBusInt16)
-		<|> (P.char 'i' >> return DBusInt32)
-		<|> (P.char 'x' >> return DBusInt64)
-		<|> (P.char 'q' >> return DBusWord16)
-		<|> (P.char 'u' >> return DBusWord32)
-		<|> (P.char 't' >> return DBusWord64)
-		<|> (P.char 'd' >> return DBusDouble)
-		<|> (P.char 's' >> return DBusString)
-		<|> (P.char 'g' >> return DBusSignature)
-		<|> (P.char 'o' >> return DBusObjectPath)
-	parseArray = do
-		P.char 'a'
-		parseDict <|> do
-		t <- parseType
-		return $ DBusArray t
-	parseDict = do
-		P.char '{'
-		keyType <- parseAtom
-		valueType <- parseType
-		P.char '}'
-		return $ DBusDictionary keyType valueType
-	parseStruct = do
-		P.char '('
-		types <- P.many parseType
-		P.char ')'
-		return $ DBusStructure types
+@ Types may be either containers or atoms. Containers can't be dictionary
+keys.
+
+<<slow signature parser>>=
+parseType = parseAtom <|> parseContainer
+parseContainer =
+	    parseArray
+	<|> parseStruct
+	<|> (P.char 'v' >> return DBusVariant)
+
+<<slow signature parser>>=
+parseArray = do
+	P.char 'a'
+	parseDict <|> fmap DBusArray parseType
+parseDict = do
+	P.char '{'
+	keyType <- parseAtom
+	valueType <- parseType
+	P.char '}'
+	return $ DBusDictionary keyType valueType
+
+@ Structures can contain any types.
+
+<<slow signature parser>>=
+parseStruct = do
+	P.char '('
+	types <- P.many parseType
+	P.char ')'
+	return $ DBusStructure types
+
+<<slow signature parser>>=
+parseAtom =
+	    (P.char 'b' >> return DBusBoolean)
+	<|> (P.char 'y' >> return DBusByte)
+	<|> (P.char 'n' >> return DBusInt16)
+	<|> (P.char 'i' >> return DBusInt32)
+	<|> (P.char 'x' >> return DBusInt64)
+	<|> (P.char 'q' >> return DBusWord16)
+	<|> (P.char 'u' >> return DBusWord32)
+	<|> (P.char 't' >> return DBusWord64)
+	<|> (P.char 'd' >> return DBusDouble)
+	<|> (P.char 's' >> return DBusString)
+	<|> (P.char 'g' >> return DBusSignature)
+	<|> (P.char 'o' >> return DBusObjectPath)
 
 @ Since many signatures are defined as string literals, it's useful to
 have a helper function to construct a signature directly from a string.
@@ -1241,7 +1255,7 @@ receivedBody (ReceivedMethodCall   _ _ x) = messageBody x
 receivedBody (ReceivedMethodReturn _ _ x) = messageBody x
 receivedBody (ReceivedError        _ _ x) = messageBody x
 receivedBody (ReceivedSignal       _ _ x) = messageBody x
-receivedBody _ = []
+receivedBody (ReceivedUnknown      _ _ x) = unknownBody x
 
 <<message exports>>=
 , ReceivedMessage (..)
