@@ -2445,6 +2445,7 @@ import Data.Word (Word32)
 data Transport = Transport
 	{ transportSend :: L.ByteString -> IO ()
 	, transportRecv :: Word32 -> IO L.ByteString
+	, transportClose :: IO ()
 	}
 
 @ If a method has no known transport, attempting to connect using it will
@@ -2605,7 +2606,7 @@ handleTransport :: I.Handle -> IO Transport
 handleTransport h = do
 	I.hSetBuffering h I.NoBuffering
 	I.hSetBinaryMode h True
-	return $ Transport (L.hPut h) (L.hGet h . fromIntegral)
+	return $ Transport (L.hPut h) (L.hGet h . fromIntegral) (I.hClose h)
 
 @ \subsection{Errors}
 
@@ -2664,6 +2665,16 @@ connectFirst orig = connectFirst' orig where
 <<connection exports>>=
 , connect
 , connectFirst
+
+@ \subsection{Closing connections}
+
+<<DBus/Connection.hs>>=
+<<apidoc connectionClose>>
+connectionClose :: Connection -> IO ()
+connectionClose = transportClose . connectionTransport
+
+<<connection exports>>=
+, connectionClose
 
 @ \subsection{Authentication}
 
@@ -3964,6 +3975,10 @@ can't merge documentation from external files.
 <<apidoc connectFirst>>=
 -- | Try to open a connection to various addresses, returning the first
 -- connection which could be successfully opened.
+
+<<apidoc connectionClose>>=
+-- | Close an open connection. Once closed, the 'Connection' is no longer
+-- valid and must not be used.
 
 <<apidoc send>>=
 -- | Send a single message, with a generated 'M.Serial'. The second parameter
