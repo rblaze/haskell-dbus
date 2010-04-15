@@ -11,7 +11,7 @@ category: Network, Desktop
 stability: experimental
 bug-reports: mailto:jmillikin@gmail.com
 homepage: http://ianen.org/haskell/dbus/
-tested-with: GHC==6.10.4
+tested-with: GHC==6.10.4, GHC==6.12.1
 
 extra-source-files:
   dbus-core.nw
@@ -30,22 +30,22 @@ flag hpc
   default: False
 
 library
-  ghc-options: -Wall
+  ghc-options: -Wall -fno-warn-unused-do-bind
   hs-source-dirs: hs
 
   build-depends:
-      base >=4 && < 5
-    , parsec >= 3.0.0
-    , binary
-    , bytestring
-    , data-binary-ieee754 >= 0.3
-    , HaXml >= 1.19.7
-    , pretty
-    , text
-    , mtl
-    , containers
-    , unix
-    , network
+      base >=4.0 && < 5.0
+    , parsec >= 3.0 && < 4
+    , binary >= 0.4 && < 0.6
+    , bytestring >= 0.9 && < 0.10
+    , data-binary-ieee754 >= 0.3 && < 0.5
+    , HaXml >= 1.20 && < 1.21
+    , pretty >= 1.0 && < 1.1
+    , text >= 0.7 && < 0.8
+    , mtl >= 1.0 && < 1.2
+    , containers >= 0.1 && < 0.4
+    , unix >= 2.2 && < 2.5
+    , network >= 2.2 && < 2.3
 
   exposed-modules:
     DBus.Address
@@ -75,9 +75,9 @@ executable dbus-core-tests
 
   if flag(test)
     build-depends:
-        QuickCheck >= 2
-      , test-framework
-      , test-framework-quickcheck2
+        QuickCheck >= 2.1 && < 2.2
+      , test-framework >= 0.2 && < 0.3
+      , test-framework-quickcheck2 >= 0.2 && < 0.3
   else
     buildable: False
 
