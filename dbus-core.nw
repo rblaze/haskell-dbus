@@ -1326,7 +1326,7 @@ internal buffer, so the byte count is tracked separately.
 
 <<DBus/Wire/Marshal.hs>>=
 <<copyright>>
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TypeFamilies #-}
 module DBus.Wire.Marshal where
 <<text imports>>
 <<marshal imports>>
@@ -1340,14 +1340,13 @@ import qualified DBus.Types as T
 
 <<marshal imports>>=
 import qualified Control.Monad.State as State
-import qualified Control.Monad.Error as E
+import qualified DBus.Util.MonadError as E
 import qualified Data.ByteString.Lazy as L
 import qualified Data.Binary.Builder as B
 
 <<DBus/Wire/Marshal.hs>>=
 data MarshalState = MarshalState Endianness B.Builder !Word64
-newtype MarshalM a = MarshalM (E.ErrorT MarshalError (State.State MarshalState) a)
-	deriving (Monad, E.MonadError MarshalError, State.MonadState MarshalState)
+type MarshalM = E.ErrorT MarshalError (State.State MarshalState)
 type Marshal = MarshalM ()
 
 @ Clients can perform marshaling via {\tt marshal} and {\tt runMarshal},
@@ -1355,7 +1354,7 @@ which will generate a {\tt ByteString} with the fully marshaled data.
 
 <<DBus/Wire/Marshal.hs>>=
 runMarshal :: Marshal -> Endianness -> Either MarshalError L.ByteString
-runMarshal (MarshalM m) e = case State.runState (E.runErrorT m) initialState of
+runMarshal m e = case State.runState (E.runErrorT m) initialState of
 	(Right _, MarshalState _ builder _) -> Right (B.toLazyByteString builder)
 	(Left  x, _) -> Left x
 	where initialState = MarshalState e B.empty 0
@@ -1434,8 +1433,6 @@ instance Show MarshalError where
 	show (InvalidText x) = concat
 		["Text cannot be marshaled: ", show x]
 
-instance E.Error MarshalError
-
 <<wire exports>>=
 , MarshalError (..)
 
@@ -1446,11 +1443,11 @@ Unmarshaling also uses an error transformer and internal state.
 <<DBus/Wire/Unmarshal.hs>>=
 <<copyright>>
 <<text extensions>>
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TypeFamilies #-}
 module DBus.Wire.Unmarshal where
 <<text imports>>
 <<unmarshal imports>>
-import Control.Monad (when, unless)
+import Control.Monad (when, unless, liftM)
 import Data.Maybe (fromJust, listToMaybe, fromMaybe)
 import Data.Word (Word8, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
@@ -1460,17 +1457,17 @@ import qualified DBus.Types as T
 
 <<unmarshal imports>>=
 import qualified Control.Monad.State as State
-import qualified Control.Monad.Error as E
+import Control.Monad.Trans.Class (lift)
+import qualified DBus.Util.MonadError as E
 import qualified Data.ByteString.Lazy as L
 
 <<DBus/Wire/Unmarshal.hs>>=
 data UnmarshalState = UnmarshalState Endianness L.ByteString !Word64
-newtype Unmarshal a = Unmarshal (E.ErrorT UnmarshalError (State.State UnmarshalState) a)
-	deriving (Monad, Functor, E.MonadError UnmarshalError, State.MonadState UnmarshalState)
+type Unmarshal = E.ErrorT UnmarshalError (State.State UnmarshalState)
 
 <<DBus/Wire/Unmarshal.hs>>=
 runUnmarshal :: Unmarshal a -> Endianness -> L.ByteString -> Either UnmarshalError a
-runUnmarshal (Unmarshal m) e bytes = State.evalState (E.runErrorT m) state where
+runUnmarshal m e bytes = State.evalState (E.runErrorT m) state where
 	state = UnmarshalState e bytes 0
 
 <<DBus/Wire/Unmarshal.hs>>=
@@ -1593,8 +1590,6 @@ instance Show UnmarshalError where
 	show (MissingTerminator pos) = concat
 		["Missing NUL terminator at position ", show pos]
 	show ArraySizeMismatch = "Array size mismatch"
-
-instance E.Error UnmarshalError
 
 <<wire exports>>=
 , UnmarshalError (..)
@@ -2083,7 +2078,7 @@ import qualified DBus.Constants as C
 unmarshalMessage :: Monad m => (Word32 -> m L.ByteString)
                  -> m (Either UnmarshalError M.ReceivedMessage)
 unmarshalMessage getBytes' = E.runErrorT $ do
-	let getBytes = E.lift . getBytes'
+	let getBytes = lift . getBytes'
 	
 	<<read fixed-length header>>
 	<<read full header>>
@@ -2148,7 +2143,7 @@ header <- unmarshal' headerSig headerBytes
 <<read full header>>=
 let fieldArray = fromJust . T.fromVariant $ header !! 6
 let fieldStructures = fromJust . T.fromArray $ fieldArray
-fields <- concat `fmap` mapM decodeField fieldStructures
+fields <- concat `liftM` mapM decodeField fieldStructures
 
 @ The body is always aligned to 8 bytes, so pull out the padding before
 unmarshaling it.
@@ -3926,6 +3921,56 @@ readUntil guard getx = readUntil' [] where
 -- | Drop /n/ items from the end of a list
 dropEnd :: Int -> [a] -> [a]
 dropEnd n xs = take (length xs - n) xs
+
+@
+\section{Bundled MonadError variant}
+
+The default {\tt ErrorT} and {\tt MonadError} classes in the
+{\tt transformers} package have an idiotic dependency on the {\tt Error}
+class, which is used to implement the obsolete {\tt fail} function. This
+module is a variant, which doesn't include this dependency.
+
+<<DBus/Util/MonadError.hs>>=
+<<copyright>>
+{-# LANGUAGE TypeFamilies #-}
+module DBus.Util.MonadError where
+import Control.Monad.Trans.Class
+import Control.Monad.State
+
+newtype ErrorT e m a = ErrorT { runErrorT :: m (Either e a) }
+
+instance Functor m => Functor (ErrorT e m) where
+	fmap f = ErrorT . fmap (fmap f) . runErrorT
+
+instance Monad m => Monad (ErrorT e m) where
+	return = ErrorT . return . Right
+	(>>=) m k = ErrorT $ do
+		x <- runErrorT m
+		case x of
+			Left l -> return $ Left l
+			Right r -> runErrorT $ k r
+
+instance MonadTrans (ErrorT e) where
+	lift = ErrorT . liftM Right
+
+class Monad m => MonadError m where
+	type ErrorType m
+	throwError :: ErrorType m -> m a
+	catchError :: m a -> (ErrorType m -> m a) -> m a
+
+instance Monad m => MonadError (ErrorT e m) where
+	type ErrorType (ErrorT e m) = e
+	throwError = ErrorT . return . Left
+	catchError m h = ErrorT $ do
+		x <- runErrorT m
+		case x of
+			Left l -> runErrorT $ h l
+			Right r -> return $ Right r
+
+instance MonadState m => MonadState (ErrorT e m) where
+	type StateType (ErrorT e m) = StateType m
+	get = lift get
+	put = lift . put
 
 @
 \section{Haddock API documentation}
