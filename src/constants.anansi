@@ -1,0 +1,186 @@
+:# Copyright (C) 2009-2010 John Millikin <jmillikin@gmail.com>
+:# 
+:# This program is free software: you can redistribute it and/or modify
+:# it under the terms of the GNU General Public License as published by
+:# the Free Software Foundation, either version 3 of the License, or
+:# any later version.
+:# 
+:# This program is distributed in the hope that it will be useful,
+:# but WITHOUT ANY WARRANTY; without even the implied warranty of
+:# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+:# GNU General Public License for more details.
+:# 
+:# You should have received a copy of the GNU General Public License
+:# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+\section{Constants}
+
+:f DBus/Constants.hs
+|copyright|
+{-# LANGUAGE OverloadedStrings #-}
+module DBus.Constants where
+import qualified DBus.Types as T
+import Data.Word (Word8, Word32)
+
+protocolVersion :: Word8
+protocolVersion = 1
+
+messageMaximumLength :: Word32
+messageMaximumLength = 134217728
+
+arrayMaximumLength :: Word32
+arrayMaximumLength = 67108864
+:
+
+\subsection{The message bus}
+
+:f DBus/Constants.hs
+dbusName :: T.BusName
+dbusName = "org.freedesktop.DBus"
+
+dbusPath :: T.ObjectPath
+dbusPath = "/org/freedesktop/DBus"
+
+dbusInterface :: T.InterfaceName
+dbusInterface = "org.freedesktop.DBus"
+:
+
+\subsection{Pre-defined interfaces}
+
+:f DBus/Constants.hs
+interfaceIntrospectable :: T.InterfaceName
+interfaceIntrospectable = "org.freedesktop.DBus.Introspectable"
+
+interfaceProperties :: T.InterfaceName
+interfaceProperties = "org.freedesktop.DBus.Properties"
+
+interfacePeer :: T.InterfaceName
+interfacePeer = "org.freedesktop.DBus.Peer"
+:
+
+\subsection{Pre-defined error names}
+
+:f DBus/Constants.hs
+errorFailed :: T.ErrorName
+errorFailed = "org.freedesktop.DBus.Error.Failed"
+
+errorNoMemory :: T.ErrorName
+errorNoMemory = "org.freedesktop.DBus.Error.NoMemory"
+
+errorServiceUnknown :: T.ErrorName
+errorServiceUnknown = "org.freedesktop.DBus.Error.ServiceUnknown"
+
+errorNameHasNoOwner :: T.ErrorName
+errorNameHasNoOwner = "org.freedesktop.DBus.Error.NameHasNoOwner"
+
+errorNoReply :: T.ErrorName
+errorNoReply = "org.freedesktop.DBus.Error.NoReply"
+
+errorIOError :: T.ErrorName
+errorIOError = "org.freedesktop.DBus.Error.IOError"
+
+errorBadAddress :: T.ErrorName
+errorBadAddress = "org.freedesktop.DBus.Error.BadAddress"
+
+errorNotSupported :: T.ErrorName
+errorNotSupported = "org.freedesktop.DBus.Error.NotSupported"
+
+errorLimitsExceeded :: T.ErrorName
+errorLimitsExceeded = "org.freedesktop.DBus.Error.LimitsExceeded"
+
+errorAccessDenied :: T.ErrorName
+errorAccessDenied = "org.freedesktop.DBus.Error.AccessDenied"
+
+errorAuthFailed :: T.ErrorName
+errorAuthFailed = "org.freedesktop.DBus.Error.AuthFailed"
+
+errorNoServer :: T.ErrorName
+errorNoServer = "org.freedesktop.DBus.Error.NoServer"
+
+errorTimeout :: T.ErrorName
+errorTimeout = "org.freedesktop.DBus.Error.Timeout"
+
+errorNoNetwork :: T.ErrorName
+errorNoNetwork = "org.freedesktop.DBus.Error.NoNetwork"
+
+errorAddressInUse :: T.ErrorName
+errorAddressInUse = "org.freedesktop.DBus.Error.AddressInUse"
+
+errorDisconnected :: T.ErrorName
+errorDisconnected = "org.freedesktop.DBus.Error.Disconnected"
+
+errorInvalidArgs :: T.ErrorName
+errorInvalidArgs = "org.freedesktop.DBus.Error.InvalidArgs"
+
+errorFileNotFound :: T.ErrorName
+errorFileNotFound = "org.freedesktop.DBus.Error.FileNotFound"
+
+errorFileExists :: T.ErrorName
+errorFileExists = "org.freedesktop.DBus.Error.FileExists"
+
+errorUnknownMethod :: T.ErrorName
+errorUnknownMethod = "org.freedesktop.DBus.Error.UnknownMethod"
+
+errorTimedOut :: T.ErrorName
+errorTimedOut = "org.freedesktop.DBus.Error.TimedOut"
+
+errorMatchRuleNotFound :: T.ErrorName
+errorMatchRuleNotFound = "org.freedesktop.DBus.Error.MatchRuleNotFound"
+
+errorMatchRuleInvalid :: T.ErrorName
+errorMatchRuleInvalid = "org.freedesktop.DBus.Error.MatchRuleInvalid"
+
+errorSpawnExecFailed :: T.ErrorName
+errorSpawnExecFailed = "org.freedesktop.DBus.Error.Spawn.ExecFailed"
+
+errorSpawnForkFailed :: T.ErrorName
+errorSpawnForkFailed = "org.freedesktop.DBus.Error.Spawn.ForkFailed"
+
+errorSpawnChildExited :: T.ErrorName
+errorSpawnChildExited = "org.freedesktop.DBus.Error.Spawn.ChildExited"
+
+errorSpawnChildSignaled :: T.ErrorName
+errorSpawnChildSignaled = "org.freedesktop.DBus.Error.Spawn.ChildSignaled"
+
+errorSpawnFailed :: T.ErrorName
+errorSpawnFailed = "org.freedesktop.DBus.Error.Spawn.Failed"
+
+errorSpawnFailedToSetup :: T.ErrorName
+errorSpawnFailedToSetup = "org.freedesktop.DBus.Error.Spawn.FailedToSetup"
+
+errorSpawnConfigInvalid :: T.ErrorName
+errorSpawnConfigInvalid = "org.freedesktop.DBus.Error.Spawn.ConfigInvalid"
+
+errorSpawnServiceNotValid :: T.ErrorName
+errorSpawnServiceNotValid = "org.freedesktop.DBus.Error.Spawn.ServiceNotValid"
+
+errorSpawnServiceNotFound :: T.ErrorName
+errorSpawnServiceNotFound = "org.freedesktop.DBus.Error.Spawn.ServiceNotFound"
+
+errorSpawnPermissionsInvalid :: T.ErrorName
+errorSpawnPermissionsInvalid = "org.freedesktop.DBus.Error.Spawn.PermissionsInvalid"
+
+errorSpawnFileInvalid :: T.ErrorName
+errorSpawnFileInvalid = "org.freedesktop.DBus.Error.Spawn.FileInvalid"
+
+errorSpawnNoMemory :: T.ErrorName
+errorSpawnNoMemory = "org.freedesktop.DBus.Error.Spawn.NoMemory"
+
+errorUnixProcessIdUnknown :: T.ErrorName
+errorUnixProcessIdUnknown = "org.freedesktop.DBus.Error.UnixProcessIdUnknown"
+
+errorInvalidFileContent :: T.ErrorName
+errorInvalidFileContent = "org.freedesktop.DBus.Error.InvalidFileContent"
+
+errorSELinuxSecurityContextUnknown :: T.ErrorName
+errorSELinuxSecurityContextUnknown = "org.freedesktop.DBus.Error.SELinuxSecurityContextUnknown"
+
+errorAdtAuditDataUnknown :: T.ErrorName
+errorAdtAuditDataUnknown = "org.freedesktop.DBus.Error.AdtAuditDataUnknown"
+
+errorObjectPathInUse :: T.ErrorName
+errorObjectPathInUse = "org.freedesktop.DBus.Error.ObjectPathInUse"
+
+errorInconsistentMessage :: T.ErrorName
+errorInconsistentMessage = "org.freedesktop.DBus.Error.InconsistentMessage"
+:

@@ -1,0 +1,135 @@
+:# Copyright (C) 2009-2010 John Millikin <jmillikin@gmail.com>
+:# 
+:# This program is free software: you can redistribute it and/or modify
+:# it under the terms of the GNU General Public License as published by
+:# the Free Software Foundation, either version 3 of the License, or
+:# any later version.
+:# 
+:# This program is distributed in the hope that it will be useful,
+:# but WITHOUT ANY WARRANTY; without even the implied warranty of
+:# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+:# GNU General Public License for more details.
+:# 
+:# You should have received a copy of the GNU General Public License
+:# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+\section{Addresses}
+
+:f DBus/Address.hs
+|copyright|
+|text extensions|
+module DBus.Address
+	( Address
+	, addressMethod
+	, addressParameters
+	, mkAddresses
+	, strAddress
+	) where
+|text imports|
+
+import Data.Char (ord, chr)
+import qualified Data.Map as M
+import Text.Printf (printf)
+import qualified Text.Parsec as P
+import Text.Parsec ((<|>))
+import DBus.Util (hexToInt, eitherToMaybe)
+:
+
+\subsection{Address syntax}
+
+A bus address is in the format {\tt $method$:$key$=$value$,$key$=$value$...}
+where the method may be empty and parameters are optional. An address's
+parameter list, if present, may end with a comma. Addresses in environment
+variables are separated by semicolons, and the full address list may end
+in a semicolon. Multiple parameters may have the same key; in this case,
+only the first parameter for each key will be stored.
+
+The bytes allowed in each component of the address are given by the following
+chart, where each character is understood to be its ASCII value:
+
+\begin{table}[h]
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Component   & Allowed Characters \\
+\midrule
+Method      & Any except {\tt `;'} and {\tt `:'} \\
+Param key   & Any except {\tt `;'}, {\tt `,'}, and {\tt `='} \\
+Param value & {\tt `0'} to {\tt `9'} \\
+            & {\tt `a'} to {\tt `z'} \\
+            & {\tt `A'} to {\tt `Z'} \\
+            & Any of: {\tt - \textunderscore{} / \textbackslash{} * . \%} \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+In parameter values, any byte may be encoded by prepending the \% character
+to its value in hexadecimal. \% is not allowed to appear unless it is
+followed by two hexadecimal digits. Every other allowed byte is termed
+an ``optionally encoded'' byte, and may appear unescaped in parameter
+values.
+
+:f DBus/Address.hs
+optionallyEncoded :: [Char]
+optionallyEncoded = ['0'..'9'] ++ ['a'..'z'] ++ ['A'..'Z'] ++ "-_/\\*."
+:
+
+The address simply stores its method and parameter map, with a custom
+{\tt Show} instance to provide easier debugging.
+
+:f DBus/Address.hs
+data Address = Address
+	{ addressMethod     :: Text
+	, addressParameters :: M.Map Text Text
+	} deriving (Eq)
+
+instance Show Address where
+	showsPrec d x = showParen (d> 10) $
+		showString "Address " . shows (strAddress x)
+:
+
+Parsing is straightforward; the input string is divided into addresses by
+semicolons, then further by colons and commas. Parsing will fail if any
+of the addresses in the input failed to parse.
+
+:f DBus/Address.hs
+mkAddresses :: Text -> Maybe [Address]
+mkAddresses s = eitherToMaybe . P.parse parser "" . TL.unpack $ s where
+	address = do
+		method <- P.many (P.noneOf ":;")
+		P.char ':'
+		params <- P.sepEndBy param (P.char ',')
+		return $ Address (TL.pack method) (M.fromList params)
+	
+	param = do
+		key <- P.many1 (P.noneOf "=;,")
+		P.char '='
+		value <- P.many1 (encodedValue <|> unencodedValue)
+		return (TL.pack key, TL.pack value)
+	
+	parser = do
+		as <- P.sepEndBy1 address (P.char ';')
+		P.eof
+		return as
+	
+	unencodedValue = P.oneOf optionallyEncoded
+	encodedValue = do
+		P.char '%'
+		hex <- P.count 2 P.hexDigit
+		return . chr . hexToInt $ hex
+:
+
+Converting an {\tt Address} back to a {\tt String} is just the reverse
+operation. Note that because the original parameter order is not preserved,
+the string produced might differ from the original input.
+
+:f DBus/Address.hs
+strAddress :: Address -> Text
+strAddress (Address t ps) = TL.concat [t, ":", ps'] where
+	ps' = TL.intercalate "," $ do
+		(k, v) <- M.toList ps
+		return $ TL.concat [k, "=", TL.concatMap encode v]
+	encode c | elem c optionallyEncoded = TL.singleton c
+	         | otherwise       = TL.pack $ printf "%%%02X" (ord c)
+:

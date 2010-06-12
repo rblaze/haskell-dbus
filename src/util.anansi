@@ -1,0 +1,157 @@
+:# Copyright (C) 2009-2010 John Millikin <jmillikin@gmail.com>
+:# 
+:# This program is free software: you can redistribute it and/or modify
+:# it under the terms of the GNU General Public License as published by
+:# the Free Software Foundation, either version 3 of the License, or
+:# any later version.
+:# 
+:# This program is distributed in the hope that it will be useful,
+:# but WITHOUT ANY WARRANTY; without even the implied warranty of
+:# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+:# GNU General Public License for more details.
+:# 
+:# You should have received a copy of the GNU General Public License
+:# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+\section{UUIDs}
+
+D-Bus {\sc uuid}s are 128-bit unique identifiers, used for server instances
+and machine {\sc id}s. They are not compatible with {\sc rfc4122}.
+
+:f DBus/UUID.hs
+|copyright|
+module DBus.UUID
+	( UUID
+	, toHex
+	, fromHex
+	) where
+|text imports|
+
+newtype UUID = UUID Text -- TODO: (Word64, Word64)?
+	deriving (Eq)
+
+instance Show UUID where
+	showsPrec d uuid = showParen (d > 10) $
+		showString "UUID " . shows (toHex uuid)
+
+toHex :: UUID -> Text
+toHex (UUID text) = text
+
+fromHex :: Text -> Maybe UUID
+fromHex text = if validUUID text
+	then Just $ UUID text
+	else Nothing
+
+validUUID :: Text -> Bool
+validUUID text = valid where
+	valid = and [TL.length text == 32, TL.all validChar text]
+	validChar c = or
+		[ c >= '0' && c <= '9'
+		, c >= 'a' && c <= 'f'
+		, c >= 'A' && c <= 'F'
+		]
+:
+
+\section{Misc. utility functions}
+
+:f DBus/Util.hs
+|copyright|
+module DBus.Util where
+import Text.Parsec (Parsec, parse)
+import Data.Char (digitToInt)
+import Data.List (isPrefixOf)
+
+checkLength :: Int -> String -> Maybe String
+checkLength length' s | length s <= length' = Just s
+checkLength _ _ = Nothing
+
+parseMaybe :: Parsec String () a -> String -> Maybe a
+parseMaybe p = either (const Nothing) Just . parse p ""
+
+mkUnsafe :: Show a => String -> (a -> Maybe b) -> a -> b
+mkUnsafe label f x = case f x of
+	Just x' -> x'
+	Nothing -> error $ "Invalid " ++ label ++ ": " ++ show x
+
+hexToInt :: String -> Int
+hexToInt = foldl ((+) . (16 *)) 0 . map digitToInt
+
+eitherToMaybe :: Either a b -> Maybe b
+eitherToMaybe (Left  _) = Nothing
+eitherToMaybe (Right x) = Just x
+
+fromRight :: Either a b -> b
+fromRight (Right x) = x
+fromRight _ = error "DBus.Util.fromRight: Left"
+
+maybeIndex :: [a] -> Int -> Maybe a
+maybeIndex (x:_ ) 0         = Just x
+maybeIndex (_:xs) n | n > 0 = maybeIndex xs (n - 1)
+maybeIndex _ _ = Nothing
+
+-- | Read values from a monad until a guard value is read; return all
+-- values, including the guard.
+--
+readUntil :: (Monad m, Eq a) => [a] -> m a -> m [a]
+readUntil guard getx = readUntil' [] where
+	guard' = reverse guard
+	step xs | isPrefixOf guard' xs = return . reverse $ xs
+	        | otherwise            = readUntil' xs
+	readUntil' xs = do
+		x <- getx
+		step $ x:xs
+
+-- | Drop /n/ items from the end of a list
+dropEnd :: Int -> [a] -> [a]
+dropEnd n xs = take (length xs - n) xs
+:
+
+\section{Bundled MonadError variant}
+
+The default {\tt ErrorT} and {\tt MonadError} classes in the
+{\tt transformers} package have an idiotic dependency on the {\tt Error}
+class, which is used to implement the obsolete {\tt fail} function. This
+module is a variant, which doesn't include this dependency.
+
+:f DBus/Util/MonadError.hs
+|copyright|
+{-# LANGUAGE TypeFamilies #-}
+module DBus.Util.MonadError where
+import Control.Monad.Trans.Class
+import Control.Monad.State
+
+newtype ErrorT e m a = ErrorT { runErrorT :: m (Either e a) }
+
+instance Functor m => Functor (ErrorT e m) where
+	fmap f = ErrorT . fmap (fmap f) . runErrorT
+
+instance Monad m => Monad (ErrorT e m) where
+	return = ErrorT . return . Right
+	(>>=) m k = ErrorT $ do
+		x <- runErrorT m
+		case x of
+			Left l -> return $ Left l
+			Right r -> runErrorT $ k r
+
+instance MonadTrans (ErrorT e) where
+	lift = ErrorT . liftM Right
+
+class Monad m => MonadError m where
+	type ErrorType m
+	throwError :: ErrorType m -> m a
+	catchError :: m a -> (ErrorType m -> m a) -> m a
+
+instance Monad m => MonadError (ErrorT e m) where
+	type ErrorType (ErrorT e m) = e
+	throwError = ErrorT . return . Left
+	catchError m h = ErrorT $ do
+		x <- runErrorT m
+		case x of
+			Left l -> runErrorT $ h l
+			Right r -> return $ Right r
+
+instance MonadState m => MonadState (ErrorT e m) where
+	type StateType (ErrorT e m) = StateType m
+	get = lift get
+	put = lift . put
+:

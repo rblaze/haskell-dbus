@@ -1,0 +1,140 @@
+:# Copyright (C) 2009-2010 John Millikin <jmillikin@gmail.com>
+:# 
+:# This program is free software: you can redistribute it and/or modify
+:# it under the terms of the GNU General Public License as published by
+:# the Free Software Foundation, either version 3 of the License, or
+:# any later version.
+:# 
+:# This program is distributed in the hope that it will be useful,
+:# but WITHOUT ANY WARRANTY; without even the implied warranty of
+:# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+:# GNU General Public License for more details.
+:# 
+:# You should have received a copy of the GNU General Public License
+:# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+\section{The central bus}
+
+:f DBus/Bus.hs
+|copyright|
+|text extensions|
+module DBus.Bus
+	( getBus
+	, getFirstBus
+	, getSystemBus
+	, getSessionBus
+	, getStarterBus
+	) where
+|text imports|
+
+import qualified Control.Exception as E
+import Control.Monad (when)
+import Data.Maybe (fromJust, isNothing)
+import qualified Data.Set as Set
+import System.Environment (getEnv)
+
+import qualified DBus.Address as A
+import qualified DBus.Authentication as Auth
+import qualified DBus.Connection as C
+import DBus.Constants (dbusName, dbusPath, dbusInterface)
+import qualified DBus.Message as M
+import qualified DBus.Types as T
+import DBus.Util (fromRight)
+:
+
+Connecting to a message bus is a bit more involved than just connecting
+over an app-to-app connection: the bus must be notified of the new client,
+using a "hello message", before it will begin forwarding messages.
+
+:f DBus/Bus.hs
+busForConnection :: C.Connection -> IO (C.Connection, T.BusName)
+busForConnection c = fmap ((,) c) $ sendHello c
+
+|apidoc getBus|
+getBus :: Auth.Mechanism -> A.Address -> IO (C.Connection, T.BusName)
+getBus = ((busForConnection =<<) .) . C.connect
+:
+
+Optionally, multiple addresses may be provided. The first successful
+connection will be used.
+
+:f DBus/Bus.hs
+|apidoc getFirstBus|
+getFirstBus :: [(Auth.Mechanism, A.Address)] -> IO (C.Connection, T.BusName)
+getFirstBus = (busForConnection =<<) . C.connectFirst
+:
+
+\subsection{Default connections}
+
+Two default buses are defined, the ``system'' and ``session'' buses. The system
+bus is global for the OS, while the session bus runs only for the duration
+of the user's session.
+
+:f DBus/Bus.hs
+|apidoc getSystemBus|
+getSystemBus :: IO (C.Connection, T.BusName)
+getSystemBus = getBus' $ fromEnv `E.catch` noEnv where
+	defaultAddr = "unix:path=/var/run/dbus/system_bus_socket"
+	fromEnv = getEnv "DBUS_SYSTEM_BUS_ADDRESS"
+	noEnv (E.SomeException _) = return defaultAddr
+
+|apidoc getSessionBus|
+getSessionBus :: IO (C.Connection, T.BusName)
+getSessionBus = getBus' $ getEnv "DBUS_SESSION_BUS_ADDRESS"
+
+|apidoc getStarterBus|
+getStarterBus :: IO (C.Connection, T.BusName)
+getStarterBus = getBus' $ getEnv "DBUS_STARTER_ADDRESS"
+:
+
+:f DBus/Bus.hs
+getBus' :: IO String -> IO (C.Connection, T.BusName)
+getBus' io = do
+	addr <- fmap TL.pack io
+	case A.mkAddresses addr of
+		Just [x] -> getBus Auth.realUserID x
+		Just  xs -> getFirstBus [(Auth.realUserID,x) | x <- xs]
+		_        -> E.throwIO $ C.InvalidAddress addr
+:
+
+\subsection{Sending the ``hello'' message}
+
+:f DBus/Bus.hs
+hello :: M.MethodCall
+hello = M.MethodCall dbusPath
+	"Hello"
+	(Just dbusInterface)
+	(Just dbusName)
+	Set.empty
+	[]
+:
+
+:f DBus/Bus.hs
+sendHello :: C.Connection -> IO T.BusName
+sendHello c = do
+	serial <- fromRight `fmap` C.send c return hello
+	reply <- waitForReply c serial
+	let name = case M.methodReturnBody reply of
+		(x:_) -> T.fromVariant x
+		_     -> Nothing
+	
+	when (isNothing name) $
+		E.throwIO $ E.AssertionFailed "Invalid response to Hello()"
+	
+	return . fromJust $ name
+:
+
+:f DBus/Bus.hs
+waitForReply :: C.Connection -> M.Serial -> IO M.MethodReturn
+waitForReply c serial = do
+	received <- C.receive c
+	msg <- case received of
+		Right x -> return x
+		Left _  -> E.throwIO $ E.AssertionFailed "Invalid response to Hello()"
+	case msg of
+		(M.ReceivedMethodReturn _ _ reply) ->
+			if M.methodReturnSerial reply == serial
+				then return reply
+				else waitForReply c serial
+		_ -> waitForReply c serial
+:

@@ -1,0 +1,170 @@
+:# Copyright (C) 2009-2010 John Millikin <jmillikin@gmail.com>
+:# 
+:# This program is free software: you can redistribute it and/or modify
+:# it under the terms of the GNU General Public License as published by
+:# the Free Software Foundation, either version 3 of the License, or
+:# any later version.
+:# 
+:# This program is distributed in the hope that it will be useful,
+:# but WITHOUT ANY WARRANTY; without even the implied warranty of
+:# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+:# GNU General Public License for more details.
+:# 
+:# You should have received a copy of the GNU General Public License
+:# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+\section{Haddock API documentation}
+
+The \LaTeX{} documentation is great for somebody reading the source code
+or trying to fix an error, but it's not useful for people who just want
+to add D-Bus support to their applications. These documentation sections
+will be included in Haddock output for public functions.
+
+There's no real order to this section; it exists only because Haddock
+can't merge documentation from external files.
+
+:d apidoc isAtomicType
+-- | \"Atomic\" types are any which can't contain any other types. Only
+-- atomic types may be used as dictionary keys.
+:
+
+:d apidoc typeCode
+-- | Every type has an associated type code; a textual representation of
+-- the type, useful for debugging.
+:
+
+:d apidoc Variant
+-- | 'Variant's may contain any other built-in D-Bus value. Besides
+-- representing native @VARIANT@ values, they allow type-safe storage and
+-- deconstruction of heterogeneous collections.
+:
+
+:d apidoc variantType
+-- | Every variant is strongly-typed; that is, the type of its contained
+-- value is known at all times. This function retrieves that type, so that
+-- the correct cast can be used to retrieve the value.
+:
+
+:d apidoc arrayType
+-- | This is the type contained within the array, not the type of the array
+-- itself.
+:
+
+:d apidoc Connection
+-- | A 'Connection' is an opaque handle to an open D-Bus channel, with an
+-- internal state for maintaining the current message serial.
+:
+
+:d apidoc Transport
+-- | A 'Transport' is anything which can send and receive bytestrings,
+-- typically via a socket.
+:
+
+:d apidoc connect
+-- | Open a connection to some address, using a given authentication
+-- mechanism. If the connection fails, a 'ConnectionError' will be thrown.
+:
+
+:d apidoc connectFirst
+-- | Try to open a connection to various addresses, returning the first
+-- connection which could be successfully opened.
+:
+
+:d apidoc connectionClose
+-- | Close an open connection. Once closed, the 'Connection' is no longer
+-- valid and must not be used.
+:
+
+:d apidoc send
+-- | Send a single message, with a generated 'M.Serial'. The second parameter
+-- exists to prevent race conditions when registering a reply handler; it
+-- receives the serial the message /will/ be sent with, before it's actually
+-- sent.
+--
+-- Only one message may be sent at a time; if multiple threads attempt to
+-- send messages in parallel, one will block until after the other has
+-- finished.
+:
+
+:d apidoc receive
+-- | Receive the next message from the connection, blocking until one is
+-- available.
+--
+-- Only one message may be received at a time; if multiple threads attempt
+-- to receive messages in parallel, one will block until after the other has
+-- finished.
+:
+
+:d apidoc getBus
+-- | Similar to 'C.connect', but additionally sends @Hello@ messages to the
+-- central bus.
+:
+
+:d apidoc getFirstBus
+-- | Similar to 'C.connectFirst', but additionally sends @Hello@ messages to
+-- the central bus.
+:
+
+:d apidoc getSystemBus
+-- | Connect to the bus specified in the environment variable
+-- @DBUS_SYSTEM_BUS_ADDRESS@, or to
+-- @unix:path=\/var\/run\/dbus\/system_bus_socket@ if @DBUS_SYSTEM_BUS_ADDRESS@
+-- is not set.
+:
+
+:d apidoc getSessionBus
+-- | Connect to the bus specified in the environment variable
+-- @DBUS_SESSION_BUS_ADDRESS@, which must be set.
+:
+
+:d apidoc getStarterBus
+-- | Connect to the bus specified in the environment variable
+-- @DBUS_STARTER_ADDRESS@, which must be set.
+:
+
+:d apidoc formatRule
+-- | Format a 'MatchRule' as the bus expects to receive in a call to
+-- @AddMatch@.
+:
+
+:d apidoc addMatch
+-- | Build a 'M.MethodCall' for adding a match rule to the bus.
+:
+
+:d apidoc matchAll
+-- | An empty match rule, which matches everything.
+:
+
+:d apidoc matches
+-- | Whether a 'M.ReceivedMessage' matches a given rule. This is useful
+-- for implementing signal handlers.
+:
+
+:d apidoc requestName
+-- | Build a 'M.MethodCall' for requesting a registered bus name.
+:
+
+:d apidoc releaseName
+-- | Build a 'M.MethodCall' for releasing a registered bus name.
+:
+
+:d apidoc Serial
+-- | A value used to uniquely identify a particular message within a session.
+-- 'Serial's are 32-bit unsigned integers, and eventually wrap.
+:
+
+:d apidoc ReceivedMessage
+-- | Not an actual message type, but a wrapper around messages received from
+-- the bus. Each value contains the message's 'Serial' and possibly the
+-- origin's 'T.BusName'
+:
+
+:d apidoc marshalMessage
+-- | Convert a 'M.Message' into a 'L.ByteString'. Although unusual, it is
+-- possible for marshaling to fail -- if this occurs, an appropriate error
+-- will be returned instead.
+:
+
+:d apidoc unmarshalMessage
+-- | Read bytes from a monad until a complete message has been received.
+:

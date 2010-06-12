@@ -1,0 +1,147 @@
+:# Copyright (C) 2009-2010 John Millikin <jmillikin@gmail.com>
+:# 
+:# This program is free software: you can redistribute it and/or modify
+:# it under the terms of the GNU General Public License as published by
+:# the Free Software Foundation, either version 3 of the License, or
+:# any later version.
+:# 
+:# This program is distributed in the hope that it will be useful,
+:# but WITHOUT ANY WARRANTY; without even the implied warranty of
+:# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+:# GNU General Public License for more details.
+:# 
+:# You should have received a copy of the GNU General Public License
+:# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+\subsection{Authentication}
+
+Authentication is a bit iffy; currently, there's a one specified
+authentication mechanism ({\tt DBUS\_COOKIE\_SHA1}), which I've never seen
+in the wild. Everybody seems to use {\tt EXTERNAL}, described below.
+
+To support multiple modes more easily in the future, and for user-defined
+authentication handling (eg, in proxy servers), authentication is handled by
+a separate module.
+
+:f DBus/Authentication.hs
+|copyright|
+|text extensions|
+{-# LANGUAGE DeriveDataTypeable #-}
+module DBus.Authentication
+	( Command
+	, Mechanism (..)
+	, AuthenticationError (..)
+	, authenticate
+	, realUserID
+	) where
+|text imports|
+|authentication imports|
+:
+
+The authentication protocol is based on {\sc ascii} text, initiated by the
+client. Commands and mechanisms are represented by a couple data types:
+
+:d authentication imports
+import Data.ByteString.Lazy (ByteString)
+import qualified Data.ByteString.Lazy as ByteString
+import qualified DBus.UUID as UUID
+:
+
+:f DBus/Authentication.hs
+type Command = Text
+newtype Mechanism = Mechanism
+	{ mechanismRun :: (Command -> IO Command) -> IO UUID.UUID
+	}
+:
+
+If authentication fails, an exception will be raised.
+
+:d authentication imports
+import Data.Typeable (Typeable)
+import qualified Control.Exception as E
+:
+
+:f DBus/Authentication.hs
+data AuthenticationError
+	= AuthenticationError Text
+	deriving (Show, Typeable)
+
+instance E.Exception AuthenticationError
+:
+
+The process begins by the client sending a single {\sc nul} byte, followed
+by exchanges of {\sc ascii} commands until authentication is complete. Which
+commands are sent depends on the selected mechanism.
+
+:d authentication imports
+import Data.Word (Word8)
+:
+
+:f DBus/Authentication.hs
+authenticate :: Mechanism -> (ByteString -> IO ()) -> IO Word8
+             -> IO UUID.UUID
+authenticate mech put getByte = do
+	put $ ByteString.singleton 0
+	uuid <- mechanismRun mech (putCommand put getByte)
+	put "BEGIN\r\n"
+	return uuid
+:
+
+TODO: describe {\tt putCommand} here
+
+:d authentication imports
+import Control.Monad (liftM)
+import Data.Char (chr)
+import Data.Text.Lazy.Encoding (encodeUtf8)
+import DBus.Util (readUntil, dropEnd)
+:
+
+:f DBus/Authentication.hs
+putCommand :: Monad m => (ByteString -> m ()) -> m Word8 -> Command -> m Command
+putCommand put get cmd = do
+	let getC = liftM (chr . fromIntegral) get
+	put $ encodeUtf8 cmd
+	put "\r\n"
+	liftM (TL.pack . dropEnd 2) $ readUntil "\r\n" getC
+:
+
+\subsubsection{Support authentication mechanisms}
+
+Currently, the only supported authentication mechanism is sending the local
+user's ``real user ID''.
+
+:d authentication imports
+import System.Posix.User (getRealUserID)
+import Data.Char (ord)
+import Text.Printf (printf)
+:
+
+:f DBus/Authentication.hs
+realUserID :: Mechanism
+realUserID = Mechanism $ \sendCmd -> do
+	uid <- getRealUserID
+	let token = concatMap (printf "%02X" . ord) (show uid)
+	let cmd = "AUTH EXTERNAL " ++ token
+	eitherUUID <- checkOK `fmap` sendCmd (TL.pack cmd)
+	case eitherUUID of
+		Right uuid -> return uuid
+		Left err -> E.throwIO $ AuthenticationError err
+:
+
+If authentication was successful, the server responds with {\tt OK
+<server GUID>}.
+
+:d authentication imports
+import Data.Maybe (isJust)
+:
+
+:f DBus/Authentication.hs
+checkOK :: Command -> Either Text UUID.UUID
+checkOK cmd = if validUUID then Right uuid else Left errorMsg where
+	validUUID = TL.isPrefixOf "OK " cmd && isJust maybeUUID
+	maybeUUID = UUID.fromHex $ TL.drop 3 cmd
+	Just uuid = maybeUUID
+	errorMsg = if TL.isPrefixOf "ERROR " cmd
+		then TL.drop 6 cmd
+		else TL.pack $ "Unexpected response: " ++ show cmd
+:

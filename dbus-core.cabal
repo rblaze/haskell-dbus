@@ -11,12 +11,12 @@ category: Network, Desktop
 stability: experimental
 bug-reports: mailto:jmillikin@gmail.com
 homepage: http://ianen.org/haskell/dbus/
-tested-with: GHC==6.10.4, GHC==6.12.1
+tested-with: GHC==6.12.1
 
 extra-source-files:
-  dbus-core.nw
+  src/*.anansi
   Examples/*.hs
-  Makefile
+  readme.txt
   Tests.nw
 
 source-repository head

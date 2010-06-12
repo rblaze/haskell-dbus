@@ -1,0 +1,329 @@
+:# Copyright (C) 2009-2010 John Millikin <jmillikin@gmail.com>
+:# 
+:# This program is free software: you can redistribute it and/or modify
+:# it under the terms of the GNU General Public License as published by
+:# the Free Software Foundation, either version 3 of the License, or
+:# any later version.
+:# 
+:# This program is distributed in the hope that it will be useful,
+:# but WITHOUT ANY WARRANTY; without even the implied warranty of
+:# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+:# GNU General Public License for more details.
+:# 
+:# You should have received a copy of the GNU General Public License
+:# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+\section{Messages}
+
+To prevent internal details of messages from leaking out to clients,
+declarations are contained in an internal module and then re-exported
+in the public module.
+
+:f DBus/Message.hs
+|copyright|
+module DBus.Message (
+	|message exports|
+	) where
+import DBus.Message.Internal
+:
+
+:f DBus/Message/Internal.hs
+|copyright|
+|text extensions|
+module DBus.Message.Internal where
+|text imports|
+import qualified Data.Set as S
+import Data.Word (Word8, Word32)
+import Data.Maybe (fromMaybe)
+import qualified DBus.Types as T
+import DBus.Util (maybeIndex)
+:
+
+:f DBus/Message/Internal.hs
+class Message a where
+	messageTypeCode     :: a -> Word8
+	messageHeaderFields :: a -> [HeaderField]
+	messageFlags        :: a -> S.Set Flag
+	messageBody         :: a -> [T.Variant]
+:
+
+:d message exports
+Message ( messageFlags
+        , messageBody
+        )
+:
+
+\subsection{Flags}
+
+The instance of {\tt Ord} only exists for storing flags in a set. Flags have
+no inherent ordering.
+
+:f DBus/Message/Internal.hs
+data Flag
+	= NoReplyExpected
+	| NoAutoStart
+	deriving (Show, Eq, Ord)
+:
+
+:d message exports
+, Flag (..)
+:
+
+\subsection{Header fields}
+
+:f DBus/Message/Internal.hs
+data HeaderField
+	= Path        T.ObjectPath
+	| Interface   T.InterfaceName
+	| Member      T.MemberName
+	| ErrorName   T.ErrorName
+	| ReplySerial Serial
+	| Destination T.BusName
+	| Sender      T.BusName
+	| Signature   T.Signature
+	deriving (Show, Eq)
+:
+
+\subsection{Serials}
+
+{\tt Serial} is just a wrapper around {\tt Word32}, to provide a bit of
+added type-safety.
+
+:f DBus/Message/Internal.hs
+|apidoc Serial|
+newtype Serial = Serial { serialValue :: Word32 }
+	deriving (Eq, Ord)
+
+instance Show Serial where
+	show (Serial x) = show x
+
+instance T.Variable Serial where
+	toVariant (Serial x) = T.toVariant x
+	fromVariant = fmap Serial . T.fromVariant
+:
+
+Additionally, some useful functions exist for incrementing serials.
+
+:f DBus/Message/Internal.hs
+firstSerial :: Serial
+firstSerial = Serial 1
+
+nextSerial :: Serial -> Serial
+nextSerial (Serial x) = Serial (x + 1)
+:
+
+The {\tt Serial} constructor isn't useful to clients, because building
+arbitrary serials doesn't make any sense.
+
+:d message exports
+, Serial
+, serialValue
+, firstSerial
+, nextSerial
+:
+
+\subsection{Message types}
+
+:f DBus/Message/Internal.hs
+maybe' :: (a -> b) -> Maybe a -> [b]
+maybe' f = maybe [] (\x' -> [f x'])
+:
+
+\subsubsection{Method calls}
+
+:f DBus/Message/Internal.hs
+data MethodCall = MethodCall
+	{ methodCallPath        :: T.ObjectPath
+	, methodCallMember      :: T.MemberName
+	, methodCallInterface   :: Maybe T.InterfaceName
+	, methodCallDestination :: Maybe T.BusName
+	, methodCallFlags       :: S.Set Flag
+	, methodCallBody        :: [T.Variant]
+	}
+	deriving (Show, Eq)
+
+instance Message MethodCall where
+	messageTypeCode _ = 1
+	messageFlags      = methodCallFlags
+	messageBody       = methodCallBody
+	messageHeaderFields m = concat
+		[ [ Path    $ methodCallPath m
+		  ,  Member $ methodCallMember m
+		  ]
+		, maybe' Interface . methodCallInterface $ m
+		, maybe' Destination . methodCallDestination $ m
+		]
+:
+
+:d message exports
+, MethodCall (..)
+:
+
+\subsubsection{Method returns}
+
+:f DBus/Message/Internal.hs
+data MethodReturn = MethodReturn
+	{ methodReturnSerial      :: Serial
+	, methodReturnDestination :: Maybe T.BusName
+	, methodReturnBody        :: [T.Variant]
+	}
+	deriving (Show, Eq)
+
+instance Message MethodReturn where
+	messageTypeCode _ = 2
+	messageFlags    _ = S.fromList [NoReplyExpected, NoAutoStart]
+	messageBody       = methodReturnBody
+	messageHeaderFields m = concat
+		[ [ ReplySerial $ methodReturnSerial m
+		  ]
+		, maybe' Destination . methodReturnDestination $ m
+		]
+:
+
+:d message exports
+, MethodReturn (..)
+:
+
+\subsubsection{Errors}
+
+:f DBus/Message/Internal.hs
+data Error = Error
+	{ errorName        :: T.ErrorName
+	, errorSerial      :: Serial
+	, errorDestination :: Maybe T.BusName
+	, errorBody        :: [T.Variant]
+	}
+	deriving (Show, Eq)
+
+instance Message Error where
+	messageTypeCode _ = 3
+	messageFlags    _ = S.fromList [NoReplyExpected, NoAutoStart]
+	messageBody       = errorBody
+	messageHeaderFields m = concat
+		[ [ ErrorName   $ errorName m
+		  , ReplySerial $ errorSerial m
+		  ]
+		, maybe' Destination . errorDestination $ m
+		]
+:
+
+Errors usually contain a human-readable message in their first body field.
+This function lets it be retrieved easily, with a fallback if no valid
+message was found.
+
+:f DBus/Message/Internal.hs
+errorMessage :: Error -> Text
+errorMessage msg = fromMaybe "(no error message)" $ do
+	field <- maybeIndex (errorBody msg) 0
+	text <- T.fromVariant field
+	if TL.null text
+		then Nothing
+		else return text
+:
+
+:d message exports
+, Error (..)
+, errorMessage
+:
+
+\subsubsection{Signals}
+
+:f DBus/Message/Internal.hs
+data Signal = Signal
+	{ signalPath        :: T.ObjectPath
+	, signalMember      :: T.MemberName
+	, signalInterface   :: T.InterfaceName
+	, signalDestination :: Maybe T.BusName
+	, signalBody        :: [T.Variant]
+	}
+	deriving (Show, Eq)
+
+instance Message Signal where
+	messageTypeCode _ = 4
+	messageFlags    _ = S.fromList [NoReplyExpected, NoAutoStart]
+	messageBody       = signalBody
+	messageHeaderFields m = concat
+		[ [ Path      $ signalPath m
+		  , Member    $ signalMember m
+		  , Interface $ signalInterface m
+		  ]
+		, maybe' Destination . signalDestination $ m
+		]
+:
+
+:d message exports
+, Signal (..)
+:
+
+\subsubsection{Unknown messages}
+
+Unknown messages are used for storing information about messages without
+a recognised type code. They are not instances of {\tt Message}, because
+if they were, then clients could accidentally send invalid messages over
+the bus.
+
+:f DBus/Message/Internal.hs
+data Unknown = Unknown
+	{ unknownType    :: Word8
+	, unknownFlags   :: S.Set Flag
+	, unknownBody    :: [T.Variant]
+	}
+	deriving (Show, Eq)
+:
+
+:d message exports
+, Unknown (..)
+:
+
+\subsection{Received messages}
+
+Messages received from a bus have additional fields which do not make sense
+when sending.
+
+If a message has an unknown type, its serial and origin are still useful
+for sending an error reply.
+
+:f DBus/Message/Internal.hs
+|apidoc ReceivedMessage|
+data ReceivedMessage
+	= ReceivedMethodCall   Serial (Maybe T.BusName) MethodCall
+	| ReceivedMethodReturn Serial (Maybe T.BusName) MethodReturn
+	| ReceivedError        Serial (Maybe T.BusName) Error
+	| ReceivedSignal       Serial (Maybe T.BusName) Signal
+	| ReceivedUnknown      Serial (Maybe T.BusName) Unknown
+	deriving (Show, Eq)
+:
+
+:f DBus/Message/Internal.hs
+receivedSerial :: ReceivedMessage -> Serial
+receivedSerial (ReceivedMethodCall   s _ _) = s
+receivedSerial (ReceivedMethodReturn s _ _) = s
+receivedSerial (ReceivedError        s _ _) = s
+receivedSerial (ReceivedSignal       s _ _) = s
+receivedSerial (ReceivedUnknown      s _ _) = s
+:
+
+:f DBus/Message/Internal.hs
+receivedSender :: ReceivedMessage -> Maybe T.BusName
+receivedSender (ReceivedMethodCall   _ s _) = s
+receivedSender (ReceivedMethodReturn _ s _) = s
+receivedSender (ReceivedError        _ s _) = s
+receivedSender (ReceivedSignal       _ s _) = s
+receivedSender (ReceivedUnknown      _ s _) = s
+:
+
+:f DBus/Message/Internal.hs
+receivedBody :: ReceivedMessage -> [T.Variant]
+receivedBody (ReceivedMethodCall   _ _ x) = messageBody x
+receivedBody (ReceivedMethodReturn _ _ x) = messageBody x
+receivedBody (ReceivedError        _ _ x) = messageBody x
+receivedBody (ReceivedSignal       _ _ x) = messageBody x
+receivedBody (ReceivedUnknown      _ _ x) = unknownBody x
+:
+
+:d message exports
+, ReceivedMessage (..)
+, receivedSerial
+, receivedSender
+, receivedBody
+:

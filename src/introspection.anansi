@@ -1,0 +1,402 @@
+:# Copyright (C) 2009-2010 John Millikin <jmillikin@gmail.com>
+:# 
+:# This program is free software: you can redistribute it and/or modify
+:# it under the terms of the GNU General Public License as published by
+:# the Free Software Foundation, either version 3 of the License, or
+:# any later version.
+:# 
+:# This program is distributed in the hope that it will be useful,
+:# but WITHOUT ANY WARRANTY; without even the implied warranty of
+:# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+:# GNU General Public License for more details.
+:# 
+:# You should have received a copy of the GNU General Public License
+:# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+\section{Introspection}
+
+D-Bus objects may be ``introspected'' to determine which methods, signals,
+etc they support. Intospection data is sent over the bus in {\sc xml}, in
+a mostly standardised but undocumented format.
+
+An XML introspection document looks like this:
+
+\begin{verbatim}
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+         "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<node name="/org/example/example">
+	<interface name="org.example.ExampleInterface">
+		<method name="Echo">
+			<arg name="text" type="s" direction="in"/>
+			<arg type="s" direction="out"/>
+		</method>
+		<signal name="Echoed">
+			<arg type="s"/>
+		</signal>
+		<property name="EchoCount" type="u" access="read"/>
+	</interface>
+	<node name="child_a"/>
+	<node name="child/b"/>
+</node>
+\end{verbatim}
+
+:f DBus/Introspection.hs
+|copyright|
+|text extensions|
+module DBus.Introspection
+	( Object (..)
+	, Interface (..)
+	, Method (..)
+	, Signal (..)
+	, Parameter (..)
+	, Property (..)
+	, PropertyAccess (..)
+	, toXML
+	, fromXML
+	) where
+|text imports|
+|introspection imports|
+import qualified DBus.Types as T
+:
+
+HaXml is used to do the heavy lifting of XML parsing because HXT cannot
+be combined with Parsec 3.
+
+:d introspection imports
+import qualified Text.XML.HaXml as H
+:
+
+\subsection{Data types}
+
+:f DBus/Introspection.hs
+data Object = Object T.ObjectPath [Interface] [Object]
+	deriving (Show, Eq)
+
+data Interface = Interface T.InterfaceName [Method] [Signal] [Property]
+	deriving (Show, Eq)
+
+data Method = Method T.MemberName [Parameter] [Parameter]
+	deriving (Show, Eq)
+
+data Signal = Signal T.MemberName [Parameter]
+	deriving (Show, Eq)
+
+data Parameter = Parameter Text T.Signature
+	deriving (Show, Eq)
+
+data Property = Property Text T.Signature [PropertyAccess]
+	deriving (Show, Eq)
+
+data PropertyAccess = Read | Write
+	deriving (Show, Eq)
+:
+
+\subsection{Parsing XML}
+
+The root {\tt node} is special, in that it's the only {\tt node} which is
+not required to have a {\tt name} attribute. If the root has no {\tt name},
+its path will default to the path of the introspected object.
+
+If parsing fails, {\tt fromXML} will return {\tt Nothing}. Aside from the
+elements directly accessed by the parser, no effort is made to check the
+document's validity because there is no DTD as of yet.
+
+:d introspection imports
+import Text.XML.HaXml.Parse (xmlParse')
+import DBus.Util (eitherToMaybe)
+:
+
+:f DBus/Introspection.hs
+fromXML :: T.ObjectPath -> Text -> Maybe Object
+fromXML path text = do
+	doc <- eitherToMaybe . xmlParse' "" . TL.unpack $ text
+	let (H.Document _ _ root _) = doc
+	parseRoot path root
+:
+
+Even though the root object's {\tt name} is optional, if present, it must
+still be a valid object path.
+
+:f DBus/Introspection.hs
+parseRoot :: T.ObjectPath -> H.Element a -> Maybe Object
+parseRoot defaultPath e = do
+	path <- case getAttr "name" e of
+		Nothing -> Just defaultPath
+		Just x  -> T.mkObjectPath x
+	parseObject' path e
+:
+
+Child {\tt nodes} have ``relative'' paths -- that is, their {\tt name}
+attribute is not a valid object path, but should be valid when appended to
+the root object's path.
+
+:f DBus/Introspection.hs
+parseChild :: T.ObjectPath -> H.Element a -> Maybe Object
+parseChild parentPath e = do
+	let parentPath' = case T.strObjectPath parentPath of
+		"/" -> "/"
+		x   -> TL.append x "/"
+	pathSegment <- getAttr "name" e
+	path <- T.mkObjectPath $ TL.append parentPath' pathSegment
+	parseObject' path e
+:
+
+Other than the name, both root and non-root {\tt nodes} have identical
+contents.  They may contain interface definitions, and child {\tt node}s.
+
+:f DBus/Introspection.hs
+parseObject' :: T.ObjectPath -> H.Element a -> Maybe Object
+parseObject' path e@(H.Elem "node" _ _)  = do
+	interfaces <- children parseInterface (H.tag "interface") e
+	children' <- children (parseChild path) (H.tag "node") e
+	return $ Object path interfaces children'
+parseObject' _ _ = Nothing
+:
+
+Interfaces may contain methods, signals, and properties.
+
+:f DBus/Introspection.hs
+parseInterface :: H.Element a -> Maybe Interface
+parseInterface e = do
+	name <- T.mkInterfaceName =<< getAttr "name" e
+	methods <- children parseMethod (H.tag "method") e
+	signals <- children parseSignal (H.tag "signal") e
+	properties <- children parseProperty (H.tag "property") e
+	return $ Interface name methods signals properties
+:
+
+Methods contain a list of parameters, which default to ``in'' parameters
+if no direction is specified.
+
+:f DBus/Introspection.hs
+parseMethod :: H.Element a -> Maybe Method
+parseMethod e = do
+	name <- T.mkMemberName =<< getAttr "name" e
+	paramsIn <- children parseParameter (isParam ["in", ""]) e
+	paramsOut <- children parseParameter (isParam ["out"]) e
+	return $ Method name paramsIn paramsOut
+:
+
+Signals are similar to methods, except they have no ``in'' parameters.
+
+:f DBus/Introspection.hs
+parseSignal :: H.Element a -> Maybe Signal
+parseSignal e = do
+	name <- T.mkMemberName =<< getAttr "name" e
+	params <- children parseParameter (isParam ["out", ""]) e
+	return $ Signal name params
+:
+
+A parameter has a free-form name, and a single valid type.
+
+:f DBus/Introspection.hs
+parseParameter :: H.Element a -> Maybe Parameter
+parseParameter e = do
+	let name = getAttr' "name" e
+	sig <- parseType e
+	return $ Parameter name sig
+:
+
+:f DBus/Introspection.hs
+parseType :: H.Element a -> Maybe T.Signature
+parseType e = do
+	sig <- T.mkSignature =<< getAttr "type" e
+	case T.signatureTypes sig of
+		[_] -> Just sig
+		_   -> Nothing
+:
+
+Properties are used by the {\tt org.freedesktop.DBus.Properties} interface.
+Each property may be read, written, or both, and has an associated type.
+
+:f DBus/Introspection.hs
+parseProperty :: H.Element a -> Maybe Property
+parseProperty e = do
+	let name = getAttr' "name" e
+	sig <- parseType e
+	access <- case getAttr' "access" e of
+		""          -> Just []
+		"read"      -> Just [Read]
+		"write"     -> Just [Write]
+		"readwrite" -> Just [Read, Write]
+		_           -> Nothing
+	return $ Property name sig access
+:
+
+HaXml doesn't seem to have any way to retrieve the ``real'' value of an
+attribute, so {\tt attrValue} implements this.
+
+:d introspection imports
+import Data.Char (chr)
+:
+
+:f DBus/Introspection.hs
+attrValue :: H.AttValue -> Maybe Text
+attrValue attr = fmap (TL.pack . concat) $ mapM unescape parts where
+	(H.AttValue parts) = attr
+	
+	unescape (Left x) = Just x
+	unescape (Right (H.RefEntity x)) = lookup x namedRefs
+	unescape (Right (H.RefChar x)) = Just [chr x]
+	
+	namedRefs =
+		[ ("lt", "<")
+		, ("gt", ">")
+		, ("amp", "&")
+		, ("apos", "'")
+		, ("quot", "\"")
+		]
+:
+
+Some helper functions for dealing with HaXml filters
+
+:d introspection imports
+import Data.Maybe (fromMaybe)
+:
+
+:f DBus/Introspection.hs
+getAttr :: String -> H.Element a -> Maybe Text
+getAttr name (H.Elem _ attrs _) = lookup name attrs >>= attrValue
+
+getAttr' :: String -> H.Element a -> Text
+getAttr' = (fromMaybe "" .) . getAttr
+
+isParam :: [Text] -> H.CFilter a
+isParam dirs content = do
+	arg@(H.CElem e _) <- H.tag "arg" content
+	let direction = getAttr' "direction" e
+	[arg | direction `elem` dirs]
+
+children :: Monad m => (H.Element a -> m b) -> H.CFilter a -> H.Element a -> m [b]
+children f filt (H.Elem _ _ contents) =
+	mapM f [x | (H.CElem x _) <- concatMap filt contents]
+:
+
+\subsection{Generating XML}
+
+:f DBus/Introspection.hs
+dtdPublicID, dtdSystemID :: String
+dtdPublicID = "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+dtdSystemID = "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd"
+:
+
+HaXml punts to the {\tt pretty} package for serialising XML.
+
+:d introspection imports
+import Text.XML.HaXml.Pretty (document)
+import Text.PrettyPrint.HughesPJ (render)
+:
+
+Generating XML can fail; if a child object's path is not a sub-path of the
+parent, {\tt toXML} will return {\tt Nothing}.
+
+:f DBus/Introspection.hs
+toXML :: Object -> Maybe Text
+toXML obj = fmap (TL.pack . render . document) doc where
+	prolog = H.Prolog Nothing [] (Just doctype) []
+	doctype = H.DTD "node" (Just (H.PUBLIC
+		(H.PubidLiteral dtdPublicID)
+		(H.SystemLiteral dtdSystemID))) []
+	doc = do
+		root <- xmlRoot obj
+		return $ H.Document prolog H.emptyST root []
+:
+
+When writing objects to {\tt node}s, the root object must have an absolute
+path, and children must have paths relative to their parent.
+
+:f DBus/Introspection.hs
+xmlRoot :: Object -> Maybe (H.Element a)
+xmlRoot obj@(Object path _ _) = do
+	(H.CElem root _) <- xmlObject' (T.strObjectPath path) obj
+	return root
+:
+
+:f DBus/Introspection.hs
+xmlObject :: T.ObjectPath -> Object -> Maybe (H.Content a)
+xmlObject parentPath obj@(Object path _ _) = do
+	let path' = T.strObjectPath path
+	    parent' = T.strObjectPath parentPath
+	relpath <- if TL.isPrefixOf parent' path'
+		then Just $ if parent' == "/"
+			then TL.drop 1 path'
+			else TL.drop (TL.length parent' + 1) path'
+		else Nothing
+	xmlObject' relpath obj
+:
+
+:f DBus/Introspection.hs
+xmlObject' :: Text -> Object -> Maybe (H.Content a)
+xmlObject' path (Object fullPath interfaces children') = do
+	children'' <- mapM (xmlObject fullPath) children'
+	return $ mkElement "node"
+		[mkAttr "name" $ TL.unpack path]
+		$ concat
+			[ map xmlInterface interfaces
+			, children''
+			]
+:
+
+:f DBus/Introspection.hs
+xmlInterface :: Interface -> H.Content a
+xmlInterface (Interface name methods signals properties) =
+	mkElement "interface"
+		[mkAttr "name" . TL.unpack . T.strInterfaceName $ name]
+		$ concat
+			[ map xmlMethod methods
+			, map xmlSignal signals
+			, map xmlProperty properties
+			]
+:
+
+:f DBus/Introspection.hs
+xmlMethod :: Method -> H.Content a
+xmlMethod (Method name inParams outParams) = mkElement "method"
+	[mkAttr "name" . TL.unpack . T.strMemberName $ name]
+	$ concat
+		[ map (xmlParameter "in") inParams
+		, map (xmlParameter "out") outParams
+		]
+:
+
+:f DBus/Introspection.hs
+xmlSignal :: Signal -> H.Content a
+xmlSignal (Signal name params) = mkElement "signal"
+	[mkAttr "name" . TL.unpack . T.strMemberName $ name]
+	$ map (xmlParameter "out") params
+:
+
+:f DBus/Introspection.hs
+xmlParameter :: String -> Parameter -> H.Content a
+xmlParameter direction (Parameter name sig) = mkElement "arg"
+	[ mkAttr "name" . TL.unpack $ name
+	, mkAttr "type" . TL.unpack . T.strSignature $ sig
+	, mkAttr "direction" direction
+	] []
+:
+
+:f DBus/Introspection.hs
+xmlProperty :: Property -> H.Content a
+xmlProperty (Property name sig access) = mkElement "property"
+	[ mkAttr "name" . TL.unpack $ name
+	, mkAttr "type" . TL.unpack . T.strSignature $ sig
+	, mkAttr "access" $ xmlAccess access
+	] []
+:
+
+:f DBus/Introspection.hs
+xmlAccess :: [PropertyAccess] -> String
+xmlAccess access = readS ++ writeS where
+	readS = if elem Read access then "read" else ""
+	writeS = if elem Write access then "write" else ""
+:
+
+:f DBus/Introspection.hs
+mkElement :: String -> [H.Attribute] -> [H.Content a] -> H.Content a
+mkElement name attrs contents = H.CElem (H.Elem name attrs contents) undefined
+
+mkAttr :: String -> String -> H.Attribute
+mkAttr name value = (name, H.AttValue [Left escaped]) where
+	raw = H.CString True value ()
+	escaped = H.verbatim $ H.xmlEscapeContent H.stdXmlEscaper [raw]
+:
