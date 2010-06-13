@@ -108,17 +108,21 @@ dropEnd n xs = take (length xs - n) xs
 
 \section{Bundled MonadError variant}
 
-The default {\tt ErrorT} and {\tt MonadError} classes in the
-{\tt transformers} package have an idiotic dependency on the {\tt Error}
-class, which is used to implement the obsolete {\tt fail} function. This
-module is a variant, which doesn't include this dependency.
+The default {\tt ErrorT} type in the {\tt transformers} package has an idiotic
+dependency on the {\tt Error} class, which is used to implement the obsolete
+{\tt fail} function. This module is a variant, which doesn't include this
+dependency.
 
 :f DBus/Util/MonadError.hs
 |copyright|
 {-# LANGUAGE TypeFamilies #-}
-module DBus.Util.MonadError where
+module DBus.Util.MonadError
+	( ErrorT (..)
+	, throwError
+	) where
 import Control.Monad.Trans.Class
 import Control.Monad.State
+import Control.Monad.Error.Class
 
 newtype ErrorT e m a = ErrorT { runErrorT :: m (Either e a) }
 
@@ -135,11 +139,6 @@ instance Monad m => Monad (ErrorT e m) where
 
 instance MonadTrans (ErrorT e) where
 	lift = ErrorT . liftM Right
-
-class Monad m => MonadError m where
-	type ErrorType m
-	throwError :: ErrorType m -> m a
-	catchError :: m a -> (ErrorType m -> m a) -> m a
 
 instance Monad m => MonadError (ErrorT e m) where
 	type ErrorType (ErrorT e m) = e
