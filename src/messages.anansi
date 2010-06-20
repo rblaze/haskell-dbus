@@ -69,6 +69,11 @@ data Flag
 , Flag (..)
 :
 
+:f Tests.hs
+instance Arbitrary Flag where
+	arbitrary = elements [NoReplyExpected, NoAutoStart]
+:
+
 \subsection{Header fields}
 
 :f DBus/Message/Internal.hs
@@ -122,6 +127,11 @@ arbitrary serials doesn't make any sense.
 , nextSerial
 :
 
+:f Tests.hs
+instance Arbitrary Serial where
+	arbitrary = fmap Serial arbitrary
+:
+
 \subsection{Message types}
 
 :f DBus/Message/Internal.hs
@@ -159,6 +169,18 @@ instance Message MethodCall where
 , MethodCall (..)
 :
 
+:f Tests.hs
+instance Arbitrary MethodCall where
+	arbitrary = do
+		path   <- arbitrary
+		member <- arbitrary
+		iface  <- arbitrary
+		dest   <- arbitrary
+		flags  <- fmap Set.fromList arbitrary
+		Structure body <- arbitrary
+		return $ MethodCall path member iface dest flags body
+:
+
 \subsubsection{Method returns}
 
 :f DBus/Message/Internal.hs
@@ -182,6 +204,15 @@ instance Message MethodReturn where
 
 :d message exports
 , MethodReturn (..)
+:
+
+:f Tests.hs
+instance Arbitrary MethodReturn where
+	arbitrary = do
+		serial <- arbitrary
+		dest   <- arbitrary
+		Structure body <- arbitrary
+		return $ MethodReturn serial dest body
 :
 
 \subsubsection{Errors}
@@ -226,6 +257,16 @@ errorMessage msg = fromMaybe "(no error message)" $ do
 , errorMessage
 :
 
+:f Tests.hs
+instance Arbitrary Error where
+	arbitrary = do
+		name   <- arbitrary
+		serial <- arbitrary
+		dest   <- arbitrary
+		Structure body <- arbitrary
+		return $ Error name serial dest body
+:
+
 \subsubsection{Signals}
 
 :f DBus/Message/Internal.hs
@@ -253,6 +294,17 @@ instance Message Signal where
 
 :d message exports
 , Signal (..)
+:
+
+:f Tests.hs
+instance Arbitrary Signal where
+	arbitrary = do
+		path   <- arbitrary
+		member <- arbitrary
+		iface  <- arbitrary
+		dest   <- arbitrary
+		Structure body <- arbitrary
+		return $ Signal path member iface dest body
 :
 
 \subsubsection{Unknown messages}

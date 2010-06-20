@@ -133,3 +133,75 @@ strAddress (Address t ps) = TL.concat [t, ":", ps'] where
 	encode c | elem c optionallyEncoded = TL.singleton c
 	         | otherwise       = TL.pack $ printf "%%%02X" (ord c)
 :
+
+:f Tests.hs
+instance Arbitrary Address where
+	arbitrary = genAddress where
+		optional = ['0'..'9'] ++ ['a'..'z'] ++ ['A'..'Z'] ++ "-_/\\*."
+		methodChars = filter (flip notElem ":;") ['!'..'~']
+		keyChars = filter (flip notElem "=;,") ['!'..'~']
+		
+		genMethod = atLeast 0 $ elements methodChars
+		genParam = do
+			key <- genKey
+			value <- genValue
+			return . concat $ [key, "=", value]
+		
+		genKey = atLeast 1 $ elements keyChars
+		genValue = oneof [encodedValue, plainValue]
+		genHex = elements $ ['0'..'9'] ++ ['a'..'f'] ++ ['A'..'F']
+		encodedValue = do
+			x1 <- genHex
+			x2 <- genHex
+			return ['%', x1, x2]
+		plainValue = atLeast 1 $ elements optional
+		
+		genParams = do
+			params <- atLeast 0 genParam
+			let params' = intercalate "," params
+			extraComma <- if null params
+				then return ""
+				else elements ["", ","]
+			return $ concat [params', extraComma]
+		
+		genAddress = do
+			m <- genMethod
+			params <- genParams
+			extraSemicolon <- elements ["", ";"]
+			let addrStr = concat [m, ":", params, extraSemicolon]
+			let Just [addr] = mkAddresses $ TL.pack addrStr
+			return addr
+:
+
+:d test cases
+, F.testGroup "Addresses"
+	[ testProperty "Address identity"
+		$ \x -> mkAddresses (strAddress x) == Just [x]
+	, testProperty "Multiple addresses"
+		$ \x y -> let
+		joined = TL.concat [strAddress x, ";", strAddress y]
+		in mkAddresses joined == Just [x, y]
+	, testProperty "Ignore trailing semicolon"
+		$ \x -> mkAddresses (TL.append (strAddress x) ";") == Just [x]
+	, testProperty "Ignore trailing comma"
+		$ \x -> let
+		hasParams = not . Map.null . addressParameters $ x
+		parsed = mkAddresses (TL.append (strAddress x) ",")
+		in hasParams ==> parsed == Just [x]
+	, F.testGroup "Valid addresses"
+		[ test "colon" $ isJust . mkAddresses $ ":"
+		, test "just scheme" $ isJust . mkAddresses $ "a:"
+		, test "param" $ isJust . mkAddresses $ "a:b=c"
+		, test "trailing semicolon" $ isJust . mkAddresses $ "a:;"
+		, test "two schemes" $ isJust . mkAddresses $ "a:;b:"
+		, test "trailing comma" $ isJust . mkAddresses $ "a:b=c,"
+		]
+	, F.testGroup "Invalid addresses"
+		[ test "empty" $ isNothing . mkAddresses $ ""
+		, test "no colon" $ isNothing . mkAddresses $ "a"
+		, test "no equals" $ isNothing . mkAddresses $ "a:b"
+		, test "no param" $ isNothing . mkAddresses $ "a:b="
+		, test "no param" $ isNothing . mkAddresses $ "a:,"
+		]
+	]
+:

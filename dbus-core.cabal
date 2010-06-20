@@ -17,7 +17,6 @@ extra-source-files:
   src/*.anansi
   Examples/*.hs
   readme.txt
-  Tests.nw
 
 source-repository head
   type: darcs
@@ -78,7 +77,7 @@ executable dbus-core-tests
   if flag(test)
     build-depends:
         QuickCheck >= 2.1 && < 2.2
-      , test-framework >= 0.2 && < 0.3
+      , test-framework >= 0.2 && < 0.4
       , test-framework-quickcheck2 >= 0.2 && < 0.3
   else
     buildable: False
