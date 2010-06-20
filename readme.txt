@@ -5,6 +5,6 @@ install the "anansi" application and then run:
 
 To generate the woven PDF, run:
 
-    anansi -w -o dbus-core.tex src/dbus-core.anansi
+    anansi -w -l latex-noweb -o dbus-core.tex src/dbus-core.anansi
     xelatex dbus-core.tex
     xelatex dbus-core.tex
