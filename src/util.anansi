@@ -115,19 +115,32 @@ dependency.
 
 :f DBus/Util/MonadError.hs
 |copyright|
-{-# LANGUAGE TypeFamilies #-}
 module DBus.Util.MonadError
-	( ErrorT (..)
-	, throwError
+	( ErrorM (..)
+	, ErrorT (..)
+	, throwErrorM
+	, throwErrorT
 	) where
+import Control.Monad (liftM)
 import Control.Monad.Trans.Class
-import Control.Monad.State
-import Control.Monad.Error.Class
+
+newtype ErrorM e a = ErrorM { runErrorM :: Either e a }
+
+instance Functor (ErrorM e) where
+	fmap f m = ErrorM $ case runErrorM m of
+		Left err -> Left err
+		Right x -> Right $ f x
+
+instance Monad (ErrorM e) where
+	return = ErrorM . Right
+	(>>=) m k = case runErrorM m of
+		Left err -> ErrorM $ Left err
+		Right x -> k x
+
+throwErrorM :: e -> ErrorM e a
+throwErrorM = ErrorM . Left
 
 newtype ErrorT e m a = ErrorT { runErrorT :: m (Either e a) }
-
-instance Functor m => Functor (ErrorT e m) where
-	fmap f = ErrorT . fmap (fmap f) . runErrorT
 
 instance Monad m => Monad (ErrorT e m) where
 	return = ErrorT . return . Right
@@ -140,19 +153,8 @@ instance Monad m => Monad (ErrorT e m) where
 instance MonadTrans (ErrorT e) where
 	lift = ErrorT . liftM Right
 
-instance Monad m => MonadError (ErrorT e m) where
-	type ErrorType (ErrorT e m) = e
-	throwError = ErrorT . return . Left
-	catchError m h = ErrorT $ do
-		x <- runErrorT m
-		case x of
-			Left l -> runErrorT $ h l
-			Right r -> return $ Right r
-
-instance MonadState m => MonadState (ErrorT e m) where
-	type StateType (ErrorT e m) = StateType m
-	get = lift get
-	put = lift . put
+throwErrorT :: Monad m => e -> ErrorT e m a
+throwErrorT = ErrorT . return . Left
 :
 
 \subsection{Extra test support}

@@ -42,7 +42,6 @@ library
     , pretty >= 1.0 && < 1.1
     , text >= 0.7 && < 0.8
     , transformers >= 0.2 && < 0.3
-    , monads-tf >= 0.1 && < 0.2
     , containers >= 0.1 && < 0.4
     , unix >= 2.2 && < 2.5
     , network >= 2.2 && < 2.3
