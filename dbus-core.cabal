@@ -45,6 +45,7 @@ library
     , containers >= 0.1 && < 0.4
     , unix >= 2.2 && < 2.5
     , network >= 2.2 && < 2.3
+    , attoparsec >= 0.8 && < 0.9
 
   exposed-modules:
     DBus.Address
@@ -62,6 +63,7 @@ library
 
   other-modules:
     DBus.Message.Internal
+    DBus.Types.Internal
     DBus.Wire.Internal
     DBus.Wire.Marshal
     DBus.Wire.Unmarshal
@@ -85,11 +87,6 @@ executable dbus-core-tests
     ghc-options: -fhpc
 
   other-modules:
-    DBus.Address
-    DBus.Constants
-    DBus.Introspection
-    DBus.Message
-    DBus.Types
-    DBus.Wire
+    DBus.Types.Internal
     DBus.Util
 

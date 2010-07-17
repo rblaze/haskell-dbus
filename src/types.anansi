@@ -16,17 +16,28 @@
 \section{Types}
 
 The {\tt DBus.Types module} defines interfaces for storing, building, and
-deconstructing D-Bus values.
+deconstructing D-Bus values. Everything is defined in an internal module, and
+then exported via the public interface.
 
-:f DBus/Types.cpphs
+:f DBus/Types.hs
 |copyright|
-|text extensions|
-|type extensions|
 module DBus.Types (
 	|type exports|
 	) where
+import DBus.Types.Internal
+:
+
+:f DBus/Types/Internal.cpphs
+|copyright|
+|text extensions|
+|type extensions|
+module DBus.Types.Internal where
 |text imports|
 |type imports|
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Char8 as B8
+import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString.Char8 as BL8
 :
 
 D-Bus types are divided into two categories, ``atomic'' and ``container''
@@ -37,7 +48,7 @@ is that atoms may be used as the keys in associative mappings
 
 Internally, types are represented using an enumeration.
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 data Type
 	= DBusBoolean
 	| DBusByte
@@ -58,7 +69,7 @@ data Type
 	deriving (Show, Eq)
 :
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 |apidoc isAtomicType|
 isAtomicType :: Type -> Bool
 isAtomicType DBusBoolean    = True
@@ -79,7 +90,7 @@ isAtomicType _              = False
 Each type can be converted to a textual representation, used in ``type
 signatures'' or for debugging.
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 |apidoc typeCode|
 typeCode :: Type -> Text
 |type codes|
@@ -135,7 +146,7 @@ D-Bus value, because it can be used to construct {\tt Variant}s. However,
 outside of this module, {\tt Variant}s can only be constructed from
 pre-defined types.
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 |apidoc Variant|
 data Variant
 	= VarBoxBool Bool
@@ -171,7 +182,7 @@ Variants can be printed, for debugging purposes -- this instance shouldn't
 be parsed or inspected or anything like that, since the output format might
 change drastically.
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 instance Show Variant where
 	showsPrec d var = showParen (d > 10) full where
 		full = s "Variant " . shows code . s " " . valueStr
@@ -203,7 +214,7 @@ Since many operations on D-Bus values depend on having the correct type,
 {\tt variantType} is used to retrieve which type is actually stored within
 a {\tt Variant}.
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 |apidoc variantType|
 variantType :: Variant -> Type
 variantType var = case var of
@@ -228,6 +239,9 @@ variantType var = case var of
 	(VarBoxStructure x) -> let
 		Structure items = x
 		in DBusStructure (map variantType items)
+
+variantSignature :: Variant -> Maybe Signature
+variantSignature = mkBytesSignature . typeCodeB . variantType
 :
 
 :d type exports
@@ -237,7 +251,7 @@ variantType var = case var of
 A macro is useful for reducing verbosity in simple {\tt Variable}
 instances.
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 #define INSTANCE_VARIABLE(TYPE) \
 	instance Variable TYPE where \
 		{ toVariant = VarBox/**/TYPE \
@@ -248,7 +262,7 @@ instances.
 
 Since {\tt Variant}s are D-Bus values themselves, they can be stored in variants.
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 INSTANCE_VARIABLE(Variant)
 :
 
@@ -312,7 +326,7 @@ import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
 :
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 INSTANCE_VARIABLE(Bool)
 INSTANCE_VARIABLE(Word8)
 INSTANCE_VARIABLE(Int16)
@@ -330,7 +344,7 @@ Strings are a weird case; the built-in type, {\tt String}, is horribly
 inefficent. To provide better performance for large strings, packed Unicode
 strings defined in {\tt Data.Text} are used internally.
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 instance Variable TL.Text where
 	toVariant = VarBoxString
 	fromVariant (VarBoxString x) = Just x
@@ -345,7 +359,7 @@ values are converted to lazy values.
 import qualified Data.Text as T
 :
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 instance Variable T.Text where
 	toVariant = toVariant . TL.fromChunks . (:[])
 	fromVariant = fmap (T.concat . TL.toChunks) . fromVariant
@@ -358,7 +372,7 @@ a language extension.
 {-# LANGUAGE TypeSynonymInstances #-}
 :
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 instance Variable String where
 	toVariant = toVariant . TL.pack
 	fromVariant = fmap TL.unpack . fromVariant
@@ -391,7 +405,7 @@ atomic'', which are difficult to express in the Haskell type system.  A
 one requires using the {\tt mkSignature} function, which will convert a valid
 D-Bus signature string into a {\tt Signature}.
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 INSTANCE_VARIABLE(Signature)
 data Signature = Signature { signatureTypes :: [Type] }
 	deriving (Eq)
@@ -404,7 +418,10 @@ instance Show Signature where
 Signatures can also be converted back into text, by concatenating the
 type codes of their contained types.
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
+bytesSignature :: Signature -> B.ByteString
+bytesSignature (Signature ts) = B.concat $ map typeCodeB ts
+
 strSignature :: Signature -> Text
 strSignature (Signature ts) = TL.concat $ map typeCode ts
 :
@@ -416,7 +433,7 @@ as dictionary keys, it's useful to have them as an instance of {\tt Ord}.
 import Data.Ord (comparing)
 :
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 instance Ord Signature where
 	compare = comparing strSignature
 :
@@ -433,34 +450,41 @@ instance Ord Signature where
 For atomic types, the type code is a single letter. Arrays, structures,
 and dictionary types are multiple characters.
 
+:d type imports
+import Data.Text.Encoding (decodeUtf8)
+:
+
 :d type codes
-typeCode DBusBoolean    = "b"
-typeCode DBusByte       = "y"
-typeCode DBusInt16      = "n"
-typeCode DBusInt32      = "i"
-typeCode DBusInt64      = "x"
-typeCode DBusWord16     = "q"
-typeCode DBusWord32     = "u"
-typeCode DBusWord64     = "t"
-typeCode DBusDouble     = "d"
-typeCode DBusString     = "s"
-typeCode DBusSignature  = "g"
-typeCode DBusObjectPath = "o"
-typeCode DBusVariant    = "v"
+typeCode t = TL.fromChunks [decodeUtf8 $ typeCodeB t]
+
+typeCodeB :: Type -> B.ByteString
+typeCodeB DBusBoolean    = "b"
+typeCodeB DBusByte       = "y"
+typeCodeB DBusInt16      = "n"
+typeCodeB DBusInt32      = "i"
+typeCodeB DBusInt64      = "x"
+typeCodeB DBusWord16     = "q"
+typeCodeB DBusWord32     = "u"
+typeCodeB DBusWord64     = "t"
+typeCodeB DBusDouble     = "d"
+typeCodeB DBusString     = "s"
+typeCodeB DBusSignature  = "g"
+typeCodeB DBusObjectPath = "o"
+typeCodeB DBusVariant    = "v"
 :
 
 An array's type code is ``a'' followed by the type it contains. For example,
 an array of booleans would have the type string ``ab''.
 
 :d type codes
-typeCode (DBusArray t) = TL.cons 'a' $ typeCode t
+typeCodeB (DBusArray t) = B8.cons 'a' $ typeCodeB t
 :
 
 A dictionary's type code is ``a\{$key\_type$ $value\_type$\}''. For example,
 a dictionary of bytes to booleans would have the type string ``a\{yb\}''.
 
 :d type codes
-typeCode (DBusDictionary k v) = TL.concat ["a{", typeCode k, typeCode v, "}"]
+typeCodeB (DBusDictionary k v) = B.concat ["a{", typeCodeB k, typeCodeB v, "}"]
 :
 
 A structure's type code is the concatenation of its contained types,
@@ -468,25 +492,31 @@ wrapped by ``('' and ``)''. Structures may be empty, in which case their
 type code is simply ``()''.
 
 :d type codes
-typeCode (DBusStructure ts) = TL.concat $
-	["("] ++ map typeCode ts ++ [")"]
+typeCodeB (DBusStructure ts) = B.concat $
+	["("] ++ map typeCodeB ts ++ [")"]
 :
 
 \subsubsection{Parsing}
 
 When parsing, additional restrictions apply which are not inherent to the
-D-Bus type system. {\tt mkSignature} guarantees that any {\tt Signature} is
-valid according to D-Bus rules.
+D-Bus type system. The signature parsing functions guarantee that any
+{\tt Signature} is valid according to D-Bus rules.
 
-:f DBus/Types.cpphs
-mkSignature :: Text -> Maybe Signature
-mkSignature text = parsed where
+Since all valid signatures as entirely ASCII, it's possible to parse them
+using byte-based parsers for better performance. These aren't exported from
+the public interface, but are still used within {\tt DBus.Wire} modules.
+
+:f DBus/Types/Internal.cpphs
+mkBytesSignature :: B.ByteString -> Maybe Signature
+mkBytesSignature bytes = parsed where
 	|fast signature parser|
 	|slow signature parser|
-	parsed = case TL.length text of
+	
+	parsed = case B.length bytes of
 		0 -> Just $ Signature []
 		1 -> fast
-		_ -> slow
+		len | len <= 255 -> slow
+		_ -> Nothing
 :
 
 Since single-type and empty signatures are very common, they are
@@ -494,7 +524,7 @@ special-cased for performance.
 
 :d fast signature parser
 just t = Just $ Signature [t]
-fast = case TL.head text of
+fast = case B8.head bytes of
 	'b' -> just DBusBoolean
 	'y' -> just DBusByte
 	'n' -> just DBusInt16
@@ -511,19 +541,20 @@ fast = case TL.head text of
 	_   -> Nothing
 :
 
-Parsec is used to parse more complex signatures.
+Attoparsec is used to parse more complex signatures.
 
 :d type imports
-import Text.Parsec ((<|>))
-import qualified Text.Parsec as P
-import DBus.Util (checkLength, parseMaybe)
+import Control.Applicative ((<|>))
+import qualified Data.Attoparsec.Char8 as AP
 :
 
 :d slow signature parser
-slow = (parseMaybe sigParser =<<) . checkLength 255 . TL.unpack $ text
+slow = case AP.feed (AP.parse sigParser bytes) B.empty of
+	AP.Done _ x -> Just x
+	_ -> Nothing
 sigParser = do
-	types <- P.many parseType
-	P.eof
+	types <- AP.many parseType
+	AP.endOfInput
 	return $ Signature types
 :
 
@@ -535,18 +566,18 @@ parseType = parseAtom <|> parseContainer
 parseContainer =
 	    parseArray
 	<|> parseStruct
-	<|> (P.char 'v' >> return DBusVariant)
+	<|> (AP.char 'v' >> return DBusVariant)
 :
 
 :d slow signature parser
 parseArray = do
-	P.char 'a'
+	AP.char 'a'
 	parseDict <|> fmap DBusArray parseType
 parseDict = do
-	P.char '{'
+	AP.char '{'
 	keyType <- parseAtom
 	valueType <- parseType
-	P.char '}'
+	AP.char '}'
 	return $ DBusDictionary keyType valueType
 :
 
@@ -554,26 +585,37 @@ Structures can contain any types.
 
 :d slow signature parser
 parseStruct = do
-	P.char '('
-	types <- P.many parseType
-	P.char ')'
+	AP.char '('
+	types <- AP.many parseType
+	AP.char ')'
 	return $ DBusStructure types
 :
 
 :d slow signature parser
 parseAtom =
-	    (P.char 'b' >> return DBusBoolean)
-	<|> (P.char 'y' >> return DBusByte)
-	<|> (P.char 'n' >> return DBusInt16)
-	<|> (P.char 'i' >> return DBusInt32)
-	<|> (P.char 'x' >> return DBusInt64)
-	<|> (P.char 'q' >> return DBusWord16)
-	<|> (P.char 'u' >> return DBusWord32)
-	<|> (P.char 't' >> return DBusWord64)
-	<|> (P.char 'd' >> return DBusDouble)
-	<|> (P.char 's' >> return DBusString)
-	<|> (P.char 'g' >> return DBusSignature)
-	<|> (P.char 'o' >> return DBusObjectPath)
+	    (AP.char 'b' >> return DBusBoolean)
+	<|> (AP.char 'y' >> return DBusByte)
+	<|> (AP.char 'n' >> return DBusInt16)
+	<|> (AP.char 'i' >> return DBusInt32)
+	<|> (AP.char 'x' >> return DBusInt64)
+	<|> (AP.char 'q' >> return DBusWord16)
+	<|> (AP.char 'u' >> return DBusWord32)
+	<|> (AP.char 't' >> return DBusWord64)
+	<|> (AP.char 'd' >> return DBusDouble)
+	<|> (AP.char 's' >> return DBusString)
+	<|> (AP.char 'g' >> return DBusSignature)
+	<|> (AP.char 'o' >> return DBusObjectPath)
+:
+
+The public interface for building signatures is {\tt Text}-based.
+
+:d type imports
+import Data.Text.Lazy.Encoding (encodeUtf8)
+:
+
+:f DBus/Types/Internal.cpphs
+mkSignature :: Text -> Maybe Signature
+mkSignature = mkBytesSignature . B.concat . BL.toChunks . encodeUtf8
 :
 
 Since many signatures are defined as string literals, it's useful to
@@ -585,12 +627,12 @@ import DBus.Util (mkUnsafe)
 import qualified Data.String as String
 :
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 mkSignature_ :: Text -> Signature
 mkSignature_ = mkUnsafe "signature" mkSignature
 
 instance String.IsString Signature where
-	fromString = mkSignature_ . TL.pack
+	fromString = mkUnsafe "signature" mkBytesSignature . BL8.pack
 :
 
 Most signature-related functions are exposed to clients, except the
@@ -616,7 +658,7 @@ instance Arbitrary Signature where
 
 \subsection{Object paths}
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 INSTANCE_VARIABLE(ObjectPath)
 newtype ObjectPath = ObjectPath
 	{ strObjectPath :: Text
@@ -643,7 +685,12 @@ An object path may be one of
 Element names are separated by {\tt '/'}, and the path may not end in
 {\tt '/'} unless it is the root path.
 
-:f DBus/Types.cpphs
+:d type imports
+import qualified Text.Parsec as P
+import DBus.Util (checkLength, parseMaybe)
+:
+
+:f DBus/Types/Internal.cpphs
 mkObjectPath :: Text -> Maybe ObjectPath
 mkObjectPath s = parseMaybe path' (TL.unpack s) where
 	c = P.oneOf $ ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_"
@@ -687,16 +734,11 @@ their contents (as in {\tt variantType}).
 Many D-Bus APIs represent binary data using an array of bytes; therefore,
 there is a special constructor for {\tt ByteString}-based arrays.
 
-:d type imports
-import Data.ByteString.Lazy (ByteString)
-import qualified Data.ByteString.Lazy as ByteString
-:
-
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 INSTANCE_VARIABLE(Array)
 data Array
 	= VariantArray Type [Variant]
-	| ByteArray ByteString
+	| ByteArray BL.ByteString
 	deriving (Eq)
 
 |apidoc arrayType|
@@ -706,7 +748,7 @@ arrayType (ByteArray _) = DBusByte
 
 arrayItems :: Array -> [Variant]
 arrayItems (VariantArray _ xs) = xs
-arrayItems (ByteArray xs) = map toVariant $ ByteString.unpack xs
+arrayItems (ByteArray xs) = map toVariant $ BL.unpack xs
 :
 
 :d type exports
@@ -719,7 +761,7 @@ arrayItems (ByteArray xs) = map toVariant $ ByteString.unpack xs
 Like {\tt Variant}, deriving {\tt Show} for {\tt Array} is mostly
 just useful for debugging.
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 instance Show Array where
 	showsPrec d array = showParen (d > 10) $
 		s "Array " . showSig . s " [" . s valueString . s "]" where
@@ -733,12 +775,12 @@ Clients constructing an array must provide the expected item type, which
 will be checked for validity. Every item in the array will be checked against
 the item type, to ensure the array is homogenous.
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 arrayFromItems :: Type -> [Variant] -> Maybe Array
-arrayFromItems DBusByte vs = fmap (ByteArray . ByteString.pack) (mapM fromVariant vs)
+arrayFromItems DBusByte vs = fmap (ByteArray . BL.pack) (mapM fromVariant vs)
 
 arrayFromItems t vs = do
-	mkSignature (typeCode t)
+	mkBytesSignature (typeCodeB t)
 	if all (\x -> variantType x == t) vs
 		then Just $ VariantArray t vs
 		else Nothing
@@ -747,7 +789,7 @@ arrayFromItems t vs = do
 Additionally, for ease of use, an {\tt Array} can be converted directly
 to/from lists of {\tt Variable} values.
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 toArray :: Variable a => Type -> [a] -> Maybe Array
 toArray t = arrayFromItems t . map toVariant
 
@@ -764,12 +806,12 @@ fromArray = mapM fromVariant . arrayItems
 To provide a more efficient interface for byte array literals, these
 functions bypass the conversions in {\tt toArray} and {\tt fromArray}
 
-:f DBus/Types.cpphs
-arrayToBytes :: Array -> Maybe ByteString
+:f DBus/Types/Internal.cpphs
+arrayToBytes :: Array -> Maybe BL.ByteString
 arrayToBytes (ByteArray x) = Just x
 arrayToBytes _             = Nothing
 
-arrayFromBytes :: ByteString -> Array
+arrayFromBytes :: BL.ByteString -> Array
 arrayFromBytes = ByteArray
 :
 
@@ -781,22 +823,16 @@ arrayFromBytes = ByteArray
 And to simplify inclusion of {\tt ByteString}s in message, instances of
 {\tt Variable} exist for both strict and lazy {\tt ByteString}.
 
-:f DBus/Types.cpphs
-instance Variable ByteString where
+:f DBus/Types/Internal.cpphs
+instance Variable BL.ByteString where
 	toVariant = toVariant . arrayFromBytes
 	fromVariant x = fromVariant x >>= arrayToBytes
 :
 
-:d type imports
-import qualified Data.ByteString as StrictByteString
-:
-
-:f DBus/Types.cpphs
-instance Variable StrictByteString.ByteString where
-	toVariant x = toVariant . arrayFromBytes $ ByteString.fromChunks [x]
-	fromVariant x = do
-		chunks <- ByteString.toChunks `fmap` fromVariant x
-		return $ StrictByteString.concat chunks
+:f DBus/Types/Internal.cpphs
+instance Variable B.ByteString where
+	toVariant x = toVariant . arrayFromBytes $ BL.fromChunks [x]
+	fromVariant = fmap (B.concat . BL.toChunks) . fromVariant
 :
 
 When generating random arrays for testing, only atomic values are used.
@@ -832,8 +868,9 @@ Dictionaries are a homogenous (key $\rightarrow$ value) mapping, where the
 key type must be atomic. Values may be of any valid D-Bus type. Like
 {\tt Array}, {\tt Dictionary} stores its contained types.
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 INSTANCE_VARIABLE(Dictionary)
+
 data Dictionary = Dictionary
 	{ dictionaryKeyType   :: Type
 	, dictionaryValueType :: Type
@@ -857,7 +894,7 @@ format than a list of pairs.
 import Data.List (intercalate)
 :
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 instance Show Dictionary where
 	showsPrec d (Dictionary kt vt pairs) = showParen (d > 10) $
 		s "Dictionary " . showSig . s " {" . s valueString . s "}" where
@@ -874,12 +911,12 @@ except that there are two types to check, and the key type must be atomic.
 import Control.Monad (unless)
 :
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 dictionaryFromItems :: Type -> Type -> [(Variant, Variant)] -> Maybe Dictionary
 dictionaryFromItems kt vt pairs = do
 	unless (isAtomicType kt) Nothing
-	mkSignature (typeCode kt)
-	mkSignature (typeCode vt)
+	mkBytesSignature (typeCodeB kt)
+	mkBytesSignature (typeCodeB vt)
 	
 	let sameType (k, v) = variantType k == kt &&
 	                      variantType v == vt
@@ -897,7 +934,7 @@ import Control.Arrow ((***))
 import qualified Data.Map as Map
 :
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 toDictionary :: (Variable a, Variable b) => Type -> Type -> Map.Map a b
              -> Maybe Dictionary
 toDictionary kt vt = dictionaryFromItems kt vt . pairs where
@@ -908,7 +945,7 @@ toDictionary kt vt = dictionaryFromItems kt vt . pairs where
 import Control.Monad (forM)
 :
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 fromDictionary :: (Variable a, Ord a, Variable b) => Dictionary
                -> Maybe (Map.Map a b)
 fromDictionary (Dictionary _ _ vs) = do
@@ -968,7 +1005,7 @@ Converting between {\tt Array} and {\tt Dictionary} is useful when
 (un)marshaling -- dictionaries can be thought of as arrays of two-element
 structures, much as a {\tt Map} is a list of pairs.
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 dictionaryToArray :: Dictionary -> Array
 dictionaryToArray (Dictionary kt vt items) = array where
 	Just array = toArray itemType structs
@@ -976,7 +1013,7 @@ dictionaryToArray (Dictionary kt vt items) = array where
 	structs = [Structure [k, v] | (k, v) <- items]
 :
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 arrayToDictionary :: Array -> Maybe Dictionary
 arrayToDictionary array = do
 	let toPair x = do
@@ -1001,8 +1038,9 @@ arrayToDictionary array = do
 A heterogeneous, fixed-length container; equivalent in purpose to a Haskell
 tuple.
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 INSTANCE_VARIABLE(Structure)
+
 data Structure = Structure [Variant]
 	deriving (Show, Eq)
 :
@@ -1027,7 +1065,7 @@ Since all names have basically the same structure (a {\tt newtype}
 declaration and some helper functions), I define a macro to automate
 the definitions.
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 #define NAME_TYPE(TYPE, NAME) \
 	newtype TYPE = TYPE {str/**/TYPE :: Text} \
 		deriving (Eq, Ord); \
@@ -1064,7 +1102,7 @@ Well-known names contain two or more elements, separated by {\tt `.'}. Each
 element consists of characters from the set {\tt [a-zA-Z0-9\_-]}, and must
 not start with a digit.
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 NAME_TYPE(BusName, "bus name")
 
 mkBusName :: Text -> Maybe BusName
@@ -1119,7 +1157,7 @@ An interface name consists of two or more {\tt '.'}-separated elements. Each
 element constists of characters from the set {\tt [a-zA-Z0-9\_]}, may not
 start with a digit, and must have at least one character.
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 NAME_TYPE(InterfaceName, "interface name")
 
 mkInterfaceName :: Text -> Maybe InterfaceName
@@ -1165,7 +1203,7 @@ instance Arbitrary InterfaceName where
 Error names have the same format as interface names, so the parser logic
 can just be re-purposed.
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 NAME_TYPE(ErrorName, "error name")
 
 mkErrorName :: Text -> Maybe ErrorName
@@ -1197,7 +1235,7 @@ instance Arbitrary ErrorName where
 Member names must contain only characters from the set {\tt [a-zA-Z0-9\_]},
 may not begin with a digit, and must be at least one character long.
 
-:f DBus/Types.cpphs
+:f DBus/Types/Internal.cpphs
 NAME_TYPE(MemberName, "member name")
 
 mkMemberName :: Text -> Maybe MemberName
