@@ -98,12 +98,14 @@ import Data.Word (Word8, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
 
 import qualified DBus.Types as T
+import qualified DBus.Types.Internal as T
 :
 
 :d marshal imports
 import qualified Control.Monad.Trans.State as State
 import Control.Monad.Trans.Class (lift)
 import qualified DBus.Util.MonadError as E
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as L
 import qualified Data.Binary.Builder as B
 :
@@ -228,7 +230,7 @@ import Data.Word (Word8, Word32, Word64)
 import Data.Int (Int16, Int32, Int64)
 
 import DBus.Wire.Internal
-import qualified DBus.Types as T
+import qualified DBus.Types.Internal as T
 :
 
 :d unmarshal imports
@@ -236,14 +238,15 @@ import Control.Monad (liftM)
 import Control.Monad.Trans.Class (lift)
 import qualified Control.Monad.Trans.State as State
 import qualified DBus.Util.MonadError as E
-import qualified Data.ByteString.Lazy as L
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as BL
 :
 
 A specialised, state-like monad is used for performance reasons. This is
 equivalent to {\tt State.StateT UnmarshalState (E.ErrorM UnmarshalError)}.
 
 :f DBus/Wire/Unmarshal.hs
-data UnmarshalState = UnmarshalState Endianness L.ByteString !Word64
+data UnmarshalState = UnmarshalState Endianness BL.ByteString !Word64
 type Unmarshal = State.StateT UnmarshalState (E.ErrorM UnmarshalError)
 
 throwError :: UnmarshalError -> Unmarshal a
@@ -251,7 +254,7 @@ throwError = lift . E.throwErrorM
 :
 
 :f DBus/Wire/Unmarshal.hs
-runUnmarshal :: Unmarshal a -> Endianness -> L.ByteString -> Either UnmarshalError a
+runUnmarshal :: Unmarshal a -> Endianness -> BL.ByteString -> Either UnmarshalError a
 runUnmarshal m e bytes = E.runErrorM $ State.evalStateT m $ UnmarshalState e bytes 0
 :
 
@@ -266,11 +269,11 @@ unmarshalType :: T.Type -> Unmarshal T.Variant
 TODO: describe these functions
 
 :f DBus/Wire/Unmarshal.hs
-consume :: Word64 -> Unmarshal L.ByteString
+consume :: Word64 -> Unmarshal BL.ByteString
 consume count = do
 	(UnmarshalState e bytes offset) <- State.get
-	let (x, bytes') = L.splitAt (fromIntegral count) bytes
-	unless (L.length x == fromIntegral count) $
+	let (x, bytes') = BL.splitAt (fromIntegral count) bytes
+	unless (BL.length x == fromIntegral count) $
 		throwError $ UnexpectedEOF offset
 	
 	State.put $ UnmarshalState e bytes' (offset + count)
@@ -282,7 +285,7 @@ skipPadding :: Word8 -> Unmarshal ()
 skipPadding count = do
 	(UnmarshalState _ _ offset) <- State.get
 	bytes <- consume $ padding offset count
-	unless (L.all (== 0) bytes) $
+	unless (BL.all (== 0) bytes) $
 		throwError $ InvalidPadding offset
 :
 
@@ -291,7 +294,7 @@ skipTerminator :: Unmarshal ()
 skipTerminator = do
 	(UnmarshalState _ _ offset) <- State.get
 	bytes <- consume 1
-	unless (L.all (== 0) bytes) $
+	unless (BL.all (== 0) bytes) $
 		throwError $ MissingTerminator offset
 :
 
@@ -429,7 +432,7 @@ marshalType T.DBusInt64  = marshalBuilder 8 B.putWord64be B.putWord64le $ fromIn
 :
 
 :d unmarshalers
-unmarshalType T.DBusByte = fmap (T.toVariant . L.head) $ consume 1
+unmarshalType T.DBusByte = fmap (T.toVariant . BL.head) $ consume 1
 unmarshalType T.DBusWord16 = unmarshalGet' 2 G.getWord16be G.getWord16le
 unmarshalType T.DBusWord32 = unmarshalGet' 4 G.getWord32be G.getWord32le
 unmarshalType T.DBusWord64 = unmarshalGet' 8 G.getWord64be G.getWord64le
@@ -581,28 +584,24 @@ unmarshalType T.DBusObjectPath = unmarshalText >>=
 Signatures are similar to strings, except their length is limited to 255
 characters and is therefore stored as a single byte.
 
-:d marshal imports
-import Data.Text.Lazy.Encoding (encodeUtf8)
-:
-
 :f DBus/Wire/Marshal.hs
 marshalSignature :: T.Signature -> Marshal
 marshalSignature x = do
-	let bytes = encodeUtf8 . T.strSignature $ x
-	let size = fromIntegral . L.length $ bytes
+	let bytes = T.bytesSignature x
+	let size = fromIntegral . BS.length $ bytes
 	append (L.singleton size)
-	append bytes
+	append $ L.fromChunks [bytes]
 	append (L.singleton 0)
 :
 
 :f DBus/Wire/Unmarshal.hs
 unmarshalSignature :: Unmarshal T.Signature
 unmarshalSignature = do
-	byteCount <- L.head `fmap` consume 1
-	bytes <- consume $ fromIntegral byteCount
-	sigText <- fromMaybeU "text" maybeDecodeUtf8 bytes
+	byteCount <- BL.head `fmap` consume 1
+	lazy <- consume $ fromIntegral byteCount
 	skipTerminator
-	fromMaybeU "signature" T.mkSignature sigText
+	let bytes = B.concat $ BL.toChunks lazy
+	fromMaybeU "signature" T.mkBytesSignature bytes
 :
 
 :d alignments
@@ -745,10 +744,10 @@ alignment T.DBusVariant = 1
 
 :d marshalers
 marshalType T.DBusVariant = do
-	let rawSig = T.typeCode . T.variantType $ x
-	sig <- case T.mkSignature rawSig of
+	let textSig = T.typeCode . T.variantType $ x
+	sig <- case T.variantSignature x of
 		Just x' -> return x'
-		Nothing -> throwError $ InvalidVariantSignature rawSig
+		Nothing -> throwError $ InvalidVariantSignature textSig
 	marshalSignature sig
 	marshal x
 :
@@ -884,9 +883,10 @@ marshalMessage e serial msg = runMarshal marshaler e where
 :f DBus/Wire/Marshal.hs
 checkBodySig :: [T.Variant] -> MarshalM T.Signature
 checkBodySig vs = let
-	sigStr = TL.concat . map (T.typeCode . T.variantType) $ vs
-	invalid = throwError $ InvalidBodySignature sigStr
-	in case T.mkSignature sigStr of
+	textSig = TL.concat . map (T.typeCode . T.variantType) $ vs
+	bytesSig = BS.concat . map (T.typeCodeB . T.variantType) $ vs
+	invalid = throwError $ InvalidBodySignature textSig
+	in case T.mkBytesSignature bytesSig of
 		Just x -> return x
 		Nothing -> invalid
 :
@@ -931,7 +931,7 @@ import qualified DBus.Constants as C
 
 :f DBus/Wire/Unmarshal.hs
 |apidoc unmarshalMessage|
-unmarshalMessage :: Monad m => (Word32 -> m L.ByteString)
+unmarshalMessage :: Monad m => (Word32 -> m BL.ByteString)
                  -> m (Either UnmarshalError M.ReceivedMessage)
 unmarshalMessage getBytes' = E.runErrorT $ do
 	let getBytes = lift . getBytes'
@@ -955,7 +955,7 @@ message's version is different from this library, the message cannot be
 parsed.
 
 :d read fixed-length header
-let messageVersion = L.index fixedBytes 3
+let messageVersion = BL.index fixedBytes 3
 when (messageVersion /= C.protocolVersion) $
 	E.throwErrorT $ UnsupportedProtocolVersion messageVersion
 :
@@ -963,7 +963,7 @@ when (messageVersion /= C.protocolVersion) $
 Next is the endianness, used for parsing pretty much every other field.
 
 :d read fixed-length header
-let eByte = L.index fixedBytes 0
+let eByte = BL.index fixedBytes 0
 endianness <- case decodeEndianness eByte of
 	Just x' -> return x'
 	Nothing -> E.throwErrorT . Invalid "endianness" . TL.pack . show $ eByte
@@ -997,7 +997,7 @@ pulled out of the monad.
 :d read full header
 let headerSig  = "yyyyuua(yv)"
 fieldBytes <- getBytes fieldByteCount
-let headerBytes = L.append fixedBytes fieldBytes
+let headerBytes = BL.append fixedBytes fieldBytes
 header <- unmarshal' headerSig headerBytes
 :
 
