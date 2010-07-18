@@ -502,109 +502,180 @@ When parsing, additional restrictions apply which are not inherent to the
 D-Bus type system. The signature parsing functions guarantee that any
 {\tt Signature} is valid according to D-Bus rules.
 
+Signature parsing is the most common operation when unmarshaling messages;
+therefore, an efficient parsing implementation is essential.
+
 Since all valid signatures as entirely ASCII, it's possible to parse them
 using byte-based parsers for better performance. These aren't exported from
 the public interface, but are still used within {\tt DBus.Wire} modules.
 
+:d type imports
+import qualified Data.ByteString.Unsafe as B
+import qualified Foreign as F
+import System.IO.Unsafe (unsafePerformIO)
+:
+
+There are three special cases which can be optimized:
+
+\begin{enumerate}
+\item Empty signatures occur when messages have no body, and can use a constant
+      result.
+\item Single-character signatures occur when parsing variants, and can use a
+      faster atom-only parser.
+\item Signatures larger than 255 characters are invalid.
+\end{enumerate}
+
 :f DBus/Types/Internal.cpphs
 mkBytesSignature :: B.ByteString -> Maybe Signature
-mkBytesSignature bytes = parsed where
+mkBytesSignature = unsafePerformIO . flip B.unsafeUseAsCStringLen io where
 	|fast signature parser|
 	|slow signature parser|
 	
-	parsed = case B.length bytes of
-		0 -> Just $ Signature []
-		1 -> fast
-		len | len <= 255 -> slow
-		_ -> Nothing
+	io (cstr, len) = case len of
+		0 -> return $ Just $ Signature []
+		1 -> fmap fast $ F.peek cstr
+		_ | len <= 255 -> slow (F.castPtr cstr) len
+		_ -> return Nothing
 :
-
-Since single-type and empty signatures are very common, they are
-special-cased for performance.
 
 :d fast signature parser
-just t = Just $ Signature [t]
-fast = case B8.head bytes of
-	'b' -> just DBusBoolean
-	'y' -> just DBusByte
-	'n' -> just DBusInt16
-	'i' -> just DBusInt32
-	'x' -> just DBusInt64
-	'q' -> just DBusWord16
-	'u' -> just DBusWord32
-	't' -> just DBusWord64
-	'd' -> just DBusDouble
-	's' -> just DBusString
-	'g' -> just DBusSignature
-	'o' -> just DBusObjectPath
-	'v' -> just DBusVariant
-	_   -> Nothing
-:
+parseAtom c yes no = case c of
+	0x62 -> yes DBusBoolean
+	0x79 -> yes DBusByte
+	0x6E -> yes DBusInt16
+	0x69 -> yes DBusInt32
+	0x78 -> yes DBusInt64
+	0x71 -> yes DBusWord16
+	0x75 -> yes DBusWord32
+	0x74 -> yes DBusWord64
+	0x64 -> yes DBusDouble
+	0x73 -> yes DBusString
+	0x67 -> yes DBusSignature
+	0x6F -> yes DBusObjectPath
+	_ -> no
 
-Attoparsec is used to parse more complex signatures.
-
-:d type imports
-import Control.Applicative ((<|>))
-import qualified Data.Attoparsec.Char8 as AP
-:
-
-:d slow signature parser
-slow = case AP.feed (AP.parse sigParser bytes) B.empty of
-	AP.Done _ x -> Just x
+fast c = parseAtom c (\t -> Just (Signature [t])) $ case c of
+	0x76 -> Just (Signature [DBusVariant])
 	_ -> Nothing
-sigParser = do
-	types <- AP.many parseType
-	AP.endOfInput
-	return $ Signature types
-:
-
-Types may be either containers or atoms. Containers can't be dictionary
-keys.
-
-:d slow signature parser
-parseType = parseAtom <|> parseContainer
-parseContainer =
-	    parseArray
-	<|> parseStruct
-	<|> (AP.char 'v' >> return DBusVariant)
 :
 
 :d slow signature parser
-parseArray = do
-	AP.char 'a'
-	parseDict <|> fmap DBusArray parseType
-parseDict = do
-	AP.char '{'
-	keyType <- parseAtom
-	valueType <- parseType
-	AP.char '}'
-	return $ DBusDictionary keyType valueType
+slow :: F.Ptr Word8 -> Int -> IO (Maybe Signature)
+slow buf len = loop [] 0 where
+	loop acc ii | ii >= len = return . Just . Signature $ reverse acc
+	loop acc ii = do
+		c <- F.peekElemOff buf ii
+		let next t = loop (t : acc) (ii + 1)
+		parseAtom c next $ case c of
+			0x76 -> next DBusVariant
+			
+			-- '('
+			0x28 -> do
+				mt <- structure buf len (ii + 1)
+				case mt of
+					Just (ii', t) -> loop (t : acc) ii'
+					Nothing -> return Nothing
+			
+			-- 'a'
+			0x61 -> do
+				mt <- array buf len (ii + 1)
+				case mt of
+					Just (ii', t) -> loop (t : acc) ii'
+					Nothing -> return Nothing
+			
+			_ -> return Nothing
 :
 
-Structures can contain any types.
-
 :d slow signature parser
-parseStruct = do
-	AP.char '('
-	types <- AP.many parseType
-	AP.char ')'
-	return $ DBusStructure types
+structure :: F.Ptr Word8 -> Int -> Int -> IO (Maybe (Int, Type))
+structure buf len = loop [] where
+	loop _ ii | ii >= len = return Nothing
+	loop acc ii = do
+		c <- F.peekElemOff buf ii
+		let next t = loop (t : acc) (ii + 1)
+		parseAtom c next $ case c of
+			0x76 -> next DBusVariant
+			
+			-- '('
+			0x28 -> do
+				mt <- structure buf len (ii + 1)
+				case mt of
+					Just (ii', t) -> loop (t : acc) ii'
+					Nothing -> return Nothing
+			
+			-- ')'
+			0x29 -> return $ Just $ (ii + 1, DBusStructure (reverse acc))
+			
+			-- 'a'
+			0x61 -> do
+				mt <- array buf len (ii + 1)
+				case mt of
+					Just (ii', t) -> loop (t : acc) ii'
+					Nothing -> return Nothing
+			
+			_ -> return Nothing
 :
 
 :d slow signature parser
-parseAtom =
-	    (AP.char 'b' >> return DBusBoolean)
-	<|> (AP.char 'y' >> return DBusByte)
-	<|> (AP.char 'n' >> return DBusInt16)
-	<|> (AP.char 'i' >> return DBusInt32)
-	<|> (AP.char 'x' >> return DBusInt64)
-	<|> (AP.char 'q' >> return DBusWord16)
-	<|> (AP.char 'u' >> return DBusWord32)
-	<|> (AP.char 't' >> return DBusWord64)
-	<|> (AP.char 'd' >> return DBusDouble)
-	<|> (AP.char 's' >> return DBusString)
-	<|> (AP.char 'g' >> return DBusSignature)
-	<|> (AP.char 'o' >> return DBusObjectPath)
+array :: F.Ptr Word8 -> Int -> Int -> IO (Maybe (Int, Type))
+array _   len ii | ii >= len = return Nothing
+array buf len ii = do
+	c <- F.peekElemOff buf ii
+	let next t = return $ Just (ii + 1, DBusArray t)
+	parseAtom c next $ case c of
+		0x76 -> next DBusVariant
+		
+		-- '('
+		0x28 -> do
+			mt <- structure buf len (ii + 1)
+			case mt of
+				Just (ii', t) -> return $ Just (ii', DBusArray t)
+				Nothing -> return Nothing
+		
+		-- '{'
+		0x7B -> dict buf len (ii + 1)
+		
+		-- 'a'
+		0x61 -> do
+			mt <- array buf len (ii + 1)
+			case mt of
+				Just (ii', t) -> return $ Just (ii', DBusArray t)
+				Nothing -> return Nothing
+		
+		_ -> return Nothing
+:
+
+:d slow signature parser
+dict :: F.Ptr Word8 -> Int -> Int -> IO (Maybe (Int, Type))
+dict _   len ii | ii + 1 >= len = return Nothing
+dict buf len ii = do
+	c1 <- F.peekElemOff buf ii
+	c2 <- F.peekElemOff buf (ii + 1)
+	
+	let mt1 = parseAtom c1 Just Nothing
+	
+	let next t = return $ Just (ii + 2, t)
+	mt2 <- parseAtom c2 next $ case c2 of
+		0x76 -> next DBusVariant
+		
+		-- '('
+		0x28 -> structure buf len (ii + 2)
+		
+		-- 'a'
+		0x61 -> array buf len (ii + 2)
+		
+		_ -> return Nothing
+	
+	case mt2 of
+		Nothing -> return Nothing
+		Just (ii', t2) -> if ii' >= len
+			then return Nothing
+			else do
+				c3 <- F.peekElemOff buf ii'
+				return $ do
+					if c3 == 0x7D then Just () else Nothing
+					t1 <- mt1
+					Just (ii' + 1, DBusDictionary t1 t2)
 :
 
 The public interface for building signatures is {\tt Text}-based.
@@ -686,6 +757,7 @@ Element names are separated by {\tt '/'}, and the path may not end in
 {\tt '/'} unless it is the root path.
 
 :d type imports
+import Text.Parsec ((<|>))
 import qualified Text.Parsec as P
 import DBus.Util (checkLength, parseMaybe)
 :
