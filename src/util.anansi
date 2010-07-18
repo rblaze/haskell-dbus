@@ -121,9 +121,6 @@ module DBus.Util.MonadError
 	, throwErrorM
 	, throwErrorT
 	) where
-import Control.Monad (liftM)
-import Control.Monad.Trans.Class
-
 newtype ErrorM e a = ErrorM { runErrorM :: Either e a }
 
 instance Functor (ErrorM e) where
@@ -149,9 +146,6 @@ instance Monad m => Monad (ErrorT e m) where
 		case x of
 			Left l -> return $ Left l
 			Right r -> runErrorT $ k r
-
-instance MonadTrans (ErrorT e) where
-	lift = ErrorT . liftM Right
 
 throwErrorT :: Monad m => e -> ErrorT e m a
 throwErrorT = ErrorT . return . Left

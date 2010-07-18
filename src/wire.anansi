@@ -102,21 +102,43 @@ import qualified DBus.Types.Internal as T
 :
 
 :d marshal imports
-import qualified Control.Monad.Trans.State as State
-import Control.Monad.Trans.Class (lift)
-import qualified DBus.Util.MonadError as E
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as L
 import qualified Data.Binary.Builder as B
 :
 
 :f DBus/Wire/Marshal.hs
-data MarshalState = MarshalState Endianness B.Builder !Word64
-type MarshalM = State.StateT MarshalState (E.ErrorM MarshalError)
+data MarshalState = MarshalState Endianness B.Builder Word64
+
+data MarshalR a = MarshalRL MarshalError | MarshalRR a MarshalState
+
 type Marshal = MarshalM ()
+newtype MarshalM a = MarshalM { unMarshalM :: MarshalState -> MarshalR a }
+
+instance Monad MarshalM where
+	{-# INLINE return #-}
+	return a = MarshalM $ \s -> MarshalRR a s
+	
+	{-# INLINE (>>=) #-}
+	m >>= k = MarshalM $ \s -> case unMarshalM m s of
+		MarshalRL err -> MarshalRL err
+		MarshalRR a s' -> unMarshalM (k a) s'
+	
+	{-# INLINE (>>) #-}
+	m >> k = MarshalM $ \s -> case unMarshalM m s of
+		MarshalRL err -> MarshalRL err
+		MarshalRR _ s' -> unMarshalM k s'
 
 throwError :: MarshalError -> MarshalM a
-throwError = lift . E.throwErrorM
+throwError err = MarshalM $ \_ -> MarshalRL err
+
+{-# INLINE getState #-}
+getState :: MarshalM MarshalState
+getState = MarshalM $ \s -> MarshalRR s s
+
+{-# INLINE putState #-}
+putState :: MarshalState -> MarshalM ()
+putState s = MarshalM $ \_ -> MarshalRR () s
 :
 
 Clients can perform marshaling via {\tt marshal} and {\tt runMarshal},
@@ -124,10 +146,9 @@ which will generate a {\tt ByteString} with the fully marshaled data.
 
 :f DBus/Wire/Marshal.hs
 runMarshal :: Marshal -> Endianness -> Either MarshalError L.ByteString
-runMarshal m e = E.runErrorM $ do
-	state <- State.execStateT m $ MarshalState e B.empty 0
-	let MarshalState _ builder _ = state
-	return $ B.toLazyByteString builder
+runMarshal m e = case unMarshalM m (MarshalState e B.empty 0) of
+	MarshalRL err -> Left err
+	MarshalRR _ (MarshalState _ builder _) -> Right $ B.toLazyByteString builder
 :
 
 :f DBus/Wire/Marshal.hs
@@ -143,19 +164,18 @@ TODO: describe these functions
 
 :f DBus/Wire/Marshal.hs
 append :: L.ByteString -> Marshal
-append bytes = do
-	(MarshalState e builder count) <- State.get
-	let builder' = B.append builder $ B.fromLazyByteString bytes
-	    count' = count + fromIntegral (L.length bytes)
-	State.put $ MarshalState e builder' count'
+append bytes = MarshalM $ \(MarshalState e builder count) -> let
+	builder' = B.append builder $ B.fromLazyByteString bytes
+	count' = count + fromIntegral (L.length bytes)
+	in MarshalRR () (MarshalState e builder' count')
 :
 
 :f DBus/Wire/Marshal.hs
 pad :: Word8 -> Marshal
-pad count = do
-	(MarshalState _ _ existing) <- State.get
-	let padding' = fromIntegral $ padding existing count
-	append $ L.replicate padding' 0
+pad count = MarshalM $ \s@(MarshalState _ _ existing) -> let
+	padding' = fromIntegral $ padding existing count
+	bytes = L.replicate padding' 0
+	in unMarshalM (append bytes) s
 :
 
 Most numeric values already have marshalers implemented in the
@@ -165,12 +185,12 @@ Most numeric values already have marshalers implemented in the
 marshalBuilder :: Word8 -> (a -> B.Builder) -> (a -> B.Builder) -> a -> Marshal
 marshalBuilder size be le x = do
 	pad size
-	(MarshalState e builder count) <- State.get
-	let builder' = B.append builder $ case e of
-		BigEndian -> be x
-		LittleEndian -> le x
-	let count' = count + fromIntegral size
-	State.put $ MarshalState e builder' count'
+	MarshalM $ \(MarshalState e builder count) -> let
+		builder' = B.append builder $ case e of
+			BigEndian -> be x
+			LittleEndian -> le x
+		size' = fromIntegral size
+		in MarshalRR () (MarshalState e builder' (count + size'))
 :
 
 \subsubsection{Errors}
@@ -235,8 +255,6 @@ import qualified DBus.Types.Internal as T
 
 :d unmarshal imports
 import Control.Monad (liftM)
-import Control.Monad.Trans.Class (lift)
-import qualified Control.Monad.Trans.State as State
 import qualified DBus.Util.MonadError as E
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
@@ -246,16 +264,43 @@ A specialised, state-like monad is used for performance reasons. This is
 equivalent to {\tt State.StateT UnmarshalState (E.ErrorM UnmarshalError)}.
 
 :f DBus/Wire/Unmarshal.hs
-data UnmarshalState = UnmarshalState Endianness BL.ByteString !Word64
-type Unmarshal = State.StateT UnmarshalState (E.ErrorM UnmarshalError)
+data UnmarshalState = UnmarshalState Endianness BL.ByteString Word64
+
+data UnmarshalR a = UnmarshalRL UnmarshalError | UnmarshalRR a UnmarshalState
+
+newtype Unmarshal a = Unmarshal { unUnmarshal :: UnmarshalState -> UnmarshalR a }
+
+instance Monad Unmarshal where
+	{-# INLINE return #-}
+	return a = Unmarshal $ \s -> UnmarshalRR a s
+	
+	{-# INLINE (>>=) #-}
+	m >>= k = Unmarshal $ \s -> case unUnmarshal m s of
+		UnmarshalRL err -> UnmarshalRL err
+		UnmarshalRR a s' -> unUnmarshal (k a) s'
+	
+	{-# INLINE (>>) #-}
+	m >> k = Unmarshal $ \s -> case unUnmarshal m s of
+		UnmarshalRL err -> UnmarshalRL err
+		UnmarshalRR _ s' -> unUnmarshal k s'
 
 throwError :: UnmarshalError -> Unmarshal a
-throwError = lift . E.throwErrorM
+throwError err = Unmarshal $ \_ -> UnmarshalRL err
+
+{-# INLINE getState #-}
+getState :: Unmarshal UnmarshalState
+getState = Unmarshal $ \s -> UnmarshalRR s s
+
+{-# INLINE putState #-}
+putState :: UnmarshalState -> Unmarshal ()
+putState s = Unmarshal $ \_ -> UnmarshalRR () s
 :
 
 :f DBus/Wire/Unmarshal.hs
 runUnmarshal :: Unmarshal a -> Endianness -> BL.ByteString -> Either UnmarshalError a
-runUnmarshal m e bytes = E.runErrorM $ State.evalStateT m $ UnmarshalState e bytes 0
+runUnmarshal m e bytes = case unUnmarshal m (UnmarshalState e bytes 0) of
+	UnmarshalRL err -> Left err
+	UnmarshalRR a _ -> Right a
 :
 
 :f DBus/Wire/Unmarshal.hs
@@ -271,19 +316,19 @@ TODO: describe these functions
 :f DBus/Wire/Unmarshal.hs
 consume :: Word64 -> Unmarshal BL.ByteString
 consume count = do
-	(UnmarshalState e bytes offset) <- State.get
+	(UnmarshalState e bytes offset) <- getState
 	let (x, bytes') = BL.splitAt (fromIntegral count) bytes
 	unless (BL.length x == fromIntegral count) $
 		throwError $ UnexpectedEOF offset
 	
-	State.put $ UnmarshalState e bytes' (offset + count)
+	putState $ UnmarshalState e bytes' (offset + count)
 	return x
 :
 
 :f DBus/Wire/Unmarshal.hs
 skipPadding :: Word8 -> Unmarshal ()
 skipPadding count = do
-	(UnmarshalState _ _ offset) <- State.get
+	(UnmarshalState _ _ offset) <- getState
 	bytes <- consume $ padding offset count
 	unless (BL.all (== 0) bytes) $
 		throwError $ InvalidPadding offset
@@ -292,7 +337,7 @@ skipPadding count = do
 :f DBus/Wire/Unmarshal.hs
 skipTerminator :: Unmarshal ()
 skipTerminator = do
-	(UnmarshalState _ _ offset) <- State.get
+	(UnmarshalState _ _ offset) <- getState
 	bytes <- consume 1
 	unless (BL.all (== 0) bytes) $
 		throwError $ MissingTerminator offset
@@ -319,7 +364,7 @@ import qualified Data.Binary.Get as G
 unmarshalGet :: Word8 -> G.Get a -> G.Get a -> Unmarshal a
 unmarshalGet count be le = do
 	skipPadding count
-	(UnmarshalState e _ _) <- State.get
+	(UnmarshalState e _ _) <- getState
 	bs <- consume . fromIntegral $ count
 	let get' = case e of
 		BigEndian -> be
@@ -328,7 +373,7 @@ unmarshalGet count be le = do
 
 unmarshalGet' :: T.Variable a => Word8 -> G.Get a -> G.Get a
               -> Unmarshal T.Variant
-unmarshalGet' count be le = T.toVariant `fmap` unmarshalGet count be le
+unmarshalGet' count be le = T.toVariant `liftM` unmarshalGet count be le
 :
 
 :f DBus/Wire/Unmarshal.hs
@@ -432,7 +477,7 @@ marshalType T.DBusInt64  = marshalBuilder 8 B.putWord64be B.putWord64le $ fromIn
 :
 
 :d unmarshalers
-unmarshalType T.DBusByte = fmap (T.toVariant . BL.head) $ consume 1
+unmarshalType T.DBusByte = liftM (T.toVariant . BL.head) $ consume 1
 unmarshalType T.DBusWord16 = unmarshalGet' 2 G.getWord16be G.getWord16le
 unmarshalType T.DBusWord32 = unmarshalGet' 4 G.getWord32be G.getWord32le
 unmarshalType T.DBusWord64 = unmarshalGet' 8 G.getWord64be G.getWord64le
@@ -464,7 +509,7 @@ import qualified Data.Binary.IEEE754 as IEEE
 :d marshalers
 marshalType T.DBusDouble = do
 	pad 8
-	(MarshalState e _ _) <- State.get
+	(MarshalState e _ _) <- getState
 	let put = case e of
 		BigEndian -> IEEE.putFloat64be
 		LittleEndian -> IEEE.putFloat64le
@@ -573,7 +618,7 @@ marshalType T.DBusObjectPath = marshalText . T.strObjectPath $ x
 :
 
 :d unmarshalers
-unmarshalType T.DBusString = fmap T.toVariant unmarshalText
+unmarshalType T.DBusString = liftM T.toVariant unmarshalText
 
 unmarshalType T.DBusObjectPath = unmarshalText >>=
 	fromMaybeU' "object path" T.mkObjectPath
@@ -597,7 +642,7 @@ marshalSignature x = do
 :f DBus/Wire/Unmarshal.hs
 unmarshalSignature :: Unmarshal T.Signature
 unmarshalSignature = do
-	byteCount <- BL.head `fmap` consume 1
+	byteCount <- BL.head `liftM` consume 1
 	lazy <- consume $ fromIntegral byteCount
 	skipTerminator
 	let bytes = B.concat $ BL.toChunks lazy
@@ -613,7 +658,7 @@ marshalType T.DBusSignature = marshalSignature x
 :
 
 :d unmarshalers
-unmarshalType T.DBusSignature = fmap T.toVariant unmarshalSignature
+unmarshalType T.DBusSignature = liftM T.toVariant unmarshalSignature
 :
 
 \subsection{Containers}
@@ -629,7 +674,7 @@ marshalType (T.DBusArray _) = marshalArray x
 :
 
 :d unmarshalers
-unmarshalType (T.DBusArray t) = T.toVariant `fmap` unmarshalArray t
+unmarshalType (T.DBusArray t) = T.toVariant `liftM` unmarshalArray t
 :
 
 Marshaling arrays is complicated, because the array body must be marshaled
@@ -661,17 +706,17 @@ getArrayBytes T.DBusByte x = return (0, bytes) where
 :f DBus/Wire/Marshal.hs
 getArrayBytes itemType x = do
 	let vs = T.arrayItems x
-	s <- State.get
-	(MarshalState _ _ afterLength) <- marshalWord32 0 >> State.get
-	(MarshalState e _ afterPadding) <- pad (alignment itemType) >> State.get
+	s <- getState
+	(MarshalState _ _ afterLength) <- marshalWord32 0 >> getState
+	(MarshalState e _ afterPadding) <- pad (alignment itemType) >> getState
 	
-	State.put $ MarshalState e B.empty afterPadding
-	(MarshalState _ itemBuilder _) <- mapM_ marshal vs >> State.get
+	putState $ MarshalState e B.empty afterPadding
+	(MarshalState _ itemBuilder _) <- mapM_ marshal vs >> getState
 	
 	let itemBytes = B.toLazyByteString itemBuilder
 	    paddingSize = fromIntegral $ afterPadding - afterLength
 	
-	State.put s
+	putState s
 	return (paddingSize, itemBytes)
 :
 
@@ -681,19 +726,19 @@ Unmarshaling is much easier, especially if it's a byte array.
 unmarshalArray :: T.Type -> Unmarshal T.Array
 unmarshalArray T.DBusByte = do
 	byteCount <- unmarshalWord32
-	T.arrayFromBytes `fmap` consume (fromIntegral byteCount)
+	T.arrayFromBytes `liftM` consume (fromIntegral byteCount)
 :
 
 :f DBus/Wire/Unmarshal.hs
 unmarshalArray itemType = do
 	let getOffset = do
-		(UnmarshalState _ _ o) <- State.get
+		(UnmarshalState _ _ o) <- getState
 		return o
 	byteCount <- unmarshalWord32
 	skipPadding (alignment itemType)
 	start <- getOffset
 	let end = start + fromIntegral byteCount
-	vs <- untilM (fmap (>= end) getOffset) (unmarshalType itemType)
+	vs <- untilM (liftM (>= end) getOffset) (unmarshalType itemType)
 	end' <- getOffset
 	when (end' > end) $
 		throwError ArraySizeMismatch
@@ -733,7 +778,7 @@ marshalType (T.DBusStructure _) = do
 :d unmarshalers
 unmarshalType (T.DBusStructure ts) = do
 	skipPadding 8
-	fmap (T.toVariant . T.Structure) $ mapM unmarshalType ts
+	liftM (T.toVariant . T.Structure) $ mapM unmarshalType ts
 :
 
 \subsubsection{Variants}
@@ -759,7 +804,7 @@ unmarshalType T.DBusVariant = do
 		_   -> Nothing
 	
 	t <- fromMaybeU "variant signature" getType =<< unmarshalSignature
-	T.toVariant `fmap` unmarshalType t
+	T.toVariant `liftM` unmarshalType t
 :
 
 \subsection{Messages}
@@ -867,10 +912,10 @@ marshalMessage e serial msg = runMarshal marshaler e where
 	body = M.messageBody msg
 	marshaler = do
 		sig <- checkBodySig body
-		empty <- State.get
+		empty <- getState
 		mapM_ marshal body
-		(MarshalState _ bodyBytesB _) <- State.get
-		State.put empty
+		(MarshalState _ bodyBytesB _) <- getState
+		putState empty
 		marshalEndianness e
 		let bodyBytes = B.toLazyByteString bodyBytesB
 		marshalHeader msg serial sig
@@ -914,7 +959,7 @@ marshalEndianness = marshal . T.toVariant . encodeEndianness
 :f DBus/Wire/Marshal.hs
 checkMaximumSize :: Marshal
 checkMaximumSize = do
-	(MarshalState _ _ messageLength) <- State.get
+	(MarshalState _ _ messageLength) <- getState
 	when (messageLength > fromIntegral C.messageMaximumLength)
 		(throwError $ MessageTooLong $ fromIntegral messageLength)
 :
@@ -934,7 +979,7 @@ import qualified DBus.Constants as C
 unmarshalMessage :: Monad m => (Word32 -> m BL.ByteString)
                  -> m (Either UnmarshalError M.ReceivedMessage)
 unmarshalMessage getBytes' = E.runErrorT $ do
-	let getBytes = lift . getBytes'
+	let getBytes = E.ErrorT . liftM Right . getBytes'
 	
 	|read fixed-length header|
 	|read full header|
