@@ -95,7 +95,7 @@ import DBus.Wire.Internal
 import Control.Monad (when)
 import Data.Maybe (fromJust)
 import Data.Word (Word8, Word32, Word64)
-import Data.Int (Int16, Int32, Int64)
+import Data.Int (Int64)
 
 import qualified DBus.Types as T
 import qualified DBus.Types.Internal as T
@@ -153,10 +153,7 @@ runMarshal m e = case unMarshalM m (MarshalState e B.empty 0) of
 
 :f DBus/Wire/Marshal.hs
 marshal :: T.Variant -> Marshal
-marshal v = marshalType (T.variantType v) where
-	x :: T.Variable a => a
-	x = fromJust . T.fromVariant $ v
-	marshalType :: T.Type -> Marshal
+marshal v = case v of
 	|marshalers|
 :
 
@@ -475,13 +472,13 @@ unmarshalWord32 = unmarshalGet 4 G.getWord32be G.getWord32le
 :
 
 :d marshalers
-marshalType T.DBusByte   = appendS $ BS.singleton x
-marshalType T.DBusWord16 = marshalBuilder 2 B.putWord16be B.putWord16le x
-marshalType T.DBusWord32 = marshalBuilder 4 B.putWord32be B.putWord32le x
-marshalType T.DBusWord64 = marshalBuilder 8 B.putWord64be B.putWord64le x
-marshalType T.DBusInt16  = marshalBuilder 2 B.putWord16be B.putWord16le $ fromIntegral (x :: Int16)
-marshalType T.DBusInt32  = marshalBuilder 4 B.putWord32be B.putWord32le $ fromIntegral (x :: Int32)
-marshalType T.DBusInt64  = marshalBuilder 8 B.putWord64be B.putWord64le $ fromIntegral (x :: Int64)
+T.VarBoxWord8  x -> appendS $ BS.singleton x
+T.VarBoxWord16 x -> marshalBuilder 2 B.putWord16be B.putWord16le x
+T.VarBoxWord32 x -> marshalBuilder 4 B.putWord32be B.putWord32le x
+T.VarBoxWord64 x -> marshalBuilder 8 B.putWord64be B.putWord64le x
+T.VarBoxInt16  x -> marshalBuilder 2 B.putWord16be B.putWord16le $ fromIntegral x
+T.VarBoxInt32  x -> marshalBuilder 4 B.putWord32be B.putWord32le $ fromIntegral x
+T.VarBoxInt64  x -> marshalBuilder 8 B.putWord64be B.putWord64le $ fromIntegral x
 :
 
 :d unmarshalers
@@ -515,7 +512,12 @@ import qualified Data.Binary.IEEE754 as IEEE
 :
 
 :d marshalers
-marshalType T.DBusDouble = do
+T.VarBoxDouble x -> marshalDouble x
+:
+
+:f DBus/Wire/Marshal.hs
+marshalDouble :: Double -> Marshal
+marshalDouble x = do
 	pad 8
 	(MarshalState e _ _) <- getState
 	let put = case e of
@@ -539,7 +541,7 @@ alignment T.DBusBoolean = 4
 :
 
 :d marshalers
-marshalType T.DBusBoolean = marshalWord32 $ if x then 1 else 0
+T.VarBoxBool x -> marshalWord32 $ if x then 1 else 0
 :
 
 :d unmarshalers
@@ -621,8 +623,8 @@ alignment T.DBusObjectPath = 4
 :
 
 :d marshalers
-marshalType T.DBusString = marshalText x
-marshalType T.DBusObjectPath = marshalText . T.strObjectPath $ x
+T.VarBoxString x -> marshalText x
+T.VarBoxObjectPath x -> marshalText . T.strObjectPath $ x
 :
 
 :d unmarshalers
@@ -662,7 +664,7 @@ alignment T.DBusSignature  = 1
 :
 
 :d marshalers
-marshalType T.DBusSignature = marshalSignature x
+T.VarBoxSignature x -> marshalSignature x
 :
 
 :d unmarshalers
@@ -678,7 +680,7 @@ alignment (T.DBusArray _) = 4
 :
 
 :d marshalers
-marshalType (T.DBusArray _) = marshalArray x
+T.VarBoxArray x -> marshalArray x
 :
 
 :d unmarshalers
@@ -760,7 +762,7 @@ alignment (T.DBusDictionary _ _) = 4
 :
 
 :d marshalers
-marshalType (T.DBusDictionary _ _) = marshalArray (T.dictionaryToArray x)
+T.VarBoxDictionary x -> marshalArray (T.dictionaryToArray x)
 :
 
 :d unmarshalers
@@ -777,8 +779,7 @@ alignment (T.DBusStructure _) = 8
 :
 
 :d marshalers
-marshalType (T.DBusStructure _) = do
-	let T.Structure vs = x
+T.VarBoxStructure (T.Structure vs) -> do
 	pad 8
 	mapM_ marshal vs
 :
@@ -796,7 +797,7 @@ alignment T.DBusVariant = 1
 :
 
 :d marshalers
-marshalType T.DBusVariant = do
+T.VarBoxVariant x -> do
 	let textSig = T.typeCode . T.variantType $ x
 	sig <- case T.variantSignature x of
 		Just x' -> return x'
