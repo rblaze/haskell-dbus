@@ -163,8 +163,16 @@ marshal v = marshalType (T.variantType v) where
 TODO: describe these functions
 
 :f DBus/Wire/Marshal.hs
-append :: L.ByteString -> Marshal
-append bytes = MarshalM $ \(MarshalState e builder count) -> let
+appendS :: BS.ByteString -> Marshal
+appendS bytes = MarshalM $ \(MarshalState e builder count) -> let
+	builder' = B.append builder $ B.fromByteString bytes
+	count' = count + fromIntegral (BS.length bytes)
+	in MarshalRR () (MarshalState e builder' count')
+:
+
+:f DBus/Wire/Marshal.hs
+appendL :: L.ByteString -> Marshal
+appendL bytes = MarshalM $ \(MarshalState e builder count) -> let
 	builder' = B.append builder $ B.fromLazyByteString bytes
 	count' = count + fromIntegral (L.length bytes)
 	in MarshalRR () (MarshalState e builder' count')
@@ -174,8 +182,8 @@ append bytes = MarshalM $ \(MarshalState e builder count) -> let
 pad :: Word8 -> Marshal
 pad count = MarshalM $ \s@(MarshalState _ _ existing) -> let
 	padding' = fromIntegral $ padding existing count
-	bytes = L.replicate padding' 0
-	in unMarshalM (append bytes) s
+	bytes = BS.replicate padding' 0
+	in unMarshalM (appendS bytes) s
 :
 
 Most numeric values already have marshalers implemented in the
@@ -467,7 +475,7 @@ unmarshalWord32 = unmarshalGet 4 G.getWord32be G.getWord32le
 :
 
 :d marshalers
-marshalType T.DBusByte   = append $ L.singleton x
+marshalType T.DBusByte   = appendS $ BS.singleton x
 marshalType T.DBusWord16 = marshalBuilder 2 B.putWord16be B.putWord16le x
 marshalType T.DBusWord32 = marshalBuilder 4 B.putWord32be B.putWord32le x
 marshalType T.DBusWord64 = marshalBuilder 8 B.putWord64be B.putWord64le x
@@ -514,7 +522,7 @@ marshalType T.DBusDouble = do
 		BigEndian -> IEEE.putFloat64be
 		LittleEndian -> IEEE.putFloat64le
 	let bytes = runPut $ put x
-	append bytes
+	appendL bytes
 :
 
 :d unmarshalers
@@ -590,8 +598,8 @@ marshalText x = do
 	when (L.any (== 0) bytes) $
 		throwError $ InvalidText x
 	marshalWord32 . fromIntegral . L.length $ bytes
-	append bytes
-	append (L.singleton 0)
+	appendL bytes
+	appendS (BS.singleton 0)
 :
 
 :d unmarshal imports
@@ -634,9 +642,9 @@ marshalSignature :: T.Signature -> Marshal
 marshalSignature x = do
 	let bytes = T.bytesSignature x
 	let size = fromIntegral . BS.length $ bytes
-	append (L.singleton size)
-	append $ L.fromChunks [bytes]
-	append (L.singleton 0)
+	appendS (BS.singleton size)
+	appendS bytes
+	appendS (BS.singleton 0)
 :
 
 :f DBus/Wire/Unmarshal.hs
@@ -693,8 +701,8 @@ marshalArray x = do
 	when (arrayLen > fromIntegral C.arrayMaximumLength)
 		(throwError $ ArrayTooLong $ fromIntegral arrayLen)
 	marshalWord32 $ fromIntegral arrayLen
-	append $ L.replicate arrayPadding 0
-	append arrayBytes
+	appendL $ L.replicate arrayPadding 0
+	appendL arrayBytes
 :
 
 :f DBus/Wire/Marshal.hs
@@ -921,7 +929,7 @@ marshalMessage e serial msg = runMarshal marshaler e where
 		marshalHeader msg serial sig
 			$ fromIntegral . L.length $ bodyBytes
 		pad 8
-		append bodyBytes
+		appendL bodyBytes
 		checkMaximumSize
 :
 
