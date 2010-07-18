@@ -458,12 +458,20 @@ alignment T.DBusInt64   = 8
 alignment T.DBusDouble  = 8
 :
 
-Because {\tt Word32}s are often used for other types, there's
-separate functions for handling them.
+Because some integral types are often used as components of other values,
+there's separate functions for handling them.
 
 :f DBus/Wire/Marshal.hs
 marshalWord32 :: Word32 -> Marshal
 marshalWord32 = marshalBuilder 4 B.putWord32be B.putWord32le
+:
+
+:f DBus/Wire/Marshal.hs
+{-# INLINE marshalWord8 #-}
+marshalWord8 :: Word8 -> Marshal
+marshalWord8 x = MarshalM $ \(MarshalState e builder count) -> let
+	builder' = B.append builder $ B.singleton x
+	in MarshalRR () (MarshalState e builder' (count + 1))
 :
 
 :f DBus/Wire/Unmarshal.hs
@@ -472,9 +480,9 @@ unmarshalWord32 = unmarshalGet 4 G.getWord32be G.getWord32le
 :
 
 :d marshalers
-T.VarBoxWord8  x -> appendS $ BS.singleton x
+T.VarBoxWord8  x -> marshalWord8 x
 T.VarBoxWord16 x -> marshalBuilder 2 B.putWord16be B.putWord16le x
-T.VarBoxWord32 x -> marshalBuilder 4 B.putWord32be B.putWord32le x
+T.VarBoxWord32 x -> marshalWord32 x
 T.VarBoxWord64 x -> marshalBuilder 8 B.putWord64be B.putWord64le x
 T.VarBoxInt16  x -> marshalBuilder 2 B.putWord16be B.putWord16le $ fromIntegral x
 T.VarBoxInt32  x -> marshalBuilder 4 B.putWord32be B.putWord32le $ fromIntegral x
@@ -601,7 +609,7 @@ marshalText x = do
 		throwError $ InvalidText x
 	marshalWord32 . fromIntegral . L.length $ bytes
 	appendL bytes
-	appendS (BS.singleton 0)
+	marshalWord8 0
 :
 
 :d unmarshal imports
@@ -644,9 +652,9 @@ marshalSignature :: T.Signature -> Marshal
 marshalSignature x = do
 	let bytes = T.bytesSignature x
 	let size = fromIntegral . BS.length $ bytes
-	appendS (BS.singleton size)
+	marshalWord8 size
 	appendS bytes
-	appendS (BS.singleton 0)
+	marshalWord8 0
 :
 
 :f DBus/Wire/Unmarshal.hs
@@ -950,11 +958,11 @@ marshalHeader :: M.Message a => a -> M.Serial -> T.Signature -> Word32
               -> Marshal
 marshalHeader msg serial bodySig bodyLength = do
 	let fields = M.Signature bodySig : M.messageHeaderFields msg
-	marshal . T.toVariant . M.messageTypeCode $ msg
-	marshal . T.toVariant . encodeFlags . M.messageFlags $ msg
-	marshal . T.toVariant $ C.protocolVersion
+	marshalWord8 . M.messageTypeCode $ msg
+	marshalWord8 . encodeFlags . M.messageFlags $ msg
+	marshalWord8 C.protocolVersion
 	marshalWord32 bodyLength
-	marshal . T.toVariant $ serial
+	marshalWord32 . M.serialValue $ serial
 	let fieldType = T.DBusStructure [T.DBusByte, T.DBusVariant]
 	marshalArray . fromJust . T.toArray fieldType
 	        $ map encodeField fields
