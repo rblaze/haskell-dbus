@@ -947,7 +947,7 @@ marshalHeader msg serial bodySig bodyLength = do
 	marshalWord32 bodyLength
 	marshal . T.toVariant $ serial
 	let fieldType = T.DBusStructure [T.DBusByte, T.DBusVariant]
-	marshal . T.toVariant . fromJust . T.toArray fieldType
+	marshalArray . fromJust . T.toArray fieldType
 	        $ map encodeField fields
 :
 

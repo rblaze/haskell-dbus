@@ -715,6 +715,18 @@ construct invalid signatures.
 , mkSignature_
 :
 
+Checking if a type is valid according to signature rules is common, and if
+performed through the signature parser, slow. Since such types are already
+guaranteed to be structurally valid, the only test needed is whether their
+size is within bounds.
+
+:f DBus/Types/Internal.cpphs
+maybeValidType :: Type -> Maybe ()
+maybeValidType t = if B.length (typeCodeB t) > 255
+	then Nothing
+	else Just ()
+:
+
 :f Tests.hs
 instance Arbitrary Signature where
 	arbitrary = sizedText 255 $ fmap (TL.concat . map typeCode) arbitrary
@@ -852,7 +864,7 @@ arrayFromItems :: Type -> [Variant] -> Maybe Array
 arrayFromItems DBusByte vs = fmap (ByteArray . BL.pack) (mapM fromVariant vs)
 
 arrayFromItems t vs = do
-	mkBytesSignature (typeCodeB t)
+	maybeValidType t
 	if all (\x -> variantType x == t) vs
 		then Just $ VariantArray t vs
 		else Nothing
@@ -987,8 +999,8 @@ import Control.Monad (unless)
 dictionaryFromItems :: Type -> Type -> [(Variant, Variant)] -> Maybe Dictionary
 dictionaryFromItems kt vt pairs = do
 	unless (isAtomicType kt) Nothing
-	mkBytesSignature (typeCodeB kt)
-	mkBytesSignature (typeCodeB vt)
+	maybeValidType kt
+	maybeValidType vt
 	
 	let sameType (k, v) = variantType k == kt &&
 	                      variantType v == vt
