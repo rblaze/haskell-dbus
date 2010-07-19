@@ -30,8 +30,8 @@ module DBus.Address
 import Data.Char (ord, chr)
 import qualified Data.Map as M
 import Text.Printf (printf)
-import qualified Text.Parsec as P
-import Text.Parsec ((<|>))
+import qualified Text.ParserCombinators.Parsec as P
+import Text.ParserCombinators.Parsec ((<|>))
 import DBus.Util (hexToInt, eitherToMaybe)
 :
 

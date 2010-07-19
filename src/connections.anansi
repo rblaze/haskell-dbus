@@ -190,7 +190,7 @@ digit, the port is converted to an {\tt Integer} and confirmed valid.
 value must be converted from host order using {\tt Data.Binary}.
 
 :d connection imports
-import qualified Text.Parsec as P
+import qualified Text.ParserCombinators.Parsec as P
 import Control.Monad (unless)
 import Data.Binary.Get (runGet, getWord16host)
 import Data.Binary.Put (runPut, putWord16be)
@@ -202,7 +202,10 @@ import Data.Binary.Put (runPut, putWord16be)
 		P.eof
 		let value = read chars :: Integer
 		unless (value > 0 && value <= 65535) $
-			P.parserFail "bad port" >> return ()
+			-- Calling 'fail' is acceptable here, because Parsec 2
+			-- offers no other error reporting mechanism, and
+			-- implements 'fail'.
+			fail "bad port"
 		let word = fromIntegral value
 		return $ runGet getWord16host (runPut (putWord16be word))
 :

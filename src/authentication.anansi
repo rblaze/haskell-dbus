@@ -44,6 +44,7 @@ client. Commands and mechanisms are represented by a couple data types:
 :d authentication imports
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Lazy as ByteString
+import Data.ByteString.Lazy.Char8 ()
 import qualified DBus.UUID as UUID
 :
 

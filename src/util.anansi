@@ -57,7 +57,7 @@ validUUID text = valid where
 :f DBus/Util.hs
 |copyright|
 module DBus.Util where
-import Text.Parsec (Parsec, parse)
+import Text.ParserCombinators.Parsec (Parser, parse)
 import Data.Char (digitToInt)
 import Data.List (isPrefixOf)
 
@@ -65,7 +65,7 @@ checkLength :: Int -> String -> Maybe String
 checkLength length' s | length s <= length' = Just s
 checkLength _ _ = Nothing
 
-parseMaybe :: Parsec String () a -> String -> Maybe a
+parseMaybe :: Parser a -> String -> Maybe a
 parseMaybe p = either (const Nothing) Just . parse p ""
 
 mkUnsafe :: Show a => String -> (a -> Maybe b) -> a -> b

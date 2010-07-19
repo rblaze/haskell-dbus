@@ -769,8 +769,8 @@ Element names are separated by {\tt '/'}, and the path may not end in
 {\tt '/'} unless it is the root path.
 
 :d type imports
-import Text.Parsec ((<|>))
-import qualified Text.Parsec as P
+import Text.ParserCombinators.Parsec ((<|>))
+import qualified Text.ParserCombinators.Parsec as P
 import DBus.Util (checkLength, parseMaybe)
 :
 
