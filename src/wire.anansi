@@ -319,15 +319,14 @@ unmarshalType :: T.Type -> Unmarshal T.Variant
 TODO: describe these functions
 
 :f DBus/Wire/Unmarshal.hs
+{-# INLINE consume #-}
 consume :: Word64 -> Unmarshal BL.ByteString
-consume count = do
-	(UnmarshalState bytes offset) <- getState
-	let (x, bytes') = BL.splitAt (fromIntegral count) bytes
-	unless (BL.length x == fromIntegral count) $
-		throwError $ UnexpectedEOF offset
-	
-	putState $ UnmarshalState bytes' (offset + count)
-	return x
+consume count = Unmarshal $ \_ (UnmarshalState bytes offset) -> let
+	count' = fromIntegral count
+	(x, bytes') = BL.splitAt count' bytes
+	in if BL.length x == count'
+		then UnmarshalRR x (UnmarshalState bytes' (offset + count))
+		else UnmarshalRL $ UnexpectedEOF offset
 :
 
 :f DBus/Wire/Unmarshal.hs
