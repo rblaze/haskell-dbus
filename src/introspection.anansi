@@ -25,18 +25,18 @@ An XML introspection document looks like this:
 <!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
          "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
 <node name="/org/example/example">
-	<interface name="org.example.ExampleInterface">
-		<method name="Echo">
-			<arg name="text" type="s" direction="in"/>
-			<arg type="s" direction="out"/>
-		</method>
-		<signal name="Echoed">
-			<arg type="s"/>
-		</signal>
-		<property name="EchoCount" type="u" access="read"/>
-	</interface>
-	<node name="child_a"/>
-	<node name="child/b"/>
+    <interface name="org.example.ExampleInterface">
+        <method name="Echo">
+            <arg name="text" type="s" direction="in"/>
+            <arg type="s" direction="out"/>
+        </method>
+        <signal name="Echoed">
+            <arg type="s"/>
+        </signal>
+        <property name="EchoCount" type="u" access="read"/>
+    </interface>
+    <node name="child_a"/>
+    <node name="child/b"/>
 </node>
 \end{verbatim}
 
