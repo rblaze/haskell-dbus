@@ -274,131 +274,160 @@ children f filt (H.Elem _ _ contents) =
 
 \subsection{Generating XML}
 
-:f DBus/Introspection.hs
-dtdPublicID, dtdSystemID :: String
-dtdPublicID = "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
-dtdSystemID = "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd"
-:
-
-HaXml punts to the {\tt pretty} package for serialising XML.
-
-:d introspection imports
-import Text.XML.HaXml.Pretty (document)
-import Text.PrettyPrint.HughesPJ (render)
-:
-
 Generating XML can fail; if a child object's path is not a sub-path of the
 parent, {\tt toXML} will return {\tt Nothing}.
 
+To simplify XML serialization, a variant of {\tt Writer} is used to combine
+text fragments with optional failure. This would be {\tt WriterT Text Maybe},
+except I didn't want to drag in a dependency on {\tt transformers} for such
+a little thing.
+
+:f DBus/Introspection.hs
+newtype XmlWriter a = XmlWriter { runXmlWriter :: Maybe (a, Text) }
+
+instance Monad XmlWriter where
+	return a = XmlWriter $ Just (a, TL.empty)
+	m >>= f = XmlWriter $ do
+		(a, w) <- runXmlWriter m
+		(b, w') <- runXmlWriter (f a)
+		return (b, TL.append w w')
+:
+
+:f DBus/Introspection.hs
+tell :: Text -> XmlWriter ()
+tell t = XmlWriter $ Just ((), t)
+:
+
 :f DBus/Introspection.hs
 toXML :: Object -> Maybe Text
-toXML obj = fmap (TL.pack . render . document) doc where
-	prolog = H.Prolog Nothing [] (Just doctype) []
-	doctype = H.DTD "node" (Just (H.PUBLIC
-		(H.PubidLiteral dtdPublicID)
-		(H.SystemLiteral dtdSystemID))) []
-	doc = do
-		root <- xmlRoot obj
-		return $ H.Document prolog H.emptyST root []
-:
-
-When writing objects to {\tt node}s, the root object must have an absolute
-path, and children must have paths relative to their parent.
-
-:f DBus/Introspection.hs
-xmlRoot :: Object -> Maybe (H.Element a)
-xmlRoot obj@(Object path _ _) = do
-	(H.CElem root _) <- xmlObject' (T.strObjectPath path) obj
-	return root
+toXML obj = do
+	(_, text) <- runXmlWriter (writeRoot obj)
+	return text
 :
 
 :f DBus/Introspection.hs
-xmlObject :: T.ObjectPath -> Object -> Maybe (H.Content a)
-xmlObject parentPath obj@(Object path _ _) = do
-	let path' = T.strObjectPath path
-	    parent' = T.strObjectPath parentPath
-	relpath <- if TL.isPrefixOf parent' path'
+writeRoot :: Object -> XmlWriter ()
+writeRoot obj@(Object path _ _) = do
+	tell "<!DOCTYPE node PUBLIC '-//freedesktop//DTD D-BUS Object Introspection 1.0//EN'"
+	tell " 'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>\n"
+	writeObject (T.strObjectPath path) obj
+:
+
+:f DBus/Introspection.hs
+writeChild :: T.ObjectPath -> Object -> XmlWriter ()
+writeChild parentPath obj@(Object path _ _) = write where
+	path' = T.strObjectPath path
+	parent' = T.strObjectPath parentPath
+	relpathM = if TL.isPrefixOf parent' path'
 		then Just $ if parent' == "/"
 			then TL.drop 1 path'
 			else TL.drop (TL.length parent' + 1) path'
 		else Nothing
-	xmlObject' relpath obj
+	
+	write = case relpathM of
+		Just relpath -> writeObject relpath obj
+		Nothing -> XmlWriter Nothing
 :
 
 :f DBus/Introspection.hs
-xmlObject' :: Text -> Object -> Maybe (H.Content a)
-xmlObject' path (Object fullPath interfaces children') = do
-	children'' <- mapM (xmlObject fullPath) children'
-	return $ mkElement "node"
-		[mkAttr "name" $ TL.unpack path]
-		$ concat
-			[ map xmlInterface interfaces
-			, children''
-			]
+writeObject :: Text -> Object -> XmlWriter ()
+writeObject path (Object fullPath interfaces children') = writeElement "node"
+	[("name", path)] $ do
+		mapM_ writeInterface interfaces
+		mapM_ (writeChild fullPath) children'
 :
 
 :f DBus/Introspection.hs
-xmlInterface :: Interface -> H.Content a
-xmlInterface (Interface name methods signals properties) =
-	mkElement "interface"
-		[mkAttr "name" . TL.unpack . T.strInterfaceName $ name]
-		$ concat
-			[ map xmlMethod methods
-			, map xmlSignal signals
-			, map xmlProperty properties
-			]
+writeInterface :: Interface -> XmlWriter ()
+writeInterface (Interface name methods signals properties) = writeElement "interface"
+	[("name", T.strInterfaceName name)] $ do
+		mapM_ writeMethod methods
+		mapM_ writeSignal signals
+		mapM_ writeProperty properties
 :
 
 :f DBus/Introspection.hs
-xmlMethod :: Method -> H.Content a
-xmlMethod (Method name inParams outParams) = mkElement "method"
-	[mkAttr "name" . TL.unpack . T.strMemberName $ name]
-	$ concat
-		[ map (xmlParameter "in") inParams
-		, map (xmlParameter "out") outParams
-		]
+writeMethod :: Method -> XmlWriter ()
+writeMethod (Method name inParams outParams) = writeElement "method"
+	[("name", T.strMemberName name)] $ do
+		mapM_ (writeParameter "in") inParams
+		mapM_ (writeParameter "out") outParams
 :
 
 :f DBus/Introspection.hs
-xmlSignal :: Signal -> H.Content a
-xmlSignal (Signal name params) = mkElement "signal"
-	[mkAttr "name" . TL.unpack . T.strMemberName $ name]
-	$ map (xmlParameter "out") params
+writeSignal :: Signal -> XmlWriter ()
+writeSignal (Signal name params) = writeElement "signal"
+	[("name", T.strMemberName name)] $ do
+		mapM_ (writeParameter "out") params
 :
 
 :f DBus/Introspection.hs
-xmlParameter :: String -> Parameter -> H.Content a
-xmlParameter direction (Parameter name sig) = mkElement "arg"
-	[ mkAttr "name" . TL.unpack $ name
-	, mkAttr "type" . TL.unpack . T.strSignature $ sig
-	, mkAttr "direction" direction
-	] []
+writeParameter :: Text -> Parameter -> XmlWriter ()
+writeParameter direction (Parameter name sig) = writeEmptyElement "arg"
+	[ ("name", name)
+	, ("type", T.strSignature sig)
+	, ("direction", direction)
+	]
 :
 
 :f DBus/Introspection.hs
-xmlProperty :: Property -> H.Content a
-xmlProperty (Property name sig access) = mkElement "property"
-	[ mkAttr "name" . TL.unpack $ name
-	, mkAttr "type" . TL.unpack . T.strSignature $ sig
-	, mkAttr "access" $ xmlAccess access
-	] []
+writeProperty :: Property -> XmlWriter ()
+writeProperty (Property name sig access) = writeEmptyElement "property"
+	[ ("name", name)
+	, ("type", T.strSignature sig)
+	, ("access", strAccess access)
+	]
 :
 
 :f DBus/Introspection.hs
-xmlAccess :: [PropertyAccess] -> String
-xmlAccess access = readS ++ writeS where
+strAccess :: [PropertyAccess] -> Text
+strAccess access = TL.append readS writeS where
 	readS = if elem Read access then "read" else ""
 	writeS = if elem Write access then "write" else ""
 :
 
 :f DBus/Introspection.hs
-mkElement :: String -> [H.Attribute] -> [H.Content a] -> H.Content a
-mkElement name attrs contents = H.CElem (H.Elem name attrs contents) undefined
+writeElement :: Text -> [(Text, Text)] -> XmlWriter () -> XmlWriter ()
+writeElement name attrs content = do
+	tell "<"
+	tell name
+	mapM_ writeAttribute attrs
+	tell ">"
+	content
+	tell "</"
+	tell name
+	tell ">"
+:
 
-mkAttr :: String -> String -> H.Attribute
-mkAttr name value = (name, H.AttValue [Left escaped]) where
-	raw = H.CString True value ()
-	escaped = H.verbatim $ H.xmlEscapeContent H.stdXmlEscaper [raw]
+:f DBus/Introspection.hs
+writeEmptyElement :: Text -> [(Text, Text)] -> XmlWriter ()
+writeEmptyElement name attrs = do
+	tell "<"
+	tell name
+	mapM_ writeAttribute attrs
+	tell "/>"
+:
+
+:f DBus/Introspection.hs
+writeAttribute :: (Text, Text) -> XmlWriter ()
+writeAttribute (name, content) = do
+	tell " "
+	tell name
+	tell "='"
+	tell (escape content)
+	tell "'"
+:
+
+:f DBus/Introspection.hs
+escape :: Text -> Text
+escape = TL.concatMap escapeChar where
+	escapeChar c = case c of
+		'&' -> "&amp;"
+		'<' -> "&lt;"
+		'>' -> "&gt;"
+		'"' -> "&quot;"
+		'\'' -> "&apos;"
+		_ -> TL.singleton c
 :
 
 \subsection{Test support}
