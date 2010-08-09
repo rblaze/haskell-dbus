@@ -59,13 +59,6 @@ module DBus.Introspection
 import qualified DBus.Types as T
 :
 
-HaXml is used to do the heavy lifting of XML parsing because HXT cannot
-be combined with Parsec 3.
-
-:d introspection imports
-import qualified Text.XML.HaXml as H
-:
-
 \subsection{Data types}
 
 :f DBus/Introspection.hs
@@ -97,17 +90,51 @@ If parsing fails, {\tt fromXML} will return {\tt Nothing}. Aside from the
 elements directly accessed by the parser, no effort is made to check the
 document's validity because there is no DTD as of yet.
 
-:d introspection imports
-import Text.XML.HaXml.Parse (xmlParse')
-import DBus.Util (eitherToMaybe)
-:
-
 :f DBus/Introspection.hs
 fromXML :: T.ObjectPath -> Text -> Maybe Object
 fromXML path text = do
-	doc <- eitherToMaybe . xmlParse' "" . TL.unpack $ text
-	let (H.Document _ _ root _) = doc
+	root <- parseElement text
 	parseRoot path root
+:
+
+LibXML's event-based parsing is used to convert the input into a list of
+events. DBus's introspection format doesn't use any character data, so only
+the element attributes and nesting are preserved.
+
+:d introspection imports
+import qualified Data.XML.Types as X
+import qualified Text.XML.LibXML.SAX as SAX
+import Control.Monad.ST (runST)
+import qualified Data.STRef as ST
+import Data.Text.Encoding (encodeUtf8)
+:
+
+:f DBus/Introspection.hs
+parseElement :: Text -> Maybe X.Element
+parseElement text = runST $ do
+	stackRef <- ST.newSTRef [([], [])]
+	let callbacks = SAX.ParserCallbacks
+		{ SAX.parsedBeginElement = \_ attrs -> do
+			ST.modifySTRef stackRef ((attrs, []):)
+		, SAX.parsedEndElement = \name -> do
+			stack <- ST.readSTRef stackRef
+			let (attrs, children'):stack' = stack
+			let e = X.Element name attrs (map X.NodeElement (reverse children'))
+			let (pAttrs, pChildren):stack'' = stack'
+			let parent = (pAttrs, e:pChildren)
+			ST.writeSTRef stackRef (parent:stack'')
+		, SAX.parsedCharacters = \_ -> return ()
+		, SAX.parsedComment = \_ -> return ()
+		, SAX.parsedProcessingInstruction = \_ -> return ()
+		}
+	let onError _ = ST.writeSTRef stackRef []
+	p <- SAX.newParser callbacks onError Nothing
+	mapM_ (SAX.parse p . encodeUtf8) $ TL.toChunks text
+	SAX.parseComplete p
+	stack <- ST.readSTRef stackRef
+	return $ case stack of
+		[] -> Nothing
+		(_, children'):_ -> Just $ head children'
 :
 
 The root {\tt node} is special, in that it's the only {\tt node} which is
@@ -118,7 +145,7 @@ Even though the root object's {\tt name} is optional, if present, it must
 still be a valid object path.
 
 :f DBus/Introspection.hs
-parseRoot :: T.ObjectPath -> H.Element a -> Maybe Object
+parseRoot :: T.ObjectPath -> X.Element -> Maybe Object
 parseRoot defaultPath e = do
 	path <- case getattrM "name" e of
 		Nothing -> Just defaultPath
@@ -131,7 +158,7 @@ attribute is not a valid object path, but should be valid when appended to
 the root object's path.
 
 :f DBus/Introspection.hs
-parseChild :: T.ObjectPath -> H.Element a -> Maybe Object
+parseChild :: T.ObjectPath -> X.Element -> Maybe Object
 parseChild parentPath e = do
 	let parentPath' = case T.strObjectPath parentPath of
 		"/" -> "/"
@@ -145,8 +172,8 @@ Other than the name, both root and non-root {\tt nodes} have identical
 contents.  They may contain interface definitions, and child {\tt node}s.
 
 :f DBus/Introspection.hs
-parseObject :: T.ObjectPath -> H.Element a -> Maybe Object
-parseObject path e@(H.Elem "node" _ _)  = do
+parseObject :: T.ObjectPath -> X.Element -> Maybe Object
+parseObject path e | X.elementName e == toName "node" = do
 	interfaces <- children parseInterface (named "interface") e
 	children' <- children (parseChild path) (named "node") e
 	return $ Object path interfaces children'
@@ -156,7 +183,7 @@ parseObject _ _ = Nothing
 Interfaces may contain methods, signals, and properties.
 
 :f DBus/Introspection.hs
-parseInterface :: H.Element a -> Maybe Interface
+parseInterface :: X.Element -> Maybe Interface
 parseInterface e = do
 	name <- T.mkInterfaceName =<< getattrM "name" e
 	methods <- children parseMethod (named "method") e
@@ -169,7 +196,7 @@ Methods contain a list of parameters, which default to ``in'' parameters
 if no direction is specified.
 
 :f DBus/Introspection.hs
-parseMethod :: H.Element a -> Maybe Method
+parseMethod :: X.Element -> Maybe Method
 parseMethod e = do
 	name <- T.mkMemberName =<< getattrM "name" e
 	paramsIn <- children parseParameter (isParam ["in", ""]) e
@@ -180,7 +207,7 @@ parseMethod e = do
 Signals are similar to methods, except they have no ``in'' parameters.
 
 :f DBus/Introspection.hs
-parseSignal :: H.Element a -> Maybe Signal
+parseSignal :: X.Element -> Maybe Signal
 parseSignal e = do
 	name <- T.mkMemberName =<< getattrM "name" e
 	params <- children parseParameter (isParam ["out", ""]) e
@@ -190,7 +217,7 @@ parseSignal e = do
 A parameter has a free-form name, and a single valid type.
 
 :f DBus/Introspection.hs
-parseParameter :: H.Element a -> Maybe Parameter
+parseParameter :: X.Element -> Maybe Parameter
 parseParameter e = do
 	let name = getattr "name" e
 	sig <- parseType e
@@ -198,7 +225,7 @@ parseParameter e = do
 :
 
 :f DBus/Introspection.hs
-parseType :: H.Element a -> Maybe T.Signature
+parseType :: X.Element -> Maybe T.Signature
 parseType e = do
 	sig <- T.mkSignature =<< getattrM "type" e
 	case T.signatureTypes sig of
@@ -210,7 +237,7 @@ Properties are used by the {\tt org.freedesktop.DBus.Properties} interface.
 Each property may be read, written, or both, and has an associated type.
 
 :f DBus/Introspection.hs
-parseProperty :: H.Element a -> Maybe Property
+parseProperty :: X.Element -> Maybe Property
 parseProperty e = do
 	let name = getattr "name" e
 	sig <- parseType e
@@ -223,56 +250,33 @@ parseProperty e = do
 	return $ Property name sig access
 :
 
-HaXml doesn't seem to have any way to retrieve the ``real'' value of an
-attribute, so {\tt attrValue} implements this.
-
 :d introspection imports
-import Data.Char (chr)
+import Control.Monad ((>=>))
+import Data.Maybe (fromMaybe, listToMaybe)
 :
 
 :f DBus/Introspection.hs
-attrValue :: H.AttValue -> Maybe Text
-attrValue attr = fmap (TL.pack . concat) $ mapM unescape parts where
-	(H.AttValue parts) = attr
-	
-	unescape (Left x) = Just x
-	unescape (Right (H.RefEntity x)) = lookup x namedRefs
-	unescape (Right (H.RefChar x)) = Just [chr x]
-	
-	namedRefs =
-		[ ("lt", "<")
-		, ("gt", ">")
-		, ("amp", "&")
-		, ("apos", "'")
-		, ("quot", "\"")
-		]
-:
+getattrM :: Text -> X.Element -> Maybe Text
+getattrM name = fmap attrText . listToMaybe . attrs where
+	attrText = textContent . X.attributeContent
+	attrs = X.elementAttributes >=> X.isNamed (toName name)
+	textContent cs = TL.concat [t | X.ContentText t <- cs]
 
-Some helper functions for dealing with HaXml filters
-
-:d introspection imports
-import Data.Maybe (fromMaybe)
-:
-
-:f DBus/Introspection.hs
-getattrM :: String -> H.Element a -> Maybe Text
-getattrM name (H.Elem _ attrs _) = lookup name attrs >>= attrValue
-
-getattr :: String -> H.Element a -> Text
+getattr :: Text -> X.Element -> Text
 getattr = (fromMaybe "" .) . getattrM
 
-isParam :: [Text] -> H.CFilter a
-isParam dirs content = do
-	arg@(H.CElem e _) <- H.tag "arg" content
-	let direction = getattr "direction" e
-	[arg | direction `elem` dirs]
+isParam :: [Text] -> X.Element -> [X.Element]
+isParam dirs = named "arg" >=> checkDir where
+	checkDir e = [e | getattr "direction" e `elem` dirs]
 
-children :: Monad m => (H.Element a -> m b) -> H.CFilter a -> H.Element a -> m [b]
-children f filt (H.Elem _ _ contents) =
-	mapM f [x | (H.CElem x _) <- concatMap filt contents]
+children :: Monad m => (X.Element -> m b) -> (X.Element -> [X.Element]) -> X.Element -> m [b]
+children f p = mapM f . concatMap p . X.elementChildren
 
-named :: String -> H.CFilter a
-named = H.tag
+named :: X.Named a => Text -> a -> [a]
+named = X.isNamed . toName
+
+toName :: Text -> X.Name
+toName t = X.Name t Nothing Nothing
 :
 
 \subsection{Generating XML}
