@@ -1,5 +1,5 @@
 name: dbus-core
-version: 0.8.4
+version: 0.8.5
 synopsis: Low-level D-Bus protocol implementation
 license: GPL-3
 license-file: License.txt
@@ -42,7 +42,7 @@ library
     , containers >= 0.1 && < 0.4
     , unix >= 2.2 && < 2.5
     , network >= 2.2 && < 2.3
-    , libxml-sax >= 0.5 && < 0.6
+    , libxml-sax >= 0.6 && < 0.7
     , xml-types >= 0.1 && < 0.2
 
   exposed-modules:
