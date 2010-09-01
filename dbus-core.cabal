@@ -75,7 +75,7 @@ executable dbus-core-tests
 
   if flag(test)
     build-depends:
-        QuickCheck >= 2.1 && < 2.2
+        QuickCheck >= 2.2 && < 2.3
       , test-framework >= 0.2 && < 0.4
       , test-framework-quickcheck2 >= 0.2 && < 0.3
   else

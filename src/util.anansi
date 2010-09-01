@@ -222,34 +222,6 @@ QuickCheck doesn't define instances for fixed-size integral types or
 variants of {\tt Text}, so define them here.
 
 :f Tests.hs
-instance Arbitrary Word8 where
-	arbitrary = arbitraryBoundedIntegral
-	shrink    = shrinkIntegral
-
-instance Arbitrary Word16 where
-	arbitrary = arbitraryBoundedIntegral
-	shrink    = shrinkIntegral
-
-instance Arbitrary Word32 where
-	arbitrary = arbitraryBoundedIntegral
-	shrink    = shrinkIntegral
-
-instance Arbitrary Word64 where
-	arbitrary = arbitraryBoundedIntegral
-	shrink    = shrinkIntegral
-
-instance Arbitrary Int16 where
-	arbitrary = arbitraryBoundedIntegral
-	shrink    = shrinkIntegral
-
-instance Arbitrary Int32 where
-	arbitrary = arbitraryBoundedIntegral
-	shrink    = shrinkIntegral
-
-instance Arbitrary Int64 where
-	arbitrary = arbitraryBoundedIntegral
-	shrink    = shrinkIntegral
-
 instance Arbitrary T.Text where
 	arbitrary = fmap T.pack arbitrary
 
