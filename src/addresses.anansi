@@ -32,7 +32,7 @@ import qualified Data.Map as M
 import Text.Printf (printf)
 import qualified Text.ParserCombinators.Parsec as P
 import Text.ParserCombinators.Parsec ((<|>))
-import DBus.Util (hexToInt, eitherToMaybe)
+import DBus.Util (hexToInt, eitherToMaybe, void)
 :
 
 \subsection{Address syntax}
@@ -98,13 +98,13 @@ mkAddresses :: Text -> Maybe [Address]
 mkAddresses s = eitherToMaybe . P.parse parser "" . TL.unpack $ s where
 	address = do
 		method <- P.many (P.noneOf ":;")
-		P.char ':'
+		void (P.char ':')
 		params <- P.sepEndBy param (P.char ',')
 		return $ Address (TL.pack method) (M.fromList params)
 	
 	param = do
 		key <- P.many1 (P.noneOf "=;,")
-		P.char '='
+		void (P.char '=')
 		value <- P.many1 (encodedValue <|> unencodedValue)
 		return (TL.pack key, TL.pack value)
 	
@@ -115,7 +115,7 @@ mkAddresses s = eitherToMaybe . P.parse parser "" . TL.unpack $ s where
 	
 	unencodedValue = P.oneOf optionallyEncoded
 	encodedValue = do
-		P.char '%'
+		void (P.char '%')
 		hex <- P.count 2 P.hexDigit
 		return . chr . hexToInt $ hex
 :

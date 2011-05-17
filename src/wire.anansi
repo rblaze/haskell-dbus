@@ -256,6 +256,7 @@ import Data.Int (Int16, Int32, Int64)
 
 import DBus.Wire.Internal
 import qualified DBus.Types.Internal as T
+import DBus.Util (void)
 :
 
 :d unmarshal imports
@@ -1078,7 +1079,7 @@ unmarshaling it.
 
 :d read body
 let bodyPadding = padding (fromIntegral fieldByteCount + 16) 8
-getBytes . fromIntegral $ bodyPadding
+void (getBytes (fromIntegral bodyPadding))
 :
 
 :f DBus/Wire/Unmarshal.hs

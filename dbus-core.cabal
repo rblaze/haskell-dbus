@@ -29,11 +29,7 @@ flag hpc
   default: False
 
 library
-  if true
-    ghc-options: -Wall
-
-  if impl(ghc >= 6.11)
-    ghc-options: -fno-warn-unused-do-bind
+  ghc-options: -Wall
 
   hs-source-dirs: hs
 

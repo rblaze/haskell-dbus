@@ -104,6 +104,9 @@ readUntil guard getx = readUntil' [] where
 -- | Drop /n/ items from the end of a list
 dropEnd :: Int -> [a] -> [a]
 dropEnd n xs = take (length xs - n) xs
+
+void :: Monad m => m a -> m ()
+void m = m >> return ()
 :
 
 \subsection{Bundled ErrorT variant}
