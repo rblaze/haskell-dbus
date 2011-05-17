@@ -96,7 +96,7 @@ connectTransport a = transport' (A.addressMethod a) a where
 	transport' _      = E.throwIO . UnknownMethod
 :
 
-\subsubsection{UNIX}
+\subsubsection*{UNIX}
 
 The {\sc unix} transport accepts two parameters: {\tt path}, which is a
 simple filesystem path, and {\tt abstract}, which is a path in the
@@ -128,7 +128,7 @@ unix a = port >>= N.connectTo "localhost" >>= handleTransport where
 		(Nothing, Just x) -> return $ '\x00' : TL.unpack x
 :
 
-\subsubsection{TCP}
+\subsubsection*{TCP}
 
 The {\sc tcp} transport has three parameters:
 
@@ -246,7 +246,7 @@ exception will be thrown.
 		return sock
 :
 
-\subsubsection{Generic handle-based transport}
+\subsubsection*{Generic handle-based transport}
 
 Both UNIX and TCP are backed by standard handles, and can therefore use
 a shared handle-based transport backend.
@@ -263,7 +263,7 @@ handleTransport h = do
 	return $ Transport (L.hPut h) (L.hGet h . fromIntegral) (I.hClose h)
 :
 
-\subsection{Errors}
+\subsection*{Errors}
 
 If connecting to D-Bus fails, a {\tt ConnectionError} will be thrown.
 The constructor describes which exception occurred.

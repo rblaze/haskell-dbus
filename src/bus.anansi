@@ -64,7 +64,7 @@ getFirstBus :: [(Auth.Mechanism, A.Address)] -> IO (C.Connection, T.BusName)
 getFirstBus = (busForConnection =<<) . C.connectFirst
 :
 
-\subsection{Default connections}
+\subsection*{Default connections}
 
 Two default buses are defined, the ``system'' and ``session'' buses. The system
 bus is global for the OS, while the session bus runs only for the duration
@@ -97,7 +97,7 @@ getBus' io = do
 		_        -> E.throwIO $ C.InvalidAddress addr
 :
 
-\subsection{Sending the ``hello'' message}
+\subsection*{Sending the ``hello'' message}
 
 :f DBus/Bus.hs
 hello :: M.MethodCall

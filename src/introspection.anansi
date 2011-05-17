@@ -59,7 +59,7 @@ module DBus.Introspection
 import qualified DBus.Types as T
 :
 
-\subsection{Data types}
+\subsection*{Data types}
 
 :f DBus/Introspection.hs
 data Object = Object T.ObjectPath [Interface] [Object]
@@ -84,7 +84,7 @@ data PropertyAccess = Read | Write
 	deriving (Show, Eq)
 :
 
-\subsection{Parsing XML}
+\subsection*{Parsing XML}
 
 If parsing fails, {\tt fromXML} will return {\tt Nothing}. Aside from the
 elements directly accessed by the parser, no effort is made to check the
@@ -278,7 +278,7 @@ toName :: Text -> X.Name
 toName t = X.Name t Nothing Nothing
 :
 
-\subsection{Generating XML}
+\subsection*{Generating XML}
 
 Generating XML can fail; if a child object's path is not a sub-path of the
 parent, {\tt toXML} will return {\tt Nothing}.

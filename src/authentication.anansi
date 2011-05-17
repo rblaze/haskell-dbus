@@ -106,7 +106,7 @@ putCommand put get cmd = do
 	liftM (TL.pack . dropEnd 2) $ readUntil "\r\n" getC
 :
 
-\subsubsection{Support authentication mechanisms}
+\subsubsection*{Support authentication mechanisms}
 
 Currently, the only supported authentication mechanism is sending the local
 user's ``real user ID''.

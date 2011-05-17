@@ -193,7 +193,7 @@ marshalBuilder size be le x = do
 		in MarshalRR () (MarshalState builder' (count + size'))
 :
 
-\subsubsection{Errors}
+\subsubsection*{Errors}
 
 Marshaling can fail for four reasons:
 
@@ -389,7 +389,7 @@ untilM test comp = do
 			return $ x:xs
 :
 
-\subsubsection{Errors}
+\subsubsection*{Errors}
 
 Unmarshaling can fail for four reasons:
 
@@ -677,7 +677,7 @@ unmarshalType T.DBusSignature = liftM T.toVariant unmarshalSignature
 
 \subsection{Containers}
 
-\subsubsection{Arrays}
+\subsubsection*{Arrays}
 
 :d alignments
 alignment (T.DBusArray _) = 4
@@ -759,7 +759,7 @@ unmarshalArray itemType = do
 	fromMaybeU "array" (T.arrayFromItems itemType) vs
 :
 
-\subsubsection{Dictionaries}
+\subsubsection*{Dictionaries}
 
 :d alignments
 alignment (T.DBusDictionary _ _) = 4
@@ -776,7 +776,7 @@ unmarshalType (T.DBusDictionary kt vt) = do
 	fromMaybeU' "dictionary" T.arrayToDictionary array
 :
 
-\subsubsection{Structures}
+\subsubsection*{Structures}
 
 :d alignments
 alignment (T.DBusStructure _) = 8
@@ -794,7 +794,7 @@ unmarshalType (T.DBusStructure ts) = do
 	liftM (T.toVariant . T.Structure) $ mapM unmarshalType ts
 :
 
-\subsubsection{Variants}
+\subsubsection*{Variants}
 
 :d alignments
 alignment T.DBusVariant = 1
@@ -830,7 +830,7 @@ import qualified DBus.Message.Internal as M
 import qualified DBus.Message.Internal as M
 :
 
-\subsubsection{Flags}
+\subsubsection*{Flags}
 
 :d unmarshal imports
 import Data.Bits ((.&.))
@@ -858,7 +858,7 @@ decodeFlags word = Set.fromList flags where
 	flags = flagSet >>= \(x, y) -> [y | word .&. x > 0]
 :
 
-\subsubsection{Header fields}
+\subsubsection*{Header fields}
 
 :f DBus/Wire/Marshal.hs
 encodeField :: M.HeaderField -> T.Structure
@@ -907,11 +907,11 @@ unpackField struct = (c', v') where
 	v' = fromJust . T.fromVariant $ v
 :
 
-\subsubsection{Header layout}
+\subsubsection*{Header layout}
 
 TODO: describe header layout here
 
-\subsubsection{Marshaling}
+\subsubsection*{Marshaling}
 
 :d wire exports
 , marshalMessage
@@ -977,7 +977,7 @@ checkMaximumSize = do
 		(throwError $ MessageTooLong $ fromIntegral messageLength)
 :
 
-\subsubsection{Unmarshaling}
+\subsubsection*{Unmarshaling}
 
 :d unmarshal imports
 import qualified DBus.Constants as C

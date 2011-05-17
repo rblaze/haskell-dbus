@@ -53,7 +53,7 @@ Message ( messageFlags
         )
 :
 
-\subsection{Flags}
+\subsection*{Flags}
 
 The instance of {\tt Ord} only exists for storing flags in a set. Flags have
 no inherent ordering.
@@ -69,7 +69,7 @@ data Flag
 , Flag (..)
 :
 
-\subsection{Header fields}
+\subsection*{Header fields}
 
 :f DBus/Message/Internal.hs
 data HeaderField
@@ -84,7 +84,7 @@ data HeaderField
 	deriving (Show, Eq)
 :
 
-\subsection{Serials}
+\subsection*{Serials}
 
 {\tt Serial} is just a wrapper around {\tt Word32}, to provide a bit of
 added type-safety.
@@ -122,14 +122,14 @@ arbitrary serials doesn't make any sense.
 , nextSerial
 :
 
-\subsection{Message types}
+\subsection*{Message types}
 
 :f DBus/Message/Internal.hs
 maybe' :: (a -> b) -> Maybe a -> [b]
 maybe' f = maybe [] (\x' -> [f x'])
 :
 
-\subsubsection{Method calls}
+\subsubsection*{Method calls}
 
 :f DBus/Message/Internal.hs
 data MethodCall = MethodCall
@@ -159,7 +159,7 @@ instance Message MethodCall where
 , MethodCall (..)
 :
 
-\subsubsection{Method returns}
+\subsubsection*{Method returns}
 
 :f DBus/Message/Internal.hs
 data MethodReturn = MethodReturn
@@ -184,7 +184,7 @@ instance Message MethodReturn where
 , MethodReturn (..)
 :
 
-\subsubsection{Errors}
+\subsubsection*{Errors}
 
 :f DBus/Message/Internal.hs
 data Error = Error
@@ -226,7 +226,7 @@ errorMessage msg = fromMaybe "(no error message)" $ do
 , errorMessage
 :
 
-\subsubsection{Signals}
+\subsubsection*{Signals}
 
 :f DBus/Message/Internal.hs
 data Signal = Signal
@@ -255,7 +255,7 @@ instance Message Signal where
 , Signal (..)
 :
 
-\subsubsection{Unknown messages}
+\subsubsection*{Unknown messages}
 
 Unknown messages are used for storing information about messages without
 a recognised type code. They are not instances of {\tt Message}, because
@@ -275,7 +275,7 @@ data Unknown = Unknown
 , Unknown (..)
 :
 
-\subsection{Received messages}
+\subsection*{Received messages}
 
 Messages received from a bus have additional fields which do not make sense
 when sending.

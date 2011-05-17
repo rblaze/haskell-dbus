@@ -13,43 +13,93 @@
 :# You should have received a copy of the GNU General Public License
 :# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-\documentclass[12pt]{article}
+:option tab-size 8
+
+\documentclass{article}
 
 \usepackage{color}
 \usepackage{hyperref}
+\usepackage{indentfirst}
+\usepackage{amsmath}
+\usepackage{multicol}
+\usepackage{comment}
 \usepackage{booktabs}
 \usepackage{multirow}
-\usepackage{noweb}
-\usepackage{url}
 
-:# Smaller margins
-\usepackage[left=1.5cm,top=2cm,right=1.5cm,nohead,nofoot]{geometry}
+\usepackage{latex/noweb}
+\usepackage[margin=3cm]{latex/geometry}
 
-:# Remove boxes from hyperlinks
+\usepackage{titlesec}
+
+% Remove boxes from hyperlinks
 \hypersetup{
     colorlinks,
     linkcolor=blue,
 }
 
+\title{dbus\_0.8.5.3}
+\author{John Millikin\\
+        \href{mailto:"John Millikin" <jmillikin@gmail.com>}{\tt jmillikin@gmail.com}}
+\date{May 17, 2011}
+
 \makeindex
 
 \begin{document}
 
-\addcontentsline{toc}{section}{Contents}
-\tableofcontents
+\newgeometry{left=1.1cm,top=1cm,right=1.1cm}
 
-:i introduction.anansi
+\maketitle
+
+\setlength{\parskip}{5pt plus 1pt}
+\setlength{\columnsep}{0.8cm}
+
+\begin{multicols}{2}
+
+:include summary.anansi
+
+\setlength{\parskip}{0pt plus 1pt}
+\tableofcontents
+\setlength{\parskip}{4pt plus 1pt}
+\end{multicols}
+
+\restoregeometry
+
+\newpage
 :i types.anansi
+
+\newpage
 :i messages.anansi
+
+\newpage
 :i wire.anansi
-:i addresses.anansi
+
+\newpage
 :i connections.anansi
+
+\newpage
 :i bus.anansi
+:i addresses.anansi
+
+\newpage
 :i introspection.anansi
+
+\newpage
 :i match-rules.anansi
+
+\newpage
 :i name-reservation.anansi
+
+\newpage
+:i utilities.anansi
+
+\newpage
+\appendix
+:i copyright.anansi
 :i constants.anansi
-:i util.anansi
+
+% exclude API docs from LaTeX output, since they're generally uninteresting
+\begin{comment}
 :i api-docs.anansi
+\end{comment}
 
 \end{document}

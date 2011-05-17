@@ -32,7 +32,7 @@ arrayMaximumLength :: Word32
 arrayMaximumLength = 67108864
 :
 
-\subsection{The message bus}
+\subsection*{The message bus}
 
 :f DBus/Constants.hs
 dbusName :: T.BusName
@@ -45,7 +45,7 @@ dbusInterface :: T.InterfaceName
 dbusInterface = "org.freedesktop.DBus"
 :
 
-\subsection{Pre-defined interfaces}
+\subsection*{Pre-defined interfaces}
 
 :f DBus/Constants.hs
 interfaceIntrospectable :: T.InterfaceName
@@ -58,7 +58,7 @@ interfacePeer :: T.InterfaceName
 interfacePeer = "org.freedesktop.DBus.Peer"
 :
 
-\subsection{Pre-defined error names}
+\subsection*{Pre-defined error names}
 
 :f DBus/Constants.hs
 errorFailed :: T.ErrorName

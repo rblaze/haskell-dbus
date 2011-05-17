@@ -233,7 +233,7 @@ Since {\tt Variant}s are D-Bus values themselves, they can be stored in variants
 INSTANCE_VARIABLE(Variant)
 :
 
-\subsection{Numerics}
+\subsection*{Numerics}
 
 D-Bus supports most common numeric types:
 
@@ -279,7 +279,7 @@ INSTANCE_VARIABLE(Word64)
 INSTANCE_VARIABLE(Double)
 :
 
-\subsection{Strings}
+\subsection*{Strings}
 
 Strings are a weird case; the built-in type, {\tt String}, is horribly
 inefficent. To provide better performance for large strings, packed Unicode
@@ -367,7 +367,7 @@ instance Ord Signature where
 , strSignature
 :
 
-\subsubsection{Type codes}
+\subsubsection*{Type codes}
 
 For atomic types, the type code is a single letter. Arrays, structures,
 and dictionary types are multiple characters.
@@ -418,7 +418,7 @@ typeCodeB (DBusStructure ts) = B.concat $
 	["("] ++ map typeCodeB ts ++ [")"]
 :
 
-\subsubsection{Parsing}
+\subsubsection*{Parsing}
 
 When parsing, additional restrictions apply which are not inherent to the
 D-Bus type system. The signature parsing functions guarantee that any
@@ -913,7 +913,7 @@ fromDictionary (Dictionary _ _ vs) = do
 , dictionaryFromItems
 :
 
-\subsubsection{Converting between {\tt Array} and {\tt Dictionary}}
+\subsubsection*{Converting between {\tt Array} and {\tt Dictionary}}
 
 Converting between {\tt Array} and {\tt Dictionary} is useful when
 (un)marshaling -- dictionaries can be thought of as arrays of two-element
@@ -999,7 +999,7 @@ the definitions.
 -- * Names
 :
 
-\subsubsection{Bus names}
+\subsubsection*{Bus names}
 
 There are two forms of bus names, ``unique'' and ``well-known''.
 
@@ -1033,7 +1033,7 @@ mkBusName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
 , mkBusName_
 :
 
-\subsubsection{Interface names}
+\subsubsection*{Interface names}
 
 An interface name consists of two or more {\tt '.'}-separated elements. Each
 element constists of characters from the set {\tt [a-zA-Z0-9\_]}, may not
@@ -1059,7 +1059,7 @@ mkInterfaceName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
 , mkInterfaceName_
 :
 
-\subsubsection{Error names}
+\subsubsection*{Error names}
 
 Error names have the same format as interface names, so the parser logic
 can just be re-purposed.
@@ -1079,7 +1079,7 @@ mkErrorName = fmap (ErrorName . strInterfaceName) . mkInterfaceName
 , mkErrorName_
 :
 
-\subsubsection{Member names}
+\subsubsection*{Member names}
 
 Member names must contain only characters from the set {\tt [a-zA-Z0-9\_]},
 may not begin with a digit, and must be at least one character long.
@@ -1101,4 +1101,43 @@ mkMemberName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
 , strMemberName
 , mkMemberName
 , mkMemberName_
+:
+
+\subsection{UUIDs}
+
+D-Bus {\sc uuid}s are 128-bit unique identifiers, used for server instances
+and machine {\sc id}s. They are not compatible with {\sc rfc4122}.
+
+:f DBus/UUID.hs
+|copyright|
+module DBus.UUID
+	( UUID
+	, toHex
+	, fromHex
+	) where
+|text imports|
+
+newtype UUID = UUID Text -- TODO: (Word64, Word64)?
+	deriving (Eq)
+
+instance Show UUID where
+	showsPrec d uuid = showParen (d > 10) $
+		showString "UUID " . shows (toHex uuid)
+
+toHex :: UUID -> Text
+toHex (UUID text) = text
+
+fromHex :: Text -> Maybe UUID
+fromHex text = if validUUID text
+	then Just $ UUID text
+	else Nothing
+
+validUUID :: Text -> Bool
+validUUID text = valid where
+	valid = and [TL.length text == 32, TL.all validChar text]
+	validChar c = or
+		[ c >= '0' && c <= '9'
+		, c >= 'a' && c <= 'f'
+		, c >= 'A' && c <= 'F'
+		]
 :

@@ -13,46 +13,7 @@
 :# You should have received a copy of the GNU General Public License
 :# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-\section{UUIDs}
-
-D-Bus {\sc uuid}s are 128-bit unique identifiers, used for server instances
-and machine {\sc id}s. They are not compatible with {\sc rfc4122}.
-
-:f DBus/UUID.hs
-|copyright|
-module DBus.UUID
-	( UUID
-	, toHex
-	, fromHex
-	) where
-|text imports|
-
-newtype UUID = UUID Text -- TODO: (Word64, Word64)?
-	deriving (Eq)
-
-instance Show UUID where
-	showsPrec d uuid = showParen (d > 10) $
-		showString "UUID " . shows (toHex uuid)
-
-toHex :: UUID -> Text
-toHex (UUID text) = text
-
-fromHex :: Text -> Maybe UUID
-fromHex text = if validUUID text
-	then Just $ UUID text
-	else Nothing
-
-validUUID :: Text -> Bool
-validUUID text = valid where
-	valid = and [TL.length text == 32, TL.all validChar text]
-	validChar c = or
-		[ c >= '0' && c <= '9'
-		, c >= 'a' && c <= 'f'
-		, c >= 'A' && c <= 'F'
-		]
-:
-
-\section{Misc. utility functions}
+\section{Miscellaneous}
 
 :f DBus/Util.hs
 |copyright|
@@ -109,7 +70,7 @@ void :: Monad m => m a -> m ()
 void m = m >> return ()
 :
 
-\subsection{Bundled ErrorT variant}
+\subsection*{Bundled ErrorT variant}
 
 The default {\tt ErrorT} type in the {\tt transformers} package has an idiotic
 dependency on the {\tt Error} class, which is used to implement the obsolete
@@ -152,4 +113,18 @@ instance Monad m => Monad (ErrorT e m) where
 
 throwErrorT :: Monad m => e -> ErrorT e m a
 throwErrorT = ErrorT . return . Left
+:
+
+\subsection*{Text values}
+
+Most of the functions in this library use the types and functions defined
+in {\tt Data.Text}, in preference to the {\tt String} type.
+
+:d text extensions
+{-# LANGUAGE OverloadedStrings #-}
+:
+
+:d text imports
+import Data.Text.Lazy (Text)
+import qualified Data.Text.Lazy as TL
 :
