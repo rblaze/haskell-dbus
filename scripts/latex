@@ -1,0 +1,11 @@
+#!/bin/bash
+if [ ! -f 'dbus-core.cabal' ]; then
+	echo -n "Can't find dbus-core.cabal; please run this script as"
+	echo -n " ./scripts/latex from within the dbus-core source"
+	echo " directory"
+	exit 1
+fi
+
+. scripts/common.bash
+
+make_pdf

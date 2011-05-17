@@ -56,21 +56,3 @@ in {\tt Data.Text}, in preference to the {\tt String} type.
 import Data.Text.Lazy (Text)
 import qualified Data.Text.Lazy as TL
 :
-
-Tests are separated into a separate file, which is optionally compiled but
-not included in the library.
-
-:f Tests.hs
-|copyright|
-|text extensions|
-module Main (tests, main) where
-|test imports|
-
-tests :: [F.Test]
-tests = [ F.testGroup "dummy" []
-	|test cases|
-	]
-
-main :: IO ()
-main = F.defaultMain tests
-:

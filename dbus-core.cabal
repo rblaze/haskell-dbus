@@ -14,19 +14,40 @@ homepage: http://john-millikin.com/software/haskell-dbus/
 tested-with: GHC==6.12.1
 
 extra-source-files:
-  src/*.anansi
-  Examples/*.hs
   readme.txt
+  --
+  examples/dbus-monitor.hs
+  examples/simple.hs
+  --
+  src/addresses.anansi
+  src/api-docs.anansi
+  src/authentication.anansi
+  src/bus.anansi
+  src/connections.anansi
+  src/constants.anansi
+  src/dbus-core.anansi
+  src/introduction.anansi
+  src/introspection.anansi
+  src/match-rules.anansi
+  src/messages.anansi
+  src/name-reservation.anansi
+  src/types.anansi
+  src/util.anansi
+  src/wire.anansi
+  --
+  scripts/common.bash
+  scripts/dist
+  scripts/haddock
+  scripts/latex
+  scripts/run-benchmarks
+  scripts/run-tests
+  --
+  tests/Properties.hs
+  tests/dbus-core-tests.cabal
 
 source-repository head
   type: bazaar
   location: http://john-millikin.com/software/haskell-dbus/
-
-flag test
-  default: False
-
-flag hpc
-  default: False
 
 library
   ghc-options: -Wall
@@ -59,33 +80,13 @@ library
     DBus.Types
     DBus.UUID
     DBus.Wire
-
-  other-modules:
-    DBus.Message.Internal
-    DBus.Types.Internal
-    DBus.Wire.Internal
     DBus.Wire.Marshal
     DBus.Wire.Unmarshal
+    DBus.Message.Internal
+    DBus.Wire.Internal
+
+  other-modules:
+    DBus.Types.Internal
     DBus.Wire.Unicode
     DBus.Util
     DBus.Util.MonadError
-
-executable dbus-core-tests
-  main-is: Tests.hs
-  hs-source-dirs: hs
-
-  if flag(test)
-    build-depends:
-        QuickCheck >= 2.2 && < 2.3
-      , test-framework >= 0.2 && < 0.4
-      , test-framework-quickcheck2 >= 0.2 && < 0.3
-  else
-    buildable: False
-
-  if flag(hpc)
-    ghc-options: -fhpc
-
-  other-modules:
-    DBus.Types.Internal
-    DBus.Util
-

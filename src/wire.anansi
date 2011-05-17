@@ -54,11 +54,6 @@ decodeEndianness _   = Nothing
   Endianness (..)
 :
 
-:f Tests.hs
-instance Arbitrary Endianness where
-	arbitrary = elements [LittleEndian, BigEndian]
-:
-
 \subsection{Alignment}
 
 Every built-in type has an associated alignment. If a value of the given
@@ -1185,49 +1180,4 @@ require _     (x:_) = return x
 require label _     = E.throwErrorM label
 :
 
-:f Tests.hs
-prop_Unmarshal :: Endianness -> Variant -> Property
-prop_Unmarshal e x = valid ==> unmarshaled == Right [x] where
-	sig = mkSignature . typeCode . variantType $ x
-	Just sig' = sig
-	
-	bytes = runMarshal (marshal x) e
-	Right bytes' = bytes
-	
-	valid = isJust sig && isRight bytes
-	unmarshaled = runUnmarshal (unmarshal sig') e bytes'
-
-prop_MarshalMessage e serial msg expected = valid ==> correct where
-	bytes = marshalMessage e serial msg
-	Right bytes' = bytes
-	
-	getBytes = G.getLazyByteString . fromIntegral
-	unmarshaled = G.runGet (unmarshalMessage getBytes) bytes'
-	
-	valid = isRight bytes
-	correct = unmarshaled == Right expected
-
-prop_WireMethodCall e serial msg = prop_MarshalMessage e serial msg
-	$ ReceivedMethodCall serial Nothing msg
-
-prop_WireMethodReturn e serial msg = prop_MarshalMessage e serial msg
-	$ ReceivedMethodReturn serial Nothing msg
-
-prop_WireError e serial msg = prop_MarshalMessage e serial msg
-	$ ReceivedError serial Nothing msg
-
-prop_WireSignal e serial msg = prop_MarshalMessage e serial msg
-	$ ReceivedSignal serial Nothing msg
-:
-
-:d test cases
-, F.testGroup "Wire format"
-	[ testProperty "Marshal -> Ummarshal" prop_Unmarshal
-	, F.testGroup "Messages"
-		[ testProperty "Method calls" prop_WireMethodCall
-		, testProperty "Method returns" prop_WireMethodReturn
-		, testProperty "Errors" prop_WireError
-		, testProperty "Signals" prop_WireSignal
-		]
-	]
 :
