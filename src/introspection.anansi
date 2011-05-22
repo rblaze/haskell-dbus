@@ -54,7 +54,9 @@ module DBus.Introspection
 	, toXML
 	, fromXML
 	) where
-|text imports|
+import qualified Data.Text
+import           Data.Text (Text)
+import qualified Data.Text.Lazy
 |introspection imports|
 import qualified DBus.Types as T
 :
@@ -128,7 +130,7 @@ parseElement text = runST $ do
 	p <- SAX.newParserST onError Nothing
 	SAX.setCallback p SAX.parsedBeginElement onBegin
 	SAX.setCallback p SAX.parsedEndElement onEnd
-	SAX.parseLazyText p text
+	SAX.parseText p text
 	SAX.parseComplete p
 	stack <- ST.readSTRef stackRef
 	return $ case stack of
@@ -161,9 +163,9 @@ parseChild :: T.ObjectPath -> X.Element -> Maybe Object
 parseChild parentPath e = do
 	let parentPath' = case T.objectPathText parentPath of
 		"/" -> "/"
-		x   -> TL.append x "/"
+		x   -> Data.Text.append x "/"
 	pathSegment <- getattrM "name" e
-	path <- T.objectPath $ TL.append parentPath' pathSegment
+	path <- T.objectPath $ Data.Text.append parentPath' pathSegment
 	parseObject path e
 :
 
@@ -226,7 +228,7 @@ parseParameter e = do
 :f DBus/Introspection.hs
 parseType :: X.Element -> Maybe T.Signature
 parseType e = do
-	sig <- T.mkSignature =<< getattrM "type" e
+	sig <- T.signature =<< getattrM "type" e
 	case T.signatureTypes sig of
 		[_] -> Just sig
 		_   -> Nothing
@@ -259,7 +261,7 @@ getattrM :: Text -> X.Element -> Maybe Text
 getattrM name = fmap attrText . listToMaybe . attrs where
 	attrText = textContent . X.attributeContent
 	attrs = X.elementAttributes >=> X.isNamed (toName name)
-	textContent cs = TL.concat [t | X.ContentText t <- cs]
+	textContent cs = Data.Text.Lazy.toStrict (Data.Text.Lazy.concat [t | X.ContentText t <- cs])
 
 getattr :: Text -> X.Element -> Text
 getattr = (fromMaybe "" .) . getattrM
@@ -275,7 +277,7 @@ named :: X.Named a => Text -> a -> [a]
 named = X.isNamed . toName
 
 toName :: Text -> X.Name
-toName t = X.Name t Nothing Nothing
+toName t = X.Name (Data.Text.Lazy.fromStrict t) Nothing Nothing
 :
 
 \subsection*{Generating XML}
@@ -292,11 +294,11 @@ a little thing.
 newtype XmlWriter a = XmlWriter { runXmlWriter :: Maybe (a, Text) }
 
 instance Monad XmlWriter where
-	return a = XmlWriter $ Just (a, TL.empty)
+	return a = XmlWriter $ Just (a, Data.Text.empty)
 	m >>= f = XmlWriter $ do
 		(a, w) <- runXmlWriter m
 		(b, w') <- runXmlWriter (f a)
-		return (b, TL.append w w')
+		return (b, Data.Text.append w w')
 :
 
 :f DBus/Introspection.hs
@@ -324,10 +326,10 @@ writeChild :: T.ObjectPath -> Object -> XmlWriter ()
 writeChild parentPath obj@(Object path _ _) = write where
 	path' = T.objectPathText path
 	parent' = T.objectPathText parentPath
-	relpathM = if TL.isPrefixOf parent' path'
+	relpathM = if Data.Text.isPrefixOf parent' path'
 		then Just $ if parent' == "/"
-			then TL.drop 1 path'
-			else TL.drop (TL.length parent' + 1) path'
+			then Data.Text.drop 1 path'
+			else Data.Text.drop (Data.Text.length parent' + 1) path'
 		else Nothing
 	
 	write = case relpathM of
@@ -387,7 +389,7 @@ writeProperty (Property name sig access) = writeEmptyElement "property"
 
 :f DBus/Introspection.hs
 strAccess :: [PropertyAccess] -> Text
-strAccess access = TL.append readS writeS where
+strAccess access = Data.Text.append readS writeS where
 	readS = if elem Read access then "read" else ""
 	writeS = if elem Write access then "write" else ""
 :
@@ -426,12 +428,12 @@ writeAttribute (name, content) = do
 
 :f DBus/Introspection.hs
 escape :: Text -> Text
-escape = TL.concatMap escapeChar where
+escape = Data.Text.concatMap escapeChar where
 	escapeChar c = case c of
 		'&' -> "&amp;"
 		'<' -> "&lt;"
 		'>' -> "&gt;"
 		'"' -> "&quot;"
 		'\'' -> "&apos;"
-		_ -> TL.singleton c
+		_ -> Data.Text.singleton c
 :
