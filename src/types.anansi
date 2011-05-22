@@ -508,6 +508,20 @@ objectPath_ = tryParse "object path" objectPath
 
 instance Data.String.IsString ObjectPath where
 	fromString = objectPath_ . Data.Text.pack
+
+instance IsAtom ObjectPath where
+	toAtom = AtomObjectPath
+	fromAtom (AtomObjectPath x) = Just x
+	fromAtom _ = Nothing
+
+instance IsValue ObjectPath where
+	typeOf _ = TypeObjectPath
+	toValue = atomToValue
+	fromValue = atomFromValue
+
+instance IsVariant ObjectPath where
+	toVariant = Variant . toValue
+	fromVariant (Variant val) = fromValue val
 :
 
 \end{multicols}
@@ -586,6 +600,10 @@ interfaceName_ = tryParse "interface name" interfaceName
 
 instance Data.String.IsString InterfaceName where
 	fromString = interfaceName_ . Data.Text.pack
+
+instance IsVariant InterfaceName where
+	toVariant = toVariant . interfaceNameText
+	fromVariant v = fromVariant v >>= interfaceName
 :
 
 \end{multicols}
@@ -648,6 +666,10 @@ memberName_ = tryParse "member name" memberName
 
 instance Data.String.IsString MemberName where
 	fromString = memberName_ . Data.Text.pack
+
+instance IsVariant MemberName where
+	toVariant = toVariant . memberNameText
+	fromVariant v = fromVariant v >>= memberName
 :
 
 \end{multicols}
@@ -708,6 +730,10 @@ errorName_ = tryParse "error name" errorName
 
 instance Data.String.IsString ErrorName where
 	fromString = errorName_ . Data.Text.pack
+
+instance IsVariant ErrorName where
+	toVariant = toVariant . errorNameText
+	fromVariant v = fromVariant v >>= errorName
 :
 
 \end{multicols}
@@ -749,6 +775,10 @@ busName_ = tryParse "bus name" busName
 
 instance Data.String.IsString BusName where
 	fromString = busName_ . Data.Text.pack
+
+instance IsVariant BusName where
+	toVariant = toVariant . busNameText
+	fromVariant v = fromVariant v >>= busName
 :
 
 \end{multicols}

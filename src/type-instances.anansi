@@ -157,18 +157,6 @@ instance IsValue Signature where
 :
 
 :d DBus.Types
-instance IsAtom ObjectPath where
-	toAtom = AtomObjectPath
-	fromAtom (AtomObjectPath x) = Just x
-	fromAtom _ = Nothing
-
-instance IsValue ObjectPath where
-	typeOf _ = TypeObjectPath
-	toValue = atomToValue
-	fromValue = atomFromValue
-:
-
-:d DBus.Types
 instance IsValue Variant where
 	typeOf _ = TypeVariant
 	toValue = ValueVariant
@@ -472,12 +460,6 @@ instance IsVariant Data.Text.Lazy.Text where
 
 :d DBus.Types
 instance IsVariant Signature where
-	toVariant = Variant . toValue
-	fromVariant (Variant val) = fromValue val
-:
-
-:d DBus.Types
-instance IsVariant ObjectPath where
 	toVariant = Variant . toValue
 	fromVariant (Variant val) = fromValue val
 :
