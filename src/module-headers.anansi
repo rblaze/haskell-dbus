@@ -18,7 +18,10 @@
 :f DBus/Types.hs
 module DBus.Types
 	( Type
+	
 	, Signature
+	, signature
+	, signature_
 	, signatureText
 	, signatureTypes
 	
@@ -60,6 +63,7 @@ import DBus.Types.Internal
 :f DBus/Types/Internal.hs
 module DBus.Types.Internal where
 import           Control.Monad (when)
+import           Data.ByteString (ByteString)
 import           Data.Int
 import           Data.List (intercalate)
 import qualified Data.Map
@@ -67,11 +71,13 @@ import           Data.Map (Map)
 import qualified Data.String
 import qualified Data.Text
 import           Data.Text (Text)
+import qualified Data.Text.Encoding
 import qualified Data.Text.Lazy
 import qualified Data.Vector
 import           Data.Vector (Vector)
 import           Data.Word
 |text validation imports|
+|signature parsing imports|
 
 |DBus.Types|
 |text validation|

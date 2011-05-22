@@ -94,6 +94,11 @@ represented as a string of type codes, such as {\tt "a\{sas\}"} for
 {\tt Map String [String]}. However, this library stores signatures as
 {\tt [Type]} to take advantage of Haskell's strong typing.
 
+Although signatures are strongly-typed internally, they are exposed to the
+user as if they're special strings matching the \dbus{} signature format.
+I'll get to signature parsing later, as (for performance reasons) it's
+very complex.
+
 \vfill
 
 \columnbreak
@@ -104,20 +109,7 @@ newtype Signature = Signature [Type]
 
 signatureTypes :: Signature -> [Type]
 signatureTypes (Signature types) = types
-:
 
-\end{multicols}
-
-\begin{multicols}{2}
-
-Although signatures are strongly-typed internally, they are exposed to the
-user as if they're special strings matching the \dbus{} signature format.
-
-\vfill
-
-\columnbreak
-
-:d DBus.Types
 instance Show Signature where
 	showsPrec d sig = showParen (d > 10) $
 		showString "Signature " .
@@ -474,10 +466,15 @@ skipSepBy1 p sep = do
 	void p
 	Parsec.skipMany (sep >> p)
 
-runParser :: Parsec.Parser a -> Text -> Maybe ()
+runParser :: Parsec.Parser a -> Text -> Maybe a
 runParser parser text = case Parsec.parse parser "" (Data.Text.unpack text) of
 	Left _ -> Nothing
-	Right _ -> Just ()
+	Right a -> Just a
+
+tryParse :: String -> (Text -> Maybe a) -> Text -> a
+tryParse label parse text = case parse text of
+	Just x -> x
+	Nothing -> error ("Invalid " ++ label ++ ": " ++ show text)
 :
 
 \clearpage
@@ -500,6 +497,17 @@ newtype ObjectPath = ObjectPath Text
 
 objectPathText :: ObjectPath -> Text
 objectPathText (ObjectPath text) = text
+
+objectPath :: Text -> Maybe ObjectPath
+objectPath text = do
+	runParser parseObjectPath text
+	return (ObjectPath text)
+
+objectPath_ :: Text -> ObjectPath
+objectPath_ = tryParse "object path" objectPath
+
+instance Data.String.IsString ObjectPath where
+	fromString = objectPath_ . Data.Text.pack
 :
 
 \end{multicols}
@@ -544,21 +552,6 @@ parseObjectPath = root <|> object where
 
 \end{multicols}
 
-:d DBus.Types
-instance Data.String.IsString ObjectPath where
-	fromString = objectPath_ . Data.Text.pack
-
-objectPath :: Text -> Maybe ObjectPath
-objectPath text = do
-	runParser parseObjectPath text
-	return (ObjectPath text)
-
-objectPath_ :: Text -> ObjectPath
-objectPath_ text = case objectPath text of
-	Just x -> x
-	Nothing -> error ("Invalid object path: " ++ show text)
-:
-
 \clearpage
 \subsubsection{Interface names}
 
@@ -581,6 +574,18 @@ newtype InterfaceName = InterfaceName Text
 
 interfaceNameText :: InterfaceName -> Text
 interfaceNameText (InterfaceName text) = text
+
+interfaceName :: Text -> Maybe InterfaceName
+interfaceName text = do
+	when (Data.Text.length text > 255) Nothing
+	runParser parseInterfaceName text
+	return (InterfaceName text)
+
+interfaceName_ :: Text -> InterfaceName
+interfaceName_ = tryParse "interface name" interfaceName
+
+instance Data.String.IsString InterfaceName where
+	fromString = interfaceName_ . Data.Text.pack
 :
 
 \end{multicols}
@@ -611,22 +616,6 @@ parseInterfaceName = name >> Parsec.eof where
 
 \end{multicols}
 
-:d DBus.Types
-instance Data.String.IsString InterfaceName where
-	fromString = interfaceName_ . Data.Text.pack
-
-interfaceName :: Text -> Maybe InterfaceName
-interfaceName text = do
-	when (Data.Text.length text > 255) Nothing
-	runParser parseInterfaceName text
-	return (InterfaceName text)
-
-interfaceName_ :: Text -> InterfaceName
-interfaceName_ text = case interfaceName text of
-	Just x -> x
-	Nothing -> error ("Invalid interface name: " ++ show text)
-:
-
 \clearpage
 \subsubsection{Member names}
 
@@ -647,6 +636,18 @@ newtype MemberName = MemberName Text
 
 memberNameText :: MemberName -> Text
 memberNameText (MemberName text) = text
+
+memberName :: Text -> Maybe MemberName
+memberName text = do
+	when (Data.Text.length text > 255) Nothing
+	runParser parseMemberName text
+	return (MemberName text)
+
+memberName_ :: Text -> MemberName
+memberName_ = tryParse "member name" memberName
+
+instance Data.String.IsString MemberName where
+	fromString = memberName_ . Data.Text.pack
 :
 
 \end{multicols}
@@ -672,22 +673,6 @@ parseMemberName = name >> Parsec.eof where
 
 \end{multicols}
 
-:d DBus.Types
-instance Data.String.IsString MemberName where
-	fromString = memberName_ . Data.Text.pack
-
-memberName :: Text -> Maybe MemberName
-memberName text = do
-	when (Data.Text.length text > 255) Nothing
-	runParser parseMemberName text
-	return (MemberName text)
-
-memberName_ :: Text -> MemberName
-memberName_ text = case memberName text of
-	Just x -> x
-	Nothing -> error ("Invalid member name: " ++ show text)
-:
-
 \clearpage
 \subsubsection{Error names}
 
@@ -711,13 +696,6 @@ newtype ErrorName = ErrorName Text
 
 errorNameText :: ErrorName -> Text
 errorNameText (ErrorName text) = text
-:
-
-\end{multicols}
-
-:d DBus.Types
-instance Data.String.IsString ErrorName where
-	fromString = errorName_ . Data.Text.pack
 
 errorName :: Text -> Maybe ErrorName
 errorName text = do
@@ -726,10 +704,13 @@ errorName text = do
 	return (ErrorName text)
 
 errorName_ :: Text -> ErrorName
-errorName_ text = case errorName text of
-	Just x -> x
-	Nothing -> error ("Invalid error name: " ++ show text)
+errorName_ = tryParse "error name" errorName
+
+instance Data.String.IsString ErrorName where
+	fromString = errorName_ . Data.Text.pack
 :
+
+\end{multicols}
 
 \clearpage
 \subsubsection{Bus names}
@@ -756,6 +737,18 @@ newtype BusName = BusName Text
 
 busNameText :: BusName -> Text
 busNameText (BusName text) = text
+
+busName :: Text -> Maybe BusName
+busName text = do
+	when (Data.Text.length text > 255) Nothing
+	runParser parseBusName text
+	return (BusName text)
+
+busName_ :: Text -> BusName
+busName_ = tryParse "bus name" busName
+
+instance Data.String.IsString BusName where
+	fromString = busName_ . Data.Text.pack
 :
 
 \end{multicols}
@@ -800,18 +793,266 @@ parseBusName = name >> Parsec.eof where
 
 \end{multicols}
 
+\clearpage
+\subsection{Parsing signatures}
+
+\begin{multicols}{2}
+
+Signature parsing is the most common operation when unmarshaling messages;
+therefore, an efficient parsing implementation is essential. However, I still
+want the library's users to see a text-based interface to signatures.
+
+Therefore, there are actually two signature parsing APIs -- one for other
+modules in this library (especially {\tt DBus.Wire}, and a small wrapper for
+users. The wrapper follows the pattern for other special strings, so users
+can use string literals and so on.
+
+\vfill
+
+\columnbreak
+
 :d DBus.Types
-instance Data.String.IsString BusName where
-	fromString = busName_ . Data.Text.pack
+instance Data.String.IsString Signature where
+	fromString = signature_ . Data.Text.pack
 
-busName :: Text -> Maybe BusName
-busName text = do
-	when (Data.Text.length text > 255) Nothing
-	runParser parseBusName text
-	return (BusName text)
+signature :: Text -> Maybe Signature
+signature text = parseSignature bytes where
+	bytes = Data.Text.Encoding.encodeUtf8 text
 
-busName_ :: Text -> BusName
-busName_ text = case busName text of
-	Just x -> x
-	Nothing -> error ("Invalid bus name: " ++ show text)
+signature_ :: Text -> Signature
+signature_ = tryParse "signature" signature
+:
+
+\end{multicols}
+
+\begin{multicols}{2}
+
+You know you're in for some shit when the parser requires two modules
+named {\tt Unsafe}.
+
+\vfill
+
+\columnbreak
+
+:d signature parsing imports
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Unsafe as B
+import qualified Foreign as F
+import           System.IO.Unsafe (unsafePerformIO)
+:
+
+\end{multicols}
+
+\begin{multicols}{2}
+
+\noindent There are three special cases which can be optimized:
+
+\begin{enumerate}
+\item Empty signatures occur when messages have no body, and can use a constant
+      result.
+\item Single-character signatures occur when parsing variants, and can use a
+      faster non-recursive parser.
+\item All signatures larger than 255 characters are invalid, so they can be
+      failed immediately.
+\end{enumerate}
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+parseSignature :: ByteString -> Maybe Signature
+parseSignature bytes = case B.length bytes of
+	0 -> Just (Signature [])
+	1 -> parseSigFast bytes
+	len | len <= 255 -> parseSigSlow bytes
+	_ -> Nothing
+:
+
+\end{multicols}
+
+\begin{multicols}{2}
+
+Both parsers need to check whether a particular byte signifies an atom,
+so that check is separated into a separate function.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+parseAtom :: Word8 -> (Type -> a) -> a -> a
+parseAtom c yes no = case c of
+	0x62 -> yes TypeBoolean
+	0x6E -> yes TypeInt16
+	0x69 -> yes TypeInt32
+	0x78 -> yes TypeInt64
+	0x79 -> yes TypeWord8
+	0x71 -> yes TypeWord16
+	0x75 -> yes TypeWord32
+	0x74 -> yes TypeWord64
+	0x64 -> yes TypeDouble
+	0x73 -> yes TypeString
+	0x67 -> yes TypeSignature
+	0x6F -> yes TypeObjectPath
+	_ -> no
+:
+
+\end{multicols}
+
+\begin{multicols}{2}
+
+None of the recursive container types can fit in one byte; if the
+signature has only a single character, it must be either
+{\tt [}\emph{atom}{\tt ]} or {\tt [TypeVariant]}.
+
+This optimization is important when parsing variants, as they very often
+contain signatures with only a single atomic type.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+parseSigFast :: ByteString -> Maybe Signature
+parseSigFast bytes = parsed where
+	parsed = parseAtom byte ok notAtom
+	byte = B.unsafeHead bytes
+	
+	ok t = Just (Signature [t])
+	notAtom = case byte of
+		0x76 -> ok TypeVariant
+		_ -> Nothing
+:
+
+\end{multicols}
+
+\clearpage
+\subsubsection{Full signature parser}
+
+:d DBus.Types
+parseSigSlow :: ByteString -> Maybe Signature
+parseSigSlow bytes = unsafePerformIO io where
+	io = B.unsafeUseAsCStringLen bytes castBuf
+	castBuf (ptr, len) = parseSigBuf (F.castPtr ptr, len)
+
+parseSigBuf :: (F.Ptr Word8, Int) -> IO (Maybe Signature)
+parseSigBuf (buf, len) = mainLoop [] 0 where
+	|full signature parser|
+:
+
+:d full signature parser
+mainLoop acc ii | ii >= len = return . Just . Signature $ reverse acc
+mainLoop acc ii = do
+	c <- F.peekElemOff buf ii
+	let next t = mainLoop (t : acc) (ii + 1)
+	parseAtom c next $ case c of
+		0x76 -> next TypeVariant
+		
+		-- '('
+		0x28 -> do
+			mt <- structure (ii + 1)
+			case mt of
+				Just (ii', t) -> mainLoop (t : acc) ii'
+				Nothing -> return Nothing
+		
+		-- 'a'
+		0x61 -> do
+			mt <- array (ii + 1)
+			case mt of
+				Just (ii', t) -> mainLoop (t : acc) ii'
+				Nothing -> return Nothing
+		
+		_ -> return Nothing
+:
+
+:d full signature parser
+structure :: Int -> IO (Maybe (Int, Type))
+structure = loop [] where
+	loop _ ii | ii >= len = return Nothing
+	loop acc ii = do
+		c <- F.peekElemOff buf ii
+		let next t = loop (t : acc) (ii + 1)
+		parseAtom c next $ case c of
+			0x76 -> next TypeVariant
+			
+			-- '('
+			0x28 -> do
+				mt <- structure (ii + 1)
+				case mt of
+					Just (ii', t) -> loop (t : acc) ii'
+					Nothing -> return Nothing
+			
+			-- ')'
+			0x29 -> return $ Just $ (ii + 1, TypeStructure (reverse acc))
+			
+			-- 'a'
+			0x61 -> do
+				mt <- array (ii + 1)
+				case mt of
+					Just (ii', t) -> loop (t : acc) ii'
+					Nothing -> return Nothing
+			
+			_ -> return Nothing
+:
+
+:d full signature parser
+array :: Int -> IO (Maybe (Int, Type))
+array ii | ii >= len = return Nothing
+array ii = do
+	c <- F.peekElemOff buf ii
+	let next t = return $ Just (ii + 1, TypeArray t)
+	parseAtom c next $ case c of
+		0x76 -> next TypeVariant
+		
+		-- '('
+		0x28 -> do
+			mt <- structure (ii + 1)
+			case mt of
+				Just (ii', t) -> return $ Just (ii', TypeArray t)
+				Nothing -> return Nothing
+		
+		-- '{'
+		0x7B -> dict (ii + 1)
+		
+		-- 'a'
+		0x61 -> do
+			mt <- array (ii + 1)
+			case mt of
+				Just (ii', t) -> return $ Just (ii', TypeArray t)
+				Nothing -> return Nothing
+		
+		_ -> return Nothing
+:
+
+:d full signature parser
+dict :: Int -> IO (Maybe (Int, Type))
+dict ii | ii + 1 >= len = return Nothing
+dict ii = do
+	c1 <- F.peekElemOff buf ii
+	c2 <- F.peekElemOff buf (ii + 1)
+	
+	let mt1 = parseAtom c1 Just Nothing
+	
+	let next t = return $ Just (ii + 2, t)
+	mt2 <- parseAtom c2 next $ case c2 of
+		0x76 -> next TypeVariant
+		
+		-- '('
+		0x28 -> structure (ii + 2)
+		
+		-- 'a'
+		0x61 -> array (ii + 2)
+		
+		_ -> return Nothing
+	
+	case mt2 of
+		Nothing -> return Nothing
+		Just (ii', t2) -> if ii' >= len
+			then return Nothing
+			else do
+				c3 <- F.peekElemOff buf ii'
+				return $ do
+					if c3 == 0x7D then Just () else Nothing
+					t1 <- mt1
+					Just (ii' + 1, TypeDictionary t1 t2)
 :
