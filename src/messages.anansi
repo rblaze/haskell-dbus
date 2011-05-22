@@ -97,7 +97,7 @@ newtype Serial = Serial { serialValue :: Word32 }
 instance Show Serial where
 	show (Serial x) = show x
 
-instance T.Variable Serial where
+instance T.IsVariant Serial where
 	toVariant (Serial x) = T.toVariant x
 	fromVariant = fmap Serial . T.fromVariant
 :
