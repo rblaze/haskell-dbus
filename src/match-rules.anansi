@@ -31,7 +31,8 @@ module DBus.MatchRule (
 	, matchAll
 	, matches
 	) where
-|text imports|
+import qualified Data.Text as T
+import           Data.Text (Text)
 import Data.Word (Word8)
 import Data.Maybe (fromMaybe, mapMaybe)
 import qualified Data.Set as Set
@@ -91,16 +92,16 @@ to format them.
 :f DBus/MatchRule.hs
 |apidoc formatRule|
 formatRule :: MatchRule -> Text
-formatRule rule = TL.intercalate "," filters where
+formatRule rule = T.intercalate "," filters where
 	filters = structureFilters ++ parameterFilters
 	parameterFilters = map formatParameter $ matchParameters rule
 	structureFilters = mapMaybe unpack
 		[ ("type", fmap formatType . matchType)
-		, ("sender", fmap T.strBusName . matchSender)
-		, ("interface", fmap T.strInterfaceName . matchInterface)
-		, ("member", fmap T.strMemberName . matchMember)
-		, ("path", fmap T.strObjectPath . matchPath)
-		, ("destination", fmap T.strBusName . matchDestination)
+		, ("sender", fmap T.busNameText . matchSender)
+		, ("interface", fmap T.interfaceNameText . matchInterface)
+		, ("member", fmap T.memberNameText . matchMember)
+		, ("path", fmap T.objectPathText . matchPath)
+		, ("destination", fmap T.busNameText . matchDestination)
 		]
 	unpack (key, mkValue) = formatFilter' key `fmap` mkValue rule
 :
@@ -108,10 +109,10 @@ formatRule rule = TL.intercalate "," filters where
 :f DBus/MatchRule.hs
 formatParameter :: ParameterValue -> Text
 formatParameter (StringValue index x) = formatFilter' key x where
-	key = "arg" `TL.append` TL.pack (show index)
+	key = "arg" `T.append` T.pack (show index)
 formatParameter (PathValue index x) = formatFilter' key value where
-	key = "arg" `TL.append` TL.pack (show index) `TL.append` "path"
-	value = T.strObjectPath x
+	key = "arg" `T.append` T.pack (show index) `T.append` "path"
+	value = T.objectPathText x
 :
 
 FIXME: what are the escaping rules for match rules? Other bindings don't
@@ -119,7 +120,7 @@ seem to perform any escaping at all.
 
 :f DBus/MatchRule.hs
 formatFilter' :: Text -> Text -> Text
-formatFilter' key value = TL.concat [key, "='", value, "'"]
+formatFilter' key value = T.concat [key, "='", value, "'"]
 
 formatType :: MessageType -> Text
 formatType MethodCall   = "method_call"
