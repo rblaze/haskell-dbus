@@ -58,7 +58,8 @@ interfacePeer :: T.InterfaceName
 interfacePeer = "org.freedesktop.DBus.Peer"
 :
 
-\subsection*{Pre-defined error names}
+\section{Standard error names}
+\label{sec:standard-error-names}
 
 :f DBus/Constants.hs
 errorFailed :: T.ErrorName
