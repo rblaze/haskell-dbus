@@ -17,7 +17,7 @@
 
 :f DBus/Types.hs
 module DBus.Types
-	( Type
+	( Type(..)
 	
 	, Signature
 	, signature
