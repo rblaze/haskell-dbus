@@ -53,23 +53,41 @@ Message ( messageFlags
         )
 :
 
-\subsection*{Flags}
+:f DBus/Message/Internal.hs
+maybe' :: (a -> b) -> Maybe a -> [b]
+maybe' f = maybe [] (\x' -> [f x'])
+:
 
-The instance of {\tt Ord} only exists for storing flags in a set. Flags have
-no inherent ordering.
+\subsection{Unknown messages}
+
+Unknown messages are used for storing information about messages without
+a recognised type code. They are not instances of {\tt Message}, because
+if they were, then clients could accidentally send invalid messages over
+the bus.
 
 :f DBus/Message/Internal.hs
-data Flag
-	= NoReplyExpected
-	| NoAutoStart
-	deriving (Show, Eq, Ord)
+data Unknown = Unknown
+	{ unknownType    :: Word8
+	, unknownFlags   :: S.Set Flag
+	, unknownBody    :: [T.Variant]
+	}
+	deriving (Show, Eq)
 :
 
 :d message exports
-, Flag (..)
+, Unknown (..)
 :
 
-\subsection*{Header fields}
+\clearpage
+\subsection{Header fields}
+
+\begin{multicols}{2}
+
+TODO
+
+\vfill
+
+\columnbreak
 
 :f DBus/Message/Internal.hs
 data HeaderField
@@ -84,25 +102,62 @@ data HeaderField
 	deriving (Show, Eq)
 :
 
-\subsection*{Serials}
+\end{multicols}
+
+\subsubsection{Flags}
+
+\begin{multicols}{2}
+
+The instance of {\tt Ord} only exists for storing flags in a set. Flags have
+no inherent ordering.
+
+\vfill
+
+\columnbreak
+
+:f DBus/Message/Internal.hs
+data Flag
+	= NoReplyExpected
+	| NoAutoStart
+	deriving (Show, Eq, Ord)
+:
+
+:d message exports
+, Flag (..)
+:
+
+\end{multicols}
+
+\subsubsection{Serials}
+
+\begin{multicols}{2}
 
 {\tt Serial} is just a wrapper around {\tt Word32}, to provide a bit of
 added type-safety.
 
+\vfill
+
+\columnbreak
+
 :f DBus/Message/Internal.hs
 |apidoc Serial|
-newtype Serial = Serial { serialValue :: Word32 }
-	deriving (Eq, Ord)
-
-instance Show Serial where
-	show (Serial x) = show x
+newtype Serial = Serial Word32
+	deriving (Eq, Ord, Show)
 
 instance T.Variable Serial where
 	toVariant (Serial x) = T.toVariant x
 	fromVariant = fmap Serial . T.fromVariant
 :
 
+\end{multicols}
+
+\begin{multicols}{2}
+
 Additionally, some useful functions exist for incrementing serials.
+
+\vfill
+
+\columnbreak
 
 :f DBus/Message/Internal.hs
 firstSerial :: Serial
@@ -110,10 +165,21 @@ firstSerial = Serial 1
 
 nextSerial :: Serial -> Serial
 nextSerial (Serial x) = Serial (x + 1)
+
+serialValue :: Serial -> Word32
+serialValue (Serial x) = x
 :
+
+\end{multicols}
+
+\begin{multicols}{2}
 
 The {\tt Serial} constructor isn't useful to clients, because building
 arbitrary serials doesn't make any sense.
+
+\vfill
+
+\columnbreak
 
 :d message exports
 , Serial
@@ -122,14 +188,12 @@ arbitrary serials doesn't make any sense.
 , nextSerial
 :
 
-\subsection*{Message types}
+\end{multicols}
 
-:f DBus/Message/Internal.hs
-maybe' :: (a -> b) -> Maybe a -> [b]
-maybe' f = maybe [] (\x' -> [f x'])
-:
+\clearpage
+\subsection{Message types}
 
-\subsubsection*{Method calls}
+\subsubsection{Method calls}
 
 :f DBus/Message/Internal.hs
 data MethodCall = MethodCall
@@ -159,7 +223,8 @@ instance Message MethodCall where
 , MethodCall (..)
 :
 
-\subsubsection*{Method returns}
+\clearpage
+\subsubsection{Method returns}
 
 :f DBus/Message/Internal.hs
 data MethodReturn = MethodReturn
@@ -184,7 +249,8 @@ instance Message MethodReturn where
 , MethodReturn (..)
 :
 
-\subsubsection*{Errors}
+\clearpage
+\subsubsection{Errors}
 
 :f DBus/Message/Internal.hs
 data Error = Error
@@ -226,7 +292,8 @@ errorMessage msg = fromMaybe "(no error message)" $ do
 , errorMessage
 :
 
-\subsubsection*{Signals}
+\clearpage
+\subsubsection{Signals}
 
 :f DBus/Message/Internal.hs
 data Signal = Signal
@@ -255,27 +322,8 @@ instance Message Signal where
 , Signal (..)
 :
 
-\subsubsection*{Unknown messages}
-
-Unknown messages are used for storing information about messages without
-a recognised type code. They are not instances of {\tt Message}, because
-if they were, then clients could accidentally send invalid messages over
-the bus.
-
-:f DBus/Message/Internal.hs
-data Unknown = Unknown
-	{ unknownType    :: Word8
-	, unknownFlags   :: S.Set Flag
-	, unknownBody    :: [T.Variant]
-	}
-	deriving (Show, Eq)
-:
-
-:d message exports
-, Unknown (..)
-:
-
-\subsection*{Received messages}
+\clearpage
+\subsection{Received messages}
 
 Messages received from a bus have additional fields which do not make sense
 when sending.
