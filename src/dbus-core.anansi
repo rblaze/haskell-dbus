@@ -57,6 +57,8 @@
 
 :include summary.anansi
 
+\columnbreak
+
 \setlength{\parskip}{0pt plus 1pt}
 \tableofcontents
 \setlength{\parskip}{4pt plus 1pt}
