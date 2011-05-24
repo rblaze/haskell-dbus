@@ -1,4 +1,4 @@
-:# Copyright (C) 2009-2010 John Millikin <jmillikin@gmail.com>
+:# Copyright (C) 2009-2011 John Millikin <jmillikin@gmail.com>
 :# 
 :# This program is free software: you can redistribute it and/or modify
 :# it under the terms of the GNU General Public License as published by
@@ -13,514 +13,1002 @@
 :# You should have received a copy of the GNU General Public License
 :# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-\section{Types}
+\section{Values and types}
 
-The {\tt DBus.Types module} defines interfaces for storing, building, and
-deconstructing D-Bus values. Everything is defined in an internal module, and
-then exported via the public interface.
-
-:f DBus/Types.hs
-|copyright|
-module DBus.Types (
-	|type exports|
-	) where
-import DBus.Types.Internal
-:
-
-:f DBus/Types/Internal.cpphs
-|copyright|
-|text extensions|
-|type extensions|
-module DBus.Types.Internal where
-|text imports|
-|type imports|
-import qualified Data.ByteString as B
-import qualified Data.ByteString.Char8 as B8
-import qualified Data.ByteString.Lazy as BL
-import qualified Data.ByteString.Char8 as BL8
-:
-
-D-Bus types are divided into two categories, ``atomic'' and ``container''
-types. Atoms are actual values -- strings, numbers, etc. Containers store
-atoms and other containers. The most interesting difference between the two
-is that atoms may be used as the keys in associative mappings
-(``dictionaries'').
-
-Internally, types are represented using an enumeration.
-
-:f DBus/Types/Internal.cpphs
-data Type
-	= DBusBoolean
-	| DBusByte
-	| DBusInt16
-	| DBusInt32
-	| DBusInt64
-	| DBusWord16
-	| DBusWord32
-	| DBusWord64
-	| DBusDouble
-	| DBusString
-	| DBusSignature
-	| DBusObjectPath
-	| DBusVariant
-	| DBusArray Type
-	| DBusDictionary Type Type
-	| DBusStructure [Type]
-	deriving (Show, Eq)
-:
-
-:f DBus/Types/Internal.cpphs
-|apidoc isAtomicType|
-isAtomicType :: Type -> Bool
-isAtomicType DBusBoolean    = True
-isAtomicType DBusByte       = True
-isAtomicType DBusInt16      = True
-isAtomicType DBusInt32      = True
-isAtomicType DBusInt64      = True
-isAtomicType DBusWord16     = True
-isAtomicType DBusWord32     = True
-isAtomicType DBusWord64     = True
-isAtomicType DBusDouble     = True
-isAtomicType DBusString     = True
-isAtomicType DBusSignature  = True
-isAtomicType DBusObjectPath = True
-isAtomicType _              = False
-:
-
-Each type can be converted to a textual representation, used in ``type
-signatures'' or for debugging.
-
-:f DBus/Types/Internal.cpphs
-|apidoc typeCode|
-typeCode :: Type -> Text
-|type codes|
-:
-
-:d type exports
-  -- * Available types
-  Type (..)
-, typeCode
-:
-
-\subsection{Variants}
-
-A wrapper type is needed for safely storing generic D-Bus values in Haskell.
-The D-Bus ``variant'' type is perfect for this, because variants may store
-any D-Bus value.
-
-Any type which is an instance of {\tt Variable} is considered a valid
-D-Bus value, because it can be used to construct {\tt Variant}s. However,
-outside of this module, {\tt Variant}s can only be constructed from
-pre-defined types.
-
-:f DBus/Types/Internal.cpphs
-|apidoc Variant|
-data Variant
-	= VarBoxBool Bool
-	| VarBoxWord8 Word8
-	| VarBoxInt16 Int16
-	| VarBoxInt32 Int32
-	| VarBoxInt64 Int64
-	| VarBoxWord16 Word16
-	| VarBoxWord32 Word32
-	| VarBoxWord64 Word64
-	| VarBoxDouble Double
-	| VarBoxString Text
-	| VarBoxSignature Signature
-	| VarBoxObjectPath ObjectPath
-	| VarBoxVariant Variant
-	| VarBoxArray Array
-	| VarBoxDictionary Dictionary
-	| VarBoxStructure Structure
-	deriving (Eq)
-
-class Variable a where
-	toVariant :: a -> Variant
-	fromVariant :: Variant -> Maybe a
-:
-
-:d type exports
-  -- * Variants
-, Variant
-, Variable (..)
-:
-
-Variants can be printed, for debugging purposes -- this instance shouldn't
-be parsed or inspected or anything like that, since the output format might
-change drastically.
-
-:f DBus/Types/Internal.cpphs
-instance Show Variant where
-	showsPrec d var = showParen (d > 10) full where
-		full = s "Variant " . shows code . s " " . valueStr
-		code = typeCode $ variantType var
-		s = showString
-		valueStr = showsPrecVar 11 var
-
-showsPrecVar :: Int -> Variant -> ShowS
-showsPrecVar d var = case var of
-	(VarBoxBool x) -> showsPrec d x
-	(VarBoxWord8 x) -> showsPrec d x
-	(VarBoxInt16 x) -> showsPrec d x
-	(VarBoxInt32 x) -> showsPrec d x
-	(VarBoxInt64 x) -> showsPrec d x
-	(VarBoxWord16 x) -> showsPrec d x
-	(VarBoxWord32 x) -> showsPrec d x
-	(VarBoxWord64 x) -> showsPrec d x
-	(VarBoxDouble x) -> showsPrec d x
-	(VarBoxString x) -> showsPrec d x
-	(VarBoxSignature x) -> showsPrec d x
-	(VarBoxObjectPath x) -> showsPrec d x
-	(VarBoxVariant x) -> showsPrec d x
-	(VarBoxArray x) -> showsPrec d x
-	(VarBoxDictionary x) -> showsPrec d x
-	(VarBoxStructure x) -> showsPrec d x
-:
-
-Since many operations on D-Bus values depend on having the correct type,
-{\tt variantType} is used to retrieve which type is actually stored within
-a {\tt Variant}.
-
-:f DBus/Types/Internal.cpphs
-|apidoc variantType|
-variantType :: Variant -> Type
-variantType var = case var of
-	(VarBoxBool _) -> DBusBoolean
-	(VarBoxWord8 _) -> DBusByte
-	(VarBoxInt16 _) -> DBusInt16
-	(VarBoxInt32 _) -> DBusInt32
-	(VarBoxInt64 _) -> DBusInt64
-	(VarBoxWord16 _) -> DBusWord16
-	(VarBoxWord32 _) -> DBusWord32
-	(VarBoxWord64 _) -> DBusWord64
-	(VarBoxDouble _) -> DBusDouble
-	(VarBoxString _) -> DBusString
-	(VarBoxSignature _) -> DBusSignature
-	(VarBoxObjectPath _) -> DBusObjectPath
-	(VarBoxVariant _) -> DBusVariant
-	(VarBoxArray x) -> DBusArray (arrayType x)
-	(VarBoxDictionary x) -> let
-		keyT = dictionaryKeyType x
-		valueT = dictionaryValueType x
-		in DBusDictionary keyT valueT
-	(VarBoxStructure x) -> let
-		Structure items = x
-		in DBusStructure (map variantType items)
-
-variantSignature :: Variant -> Maybe Signature
-variantSignature = mkBytesSignature . typeCodeB . variantType
-:
-
-:d type exports
-, variantType
-:
-
-A macro is useful for reducing verbosity in simple {\tt Variable}
-instances.
-
-:f DBus/Types/Internal.cpphs
-#define INSTANCE_VARIABLE(TYPE) \
-	instance Variable TYPE where \
-		{ toVariant = VarBox/**/TYPE \
-		; fromVariant (VarBox/**/TYPE x) = Just x \
-		; fromVariant _ = Nothing \
-		}
-:
-
-Since {\tt Variant}s are D-Bus values themselves, they can be stored in variants.
-
-:f DBus/Types/Internal.cpphs
-INSTANCE_VARIABLE(Variant)
-:
-
-\subsection*{Numerics}
-
-D-Bus supports most common numeric types:
+\dbus{} values are divided into two categories, \emph{atoms} and
+\emph{containers}. Atoms are strings, numbers, and so on. Containers can
+store other values, including other containers. Generally, values act like
+their Haskell equivalents, with one important exception: \dbus{} dictionaries
+only support atomic keys. Every \dbus{} type has a \emph{type code}, a short
+string describing what sort of data the value stores.
 
 \begin{table}[h]
-\caption{D-Bus Numeric types}
+\label{tab:dbus-types}
+\caption{\dbus{} Types}
 \begin{center}
-\begin{tabular}{ll}
+\begin{tabular}{llll}
 \toprule
-Type        & Description \\
+\dbus{} Type  & Code    & Description & Haskell Type \\
 \midrule
-Boolean     & Either {\tt True} or {\tt False} \\
-Byte        & 8-bit unsigned integer \\
-Int16       & 16-bit signed integer \\
-Int32       & 32-bit signed integer \\
-Int64       & 64-bit signed integer \\
-Word16      & 16-bit unsigned integer \\
-Word32      & 32-bit unsigned integer \\
-Word64      & 64-bit unsigned integer \\
-Double      & 64-bit IEEE754 floating-point \\
+Boolean     & {\tt b} & {\tt True} or {\tt False} & {\tt Bool} \\
+Byte        & {\tt y} & 8-bit unsigned integer & {\tt Word8} \\
+Int16       & {\tt n} & 16-bit signed integer & {\tt Int16} \\
+UInt16      & {\tt q} & 16-bit unsigned integer & {\tt Word16} \\
+Int32       & {\tt i} & 32-bit signed integer & {\tt Int32} \\
+UInt32      & {\tt u} & 32-bit unsigned integer & {\tt Word32} \\
+Int64       & {\tt x} & 64-bit signed integer & {\tt Int64} \\
+UInt64      & {\tt t} & 64-bit unsigned integer & {\tt Word64} \\
+Double      & {\tt d} & 64-bit IEEE754 floating-point & {\tt Double} \\
+String      & {\tt s} & Unicode text & {\tt Text} \\
+Object Path & {\tt o} & \dbus{} remote object path & {\tt DBus.Types.ObjectPath} \\
+Signature   & {\tt g} & List of \dbus{} types & {\tt DBus.Types.Signature} \\
+Variant     & {\tt v} & Can contain any \dbus{} value & {\tt DBus.Types.Variant} \\
+Array       & {\tt a}\emph{t} & Homogenous list of \emph{t} & {\tt Vector} \\
+Dictionary  & {\tt a\{}\emph{k}\emph{t}{\tt \}} & Associative map of \emph{k} to \emph{t} & {\tt Map} \\
+Structure   & {\tt (}\emph{codes}{\tt )} & Heterogeneous list of \dbus{} values & Tuples \\
 \bottomrule
 \end{tabular}
 \end{center}
 \end{table}
 
-All D-Bus numeric types are fixed-length, so the {\tt Int} and {\tt Integer}
-types can't be used. Instead, instances for the fixed-length integer types
-are defined and any others will have to be converted.
+\begin{multicols}{2}
 
-:d type imports
-import Data.Word (Word8, Word16, Word32, Word64)
-import Data.Int (Int16, Int32, Int64)
+Since the set of types is fixed, they are internally stored as an enumeration,
+named {\tt Type}. The names mostly match the \dbus{} names, but a few have
+been slightly changed to conform with Haskell naming conventions.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+data Type
+	= TypeBoolean
+	| TypeWord8
+	| TypeWord16
+	| TypeWord32
+	| TypeWord64
+	| TypeInt16
+	| TypeInt32
+	| TypeInt64
+	| TypeDouble
+	| TypeString
+	| TypeSignature
+	| TypeObjectPath
+	| TypeVariant
+	| TypeArray Type
+	| TypeDictionary Type Type
+	| TypeStructure [Type]
+	deriving (Eq, Ord)
 :
 
-:f DBus/Types/Internal.cpphs
-INSTANCE_VARIABLE(Bool)
-INSTANCE_VARIABLE(Word8)
-INSTANCE_VARIABLE(Int16)
-INSTANCE_VARIABLE(Int32)
-INSTANCE_VARIABLE(Int64)
-INSTANCE_VARIABLE(Word16)
-INSTANCE_VARIABLE(Word32)
-INSTANCE_VARIABLE(Word64)
-INSTANCE_VARIABLE(Double)
-:
+\end{multicols}
 
-\subsection*{Strings}
+\clearpage
+\subsection{Type signatures}
 
-Strings are a weird case; the built-in type, {\tt String}, is horribly
-inefficent. To provide better performance for large strings, packed Unicode
-strings defined in {\tt Data.Text} are used internally.
+\begin{multicols}{2}
 
-:f DBus/Types/Internal.cpphs
-instance Variable TL.Text where
-	toVariant = VarBoxString
-	fromVariant (VarBoxString x) = Just x
-	fromVariant _ = Nothing
-:
+A list of types is called a \emph{signature}. Signatures are traditionally
+represented as a string of type codes, such as {\tt "a\{sas\}"} for
+{\tt Map String [String]}. However, this library stores signatures as
+{\tt [Type]} to take advantage of Haskell's strong typing.
 
-There's two different {\tt Text} types, strict and lazy. It'd be a pain
-to store both and have to convert later, so instead, all strict {\tt Text}
-values are converted to lazy values.
+Although signatures are strongly-typed internally, they are exposed to the
+user as if they're special strings matching the \dbus{} signature format.
+I'll get to signature parsing later, as (for performance reasons) it's
+very complex.
 
-:d type imports
-import qualified Data.Text as T
-:
+\vfill
 
-:f DBus/Types/Internal.cpphs
-instance Variable T.Text where
-	toVariant = toVariant . TL.fromChunks . (:[])
-	fromVariant = fmap (T.concat . TL.toChunks) . fromVariant
-:
+\columnbreak
 
-Built-in {\tt String}s can still be stored, of course, but it requires
-a language extension.
+:d DBus.Types
+newtype Signature = Signature [Type]
+	deriving (Eq, Ord)
 
-:d type extensions
-{-# LANGUAGE TypeSynonymInstances #-}
-:
-
-:f DBus/Types/Internal.cpphs
-instance Variable String where
-	toVariant = toVariant . TL.pack
-	fromVariant = fmap TL.unpack . fromVariant
-:
-
-\subsection{Signatures}
-
-Valid D-Bus types must obey certain rules, such as ``dict keys must be
-atomic'', which are difficult to express in the Haskell type system.  A
-{\tt Signature} is guaranteed to be valid according to these rules. Creating
-one requires using the {\tt mkSignature} function, which will convert a valid
-D-Bus signature string into a {\tt Signature}.
-
-:f DBus/Types/Internal.cpphs
-INSTANCE_VARIABLE(Signature)
-data Signature = Signature { signatureTypes :: [Type] }
-	deriving (Eq)
+signatureTypes :: Signature -> [Type]
+signatureTypes (Signature types) = types
 
 instance Show Signature where
-	showsPrec d x = showParen (d > 10) $
-		showString "Signature " . shows (strSignature x)
+	showsPrec d sig = showParen (d > 10) $
+		showString "Signature " .
+		shows (signatureText sig)
 :
 
-Signatures can also be converted back into text, by concatenating the
-type codes of their contained types.
+\end{multicols}
 
-:f DBus/Types/Internal.cpphs
-bytesSignature :: Signature -> B.ByteString
-bytesSignature (Signature ts) = B.concat $ map typeCodeB ts
-
-strSignature :: Signature -> Text
-strSignature (Signature ts) = TL.concat $ map typeCode ts
+:d DBus.Types
+signatureText :: Signature -> Text
+signatureText (Signature ts) = Data.Text.pack (concatMap typeCode ts)
 :
 
-It doesn't make much sense to sort signatures, but since they can be used
-as dictionary keys, it's useful to have them as an instance of {\tt Ord}.
+\begin{multicols}{2}
 
-:d type imports
-import Data.Ord (comparing)
+:d DBus.Types
+typeCode :: Type -> String
+typeCode TypeBoolean    = "b"
+typeCode TypeWord8      = "y"
+typeCode TypeWord16     = "q"
+typeCode TypeWord32     = "u"
+typeCode TypeWord64     = "t"
+typeCode TypeInt16      = "n"
+typeCode TypeInt32      = "i"
+typeCode TypeInt64      = "x"
+typeCode TypeDouble     = "d"
+typeCode TypeString     = "s"
+typeCode TypeSignature  = "g"
+typeCode TypeObjectPath = "o"
+typeCode TypeVariant    = "v"
+typeCode (TypeArray t)  = 'a' : typeCode t
+typeCode (TypeDictionary kt vt) = concat ["a{", typeCode kt, typeCode vt, "}"]
+typeCode (TypeStructure ts) = '(' : (concatMap typeCode ts ++ ")")
 :
 
-:f DBus/Types/Internal.cpphs
-instance Ord Signature where
-	compare = comparing strSignature
+\columnbreak
+
+~
+
+~
+
+{\tt typeCode} is a straightforward translation of table~\ref{tab:dbus-types}.
+Users (and other modules in this library) will not call it directly; they
+should use {\tt signatureString} instead.
+
+\vfill
+
+\end{multicols}
+
+\clearpage
+\subsection{Generic value boxing}
+
+\begin{multicols}{2}
+
+The \dbus{} type system has a few features, such as structures and
+variants, that require some way to store \dbus{} values of different types
+in the same container. The Haskell type system does not support this; as a
+workaround, all values supported by \dbus{} can be type-safely stored in the
+generic box {\tt Value}. Atomic values are stored in {\tt Atom}, so they can
+be used as map keys in {\tt ValueMap}.
+
+It is possible to make this slightly less verbose by using existential
+types, but the additional indirection causes slower message parsing.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+data Value
+	= ValueAtom Atom
+	| ValueVariant Variant
+	| ValueVector Type (Vector Value)
+	| ValueMap Type (Map Atom Value)
+	| ValueStructure [Value]
+	deriving (Eq)
+
+data Atom
+	= AtomBool Bool
+	| AtomWord8 Word8
+	| AtomWord16 Word16
+	| AtomWord32 Word32
+	| AtomWord64 Word64
+	| AtomInt16 Int16
+	| AtomInt32 Int32
+	| AtomInt64 Int64
+	| AtomDouble Double
+	| AtomText Text
+	| AtomSignature Signature
+	| AtomObjectPath ObjectPath
+	deriving (Eq, Ord)
 :
 
-:d type exports
-  -- * Signatures
-, Signature
-, signatureTypes
-, strSignature
+\end{multicols}
+
+\begin{multicols}{2}
+
+The {\tt IsValue} class exposes an interface common to all values supported
+by \dbus{}. Every value has a {\tt Type}, and can be converted to/from a
+{\tt Value}.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+class IsValue a where
+	typeOf :: a -> Type
+	toValue :: a -> Value
+	fromValue :: Value -> Maybe a
 :
 
-\subsubsection*{Type codes}
+\end{multicols}
 
-For atomic types, the type code is a single letter. Arrays, structures,
-and dictionary types are multiple characters.
+\begin{multicols}{2}
 
-:d type imports
-import Data.Text.Encoding (decodeUtf8)
+The {\tt IsAtom} class is not strictly necessary, but it allows
+users to construct dictionaries without an intermediate type validation.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+class IsValue a => IsAtom a where
+	toAtom :: a -> Atom
+	fromAtom :: Atom -> Maybe a
 :
 
-:d type codes
-typeCode t = TL.fromChunks [decodeUtf8 $ typeCodeB t]
+\end{multicols}
 
-typeCodeB :: Type -> B.ByteString
-typeCodeB DBusBoolean    = "b"
-typeCodeB DBusByte       = "y"
-typeCodeB DBusInt16      = "n"
-typeCodeB DBusInt32      = "i"
-typeCodeB DBusInt64      = "x"
-typeCodeB DBusWord16     = "q"
-typeCodeB DBusWord32     = "u"
-typeCodeB DBusWord64     = "t"
-typeCodeB DBusDouble     = "d"
-typeCodeB DBusString     = "s"
-typeCodeB DBusSignature  = "g"
-typeCodeB DBusObjectPath = "o"
-typeCodeB DBusVariant    = "v"
+\subsubsection{Variants}
+
+\begin{multicols}{2}
+
+The {\tt toValue} function has an important invariant: values of a given
+Haskell type must always be converted to the same \dbus{} type. If this
+invariant is broken, homogenous containers (arrays and dictionaries) with
+invalid contents can be sent over the wire. To protect {\tt toValue}, it
+is not exported to library users.
+
+However, users often want to define and work directly with their own types.
+As a workaround, the {\tt IsVariant} class allows limited extension to the
+supported types. The only significant restriction is that the contents of
+homogenous containers must instance {\tt IsValue}.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+newtype Variant = Variant Value
+	deriving (Eq)
+
+class IsVariant a where
+	toVariant :: a -> Variant
+	fromVariant :: Variant -> Maybe a
 :
 
-An array's type code is ``a'' followed by the type it contains. For example,
-an array of booleans would have the type string ``ab''.
+\end{multicols}
 
-:d type codes
-typeCodeB (DBusArray t) = B8.cons 'a' $ typeCodeB t
+\clearpage
+\subsubsection{Inspecting boxed values}
+
+If a user is interacting with the library through an REPL (e.g. GHCI), they
+might want to print the content of a variant -- for example, to print messages
+received from the bus. Due to the various wrappers between {\tt Variant} and
+the actual data, this is somewhat complex.
+
+\begin{multicols}{2}
+
+\begin{quote}
+:d DBus.Types
+showAtom :: Atom -> String
+showAtom (AtomBool x) = show x
+showAtom (AtomWord8 x) = show x
+showAtom (AtomWord16 x) = show x
+showAtom (AtomWord32 x) = show x
+showAtom (AtomWord64 x) = show x
+showAtom (AtomInt16 x) = show x
+showAtom (AtomInt32 x) = show x
+showAtom (AtomInt64 x) = show x
+showAtom (AtomDouble x) = show x
+showAtom (AtomText x) = show x
+showAtom (AtomSignature x) = show x
+showAtom (AtomObjectPath x) = show x
+
+showValue :: Value -> String
+showValue (ValueAtom x) = showAtom x
+showValue (ValueVariant x) = show x
+showValue (ValueVector _ xs) = showThings "[" showValue "]" (Data.Vector.toList xs)
+showValue (ValueMap _ xs) = showThings "{" showPair "}" (Data.Map.toList xs) where
+	showPair (k, v) = showAtom k ++ ": " ++ showValue v
+showValue (ValueStructure xs) = showThings "(" showValue ")" xs
+
+showThings :: String -> (a -> String) -> String -> [a] -> String
+showThings a s z xs = a ++ intercalate ", " (map s xs) ++ z
+:
+\end{quote}
+
+\columnbreak
+
+Printing {\tt Atom}s is easy; all atomic types have obvious formats, and
+are supported natively by Haskell.
+
+{\tt Value}s are a bit harder. Even if I wanted to add {\tt Show} instances
+directly to {\tt Value} and {\tt Atom}, they wouldn't be suitable because
+{\tt Vector} and {\tt Map} have truly bizarre {\tt Show} instances:
+
+\begin{quote}
+\begin{verbatim}
+ghci> Data.Vector.singleton "foo"
+fromList ["foo"] :: Data.Vector.Vector
+
+ghci> Data.Map.singleton "foo" "bar"
+fromList [("foo","bar")]
+\end{verbatim}
+\end{quote}
+
+\noindent Therefore, {\tt showValue} does its own container formatting.
+
+\vfill
+
+\end{multicols}
+
+To preserve the variant-based public interface, {\tt showAtom} and
+{\tt showUser} are not exported to the user. This preserves the
+appearance that {\tt Variant} is a simple wrapping box.
+
+\begin{quote}
+:d DBus.Types
+instance Show Variant where
+	showsPrec d (Variant x) = showParen (d > 10) $
+		showString "Variant " .  showString (showValue x)
+:
+\end{quote}
+
+\clearpage
+\subsubsection{Inspecting boxed types}
+
+Printing a {\tt Variant} lets the user see what value it contains, but
+sometimes they need to know exactly what type \dbus{} thinks it is. This
+is particularly important when working with integers, as some APIs will
+only accept integers of a particular size.
+
+\begin{multicols}{2}
+
+:d DBus.Types
+variantType :: Variant -> Type
+variantType (Variant val) = valueType val
+
+valueType :: Value -> Type
+valueType (ValueAtom x) = atomType x
+valueType (ValueVariant _) = TypeVariant
+valueType (ValueVector t _) = t
+valueType (ValueMap t _) = t
+valueType (ValueStructure vs) = TypeStructure (map valueType vs)
+
+atomType :: Atom -> Type
+atomType (AtomBool _) = TypeBoolean
+atomType (AtomWord8 _) = TypeWord8
+atomType (AtomWord16 _) = TypeWord16
+atomType (AtomWord32 _) = TypeWord32
+atomType (AtomWord64 _) = TypeWord64
+atomType (AtomInt16 _) = TypeInt16
+atomType (AtomInt32 _) = TypeInt32
+atomType (AtomInt64 _) = TypeInt64
+atomType (AtomDouble _) = TypeDouble
+atomType (AtomText _) = TypeString
+atomType (AtomSignature _) = TypeSignature
+atomType (AtomObjectPath _) = TypeObjectPath
 :
 
-A dictionary's type code is ``a\{$key\_type$ $value\_type$\}''. For example,
-a dictionary of bytes to booleans would have the type string ``a\{yb\}''.
+\columnbreak
 
-:d type codes
-typeCodeB (DBusDictionary k v) = B.concat ["a{", typeCodeB k, typeCodeB v, "}"]
+All of {\tt Atom}'s constructors map directly to a {\tt Type}, so
+implementing {\tt atomType} is trivial.
+
+{\tt ValueVector} and {\tt ValueMap} require special handling. \dbus{} needs
+to know their full type even if they're empty, but {\tt ([] :: [Value])}
+contains no information about its contents. As a workaround, the full type
+of the container is stored in the box itself at construction.
+
+\end{multicols}
+
+\begin{multicols}{2}
+
+:d DBus.Types
+instance Show Type where
+	showsPrec d x = case x of
+		TypeBoolean -> showString "Bool"
+		TypeWord8 -> showString "Word8"
+		TypeWord16 -> showString "Word16"
+		TypeWord32 -> showString "Word32"
+		TypeWord64 -> showString "Word64"
+		TypeInt16 -> showString "Int16"
+		TypeInt32 -> showString "Int32"
+		TypeInt64 -> showString "Int64"
+		TypeDouble -> showString "Double"
+		TypeString -> showString "String"
+		TypeSignature -> showString "Signature"
+		TypeObjectPath -> showString "ObjectPath"
+		TypeVariant -> showString "Variant"
+		TypeArray t -> showString "[" . shows t . showString "]"
+		TypeDictionary kt vt -> showParen (d > 10) $
+			showString "Map " .  shows kt .  showString " " .  showsPrec 11 vt
+		TypeStructure types -> showString (showThings "(" show ")" types)
 :
 
-A structure's type code is the concatenation of its contained types,
-wrapped by ``('' and ``)''. Structures may be empty, in which case their
-type code is simply ``()''.
+\columnbreak
 
-:d type codes
-typeCodeB (DBusStructure ts) = B.concat $
-	["("] ++ map typeCodeB ts ++ [")"]
+I have two choices when deciding how to show {\tt Type}s; can use type
+codes, as in signatures, or try to generate a more Haskell-ish format. I
+chose the second option because it's easier to read; for example, compare
+{\tt "a\{sas\}"} and {\tt Map String [String]}. This is particularly
+important when working with complex or deeply-nested structures, which are
+common in some APIs.
+
+Note that the types displayed here do not match up exactly to the actual
+Haskell types used to implement the boxes. I don't want typical users to
+care about how the internals work.
+
+\vfill
+
+\end{multicols}
+
+\clearpage
+\subsection{Special string types}
+
+Various aspects of \dbus{} require the use of specially-formatted strings. Every
+special string type gets its own Haskell type and construction function; this
+allows the library to assume all such strings are correctly formatted. The
+constructors will evaluate to {\tt Nothing} if their input is invalid. In
+addition, partial versions (suffixed with {\tt \_}) are available for users
+who don't care about validation; these will throw an exception if the input
+is invalid. Finally, {\tt IsString} instances are available for all special
+strings, so users can just enable {\tt OverloadedStrings} and use string
+literals directly.
+
+Validation is performed using Parsec. Unfortunately, Parsec does not work
+with packed strings; I'll define a few utility functions first, so the
+validation logic is more obvious. Note that these discard the Parsec error
+message; if some input doesn't match, the exact error is unlikely to be
+interesting.
+
+:d text validation imports
+import qualified Text.ParserCombinators.Parsec as Parsec
+import           Text.ParserCombinators.Parsec ((<|>), oneOf)
 :
 
-\subsubsection*{Parsing}
+:d text validation
+skipSepBy1 :: Parsec.Parser a -> Parsec.Parser b -> Parsec.Parser ()
+skipSepBy1 p sep = do
+	void p
+	Parsec.skipMany (sep >> p)
 
-When parsing, additional restrictions apply which are not inherent to the
-D-Bus type system. The signature parsing functions guarantee that any
-{\tt Signature} is valid according to D-Bus rules.
+runParser :: Parsec.Parser a -> Text -> Maybe a
+runParser parser text = case Parsec.parse parser "" (Data.Text.unpack text) of
+	Left _ -> Nothing
+	Right a -> Just a
+
+tryParse :: String -> (Text -> Maybe a) -> Text -> a
+tryParse label parse text = case parse text of
+	Just x -> x
+	Nothing -> error ("Invalid " ++ label ++ ": " ++ show text)
+:
+
+\clearpage
+\subsubsection{Object paths}
+
+\begin{multicols}{2}
+
+\dbus{} is an object-oriented protocol; most \dbus{} sessions consist of method
+calls sent to \emph{objects} exported by other applications. An objects is
+identified by a \emph{object path}, such as {\tt /org/freedesktop/DBus}, which
+is unique within each application.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+newtype ObjectPath = ObjectPath Text
+	deriving (Eq, Ord, Show)
+
+objectPathText :: ObjectPath -> Text
+objectPathText (ObjectPath text) = text
+
+objectPath :: Text -> Maybe ObjectPath
+objectPath text = do
+	runParser parseObjectPath text
+	return (ObjectPath text)
+
+objectPath_ :: Text -> ObjectPath
+objectPath_ = tryParse "object path" objectPath
+
+instance Data.String.IsString ObjectPath where
+	fromString = objectPath_ . Data.Text.pack
+
+instance IsAtom ObjectPath where
+	toAtom = AtomObjectPath
+	fromAtom (AtomObjectPath x) = Just x
+	fromAtom _ = Nothing
+
+instance IsValue ObjectPath where
+	typeOf _ = TypeObjectPath
+	toValue = atomToValue
+	fromValue = atomFromValue
+
+instance IsVariant ObjectPath where
+	toVariant = Variant . toValue
+	fromVariant (Variant val) = fromValue val
+:
+
+\end{multicols}
+
+\begin{multicols}{2}
+
+An object path may be one of
+
+\begin{itemize}
+\item The root path, {\tt "/"}.
+\item {\tt '/'}, followed by one or more elements, separated by {\tt '/'}.
+      Each element contains characters in the set {\tt [a-zA-Z0-9\_]}, and
+      must have at least one character.
+\end{itemize}
+
+Element names are separated by {\tt '/'}, and the path may not end in
+{\tt '/'} unless it is the root path.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+parseObjectPath :: Parsec.Parser ()
+parseObjectPath = root <|> object where
+	root = Parsec.try $ do
+		slash
+		Parsec.eof
+	
+	object = do
+		slash
+		skipSepBy1 element slash
+		Parsec.eof
+	
+	element = Parsec.skipMany1 (oneOf chars)
+	
+	slash = void (Parsec.char '/')
+	chars = concat [ ['a'..'z']
+	               , ['A'..'Z']
+	               , ['0'..'9']
+	               , "_"]
+:
+
+\end{multicols}
+
+\clearpage
+\subsubsection{Interface names}
+
+\begin{multicols}{2}
+
+Each object may have several \emph{interfaces}, each identified by an
+\emph{interface name}. Interfaces are the basic units of \dbus{} APIs, and
+even simple objects are expected to contain several (such as
+{\tt org.freedesktop.DBus.Introspectable} or
+{\tt org.freedesktop.DBus.Properties}). They correspond generally to Haskell
+classes, or Python protocols.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+newtype InterfaceName = InterfaceName Text
+	deriving (Eq, Ord, Show)
+
+interfaceNameText :: InterfaceName -> Text
+interfaceNameText (InterfaceName text) = text
+
+interfaceName :: Text -> Maybe InterfaceName
+interfaceName text = do
+	when (Data.Text.length text > 255) Nothing
+	runParser parseInterfaceName text
+	return (InterfaceName text)
+
+interfaceName_ :: Text -> InterfaceName
+interfaceName_ = tryParse "interface name" interfaceName
+
+instance Data.String.IsString InterfaceName where
+	fromString = interfaceName_ . Data.Text.pack
+
+instance IsVariant InterfaceName where
+	toVariant = toVariant . interfaceNameText
+	fromVariant v = fromVariant v >>= interfaceName
+:
+
+\end{multicols}
+
+\begin{multicols}{2}
+
+An interface name consists of two or more {\tt '.'}-separated elements. Each
+element constists of characters from the set {\tt [a-zA-Z0-9\_]}, may not
+start with a digit, and must have at least one character.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+parseInterfaceName :: Parsec.Parser ()
+parseInterfaceName = name >> Parsec.eof where
+	alpha = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
+	alphanum = alpha ++ ['0'..'9']
+	element = do
+		void (oneOf alpha)
+		Parsec.skipMany (oneOf alphanum)
+	name = do
+		element
+		void (Parsec.char '.')
+		skipSepBy1 element (Parsec.char '.')
+:
+
+\end{multicols}
+
+\clearpage
+\subsubsection{Member names}
+
+\begin{multicols}{2}
+
+An interface, in turn, contains several \emph{members}, each identified by a
+\emph{member name} such as {\tt Introspect}. A member might be either a
+\emph{method}, which clients can call, or a \emph{signal}, which clients can
+wait for.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+newtype MemberName = MemberName Text
+	deriving (Eq, Ord, Show)
+
+memberNameText :: MemberName -> Text
+memberNameText (MemberName text) = text
+
+memberName :: Text -> Maybe MemberName
+memberName text = do
+	when (Data.Text.length text > 255) Nothing
+	runParser parseMemberName text
+	return (MemberName text)
+
+memberName_ :: Text -> MemberName
+memberName_ = tryParse "member name" memberName
+
+instance Data.String.IsString MemberName where
+	fromString = memberName_ . Data.Text.pack
+
+instance IsVariant MemberName where
+	toVariant = toVariant . memberNameText
+	fromVariant v = fromVariant v >>= memberName
+:
+
+\end{multicols}
+
+\begin{multicols}{2}
+
+Member names must contain only characters from the set {\tt [a-zA-Z0-9\_]},
+may not begin with a digit, and must be at least one character long.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+parseMemberName :: Parsec.Parser ()
+parseMemberName = name >> Parsec.eof where
+	alpha = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
+	alphanum = alpha ++ ['0'..'9']
+	name = do
+		void (oneOf alpha)
+		Parsec.skipMany (oneOf alphanum)
+:
+
+\end{multicols}
+
+\clearpage
+\subsubsection{Error names}
+
+\begin{multicols}{2}
+
+Every error returned from a method call has an \emph{error name}, so
+clients can know (generally) what went wrong without having to parse the
+error message. Applications may define their own error names, or use one
+of the standardized names listed in appendix~\ref{sec:standard-error-names}.
+
+Error names have the same format as interface names, so the parser logic
+can be reused.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+newtype ErrorName = ErrorName Text
+	deriving (Eq, Ord, Show)
+
+errorNameText :: ErrorName -> Text
+errorNameText (ErrorName text) = text
+
+errorName :: Text -> Maybe ErrorName
+errorName text = do
+	when (Data.Text.length text > 255) Nothing
+	runParser parseInterfaceName text
+	return (ErrorName text)
+
+errorName_ :: Text -> ErrorName
+errorName_ = tryParse "error name" errorName
+
+instance Data.String.IsString ErrorName where
+	fromString = errorName_ . Data.Text.pack
+
+instance IsVariant ErrorName where
+	toVariant = toVariant . errorNameText
+	fromVariant v = fromVariant v >>= errorName
+:
+
+\end{multicols}
+
+\clearpage
+\subsubsection{Bus names}
+
+\begin{multicols}{2}
+
+Bus names are used when connecting to a central message dispatch bus. Every
+connection is assigned a \emph{unique name}, such as {\tt :103.1}. This name
+is usually used by the bus to send signals and method returns to client
+applications.
+
+Additionally, applications may request a \emph{well-known} name such as
+{\tt org.freedesktop.DBus}. These are similar to internet hostnames; client
+applications are written to send messages to this address, where they can be
+served by whatever server happens to be running at the time.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+newtype BusName = BusName Text
+	deriving (Eq, Ord, Show)
+
+busNameText :: BusName -> Text
+busNameText (BusName text) = text
+
+busName :: Text -> Maybe BusName
+busName text = do
+	when (Data.Text.length text > 255) Nothing
+	runParser parseBusName text
+	return (BusName text)
+
+busName_ :: Text -> BusName
+busName_ = tryParse "bus name" busName
+
+instance Data.String.IsString BusName where
+	fromString = busName_ . Data.Text.pack
+
+instance IsVariant BusName where
+	toVariant = toVariant . busNameText
+	fromVariant v = fromVariant v >>= busName
+:
+
+\end{multicols}
+
+\begin{multicols}{2}
+
+Unique names begin with {\tt `:'} and contain two or more elements, separated
+by {\tt `.'}. Each element consists of characters from the set
+{\tt [a-zA-Z0-9\_-]}.
+
+Well-known names contain two or more elements, separated by {\tt `.'}. Each
+element consists of characters from the set {\tt [a-zA-Z0-9\_-]}, and must
+not start with a digit.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+parseBusName :: Parsec.Parser ()
+parseBusName = name >> Parsec.eof where
+	alpha = ['a'..'z'] ++ ['A'..'Z'] ++ "_-"
+	alphanum = alpha ++ ['0'..'9']
+	
+	name = unique <|> wellKnown
+	unique = do
+		void (Parsec.char ':')
+		elements alphanum
+	
+	wellKnown = elements alpha
+	
+	elements start = do
+		element start
+		Parsec.skipMany1 $ do
+			void (Parsec.char '.')
+			element start
+	
+	element start = do
+		void (oneOf start)
+		Parsec.skipMany (oneOf alphanum)
+:
+
+\end{multicols}
+
+\clearpage
+\subsection{Parsing signatures}
+
+\begin{multicols}{2}
 
 Signature parsing is the most common operation when unmarshaling messages;
-therefore, an efficient parsing implementation is essential.
+therefore, an efficient parsing implementation is essential. However, I still
+want the library's users to see a text-based interface to signatures.
 
-Since all valid signatures as entirely ASCII, it's possible to parse them
-using byte-based parsers for better performance. These aren't exported from
-the public interface, but are still used within {\tt DBus.Wire} modules.
+Therefore, there are actually two signature parsing APIs -- one for other
+modules in this library (especially {\tt DBus.Wire}, and a small wrapper for
+users. The wrapper follows the pattern for other special strings, so users
+can use string literals and so on.
 
-:d type imports
-import qualified Data.ByteString.Unsafe as B
-import qualified Foreign as F
-import System.IO.Unsafe (unsafePerformIO)
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+instance Data.String.IsString Signature where
+	fromString = signature_ . Data.Text.pack
+
+signature :: Text -> Maybe Signature
+signature text = parseSignature bytes where
+	bytes = Data.Text.Encoding.encodeUtf8 text
+
+signature_ :: Text -> Signature
+signature_ = tryParse "signature" signature
 :
 
-There are three special cases which can be optimized:
+\end{multicols}
+
+\begin{multicols}{2}
+
+You know you're in for some shit when the parser requires two modules
+named {\tt Unsafe}.
+
+\vfill
+
+\columnbreak
+
+:d signature parsing imports
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Unsafe as B
+import qualified Foreign as F
+import           System.IO.Unsafe (unsafePerformIO)
+:
+
+\end{multicols}
+
+\begin{multicols}{2}
+
+\noindent There are three special cases which can be optimized:
 
 \begin{enumerate}
 \item Empty signatures occur when messages have no body, and can use a constant
       result.
 \item Single-character signatures occur when parsing variants, and can use a
-      faster atom-only parser.
-\item Signatures larger than 255 characters are invalid.
+      faster non-recursive parser.
+\item All signatures larger than 255 characters are invalid, so they can be
+      failed immediately.
 \end{enumerate}
+\vfill
 
-:f DBus/Types/Internal.cpphs
-mkBytesSignature :: B.ByteString -> Maybe Signature
-mkBytesSignature = unsafePerformIO . flip B.unsafeUseAsCStringLen io where
-	|fast signature parser|
-	|slow signature parser|
-	
-	io (cstr, len) = case len of
-		0 -> return $ Just $ Signature []
-		1 -> fmap fast $ F.peek cstr
-		_ | len <= 255 -> slow (F.castPtr cstr) len
-		_ -> return Nothing
-:
+\columnbreak
 
-:d fast signature parser
-parseAtom c yes no = case c of
-	0x62 -> yes DBusBoolean
-	0x79 -> yes DBusByte
-	0x6E -> yes DBusInt16
-	0x69 -> yes DBusInt32
-	0x78 -> yes DBusInt64
-	0x71 -> yes DBusWord16
-	0x75 -> yes DBusWord32
-	0x74 -> yes DBusWord64
-	0x64 -> yes DBusDouble
-	0x73 -> yes DBusString
-	0x67 -> yes DBusSignature
-	0x6F -> yes DBusObjectPath
-	_ -> no
-
-fast c = parseAtom c (\t -> Just (Signature [t])) $ case c of
-	0x76 -> Just (Signature [DBusVariant])
+:d DBus.Types
+parseSignature :: ByteString -> Maybe Signature
+parseSignature bytes = case B.length bytes of
+	0 -> Just (Signature [])
+	1 -> parseSigFast bytes
+	len | len <= 255 -> parseSigSlow bytes
 	_ -> Nothing
 :
 
-:d slow signature parser
-slow :: F.Ptr Word8 -> Int -> IO (Maybe Signature)
-slow buf len = loop [] 0 where
-	loop acc ii | ii >= len = return . Just . Signature $ reverse acc
-	loop acc ii = do
-		c <- F.peekElemOff buf ii
-		let next t = loop (t : acc) (ii + 1)
-		parseAtom c next $ case c of
-			0x76 -> next DBusVariant
-			
-			-- '('
-			0x28 -> do
-				mt <- structure buf len (ii + 1)
-				case mt of
-					Just (ii', t) -> loop (t : acc) ii'
-					Nothing -> return Nothing
-			
-			-- 'a'
-			0x61 -> do
-				mt <- array buf len (ii + 1)
-				case mt of
-					Just (ii', t) -> loop (t : acc) ii'
-					Nothing -> return Nothing
-			
-			_ -> return Nothing
+\end{multicols}
+
+\begin{multicols}{2}
+
+Both parsers need to check whether a particular byte signifies an atom,
+so that check is separated into a separate function.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+parseAtom :: Word8 -> (Type -> a) -> a -> a
+parseAtom c yes no = case c of
+	0x62 -> yes TypeBoolean
+	0x6E -> yes TypeInt16
+	0x69 -> yes TypeInt32
+	0x78 -> yes TypeInt64
+	0x79 -> yes TypeWord8
+	0x71 -> yes TypeWord16
+	0x75 -> yes TypeWord32
+	0x74 -> yes TypeWord64
+	0x64 -> yes TypeDouble
+	0x73 -> yes TypeString
+	0x67 -> yes TypeSignature
+	0x6F -> yes TypeObjectPath
+	_ -> no
 :
 
-:d slow signature parser
-structure :: F.Ptr Word8 -> Int -> Int -> IO (Maybe (Int, Type))
-structure buf len = loop [] where
+\end{multicols}
+
+\begin{multicols}{2}
+
+None of the recursive container types can fit in one byte; if the
+signature has only a single character, it must be either
+{\tt [}\emph{atom}{\tt ]} or {\tt [TypeVariant]}.
+
+This optimization is important when parsing variants, as they very often
+contain signatures with only a single atomic type.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+parseSigFast :: ByteString -> Maybe Signature
+parseSigFast bytes = parsed where
+	parsed = parseAtom byte ok notAtom
+	byte = B.unsafeHead bytes
+	
+	ok t = Just (Signature [t])
+	notAtom = case byte of
+		0x76 -> ok TypeVariant
+		_ -> Nothing
+:
+
+\end{multicols}
+
+\clearpage
+\subsubsection{Full signature parser}
+
+:d DBus.Types
+parseSigSlow :: ByteString -> Maybe Signature
+parseSigSlow bytes = unsafePerformIO io where
+	io = B.unsafeUseAsCStringLen bytes castBuf
+	castBuf (ptr, len) = parseSigBuf (F.castPtr ptr, len)
+
+parseSigBuf :: (F.Ptr Word8, Int) -> IO (Maybe Signature)
+parseSigBuf (buf, len) = mainLoop [] 0 where
+	|full signature parser|
+:
+
+:d full signature parser
+mainLoop acc ii | ii >= len = return . Just . Signature $ reverse acc
+mainLoop acc ii = do
+	c <- F.peekElemOff buf ii
+	let next t = mainLoop (t : acc) (ii + 1)
+	parseAtom c next $ case c of
+		0x76 -> next TypeVariant
+		
+		-- '('
+		0x28 -> do
+			mt <- structure (ii + 1)
+			case mt of
+				Just (ii', t) -> mainLoop (t : acc) ii'
+				Nothing -> return Nothing
+		
+		-- 'a'
+		0x61 -> do
+			mt <- array (ii + 1)
+			case mt of
+				Just (ii', t) -> mainLoop (t : acc) ii'
+				Nothing -> return Nothing
+		
+		_ -> return Nothing
+:
+
+:d full signature parser
+structure :: Int -> IO (Maybe (Int, Type))
+structure = loop [] where
 	loop _ ii | ii >= len = return Nothing
 	loop acc ii = do
 		c <- F.peekElemOff buf ii
 		let next t = loop (t : acc) (ii + 1)
 		parseAtom c next $ case c of
-			0x76 -> next DBusVariant
+			0x76 -> next TypeVariant
 			
 			-- '('
 			0x28 -> do
-				mt <- structure buf len (ii + 1)
+				mt <- structure (ii + 1)
 				case mt of
 					Just (ii', t) -> loop (t : acc) ii'
 					Nothing -> return Nothing
@@ -528,11 +1016,11 @@ structure buf len = loop [] where
 			-- ')'
 			0x29 -> return $ case acc of
 				[] -> Nothing
-				_ -> Just $ (ii + 1, DBusStructure (reverse acc))
+				_ -> Just $ (ii + 1, TypeStructure (reverse acc))
 			
 			-- 'a'
 			0x61 -> do
-				mt <- array buf len (ii + 1)
+				mt <- array (ii + 1)
 				case mt of
 					Just (ii', t) -> loop (t : acc) ii'
 					Nothing -> return Nothing
@@ -540,39 +1028,39 @@ structure buf len = loop [] where
 			_ -> return Nothing
 :
 
-:d slow signature parser
-array :: F.Ptr Word8 -> Int -> Int -> IO (Maybe (Int, Type))
-array _   len ii | ii >= len = return Nothing
-array buf len ii = do
+:d full signature parser
+array :: Int -> IO (Maybe (Int, Type))
+array ii | ii >= len = return Nothing
+array ii = do
 	c <- F.peekElemOff buf ii
-	let next t = return $ Just (ii + 1, DBusArray t)
+	let next t = return $ Just (ii + 1, TypeArray t)
 	parseAtom c next $ case c of
-		0x76 -> next DBusVariant
+		0x76 -> next TypeVariant
 		
 		-- '('
 		0x28 -> do
-			mt <- structure buf len (ii + 1)
+			mt <- structure (ii + 1)
 			case mt of
-				Just (ii', t) -> return $ Just (ii', DBusArray t)
+				Just (ii', t) -> return $ Just (ii', TypeArray t)
 				Nothing -> return Nothing
 		
 		-- '{'
-		0x7B -> dict buf len (ii + 1)
+		0x7B -> dict (ii + 1)
 		
 		-- 'a'
 		0x61 -> do
-			mt <- array buf len (ii + 1)
+			mt <- array (ii + 1)
 			case mt of
-				Just (ii', t) -> return $ Just (ii', DBusArray t)
+				Just (ii', t) -> return $ Just (ii', TypeArray t)
 				Nothing -> return Nothing
 		
 		_ -> return Nothing
 :
 
-:d slow signature parser
-dict :: F.Ptr Word8 -> Int -> Int -> IO (Maybe (Int, Type))
-dict _   len ii | ii + 1 >= len = return Nothing
-dict buf len ii = do
+:d full signature parser
+dict :: Int -> IO (Maybe (Int, Type))
+dict ii | ii + 1 >= len = return Nothing
+dict ii = do
 	c1 <- F.peekElemOff buf ii
 	c2 <- F.peekElemOff buf (ii + 1)
 	
@@ -580,13 +1068,13 @@ dict buf len ii = do
 	
 	let next t = return $ Just (ii + 2, t)
 	mt2 <- parseAtom c2 next $ case c2 of
-		0x76 -> next DBusVariant
+		0x76 -> next TypeVariant
 		
 		-- '('
-		0x28 -> structure buf len (ii + 2)
+		0x28 -> structure (ii + 2)
 		
 		-- 'a'
-		0x61 -> array buf len (ii + 2)
+		0x61 -> array (ii + 2)
 		
 		_ -> return Nothing
 	
@@ -599,547 +1087,5 @@ dict buf len ii = do
 				return $ do
 					if c3 == 0x7D then Just () else Nothing
 					t1 <- mt1
-					Just (ii' + 1, DBusDictionary t1 t2)
-:
-
-The public interface for building signatures is {\tt Text}-based.
-
-:d type imports
-import Data.Text.Lazy.Encoding (encodeUtf8)
-:
-
-:f DBus/Types/Internal.cpphs
-mkSignature :: Text -> Maybe Signature
-mkSignature = mkBytesSignature . B.concat . BL.toChunks . encodeUtf8
-:
-
-Since many signatures are defined as string literals, it's useful to
-have a helper function to construct a signature directly from a string.
-If the input string is invalid, {\tt error} will be called.
-
-:d type imports
-import DBus.Util (mkUnsafe)
-import qualified Data.String as String
-:
-
-:f DBus/Types/Internal.cpphs
-mkSignature_ :: Text -> Signature
-mkSignature_ = mkUnsafe "signature" mkSignature
-
-instance String.IsString Signature where
-	fromString = mkUnsafe "signature" mkBytesSignature . BL8.pack
-:
-
-Most signature-related functions are exposed to clients, except the
-{\tt Signature} value constructor. If that were exposed, clients could
-construct invalid signatures.
-
-:d type exports
-, mkSignature
-, mkSignature_
-:
-
-Checking if a type is valid according to signature rules is common, and if
-performed through the signature parser, slow. Since such types are already
-guaranteed to be structurally valid, the only test needed is whether their
-size is within bounds.
-
-:f DBus/Types/Internal.cpphs
-maybeValidType :: Type -> Maybe ()
-maybeValidType t = if B.length (typeCodeB t) > 255
-	then Nothing
-	else Just ()
-:
-
-\subsection{Object paths}
-
-:f DBus/Types/Internal.cpphs
-INSTANCE_VARIABLE(ObjectPath)
-newtype ObjectPath = ObjectPath
-	{ strObjectPath :: Text
-	}
-	deriving (Eq, Ord)
-
-instance Show ObjectPath where
-	showsPrec d (ObjectPath x) = showParen (d > 10) $
-		showString "ObjectPath " . shows x
-
-instance String.IsString ObjectPath where
-	fromString = mkObjectPath_ . TL.pack
-:
-
-An object path may be one of
-
-\begin{itemize}
-\item The root path, {\tt "/"}.
-\item {\tt '/'}, followed by one or more element names. Each element name
-      contains characters in the set {\tt [a-zA-Z0-9\_]}, and must have at
-      least one character.
-\end{itemize}
-
-Element names are separated by {\tt '/'}, and the path may not end in
-{\tt '/'} unless it is the root path.
-
-:d type imports
-import Text.ParserCombinators.Parsec ((<|>))
-import qualified Text.ParserCombinators.Parsec as P
-import DBus.Util (checkLength, parseMaybe)
-:
-
-:f DBus/Types/Internal.cpphs
-mkObjectPath :: Text -> Maybe ObjectPath
-mkObjectPath s = parseMaybe path' (TL.unpack s) where
-	c = P.oneOf $ ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_"
-	path = P.char '/' >>= P.optional . P.sepBy (P.many1 c) . P.char
-	path' = path >> P.eof >> return (ObjectPath s)
-
-mkObjectPath_ :: Text -> ObjectPath
-mkObjectPath_ = mkUnsafe "object path" mkObjectPath
-:
-
-:d type exports
-  -- * Object paths
-, ObjectPath
-, strObjectPath
-, mkObjectPath
-, mkObjectPath_
-:
-
-\subsection{Arrays}
-
-Arrays are homogenous sequences of any valid D-Bus type. Arrays might be
-empty, so the type they contain is stored instead of being calculated from
-their contents (as in {\tt variantType}).
-
-Many D-Bus APIs represent binary data using an array of bytes; therefore,
-there is a special constructor for {\tt ByteString}-based arrays.
-
-:f DBus/Types/Internal.cpphs
-INSTANCE_VARIABLE(Array)
-data Array
-	= VariantArray Type [Variant]
-	| ByteArray BL.ByteString
-	deriving (Eq)
-
-|apidoc arrayType|
-arrayType :: Array -> Type
-arrayType (VariantArray t _) = t
-arrayType (ByteArray _) = DBusByte
-
-arrayItems :: Array -> [Variant]
-arrayItems (VariantArray _ xs) = xs
-arrayItems (ByteArray xs) = map toVariant $ BL.unpack xs
-:
-
-:d type exports
-  -- * Arrays
-, Array
-, arrayType
-, arrayItems
-:
-
-Like {\tt Variant}, deriving {\tt Show} for {\tt Array} is mostly
-just useful for debugging.
-
-:f DBus/Types/Internal.cpphs
-instance Show Array where
-	showsPrec d array = showParen (d > 10) $
-		s "Array " . showSig . s " [" . s valueString . s "]" where
-			s = showString
-			showSig = shows . typeCode . arrayType $ array
-			showVar var = showsPrecVar 0 var ""
-			valueString = intercalate ", " $ map showVar $ arrayItems array
-:
-
-Clients constructing an array must provide the expected item type, which
-will be checked for validity. Every item in the array will be checked against
-the item type, to ensure the array is homogenous.
-
-:f DBus/Types/Internal.cpphs
-arrayFromItems :: Type -> [Variant] -> Maybe Array
-arrayFromItems DBusByte vs = fmap (ByteArray . BL.pack) (mapM fromVariant vs)
-
-arrayFromItems t vs = do
-	maybeValidType t
-	if all (\x -> variantType x == t) vs
-		then Just $ VariantArray t vs
-		else Nothing
-:
-
-Additionally, for ease of use, an {\tt Array} can be converted directly
-to/from lists of {\tt Variable} values.
-
-:f DBus/Types/Internal.cpphs
-toArray :: Variable a => Type -> [a] -> Maybe Array
-toArray t = arrayFromItems t . map toVariant
-
-fromArray :: Variable a => Array -> Maybe [a]
-fromArray = mapM fromVariant . arrayItems
-:
-
-:d type exports
-, toArray
-, fromArray
-, arrayFromItems
-:
-
-To provide a more efficient interface for byte array literals, these
-functions bypass the conversions in {\tt toArray} and {\tt fromArray}
-
-:f DBus/Types/Internal.cpphs
-arrayToBytes :: Array -> Maybe BL.ByteString
-arrayToBytes (ByteArray x) = Just x
-arrayToBytes _             = Nothing
-
-arrayFromBytes :: BL.ByteString -> Array
-arrayFromBytes = ByteArray
-:
-
-:d type exports
-, arrayToBytes
-, arrayFromBytes
-:
-
-And to simplify inclusion of {\tt ByteString}s in message, instances of
-{\tt Variable} exist for both strict and lazy {\tt ByteString}.
-
-:f DBus/Types/Internal.cpphs
-instance Variable BL.ByteString where
-	toVariant = toVariant . arrayFromBytes
-	fromVariant x = fromVariant x >>= arrayToBytes
-:
-
-:f DBus/Types/Internal.cpphs
-instance Variable B.ByteString where
-	toVariant x = toVariant . arrayFromBytes $ BL.fromChunks [x]
-	fromVariant = fmap (B.concat . BL.toChunks) . fromVariant
-:
-
-\subsection{Dictionaries}
-
-Dictionaries are a homogenous (key $\rightarrow$ value) mapping, where the
-key type must be atomic. Values may be of any valid D-Bus type. Like
-{\tt Array}, {\tt Dictionary} stores its contained types.
-
-:f DBus/Types/Internal.cpphs
-INSTANCE_VARIABLE(Dictionary)
-
-data Dictionary = Dictionary
-	{ dictionaryKeyType   :: Type
-	, dictionaryValueType :: Type
-	, dictionaryItems     :: [(Variant, Variant)]
-	}
-	deriving (Eq)
-:
-
-:d type exports
-  -- * Dictionaries
-, Dictionary
-, dictionaryItems
-, dictionaryKeyType
-, dictionaryValueType
-:
-
-{\tt show}ing a {\tt Dictionary} displays the mapping in a more readable
-format than a list of pairs.
-
-:d type imports
-import Data.List (intercalate)
-:
-
-:f DBus/Types/Internal.cpphs
-instance Show Dictionary where
-	showsPrec d (Dictionary kt vt pairs) = showParen (d > 10) $
-		s "Dictionary " . showSig . s " {" . s valueString . s "}" where
-			s = showString
-			showSig = shows $ TL.append (typeCode kt) (typeCode vt)
-			valueString = intercalate ", " $ map showPair pairs
-			showPair (k, v) = (showsPrecVar 0 k . showString " -> " . showsPrecVar 0 v) ""
-:
-
-Constructing a {\tt Dictionary} works like constructing an {\tt Array},
-except that there are two types to check, and the key type must be atomic.
-
-:d type imports
-import Control.Monad (unless)
-:
-
-:f DBus/Types/Internal.cpphs
-dictionaryFromItems :: Type -> Type -> [(Variant, Variant)] -> Maybe Dictionary
-dictionaryFromItems kt vt pairs = do
-	unless (isAtomicType kt) Nothing
-	maybeValidType kt
-	maybeValidType vt
-	
-	let sameType (k, v) = variantType k == kt &&
-	                      variantType v == vt
-	if all sameType pairs
-		then Just $ Dictionary kt vt pairs
-		else Nothing
-:
-
-The closest match for dictionary semantics in Haskell is the
-{\tt Data.Map.Map} type. Therefore, the utility conversion functions work
-with {\tt Map}s instead of pair lists.
-
-:d type imports
-import Control.Arrow ((***))
-import qualified Data.Map as Map
-:
-
-:f DBus/Types/Internal.cpphs
-toDictionary :: (Variable a, Variable b) => Type -> Type -> Map.Map a b
-             -> Maybe Dictionary
-toDictionary kt vt = dictionaryFromItems kt vt . pairs where
-	pairs = map (toVariant *** toVariant) . Map.toList
-:
-
-:d type imports
-import Control.Monad (forM)
-:
-
-:f DBus/Types/Internal.cpphs
-fromDictionary :: (Variable a, Ord a, Variable b) => Dictionary
-               -> Maybe (Map.Map a b)
-fromDictionary (Dictionary _ _ vs) = do
-	pairs <- forM vs $ \(k, v) -> do
-		k' <- fromVariant k
-		v' <- fromVariant v
-		return (k', v')
-	return $ Map.fromList pairs
-:
-
-:d type exports
-, toDictionary
-, fromDictionary
-, dictionaryFromItems
-:
-
-\subsubsection*{Converting between {\tt Array} and {\tt Dictionary}}
-
-Converting between {\tt Array} and {\tt Dictionary} is useful when
-(un)marshaling -- dictionaries can be thought of as arrays of two-element
-structures, much as a {\tt Map} is a list of pairs.
-
-:f DBus/Types/Internal.cpphs
-dictionaryToArray :: Dictionary -> Array
-dictionaryToArray (Dictionary kt vt items) = array where
-	Just array = toArray itemType structs
-	itemType = DBusStructure [kt, vt]
-	structs = [Structure [k, v] | (k, v) <- items]
-:
-
-:f DBus/Types/Internal.cpphs
-arrayToDictionary :: Array -> Maybe Dictionary
-arrayToDictionary array = do
-	let toPair x = do
-		struct <- fromVariant x
-		case struct of
-			Structure [k, v] -> Just (k, v)
-			_                -> Nothing
-	(kt, vt) <- case arrayType array of
-		DBusStructure [kt, vt] -> Just (kt, vt)
-		_                      -> Nothing
-	pairs <- mapM toPair $ arrayItems array
-	dictionaryFromItems kt vt pairs
-:
-
-:d type exports
-, dictionaryToArray
-, arrayToDictionary
-:
-
-\subsection{Structures}
-
-A heterogeneous, fixed-length container; equivalent in purpose to a Haskell
-tuple.
-
-:f DBus/Types/Internal.cpphs
-INSTANCE_VARIABLE(Structure)
-
-data Structure = Structure [Variant]
-	deriving (Show, Eq)
-:
-
-:d type exports
-  -- * Structures
-, Structure (..)
-:
-
-\subsection{Names}
-
-Various aspects of D-Bus require the use of specially-formatted strings,
-called ``names''. All names are limited to 255 characters, and use subsets
-of ASCII.
-
-Since all names have basically the same structure (a {\tt newtype}
-declaration and some helper functions), I define a macro to automate
-the definitions.
-
-:f DBus/Types/Internal.cpphs
-#define NAME_TYPE(TYPE, NAME) \
-	newtype TYPE = TYPE {str/**/TYPE :: Text} \
-		deriving (Eq, Ord); \
-		\
-	instance Show TYPE where \
-		{ showsPrec d (TYPE x) = showParen (d > 10) $ \
-			showString "TYPE " . shows x \
-		}; \
-		\
-	instance String.IsString TYPE where \
-		{ fromString = mk/**/TYPE/**/_ . TL.pack }; \
-		\
-	instance Variable TYPE where \
-		{ toVariant = toVariant . str/**/TYPE \
-		; fromVariant = (mk/**/TYPE =<<) . fromVariant }; \
-		                                                \
-	mk/**/TYPE/**/_ :: Text -> TYPE; \
-	mk/**/TYPE/**/_ = mkUnsafe NAME mk/**/TYPE
-:
-
-:d type exports
--- * Names
-:
-
-\subsubsection*{Bus names}
-
-There are two forms of bus names, ``unique'' and ``well-known''.
-
-Unique names begin with {\tt `:'} and contain two or more elements, separated
-by {\tt `.'}. Each element consists of characters from the set
-{\tt [a-zA-Z0-9\_-]}.
-
-Well-known names contain two or more elements, separated by {\tt `.'}. Each
-element consists of characters from the set {\tt [a-zA-Z0-9\_-]}, and must
-not start with a digit.
-
-:f DBus/Types/Internal.cpphs
-NAME_TYPE(BusName, "bus name")
-
-mkBusName :: Text -> Maybe BusName
-mkBusName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
-	c = ['a'..'z'] ++ ['A'..'Z'] ++ "_-"
-	c' = c ++ ['0'..'9']
-	parser = (unique <|> wellKnown) >> P.eof >> return (BusName s)
-	unique = P.char ':' >> elems c'
-	wellKnown = elems c
-	elems start = elem' start >> P.many1 (P.char '.' >> elem' start)
-	elem' start = P.oneOf start >> P.many (P.oneOf c')
-:
-
-:d type exports
-  -- ** Bus names
-, BusName
-, strBusName
-, mkBusName
-, mkBusName_
-:
-
-\subsubsection*{Interface names}
-
-An interface name consists of two or more {\tt '.'}-separated elements. Each
-element constists of characters from the set {\tt [a-zA-Z0-9\_]}, may not
-start with a digit, and must have at least one character.
-
-:f DBus/Types/Internal.cpphs
-NAME_TYPE(InterfaceName, "interface name")
-
-mkInterfaceName :: Text -> Maybe InterfaceName
-mkInterfaceName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
-	c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
-	c' = c ++ ['0'..'9']
-	element = P.oneOf c >> P.many (P.oneOf c')
-	name = element >> P.many1 (P.char '.' >> element)
-	parser = name >> P.eof >> return (InterfaceName s)
-:
-
-:d type exports
-  -- ** Interface names
-, InterfaceName
-, strInterfaceName
-, mkInterfaceName
-, mkInterfaceName_
-:
-
-\subsubsection*{Error names}
-
-Error names have the same format as interface names, so the parser logic
-can just be re-purposed.
-
-:f DBus/Types/Internal.cpphs
-NAME_TYPE(ErrorName, "error name")
-
-mkErrorName :: Text -> Maybe ErrorName
-mkErrorName = fmap (ErrorName . strInterfaceName) . mkInterfaceName
-:
-
-:d type exports
-  -- ** Error names
-, ErrorName
-, strErrorName
-, mkErrorName
-, mkErrorName_
-:
-
-\subsubsection*{Member names}
-
-Member names must contain only characters from the set {\tt [a-zA-Z0-9\_]},
-may not begin with a digit, and must be at least one character long.
-
-:f DBus/Types/Internal.cpphs
-NAME_TYPE(MemberName, "member name")
-
-mkMemberName :: Text -> Maybe MemberName
-mkMemberName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
-	c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
-	c' = c ++ ['0'..'9']
-	name = P.oneOf c >> P.many (P.oneOf c')
-	parser = name >> P.eof >> return (MemberName s)
-:
-
-:d type exports
-  -- ** Member names
-, MemberName
-, strMemberName
-, mkMemberName
-, mkMemberName_
-:
-
-\subsection{UUIDs}
-
-D-Bus {\sc uuid}s are 128-bit unique identifiers, used for server instances
-and machine {\sc id}s. They are not compatible with {\sc rfc4122}.
-
-:f DBus/UUID.hs
-|copyright|
-module DBus.UUID
-	( UUID
-	, toHex
-	, fromHex
-	) where
-|text imports|
-
-newtype UUID = UUID Text -- TODO: (Word64, Word64)?
-	deriving (Eq)
-
-instance Show UUID where
-	showsPrec d uuid = showParen (d > 10) $
-		showString "UUID " . shows (toHex uuid)
-
-toHex :: UUID -> Text
-toHex (UUID text) = text
-
-fromHex :: Text -> Maybe UUID
-fromHex text = if validUUID text
-	then Just $ UUID text
-	else Nothing
-
-validUUID :: Text -> Bool
-validUUID text = valid where
-	valid = and [TL.length text == 32, TL.all validChar text]
-	validChar c = or
-		[ c >= '0' && c <= '9'
-		, c >= 'a' && c <= 'f'
-		, c >= 'A' && c <= 'F'
-		]
+					Just (ii' + 1, TypeDictionary t1 t2)
 :

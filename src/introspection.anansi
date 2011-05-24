@@ -54,7 +54,9 @@ module DBus.Introspection
 	, toXML
 	, fromXML
 	) where
-|text imports|
+import qualified Data.Text
+import           Data.Text (Text)
+import qualified Data.Text.Lazy
 |introspection imports|
 import qualified DBus.Types as T
 :
@@ -128,7 +130,7 @@ parseElement text = runST $ do
 	p <- SAX.newParserST onError Nothing
 	SAX.setCallback p SAX.parsedBeginElement onBegin
 	SAX.setCallback p SAX.parsedEndElement onEnd
-	SAX.parseLazyText p text
+	SAX.parseText p text
 	SAX.parseComplete p
 	stack <- ST.readSTRef stackRef
 	return $ case stack of
@@ -148,7 +150,7 @@ parseRoot :: T.ObjectPath -> X.Element -> Maybe Object
 parseRoot defaultPath e = do
 	path <- case getattrM "name" e of
 		Nothing -> Just defaultPath
-		Just x  -> T.mkObjectPath x
+		Just x  -> T.objectPath x
 	parseObject path e
 :
 
@@ -159,11 +161,11 @@ the root object's path.
 :f DBus/Introspection.hs
 parseChild :: T.ObjectPath -> X.Element -> Maybe Object
 parseChild parentPath e = do
-	let parentPath' = case T.strObjectPath parentPath of
+	let parentPath' = case T.objectPathText parentPath of
 		"/" -> "/"
-		x   -> TL.append x "/"
+		x   -> Data.Text.append x "/"
 	pathSegment <- getattrM "name" e
-	path <- T.mkObjectPath $ TL.append parentPath' pathSegment
+	path <- T.objectPath $ Data.Text.append parentPath' pathSegment
 	parseObject path e
 :
 
@@ -184,7 +186,7 @@ Interfaces may contain methods, signals, and properties.
 :f DBus/Introspection.hs
 parseInterface :: X.Element -> Maybe Interface
 parseInterface e = do
-	name <- T.mkInterfaceName =<< getattrM "name" e
+	name <- T.interfaceName =<< getattrM "name" e
 	methods <- children parseMethod (named "method") e
 	signals <- children parseSignal (named "signal") e
 	properties <- children parseProperty (named "property") e
@@ -197,7 +199,7 @@ if no direction is specified.
 :f DBus/Introspection.hs
 parseMethod :: X.Element -> Maybe Method
 parseMethod e = do
-	name <- T.mkMemberName =<< getattrM "name" e
+	name <- T.memberName =<< getattrM "name" e
 	paramsIn <- children parseParameter (isParam ["in", ""]) e
 	paramsOut <- children parseParameter (isParam ["out"]) e
 	return $ Method name paramsIn paramsOut
@@ -208,7 +210,7 @@ Signals are similar to methods, except they have no ``in'' parameters.
 :f DBus/Introspection.hs
 parseSignal :: X.Element -> Maybe Signal
 parseSignal e = do
-	name <- T.mkMemberName =<< getattrM "name" e
+	name <- T.memberName =<< getattrM "name" e
 	params <- children parseParameter (isParam ["out", ""]) e
 	return $ Signal name params
 :
@@ -226,7 +228,7 @@ parseParameter e = do
 :f DBus/Introspection.hs
 parseType :: X.Element -> Maybe T.Signature
 parseType e = do
-	sig <- T.mkSignature =<< getattrM "type" e
+	sig <- T.signature =<< getattrM "type" e
 	case T.signatureTypes sig of
 		[_] -> Just sig
 		_   -> Nothing
@@ -259,7 +261,7 @@ getattrM :: Text -> X.Element -> Maybe Text
 getattrM name = fmap attrText . listToMaybe . attrs where
 	attrText = textContent . X.attributeContent
 	attrs = X.elementAttributes >=> X.isNamed (toName name)
-	textContent cs = TL.concat [t | X.ContentText t <- cs]
+	textContent cs = Data.Text.Lazy.toStrict (Data.Text.Lazy.concat [t | X.ContentText t <- cs])
 
 getattr :: Text -> X.Element -> Text
 getattr = (fromMaybe "" .) . getattrM
@@ -275,7 +277,7 @@ named :: X.Named a => Text -> a -> [a]
 named = X.isNamed . toName
 
 toName :: Text -> X.Name
-toName t = X.Name t Nothing Nothing
+toName t = X.Name (Data.Text.Lazy.fromStrict t) Nothing Nothing
 :
 
 \subsection*{Generating XML}
@@ -292,11 +294,11 @@ a little thing.
 newtype XmlWriter a = XmlWriter { runXmlWriter :: Maybe (a, Text) }
 
 instance Monad XmlWriter where
-	return a = XmlWriter $ Just (a, TL.empty)
+	return a = XmlWriter $ Just (a, Data.Text.empty)
 	m >>= f = XmlWriter $ do
 		(a, w) <- runXmlWriter m
 		(b, w') <- runXmlWriter (f a)
-		return (b, TL.append w w')
+		return (b, Data.Text.append w w')
 :
 
 :f DBus/Introspection.hs
@@ -316,18 +318,18 @@ writeRoot :: Object -> XmlWriter ()
 writeRoot obj@(Object path _ _) = do
 	tell "<!DOCTYPE node PUBLIC '-//freedesktop//DTD D-BUS Object Introspection 1.0//EN'"
 	tell " 'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>\n"
-	writeObject (T.strObjectPath path) obj
+	writeObject (T.objectPathText path) obj
 :
 
 :f DBus/Introspection.hs
 writeChild :: T.ObjectPath -> Object -> XmlWriter ()
 writeChild parentPath obj@(Object path _ _) = write where
-	path' = T.strObjectPath path
-	parent' = T.strObjectPath parentPath
-	relpathM = if TL.isPrefixOf parent' path'
+	path' = T.objectPathText path
+	parent' = T.objectPathText parentPath
+	relpathM = if Data.Text.isPrefixOf parent' path'
 		then Just $ if parent' == "/"
-			then TL.drop 1 path'
-			else TL.drop (TL.length parent' + 1) path'
+			then Data.Text.drop 1 path'
+			else Data.Text.drop (Data.Text.length parent' + 1) path'
 		else Nothing
 	
 	write = case relpathM of
@@ -346,7 +348,7 @@ writeObject path (Object fullPath interfaces children') = writeElement "node"
 :f DBus/Introspection.hs
 writeInterface :: Interface -> XmlWriter ()
 writeInterface (Interface name methods signals properties) = writeElement "interface"
-	[("name", T.strInterfaceName name)] $ do
+	[("name", T.interfaceNameText name)] $ do
 		mapM_ writeMethod methods
 		mapM_ writeSignal signals
 		mapM_ writeProperty properties
@@ -355,7 +357,7 @@ writeInterface (Interface name methods signals properties) = writeElement "inter
 :f DBus/Introspection.hs
 writeMethod :: Method -> XmlWriter ()
 writeMethod (Method name inParams outParams) = writeElement "method"
-	[("name", T.strMemberName name)] $ do
+	[("name", T.memberNameText name)] $ do
 		mapM_ (writeParameter "in") inParams
 		mapM_ (writeParameter "out") outParams
 :
@@ -363,7 +365,7 @@ writeMethod (Method name inParams outParams) = writeElement "method"
 :f DBus/Introspection.hs
 writeSignal :: Signal -> XmlWriter ()
 writeSignal (Signal name params) = writeElement "signal"
-	[("name", T.strMemberName name)] $ do
+	[("name", T.memberNameText name)] $ do
 		mapM_ (writeParameter "out") params
 :
 
@@ -371,7 +373,7 @@ writeSignal (Signal name params) = writeElement "signal"
 writeParameter :: Text -> Parameter -> XmlWriter ()
 writeParameter direction (Parameter name sig) = writeEmptyElement "arg"
 	[ ("name", name)
-	, ("type", T.strSignature sig)
+	, ("type", T.signatureText sig)
 	, ("direction", direction)
 	]
 :
@@ -380,14 +382,14 @@ writeParameter direction (Parameter name sig) = writeEmptyElement "arg"
 writeProperty :: Property -> XmlWriter ()
 writeProperty (Property name sig access) = writeEmptyElement "property"
 	[ ("name", name)
-	, ("type", T.strSignature sig)
+	, ("type", T.signatureText sig)
 	, ("access", strAccess access)
 	]
 :
 
 :f DBus/Introspection.hs
 strAccess :: [PropertyAccess] -> Text
-strAccess access = TL.append readS writeS where
+strAccess access = Data.Text.append readS writeS where
 	readS = if elem Read access then "read" else ""
 	writeS = if elem Write access then "write" else ""
 :
@@ -426,12 +428,12 @@ writeAttribute (name, content) = do
 
 :f DBus/Introspection.hs
 escape :: Text -> Text
-escape = TL.concatMap escapeChar where
+escape = Data.Text.concatMap escapeChar where
 	escapeChar c = case c of
 		'&' -> "&amp;"
 		'<' -> "&lt;"
 		'>' -> "&gt;"
 		'"' -> "&quot;"
 		'\'' -> "&apos;"
-		_ -> TL.singleton c
+		_ -> Data.Text.singleton c
 :

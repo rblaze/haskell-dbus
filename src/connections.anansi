@@ -66,6 +66,45 @@ instance Show Connection where
 		s = showString
 :
 
+\subsection{UUIDs}
+
+D-Bus {\sc uuid}s are 128-bit unique identifiers, used for server instances
+and machine {\sc id}s. They are not compatible with {\sc rfc4122}.
+
+:f DBus/UUID.hs
+|copyright|
+module DBus.UUID
+	( UUID
+	, toHex
+	, fromHex
+	) where
+|text imports|
+
+newtype UUID = UUID Text -- TODO: (Word64, Word64)?
+	deriving (Eq)
+
+instance Show UUID where
+	showsPrec d uuid = showParen (d > 10) $
+		showString "UUID " . shows (toHex uuid)
+
+toHex :: UUID -> Text
+toHex (UUID text) = text
+
+fromHex :: Text -> Maybe UUID
+fromHex text = if validUUID text
+	then Just $ UUID text
+	else Nothing
+
+validUUID :: Text -> Bool
+validUUID text = valid where
+	valid = and [TL.length text == 32, TL.all validChar text]
+	validChar c = or
+		[ c >= '0' && c <= '9'
+		, c >= 'a' && c <= 'f'
+		, c >= 'A' && c <= 'F'
+		]
+:
+
 \subsection{Transports}
 
 A transport is anything which can send and receive bytestrings, typically

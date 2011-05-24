@@ -144,7 +144,7 @@ added type-safety.
 newtype Serial = Serial Word32
 	deriving (Eq, Ord, Show)
 
-instance T.Variable Serial where
+instance T.IsVariant Serial where
 	toVariant (Serial x) = T.toVariant x
 	fromVariant = fmap Serial . T.fromVariant
 :
