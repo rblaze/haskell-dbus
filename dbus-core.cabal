@@ -81,13 +81,13 @@ library
     DBus.Types
     DBus.UUID
     DBus.Wire
-    DBus.Wire.Marshal
-    DBus.Wire.Unmarshal
-    DBus.Message.Internal
-    DBus.Wire.Internal
 
   other-modules:
+    DBus.Message.Internal
     DBus.Types.Internal
-    DBus.Wire.Unicode
     DBus.Util
     DBus.Util.MonadError
+    DBus.Wire.Internal
+    DBus.Wire.Marshal
+    DBus.Wire.Unicode
+    DBus.Wire.Unmarshal
