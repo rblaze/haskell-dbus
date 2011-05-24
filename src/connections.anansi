@@ -41,12 +41,20 @@ import qualified DBus.UUID as UUID
 
 :f DBus/Connection.hs
 data Connection = Connection
-	{ connectionAddress    :: A.Address
-	, connectionTransport  :: Transport
-	, connectionSerialMVar :: C.MVar M.Serial
-	, connectionReadMVar   :: C.MVar ()
-	, connectionUUID       :: UUID.UUID
-	}
+	A.Address
+	Transport
+	(C.MVar M.Serial)
+	(C.MVar ())
+	UUID.UUID
+
+connectionAddress :: Connection -> A.Address
+connectionAddress (Connection x _ _ _ _) = x
+
+connectionTransport :: Connection -> Transport
+connectionTransport (Connection _ x _ _ _) = x
+
+connectionUUID :: Connection -> UUID.UUID
+connectionUUID (Connection _ _ _ _ x) = x
 :
 
 :d connection exports
