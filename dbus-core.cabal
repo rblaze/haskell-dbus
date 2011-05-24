@@ -19,21 +19,8 @@ extra-source-files:
   examples/dbus-monitor.hs
   examples/simple.hs
   --
-  src/addresses.anansi
-  src/api-docs.anansi
-  src/authentication.anansi
-  src/bus.anansi
-  src/connections.anansi
-  src/constants.anansi
-  src/dbus-core.anansi
-  src/introduction.anansi
-  src/introspection.anansi
-  src/match-rules.anansi
-  src/messages.anansi
-  src/name-reservation.anansi
-  src/types.anansi
-  src/util.anansi
-  src/wire.anansi
+  latex/geometry.sty
+  latex/noweb.sty
   --
   scripts/common.bash
   scripts/dist
@@ -41,6 +28,25 @@ extra-source-files:
   scripts/latex
   scripts/run-benchmarks
   scripts/run-tests
+  --
+  src/addresses.anansi
+  src/api-docs.anansi
+  src/authentication.anansi
+  src/bus.anansi
+  src/connections.anansi
+  src/constants.anansi
+  src/copyright.anansi
+  src/dbus-core.anansi
+  src/introspection.anansi
+  src/match-rules.anansi
+  src/messages.anansi
+  src/module-headers.anansi
+  src/name-reservation.anansi
+  src/summary.anansi
+  src/type-instances.anansi
+  src/types.anansi
+  src/utilities.anansi
+  src/wire.anansi
   --
   tests/Properties.hs
   tests/dbus-core-tests.cabal
