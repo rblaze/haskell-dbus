@@ -2,7 +2,7 @@ name: dbus-core
 version: 0.9
 synopsis: Low-level D-Bus protocol implementation
 license: GPL-3
-license-file: License.txt
+license-file: license.txt
 author: John Millikin
 maintainer: jmillikin@gmail.com
 build-type: Simple
