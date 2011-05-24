@@ -16,5 +16,7 @@ executable dbus-core_tests
     , binary
     , parsec >= 3.1
     , QuickCheck == 2.4.*
+    , HUnit == 1.2.*
     , test-framework >= 0.2 && < 0.4
     , test-framework-quickcheck2 == 0.2.9
+    , test-framework-hunit == 0.2.6

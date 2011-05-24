@@ -526,7 +526,9 @@ structure buf len = loop [] where
 					Nothing -> return Nothing
 			
 			-- ')'
-			0x29 -> return $ Just $ (ii + 1, DBusStructure (reverse acc))
+			0x29 -> return $ case acc of
+				[] -> Nothing
+				_ -> Just $ (ii + 1, DBusStructure (reverse acc))
 			
 			-- 'a'
 			0x61 -> do
