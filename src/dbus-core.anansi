@@ -43,6 +43,9 @@
 % Smaller spacing between ToC sections
 \setlength{\cftbeforesecskip}{0.7em}
 
+% No extra margins in code blocks
+\codemargin=0pt
+
 \title{dbus\_0.9}
 \author{John Millikin\\
         \href{mailto:"John Millikin" <jmillikin@gmail.com>}{\tt jmillikin@gmail.com}}
