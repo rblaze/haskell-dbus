@@ -122,11 +122,10 @@ import qualified Data.Text
 import           Data.Text (Text)
 import qualified Data.Vector
 import           Data.Vector (Vector)
-import           Data.Word (Word8, Word32, Word64)
+import           Data.Word (Word8, Word16, Word32, Word64)
 
 import qualified Data.Binary.IEEE754
 
-import qualified DBus.Constants as C
 import qualified DBus.Message.Internal as M
 import qualified DBus.Types.Internal as T
 import           DBus.Wire.Unicode (maybeEncodeUtf8, maybeDecodeUtf8)
