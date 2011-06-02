@@ -188,7 +188,7 @@ data UnmarshalError
 	| UnexpectedEOF Word64
 	| Invalid Text Text
 	| MissingHeaderField Text
-	| InvalidHeaderField Text T.Variant
+	| InvalidHeaderField Text Variant
 	| InvalidPadding Word64
 	| MissingTerminator Word64
 	| ArraySizeMismatch
@@ -218,28 +218,28 @@ instance Show UnmarshalError where
 \subsection{Marshaling values}
 
 :d DBus.Wire
-marshal :: T.Value -> Marshal ()
-marshal (T.ValueAtom x) = marshalAtom x
-marshal (T.ValueVector t xs) = marshalVector t xs
-marshal (T.ValueMap t xs) = marshalMap t xs
-marshal (T.ValueStructure xs) = marshalStructure xs
-marshal (T.ValueVariant x) = marshalVariant x
+marshal :: Value -> Marshal ()
+marshal (ValueAtom x) = marshalAtom x
+marshal (ValueVector t xs) = marshalVector t xs
+marshal (ValueMap t xs) = marshalMap t xs
+marshal (ValueStructure xs) = marshalStructure xs
+marshal (ValueVariant x) = marshalVariant x
 :
 
 :d DBus.Wire
-marshalAtom :: T.Atom -> Marshal ()
-marshalAtom (T.AtomWord8  x) = marshalWord8 x
-marshalAtom (T.AtomWord16 x) = marshalWord16 x
-marshalAtom (T.AtomWord32 x) = marshalWord32 x
-marshalAtom (T.AtomWord64 x) = marshalWord64 x
-marshalAtom (T.AtomInt16  x) = marshalInt16 x
-marshalAtom (T.AtomInt32  x) = marshalInt32 x
-marshalAtom (T.AtomInt64  x) = marshalInt64 x
-marshalAtom (T.AtomDouble x) = marshalDouble x
-marshalAtom (T.AtomBool x) = marshalBool x
-marshalAtom (T.AtomText x) = marshalText x
-marshalAtom (T.AtomObjectPath x) = marshalObjectPath x
-marshalAtom (T.AtomSignature x) = marshalSignature x
+marshalAtom :: Atom -> Marshal ()
+marshalAtom (AtomWord8 x) = marshalWord8 x
+marshalAtom (AtomWord16 x) = marshalWord16 x
+marshalAtom (AtomWord32 x) = marshalWord32 x
+marshalAtom (AtomWord64 x) = marshalWord64 x
+marshalAtom (AtomInt16 x) = marshalInt16 x
+marshalAtom (AtomInt32 x) = marshalInt32 x
+marshalAtom (AtomInt64 x) = marshalInt64 x
+marshalAtom (AtomDouble x) = marshalDouble x
+marshalAtom (AtomBool x) = marshalBool x
+marshalAtom (AtomText x) = marshalText x
+marshalAtom (AtomObjectPath x) = marshalObjectPath x
+marshalAtom (AtomSignature x) = marshalSignature x
 :
 
 \clearpage
@@ -253,23 +253,23 @@ Numeric values are fixed-length, and aligned ``naturally'' -- ie, a 4-byte
 integer will have a 4-byte alignment.
 
 :d DBus.Wire
-alignment :: T.Type -> Word8
-alignment T.TypeBoolean = 4
-alignment T.TypeWord8 = 1
-alignment T.TypeWord16 = 2
-alignment T.TypeWord32 = 4
-alignment T.TypeWord64 = 8
-alignment T.TypeInt16 = 2
-alignment T.TypeInt32 = 4
-alignment T.TypeInt64 = 8
-alignment T.TypeDouble = 8
-alignment T.TypeString = 4
-alignment T.TypeObjectPath = 4
-alignment T.TypeSignature = 1
-alignment (T.TypeArray _) = 4
-alignment (T.TypeDictionary _ _) = 4
-alignment (T.TypeStructure _) = 8
-alignment T.TypeVariant = 1
+alignment :: Type -> Word8
+alignment TypeBoolean = 4
+alignment TypeWord8 = 1
+alignment TypeWord16 = 2
+alignment TypeWord32 = 4
+alignment TypeWord64 = 8
+alignment TypeInt16 = 2
+alignment TypeInt32 = 4
+alignment TypeInt64 = 8
+alignment TypeDouble = 8
+alignment TypeString = 4
+alignment TypeObjectPath = 4
+alignment TypeSignature = 1
+alignment (TypeArray _) = 4
+alignment (TypeDictionary _ _) = 4
+alignment (TypeStructure _) = 8
+alignment TypeVariant = 1
 :
 
 :d DBus.Wire
@@ -322,22 +322,22 @@ unmarshalWord32 = unmarshalGet 4 Data.Binary.Get.getWord32be Data.Binary.Get.get
 :
 
 :d unmarshalers
-unmarshalType T.TypeWord8 = liftM (T.toValue . Data.ByteString.Lazy.head) $ consume 1
-unmarshalType T.TypeWord16 = unmarshalGet' 2 Data.Binary.Get.getWord16be Data.Binary.Get.getWord16le
-unmarshalType T.TypeWord32 = unmarshalGet' 4 Data.Binary.Get.getWord32be Data.Binary.Get.getWord32le
-unmarshalType T.TypeWord64 = unmarshalGet' 8 Data.Binary.Get.getWord64be Data.Binary.Get.getWord64le
+unmarshalType TypeWord8 = liftM (toValue . Data.ByteString.Lazy.head) $ consume 1
+unmarshalType TypeWord16 = unmarshalGet' 2 Data.Binary.Get.getWord16be Data.Binary.Get.getWord16le
+unmarshalType TypeWord32 = unmarshalGet' 4 Data.Binary.Get.getWord32be Data.Binary.Get.getWord32le
+unmarshalType TypeWord64 = unmarshalGet' 8 Data.Binary.Get.getWord64be Data.Binary.Get.getWord64le
 
-unmarshalType T.TypeInt16  = do
+unmarshalType TypeInt16  = do
 	x <- unmarshalGet 2 Data.Binary.Get.getWord16be Data.Binary.Get.getWord16le
-	return . T.toValue $ (fromIntegral x :: Int16)
+	return (toValue (fromIntegral x :: Int16))
 
-unmarshalType T.TypeInt32  = do
+unmarshalType TypeInt32  = do
 	x <- unmarshalGet 4 Data.Binary.Get.getWord32be Data.Binary.Get.getWord32le
-	return . T.toValue $ (fromIntegral x :: Int32)
+	return (toValue (fromIntegral x :: Int32))
 
-unmarshalType T.TypeInt64  = do
+unmarshalType TypeInt64  = do
 	x <- unmarshalGet 8 Data.Binary.Get.getWord64be Data.Binary.Get.getWord64le
-	return . T.toValue $ (fromIntegral x :: Int64)
+	return (toValue (fromIntegral x :: Int64))
 :
 
 \clearpage
@@ -358,7 +358,7 @@ marshalDouble x = do
 :
 
 :d unmarshalers
-unmarshalType T.TypeDouble = unmarshalGet' 8 Data.Binary.IEEE754.getFloat64be Data.Binary.IEEE754.getFloat64le
+unmarshalType TypeDouble = unmarshalGet' 8 Data.Binary.IEEE754.getFloat64be Data.Binary.IEEE754.getFloat64le
 :
 
 \subsubsection{Booleans}
@@ -372,7 +372,7 @@ marshalBool = undefined
 :
 
 :d unmarshalers
-unmarshalType T.TypeBoolean = unmarshalWord32 >>=
+unmarshalType TypeBoolean = unmarshalWord32 >>=
 	fromMaybeU' "boolean" (\x -> case x of
 		0 -> Just False
 		1 -> Just True
@@ -427,15 +427,15 @@ unmarshalText = do
 :
 
 :d DBus.Wire
-marshalObjectPath :: T.ObjectPath -> Marshal ()
+marshalObjectPath :: ObjectPath -> Marshal ()
 marshalObjectPath = undefined
 :
 
 :d unmarshalers
-unmarshalType T.TypeString = liftM T.toValue unmarshalText
+unmarshalType TypeString = liftM toValue unmarshalText
 
-unmarshalType T.TypeObjectPath = unmarshalText >>=
-	fromMaybeU' "object path" T.objectPath
+unmarshalType TypeObjectPath = unmarshalText >>=
+	fromMaybeU' "object path" objectPath
 :
 
 \clearpage
@@ -445,10 +445,10 @@ Signatures are similar to strings, except their length is limited to 255
 characters and is therefore stored as a single byte.
 
 :d DBus.Wire
-signatureBytes :: T.Signature -> Data.ByteString.ByteString
-signatureBytes (T.Signature ts) = Data.ByteString.Char8.pack (concatMap T.typeCode ts)
+signatureBytes :: Signature -> Data.ByteString.ByteString
+signatureBytes (Signature ts) = Data.ByteString.Char8.pack (concatMap typeCode ts)
 
-marshalSignature :: T.Signature -> Marshal ()
+marshalSignature :: Signature -> Marshal ()
 marshalSignature x = do
 	let bytes = signatureBytes x
 	let size = fromIntegral . Data.ByteString.length $ bytes
@@ -458,24 +458,24 @@ marshalSignature x = do
 :
 
 :d DBus.Wire
-unmarshalSignature :: Unmarshal T.Signature
+unmarshalSignature :: Unmarshal Signature
 unmarshalSignature = do
 	byteCount <- Data.ByteString.Lazy.head `liftM` consume 1
 	lazy <- consume $ fromIntegral byteCount
 	skipTerminator
 	let bytes = Data.ByteString.concat $ Data.ByteString.Lazy.toChunks lazy
-	fromMaybeU "signature" T.parseSignature bytes
+	fromMaybeU "signature" parseSignature bytes
 :
 
 :d unmarshalers
-unmarshalType T.TypeSignature = liftM T.toValue unmarshalSignature
+unmarshalType TypeSignature = liftM toValue unmarshalSignature
 :
 
 \clearpage
 \subsubsection{Arrays}
 
 :d unmarshalers
-unmarshalType t@(T.TypeArray t') = T.ValueVector t `liftM` unmarshalArray t'
+unmarshalType t@(TypeArray t') = ValueVector t `liftM` unmarshalArray t'
 :
 
 Marshaling arrays is complicated, because the array body must be marshaled
@@ -488,7 +488,7 @@ arrayMaximumLength = 67108864
 :
 
 :d DBus.Wire
-marshalVector :: T.Type -> Vector T.Value -> Marshal ()
+marshalVector :: Type -> Vector Value -> Marshal ()
 marshalVector t x = do
 	(arrayPadding, arrayBytes) <- getArrayBytes t x
 	let arrayLen = Data.ByteString.Lazy.length arrayBytes
@@ -500,7 +500,7 @@ marshalVector t x = do
 :
 
 :d DBus.Wire
-getArrayBytes :: T.Type -> Vector T.Value -> Marshal (Int64, Data.ByteString.Lazy.ByteString)
+getArrayBytes :: Type -> Vector Value -> Marshal (Int64, Data.ByteString.Lazy.ByteString)
 getArrayBytes itemType vs = do
 	s <- getState
 	(MarshalState _ afterLength) <- marshalWord32 0 >> getState
@@ -519,7 +519,7 @@ getArrayBytes itemType vs = do
 Unmarshaling is much easier, especially if it's a byte array.
 
 :d DBus.Wire
-unmarshalArray :: T.Type -> Unmarshal (Vector T.Value)
+unmarshalArray :: Type -> Unmarshal (Vector Value)
 unmarshalArray itemType = do
 	let getOffset = do
 		(UnmarshalState _ o) <- getState
@@ -539,57 +539,57 @@ unmarshalArray itemType = do
 \subsubsection{Dictionaries}
 
 :d DBus.Wire
-dictionaryToArray :: Map T.Atom T.Value -> Vector T.Value
+dictionaryToArray :: Map Atom Value -> Vector Value
 dictionaryToArray = Data.Vector.fromList . map step . Data.Map.toList where
-	step (k, v) = T.ValueStructure [T.ValueAtom k, v]
+	step (k, v) = ValueStructure [ValueAtom k, v]
 :
 
 :d DBus.Wire
-arrayToDictionary :: Vector T.Value -> Map T.Atom T.Value
+arrayToDictionary :: Vector Value -> Map Atom Value
 arrayToDictionary = Data.Map.fromList . map step . Data.Vector.toList where
-	step (T.ValueStructure [T.ValueAtom k, v]) = (k, v)
+	step (ValueStructure [ValueAtom k, v]) = (k, v)
 	step _ = error "arrayToDictionary: internal error"
 :
 
 :d DBus.Wire
-marshalMap :: T.Type -> Map T.Atom T.Value -> Marshal ()
+marshalMap :: Type -> Map Atom Value -> Marshal ()
 marshalMap t x = let
-	T.TypeDictionary kt vt = t
-	structType = T.TypeStructure [kt, vt]
+	TypeDictionary kt vt = t
+	structType = TypeStructure [kt, vt]
 	array = dictionaryToArray x
 	in marshalVector structType array
 :
 
 :d unmarshalers
-unmarshalType t@(T.TypeDictionary kt vt) = do
-	let pairType = T.TypeStructure [kt, vt]
+unmarshalType t@(TypeDictionary kt vt) = do
+	let pairType = TypeStructure [kt, vt]
 	array <- unmarshalArray pairType
-	return (T.ValueMap t (arrayToDictionary array))
+	return (ValueMap t (arrayToDictionary array))
 :
 
 \clearpage
 \subsubsection{Structures}
 
 :d DBus.Wire
-marshalStructure :: [T.Value] -> Marshal ()
+marshalStructure :: [Value] -> Marshal ()
 marshalStructure vs = do
 	pad 8
 	mapM_ marshal vs
 :
 
 :d unmarshalers
-unmarshalType (T.TypeStructure ts) = do
+unmarshalType (TypeStructure ts) = do
 	skipPadding 8
-	liftM T.ValueStructure $ mapM unmarshalType ts
+	liftM ValueStructure (mapM unmarshalType ts)
 :
 
 \subsubsection{Variants}
 
 :d DBus.Wire
-marshalVariant :: T.Variant -> Marshal ()
-marshalVariant (T.Variant val) = do
-	let textSig = Data.Text.pack (T.typeCode (T.valueType val))
-	sig <- case T.signature textSig of
+marshalVariant :: Variant -> Marshal ()
+marshalVariant (Variant val) = do
+	let textSig = Data.Text.pack (typeCode (valueType val))
+	sig <- case signature textSig of
 		Just x' -> return x'
 		Nothing -> throwError $ InvalidVariantSignature textSig
 	marshalSignature sig
@@ -597,13 +597,13 @@ marshalVariant (T.Variant val) = do
 :
 
 :d unmarshalers
-unmarshalType T.TypeVariant = do
-	let getType sig = case T.signatureTypes sig of
+unmarshalType TypeVariant = do
+	let getType sig = case signatureTypes sig of
 		[t] -> Just t
 		_   -> Nothing
 	
 	t <- fromMaybeU "variant signature" getType =<< unmarshalSignature
-	(T.toValue . T.Variant) `liftM` unmarshalType t
+	(toValue . Variant) `liftM` unmarshalType t
 :
 
 
@@ -677,10 +677,10 @@ runUnmarshal m e bytes = case unWire m e (UnmarshalState bytes 0) of
 :
 
 :d DBus.Wire
-unmarshal :: T.Signature -> Unmarshal [T.Value]
-unmarshal = mapM unmarshalType . T.signatureTypes
+unmarshal :: Signature -> Unmarshal [Value]
+unmarshal = mapM unmarshalType . signatureTypes
 
-unmarshalType :: T.Type -> Unmarshal T.Value
+unmarshalType :: Type -> Unmarshal Value
 |unmarshalers|
 :
 
@@ -724,11 +724,11 @@ fromMaybeU2 show' label f x = case f x of
 	Just x' -> return x'
 	Nothing -> throwError . Invalid label . Data.Text.pack . show' $ x
 
-fromMaybeU' :: (Show a, T.IsValue b) => Text -> (a -> Maybe b) -> a
-           -> Unmarshal T.Value
+fromMaybeU' :: (Show a, IsValue b) => Text -> (a -> Maybe b) -> a
+           -> Unmarshal Value
 fromMaybeU' label f x = do
 	x' <- fromMaybeU label f x
-	return $ T.toValue x'
+	return (toValue x')
 :
 
 :d DBus.Wire
@@ -743,9 +743,9 @@ unmarshalGet count be le = do
 			LittleEndian -> le
 		in WireRR (Data.Binary.Get.runGet get bs) s
 
-unmarshalGet' :: T.IsValue a => Word8 -> Data.Binary.Get.Get a -> Data.Binary.Get.Get a
-              -> Unmarshal T.Value
-unmarshalGet' count be le = T.toValue `liftM` unmarshalGet count be le
+unmarshalGet' :: IsValue a => Word8 -> Data.Binary.Get.Get a -> Data.Binary.Get.Get a
+              -> Unmarshal Value
+unmarshalGet' count be le = toValue `liftM` unmarshalGet count be le
 :
 
 :d DBus.Wire
@@ -757,7 +757,7 @@ untilM test comp = do
 		else do
 			x <- comp
 			xs <- untilM test comp
-			return $ x:xs
+			return (x:xs)
 :
 
 \clearpage
@@ -774,17 +774,17 @@ messageMaximumLength = 134217728
 \subsubsection{Flags}
 
 :d DBus.Wire
-encodeFlags :: Data.Set.Set M.Flag -> Word8
+encodeFlags :: Set Flag -> Word8
 encodeFlags flags = foldr (.|.) 0 $ map flagValue $ Data.Set.toList flags where
-	flagValue M.NoReplyExpected = 0x1
-	flagValue M.NoAutoStart     = 0x2
+	flagValue NoReplyExpected = 0x1
+	flagValue NoAutoStart     = 0x2
 :
 
 :d DBus.Wire
-decodeFlags :: Word8 -> Data.Set.Set M.Flag
+decodeFlags :: Word8 -> Set Flag
 decodeFlags word = Data.Set.fromList flags where
-	flagSet = [ (0x1, M.NoReplyExpected)
-	          , (0x2, M.NoAutoStart)
+	flagSet = [ (0x1, NoReplyExpected)
+	          , (0x2, NoAutoStart)
 	          ]
 	flags = flagSet >>= \(x, y) -> [y | word .&. x > 0]
 :
@@ -793,37 +793,37 @@ decodeFlags word = Data.Set.fromList flags where
 \subsubsection{Header fields}
 
 :d DBus.Wire
-encodeField :: M.HeaderField -> T.Value
-encodeField (M.Path x)        = encodeField' 1 x
-encodeField (M.Interface x)   = encodeField' 2 x
-encodeField (M.Member x)      = encodeField' 3 x
-encodeField (M.ErrorName x)   = encodeField' 4 x
-encodeField (M.ReplySerial x) = encodeField' 5 x
-encodeField (M.Destination x) = encodeField' 6 x
-encodeField (M.Sender x)      = encodeField' 7 x
-encodeField (M.Signature x)   = encodeField' 8 x
+encodeField :: HeaderField -> Value
+encodeField (HeaderPath x)        = encodeField' 1 x
+encodeField (HeaderInterface x)   = encodeField' 2 x
+encodeField (HeaderMember x)      = encodeField' 3 x
+encodeField (HeaderErrorName x)   = encodeField' 4 x
+encodeField (HeaderReplySerial x) = encodeField' 5 x
+encodeField (HeaderDestination x) = encodeField' 6 x
+encodeField (HeaderSender x)      = encodeField' 7 x
+encodeField (HeaderSignature x)   = encodeField' 8 x
 
-encodeField' :: T.IsVariant a => Word8 -> a -> T.Value
-encodeField' code x = T.toValue (code, T.toVariant x)
+encodeField' :: IsVariant a => Word8 -> a -> Value
+encodeField' code x = toValue (code, toVariant x)
 :
 
 :d DBus.Wire
-decodeField :: (Word8, T.Variant)
-            -> E.ErrorM UnmarshalError [M.HeaderField]
+decodeField :: (Word8, Variant)
+            -> E.ErrorM UnmarshalError [HeaderField]
 decodeField struct = case struct of
-	(1, x) -> decodeField' x M.Path "path"
-	(2, x) -> decodeField' x M.Interface "interface"
-	(3, x) -> decodeField' x M.Member "member"
-	(4, x) -> decodeField' x M.ErrorName "error name"
-	(5, x) -> decodeField' x M.ReplySerial "reply serial"
-	(6, x) -> decodeField' x M.Destination "destination"
-	(7, x) -> decodeField' x M.Sender "sender"
-	(8, x) -> decodeField' x M.Signature "signature"
+	(1, x) -> decodeField' x HeaderPath "path"
+	(2, x) -> decodeField' x HeaderInterface "interface"
+	(3, x) -> decodeField' x HeaderMember "member"
+	(4, x) -> decodeField' x HeaderErrorName "error name"
+	(5, x) -> decodeField' x HeaderReplySerial "reply serial"
+	(6, x) -> decodeField' x HeaderDestination "destination"
+	(7, x) -> decodeField' x HeaderSender "sender"
+	(8, x) -> decodeField' x HeaderSignature "signature"
 	_      -> return []
 
-decodeField' :: T.IsVariant a => T.Variant -> (a -> b) -> Text
+decodeField' :: IsVariant a => Variant -> (a -> b) -> Text
              -> E.ErrorM UnmarshalError [b]
-decodeField' x f label = case T.fromVariant x of
+decodeField' x f label = case fromVariant x of
 	Just x' -> return [f x']
 	Nothing -> E.throwErrorM $ InvalidHeaderField label x
 :
@@ -833,14 +833,14 @@ decodeField' x f label = case T.fromVariant x of
 
 :d DBus.Wire
 |apidoc marshalMessage|
-marshalMessage :: M.Message a => Endianness -> M.Serial -> a
+marshalMessage :: Message a => Endianness -> Serial -> a
                -> Either MarshalError Data.ByteString.Lazy.ByteString
 marshalMessage e serial msg = runMarshal marshaler e where
-	body = M.messageBody msg
+	body = messageBody msg
 	marshaler = do
 		sig <- checkBodySig body
 		empty <- getState
-		mapM_ (marshal . (\(T.Variant x) -> x)) body
+		mapM_ (marshal . (\(Variant x) -> x)) body
 		(MarshalState bodyBytesB _) <- getState
 		putState empty
 		marshalEndianness e
@@ -853,34 +853,34 @@ marshalMessage e serial msg = runMarshal marshaler e where
 :
 
 :d DBus.Wire
-checkBodySig :: [T.Variant] -> Marshal T.Signature
+checkBodySig :: [Variant] -> Marshal Signature
 checkBodySig vs = let
-	strSig = concatMap (T.typeCode . T.variantType) vs
+	strSig = concatMap (typeCode . variantType) vs
 	textSig = Data.Text.pack strSig
 	bytesSig = Data.ByteString.Char8.pack strSig
 	invalid = throwError $ InvalidBodySignature textSig
-	in case T.parseSignature bytesSig of
+	in case parseSignature bytesSig of
 		Just x -> return x
 		Nothing -> invalid
 :
 
 :d DBus.Wire
-marshalHeader :: M.Message a => a -> M.Serial -> T.Signature -> Word32
+marshalHeader :: Message a => a -> Serial -> Signature -> Word32
               -> Marshal ()
 marshalHeader msg serial bodySig bodyLength = do
-	let fields = M.Signature bodySig : M.messageHeaderFields msg
-	marshalWord8 . M.messageTypeCode $ msg
-	marshalWord8 . encodeFlags . M.messageFlags $ msg
+	let fields = HeaderSignature bodySig : messageHeaderFields msg
+	marshalWord8 (messageTypeCode msg)
+	marshalWord8 (encodeFlags (messageFlags msg))
 	marshalWord8 protocolVersion
 	marshalWord32 bodyLength
-	marshalWord32 . M.serialValue $ serial
-	let fieldType = T.TypeStructure [T.TypeWord8, T.TypeVariant]
+	marshalWord32 (serialValue serial)
+	let fieldType = TypeStructure [TypeWord8, TypeVariant]
 	marshalVector fieldType (Data.Vector.fromList (map encodeField fields))
 :
 
 :d DBus.Wire
 marshalEndianness :: Endianness -> Marshal ()
-marshalEndianness = marshal . T.toValue . encodeEndianness
+marshalEndianness = marshal . toValue . encodeEndianness
 :
 
 :d DBus.Wire
@@ -897,7 +897,7 @@ checkMaximumSize = do
 :d DBus.Wire
 |apidoc unmarshalMessage|
 unmarshalMessage :: Monad m => (Word32 -> m Data.ByteString.Lazy.ByteString)
-                 -> m (Either UnmarshalError M.ReceivedMessage)
+                 -> m (Either UnmarshalError ReceivedMessage)
 unmarshalMessage getBytes' = E.runErrorT $ do
 	let getBytes = E.ErrorT . liftM Right . getBytes'
 	
@@ -942,10 +942,10 @@ let unmarshal' x bytes = case runUnmarshal (unmarshal x) endianness bytes of
 	Right x' -> return x'
 	Left  e  -> E.throwErrorT e
 fixed <- unmarshal' fixedSig fixedBytes
-let typeCode = fromJust . T.fromValue $ fixed !! 1
-let flags = decodeFlags . fromJust . T.fromValue $ fixed !! 2
-let bodyLength = fromJust . T.fromValue $ fixed !! 4
-let serial = fromJust . T.fromVariant $ T.Variant (fixed !! 5)
+let messageType = fromJust . fromValue $ fixed !! 1
+let flags = decodeFlags . fromJust . fromValue $ fixed !! 2
+let bodyLength = fromJust . fromValue $ fixed !! 4
+let serial = fromJust . fromVariant $ Variant (fixed !! 5)
 :
 
 The last field of the fixed header is actually part of the field array,
@@ -953,7 +953,7 @@ but is treated as a single {\tt Word32} so it'll be known how many bytes
 to retrieve.
 
 :d read fixed-length header
-let fieldByteCount = fromJust . T.fromValue $ fixed !! 6
+let fieldByteCount = fromJust . fromValue $ fixed !! 6
 :
 
 With the field byte count, the remainder of the header bytes can be
@@ -969,7 +969,7 @@ header <- unmarshal' headerSig headerBytes
 And the header fields can be parsed.
 
 :d read full header
-let fieldArray = Data.Vector.toList (fromJust . T.fromValue $ header !! 6)
+let fieldArray = Data.Vector.toList (fromJust . fromValue $ header !! 6)
 fields <- case E.runErrorM $ concat `liftM` mapM decodeField fieldArray of
 	Left err -> E.throwErrorT err
 	Right x -> return x
@@ -984,9 +984,8 @@ void (getBytes (fromIntegral bodyPadding))
 :
 
 :d DBus.Wire
-findBodySignature :: [M.HeaderField] -> T.Signature
-findBodySignature fields = fromMaybe "" signature where
-	signature = listToMaybe [x | M.Signature x <- fields]
+findBodySignature :: [HeaderField] -> Signature
+findBodySignature fields = fromMaybe "" (listToMaybe [x | HeaderSignature x <- fields])
 :
 
 :d read body
@@ -1004,80 +1003,80 @@ Even if the received message was structurally valid, building the
 {\tt ReceivedMessage} can still fail due to missing header fields.
 
 :d build message
-y <- case E.runErrorM $ buildReceivedMessage typeCode fields of
+y <- case E.runErrorM $ buildReceivedMessage messageType fields of
 	Right x -> return x
 	Left err -> E.throwErrorT $ MissingHeaderField err
-return $ y serial flags (map T.Variant body)
+return (y serial flags (map Variant body))
 :
 
 This really belongs in the Message section...
 
 :d DBus.Wire
-buildReceivedMessage :: Word8 -> [M.HeaderField] -> E.ErrorM Text
-                        (M.Serial -> (Data.Set.Set M.Flag) -> [T.Variant]
-                         -> M.ReceivedMessage)
+buildReceivedMessage :: Word8 -> [HeaderField] -> E.ErrorM Text
+                        (Serial -> (Set Flag) -> [Variant]
+                         -> ReceivedMessage)
 :
 
 Method calls
 
 :d DBus.Wire
 buildReceivedMessage 1 fields = do
-	path <- require "path" [x | M.Path x <- fields]
-	member <- require "member name" [x | M.Member x <- fields]
+	path <- require "path" [x | HeaderPath x <- fields]
+	member <- require "member name" [x | HeaderMember x <- fields]
 	return $ \serial flags body -> let
-		iface = listToMaybe [x | M.Interface x <- fields]
-		dest = listToMaybe [x | M.Destination x <- fields]
-		sender = listToMaybe [x | M.Sender x <- fields]
-		msg = M.MethodCall path member iface dest flags body
-		in M.ReceivedMethodCall serial sender msg
+		iface = listToMaybe [x | HeaderInterface x <- fields]
+		dest = listToMaybe [x | HeaderDestination x <- fields]
+		sender = listToMaybe [x | HeaderSender x <- fields]
+		msg = MethodCall path member iface dest flags body
+		in ReceivedMethodCall serial sender msg
 :
 
 Method returns
 
 :d DBus.Wire
 buildReceivedMessage 2 fields = do
-	replySerial <- require "reply serial" [x | M.ReplySerial x <- fields]
+	replySerial <- require "reply serial" [x | HeaderReplySerial x <- fields]
 	return $ \serial _ body -> let
-		dest = listToMaybe [x | M.Destination x <- fields]
-		sender = listToMaybe [x | M.Sender x <- fields]
-		msg = M.MethodReturn replySerial dest body
-		in M.ReceivedMethodReturn serial sender msg
+		dest = listToMaybe [x | HeaderDestination x <- fields]
+		sender = listToMaybe [x | HeaderSender x <- fields]
+		msg = MethodReturn replySerial dest body
+		in ReceivedMethodReturn serial sender msg
 :
 
 Errors
 
 :d DBus.Wire
 buildReceivedMessage 3 fields = do
-	name <- require "error name" [x | M.ErrorName x <- fields]
-	replySerial <- require "reply serial" [x | M.ReplySerial x <- fields]
+	name <- require "error name" [x | HeaderErrorName x <- fields]
+	replySerial <- require "reply serial" [x | HeaderReplySerial x <- fields]
 	return $ \serial _ body -> let
-		dest = listToMaybe [x | M.Destination x <- fields]
-		sender = listToMaybe [x | M.Sender x <- fields]
-		msg = M.Error name replySerial dest body
-		in M.ReceivedError serial sender msg
+		dest = listToMaybe [x | HeaderDestination x <- fields]
+		sender = listToMaybe [x | HeaderSender x <- fields]
+		msg = Error name replySerial dest body
+		in ReceivedError serial sender msg
 :
 
 Signals
 
 :d DBus.Wire
 buildReceivedMessage 4 fields = do
-	path <- require "path" [x | M.Path x <- fields]
-	member <- require "member name" [x | M.Member x <- fields]
-	iface <- require "interface" [x | M.Interface x <- fields]
+	path <- require "path" [x | HeaderPath x <- fields]
+	member <- require "member name" [x | HeaderMember x <- fields]
+	iface <- require "interface" [x | HeaderInterface x <- fields]
 	return $ \serial _ body -> let
-		dest = listToMaybe [x | M.Destination x <- fields]
-		sender = listToMaybe [x | M.Sender x <- fields]
-		msg = M.Signal path member iface dest body
-		in M.ReceivedSignal serial sender msg
+		dest = listToMaybe [x | HeaderDestination x <- fields]
+		sender = listToMaybe [x | HeaderSender x <- fields]
+		msg = Signal path member iface dest body
+		in ReceivedSignal serial sender msg
 :
 
 Unknown
 
 :d DBus.Wire
-buildReceivedMessage typeCode fields = return $ \serial flags body -> let
-	sender = listToMaybe [x | M.Sender x <- fields]
-	msg = M.Unknown typeCode flags body
-	in M.ReceivedUnknown serial sender msg
+buildReceivedMessage messageType fields = return $ \serial flags body -> let
+	sender = listToMaybe [x | HeaderSender x <- fields]
+	msg = Unknown messageType flags body
+	in ReceivedUnknown serial sender msg
 :
 
 :d DBus.Wire

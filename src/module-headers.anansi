@@ -84,8 +84,8 @@ import           Data.Word
 |DBus.Types|
 |text validation|
 
-void :: Functor f => f a -> f ()
-void = fmap (const ())
+void :: Monad m => m a -> m ()
+void m = m >> return ()
 :
 
 :f DBus/Wire.hs
@@ -118,6 +118,7 @@ import qualified Data.Map
 import           Data.Map (Map)
 import           Data.Maybe (fromJust, listToMaybe, fromMaybe)
 import qualified Data.Set
+import           Data.Set (Set)
 import qualified Data.Text
 import           Data.Text (Text)
 import qualified Data.Vector
@@ -126,15 +127,12 @@ import           Data.Word (Word8, Word16, Word32, Word64)
 
 import qualified Data.Binary.IEEE754
 
-import qualified DBus.Message.Internal as M
-import qualified DBus.Types.Internal as T
+import           DBus.Message.Internal
+import           DBus.Types.Internal
 import           DBus.Wire.Unicode (maybeEncodeUtf8, maybeDecodeUtf8)
 import qualified DBus.Util.MonadError as E
 
 |DBus.Wire|
-
-void :: Monad m => m a -> m ()
-void m = m >> return ()
 :
 
 :f DBus/Wire/Unicode.hs
