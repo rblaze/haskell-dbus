@@ -376,6 +376,7 @@ unmarshalGet count be le = do
 
 
 \clearpage
+\subsection{Atoms}
 \subsubsection{Integers}
 
 :d DBus.Wire
@@ -585,6 +586,7 @@ unmarshalSignature = do
 :
 
 \clearpage
+\subsection{Containers}
 \subsubsection{Arrays}
 
 Marshaling arrays is complicated, because the array body must be marshaled
@@ -817,7 +819,7 @@ marshalMessage e serial msg = runMarshal where
 		mapM_ (marshal . (\(Variant x) -> x)) body
 		(MarshalState bodyBytesB _) <- getState
 		putState empty
-		marshalEndianness e
+		marshal (toValue (encodeEndianness e))
 		let bodyBytes = Data.Binary.Builder.toLazyByteString bodyBytesB
 		marshalHeader msg serial sig (fromIntegral (Data.ByteString.Lazy.length bodyBytes))
 		pad 8
@@ -827,9 +829,7 @@ marshalMessage e serial msg = runMarshal where
 	runMarshal = case unWire marshaler e emptyState of
 		WireRL err -> Left (MarshalError (Data.Text.pack err))
 		WireRR _ (MarshalState builder _) -> Right (Data.Binary.Builder.toLazyByteString builder)
-:
 
-:d DBus.Wire
 checkBodySig :: [Variant] -> Marshal Signature
 checkBodySig vs = let
 	strSig = concatMap (typeCode . variantType) vs
@@ -837,13 +837,10 @@ checkBodySig vs = let
 	in case parseSignature bytesSig of
 		Just x -> return x
 		Nothing -> throwError (concat
-			[ "Message body signature "
-			, show bytesSig
+			[ "Message body signature ", show bytesSig
 			, " is malformed or too large."
 			])
-:
 
-:d DBus.Wire
 marshalHeader :: Message a => a -> Serial -> Signature -> Word32
               -> Marshal ()
 marshalHeader msg serial bodySig bodyLength = do
@@ -855,23 +852,14 @@ marshalHeader msg serial bodySig bodyLength = do
 	marshalWord32 (serialValue serial)
 	let fieldType = TypeStructure [TypeWord8, TypeVariant]
 	marshalVector fieldType (Data.Vector.fromList (map encodeField fields))
-:
 
-:d DBus.Wire
-marshalEndianness :: Endianness -> Marshal ()
-marshalEndianness = marshal . toValue . encodeEndianness
-:
-
-:d DBus.Wire
 checkMaximumSize :: Marshal ()
 checkMaximumSize = do
 	(MarshalState _ messageLength) <- getState
 	when (messageLength > messageMaximumLength) (throwError (concat
-		[ "Marshaled message size ("
-		, show messageLength
+		[ "Marshaled message size (", show messageLength
 		, " bytes) exeeds maximum limit of ("
-		, show messageMaximumLength
-		, " bytes)."
+		, show messageMaximumLength, " bytes)."
 		]))
 :
 
