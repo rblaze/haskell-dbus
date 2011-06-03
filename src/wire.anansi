@@ -360,7 +360,6 @@ skipPadding count = do
 :d DBus.Wire
 skipTerminator :: Unmarshal ()
 skipTerminator = do
-	(UnmarshalState _ offset) <- getState
 	bytes <- consume 1
 	unless (Data.ByteString.Lazy.all (== 0) bytes) (throwError (concat
 		[ "Textual value is not NUL-terminated."
@@ -839,7 +838,6 @@ marshalMessage e serial msg = runMarshal marshaler e where
 checkBodySig :: [Variant] -> Marshal Signature
 checkBodySig vs = let
 	strSig = concatMap (typeCode . variantType) vs
-	textSig = Data.Text.pack strSig
 	bytesSig = Data.ByteString.Char8.pack strSig
 	in case parseSignature bytesSig of
 		Just x -> return x
