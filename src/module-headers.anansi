@@ -81,11 +81,10 @@ import           Data.Word
 |text validation imports|
 |signature parsing imports|
 
+import           DBus.Util (void)
+
 |DBus.Types|
 |text validation|
-
-void :: Monad m => m a -> m ()
-void m = m >> return ()
 :
 
 :f DBus/Wire.hs
@@ -130,6 +129,7 @@ import qualified Data.Binary.IEEE754
 import           DBus.Message.Internal
 import           DBus.Types.Internal
 import           DBus.Wire.Unicode (maybeEncodeUtf8, maybeDecodeUtf8)
+import           DBus.Util (void, untilM)
 import qualified DBus.Util.MonadError as E
 
 |DBus.Wire|
