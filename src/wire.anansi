@@ -146,6 +146,12 @@ getState = Wire (\_ s -> WireRR s s)
 {-# INLINE putState #-}
 putState :: s -> Wire s ()
 putState s = Wire (\_ _ -> WireRR () s)
+
+{-# INLINE chooseEndian #-}
+chooseEndian :: a -> a -> Wire s a
+chooseEndian big little = Wire (\e s -> case e of
+	BigEndian -> WireRR big s
+	LittleEndian -> WireRR little s)
 :
 
 \end{multicols}
@@ -215,27 +221,33 @@ marshalAtom (AtomSignature x) = marshalSignature x
 TODO: describe these functions
 
 :d DBus.Wire
+appendB :: Word64 -> Data.Binary.Builder.Builder -> Marshal ()
+appendB size bytes = Wire (\_ (MarshalState builder count) -> let
+	builder' = Data.Binary.Builder.append builder bytes
+	count' = count + size
+	in WireRR () (MarshalState builder' count'))
+:
+
+:d DBus.Wire
 appendS :: ByteString -> Marshal ()
-appendS bytes = Wire $ \_ (MarshalState builder count) -> let
-	builder' = Data.Binary.Builder.append builder $ Data.Binary.Builder.fromByteString bytes
-	count' = count + fromIntegral (Data.ByteString.length bytes)
-	in WireRR () (MarshalState builder' count')
+appendS bytes = appendB
+	(fromIntegral (Data.ByteString.length bytes))
+	(Data.Binary.Builder.fromByteString bytes)
 :
 
 :d DBus.Wire
 appendL :: Data.ByteString.Lazy.ByteString -> Marshal ()
-appendL bytes = Wire $ \_ (MarshalState builder count) -> let
-	builder' = Data.Binary.Builder.append builder $ Data.Binary.Builder.fromLazyByteString bytes
-	count' = count + fromIntegral (Data.ByteString.Lazy.length bytes)
-	in WireRR () (MarshalState builder' count')
+appendL bytes = appendB
+	(fromIntegral (Data.ByteString.Lazy.length bytes))
+	(Data.Binary.Builder.fromLazyByteString bytes)
 :
 
 :d DBus.Wire
 pad :: Word8 -> Marshal ()
-pad count = Wire $ \e s@(MarshalState _ existing) -> let
-	padding' = fromIntegral $ padding existing count
-	bytes = Data.ByteString.replicate padding' 0
-	in unWire (appendS bytes) e s
+pad count = do
+	(MarshalState _ existing) <- getState
+	let padding' = fromIntegral (padding existing count)
+	appendS (Data.ByteString.replicate padding' 0)
 :
 
 Most numeric values already have marshalers implemented in the
@@ -247,13 +259,9 @@ marshalBuilder :: Word8
                -> (a -> Data.Binary.Builder.Builder)
                -> a -> Marshal ()
 marshalBuilder size be le x = do
+	builder <- chooseEndian (be x) (le x)
 	pad size
-	Wire $ \e (MarshalState builder count) -> let
-		builder' = Data.Binary.Builder.append builder $ case e of
-			BigEndian -> be x
-			LittleEndian -> le x
-		size' = fromIntegral size
-		in WireRR () (MarshalState builder' (count + size'))
+	appendB (fromIntegral size) builder
 :
 
 
@@ -360,14 +368,10 @@ fromMaybeU label f x = case f x of
 unmarshalGet :: Word8 -> Data.Binary.Get.Get a -> Data.Binary.Get.Get a -> Unmarshal a
 unmarshalGet count be le = do
 	skipPadding count
-	bs <- consume (fromIntegral count)
-	let lazy = Data.ByteString.Lazy.fromChunks [bs]
-	
-	Wire $ \e s -> let
-		get = case e of
-			BigEndian -> be
-			LittleEndian -> le
-		in WireRR (Data.Binary.Get.runGet get lazy) s
+	bytes <- consume (fromIntegral count)
+	get <- chooseEndian be le
+	let lazy = Data.ByteString.Lazy.fromChunks [bytes]
+	return (Data.Binary.Get.runGet get lazy)
 :
 
 
@@ -376,10 +380,15 @@ unmarshalGet count be le = do
 
 :d DBus.Wire
 marshalWord8 :: Word8 -> Marshal ()
-marshalWord8 x = Wire $ \_ (MarshalState builder count) -> let
-	builder' = Data.Binary.Builder.append builder $ Data.Binary.Builder.singleton x
-	in WireRR () (MarshalState builder' (count + 1))
+marshalWord8 x = appendB 1 (Data.Binary.Builder.singleton x)
 
+unmarshalWord8 :: Unmarshal Word8
+unmarshalWord8 = liftM Data.ByteString.head (consume 1)
+:
+
+\begin{multicols}{2}
+
+:d DBus.Wire
 marshalWord16 :: Word16 -> Marshal ()
 marshalWord16 = marshalBuilder 2
 	Data.Binary.Builder.putWord16be
@@ -405,18 +414,23 @@ marshalInt64 :: Int64 -> Marshal ()
 marshalInt64 = marshalWord64 . fromIntegral
 :
 
-:d DBus.Wire
-unmarshalWord8 :: Unmarshal Word8
-unmarshalWord8 = liftM Data.ByteString.head (consume 1)
+\columnbreak
 
+:d DBus.Wire
 unmarshalWord16 :: Unmarshal Word16
-unmarshalWord16 = unmarshalGet 2 Data.Binary.Get.getWord16be Data.Binary.Get.getWord16le
+unmarshalWord16 = unmarshalGet 2
+	Data.Binary.Get.getWord16be
+	Data.Binary.Get.getWord16le
 
 unmarshalWord32 :: Unmarshal Word32
-unmarshalWord32 = unmarshalGet 4 Data.Binary.Get.getWord32be Data.Binary.Get.getWord32le
+unmarshalWord32 = unmarshalGet 4
+	Data.Binary.Get.getWord32be
+	Data.Binary.Get.getWord32le
 
 unmarshalWord64 :: Unmarshal Word64
-unmarshalWord64 = unmarshalGet 8 Data.Binary.Get.getWord64be Data.Binary.Get.getWord64le
+unmarshalWord64 = unmarshalGet 8
+	Data.Binary.Get.getWord64be
+	Data.Binary.Get.getWord64le
 
 unmarshalInt16 :: Unmarshal Int16
 unmarshalInt16 = liftM fromIntegral unmarshalWord16
@@ -428,42 +442,50 @@ unmarshalInt64 :: Unmarshal Int64
 unmarshalInt64 = liftM fromIntegral unmarshalWord64
 :
 
+\end{multicols}
+
 \clearpage
 \subsubsection{Doubles}
 
+\begin{multicols}{2}
+
 {\tt Double}s are marshaled in 64-bit IEEE-754 floating-point format.
+
+\vfill
+\columnbreak
 
 :d DBus.Wire
 marshalDouble :: Double -> Marshal ()
 marshalDouble x = do
+	put <- chooseEndian
+		Data.Binary.IEEE754.putFloat64be
+		Data.Binary.IEEE754.putFloat64le
 	pad 8
-	Wire $ \e s -> let
-		put = case e of
-			BigEndian -> Data.Binary.IEEE754.putFloat64be
-			LittleEndian -> Data.Binary.IEEE754.putFloat64le
-		bytes = runPut $ put x
-		in unWire (appendL bytes) e s
-:
+	appendL (runPut (put x))
 
-:d DBus.Wire
 unmarshalDouble :: Unmarshal Double
 unmarshalDouble = unmarshalGet 8
 	Data.Binary.IEEE754.getFloat64be
 	Data.Binary.IEEE754.getFloat64le
 :
 
+\end{multicols}
+
 \subsubsection{Booleans}
+
+\begin{multicols}{2}
 
 Booleans are marshaled as 4-byte unsigned integers containing either of
 the values 0 or 1. Yes, really.
+
+\vfill
+\columnbreak
 
 :d DBus.Wire
 marshalBool :: Bool -> Marshal ()
 marshalBool False = marshalWord32 0
 marshalBool True  = marshalWord32 1
-:
 
-:d DBus.Wire
 unmarshalBool :: Unmarshal Bool
 unmarshalBool = do
 	word <- unmarshalWord32
@@ -475,6 +497,8 @@ unmarshalBool = do
 			, show word
 			])
 :
+
+\end{multicols}
 
 \clearpage
 \subsubsection{Strings and object paths}
@@ -489,10 +513,10 @@ error, checking their return value requires some ugly workarounds.
 
 :d DBus.Wire.Unicode
 excToMaybe :: a -> Maybe a
-excToMaybe x = unsafePerformIO $ fmap Just (Exc.evaluate x) `Exc.catch` unicodeError
+excToMaybe x = unsafePerformIO (fmap Just (Exc.evaluate x) `Exc.catch` unicodeError)
 
 unicodeError :: UnicodeException -> IO (Maybe a)
-unicodeError = const $ return Nothing
+unicodeError _ = return Nothing
 
 maybeDecodeUtf8 :: ByteString -> Maybe Text
 maybeDecodeUtf8 = excToMaybe . decodeUtf8
@@ -507,7 +531,7 @@ marshalText text = do
 		, show text
 		, " contained forbidden character: '\\x00'"
 		]))
-	marshalWord32 . fromIntegral . Data.ByteString.length $ bytes
+	marshalWord32 (fromIntegral (Data.ByteString.length bytes))
 	appendS bytes
 	marshalWord8 0
 :
@@ -546,8 +570,7 @@ signatureBytes (Signature ts) = Data.ByteString.Char8.pack (concatMap typeCode t
 marshalSignature :: Signature -> Marshal ()
 marshalSignature x = do
 	let bytes = signatureBytes x
-	let size = fromIntegral . Data.ByteString.length $ bytes
-	marshalWord8 size
+	marshalWord8 (fromIntegral (Data.ByteString.length bytes))
 	appendS bytes
 	marshalWord8 0
 :
@@ -597,11 +620,11 @@ getArrayBytes itemType vs = do
 	(MarshalState _ afterLength) <- marshalWord32 0 >> getState
 	(MarshalState _ afterPadding) <- pad (alignment itemType) >> getState
 	
-	putState $ MarshalState Data.Binary.Builder.empty afterPadding
+	putState (MarshalState Data.Binary.Builder.empty afterPadding)
 	(MarshalState itemBuilder _) <- Data.Vector.mapM_ marshal vs >> getState
 	
 	let itemBytes = Data.Binary.Builder.toLazyByteString itemBuilder
-	    paddingSize = fromIntegral $ afterPadding - afterLength
+	    paddingSize = fromIntegral (afterPadding - afterLength)
 	
 	putState s
 	return (paddingSize, itemBytes)
@@ -721,7 +744,7 @@ messageMaximumLength = 134217728
 
 :d DBus.Wire
 encodeFlags :: Set Flag -> Word8
-encodeFlags flags = foldr (.|.) 0 $ map flagValue $ Data.Set.toList flags where
+encodeFlags flags = foldr (.|.) 0 (map flagValue (Data.Set.toList flags)) where
 	flagValue NoReplyExpected = 0x1
 	flagValue NoAutoStart     = 0x2
 :
@@ -796,8 +819,7 @@ marshalMessage e serial msg = runMarshal where
 		putState empty
 		marshalEndianness e
 		let bodyBytes = Data.Binary.Builder.toLazyByteString bodyBytesB
-		marshalHeader msg serial sig
-			$ fromIntegral . Data.ByteString.Lazy.length $ bodyBytes
+		marshalHeader msg serial sig (fromIntegral (Data.ByteString.Lazy.length bodyBytes))
 		pad 8
 		appendL bodyBytes
 		checkMaximumSize
@@ -910,10 +932,10 @@ let unmarshal' x bytes = case unWire (unmarshalSig x) endianness (UnmarshalState
 	WireRR x' _ -> return x'
 	WireRL err  -> E.throwErrorT (UnmarshalError (Data.Text.pack err))
 fixed <- unmarshal' fixedSig fixedBytes
-let messageType = fromJust . fromValue $ fixed !! 1
-let flags = decodeFlags . fromJust . fromValue $ fixed !! 2
-let bodyLength = fromJust . fromValue $ fixed !! 4
-let serial = fromJust . fromVariant $ Variant (fixed !! 5)
+let messageType = fromJust (fromValue (fixed !! 1))
+let flags = decodeFlags (fromJust (fromValue (fixed !! 2)))
+let bodyLength = fromJust (fromValue (fixed !! 4))
+let serial = fromJust (fromVariant (Variant (fixed !! 5)))
 :
 
 The last field of the fixed header is actually part of the field array,
@@ -921,7 +943,7 @@ but is treated as a single {\tt Word32} so it'll be known how many bytes
 to retrieve.
 
 :d read fixed-length header
-let fieldByteCount = fromJust . fromValue $ fixed !! 6
+let fieldByteCount = fromJust (fromValue (fixed !! 6))
 :
 
 With the field byte count, the remainder of the header bytes can be
@@ -937,7 +959,7 @@ header <- unmarshal' headerSig headerBytes
 And the header fields can be parsed.
 
 :d read full header
-let fieldArray = Data.Vector.toList (fromJust . fromValue $ header !! 6)
+let fieldArray = Data.Vector.toList (fromJust (fromValue (header !! 6)))
 fields <- case E.runErrorM $ concat `liftM` mapM decodeField fieldArray of
 	Left err -> E.throwErrorT err
 	Right x -> return x
@@ -971,7 +993,7 @@ Even if the received message was structurally valid, building the
 {\tt ReceivedMessage} can still fail due to missing header fields.
 
 :d build message
-y <- case E.runErrorM $ buildReceivedMessage messageType fields of
+y <- case E.runErrorM (buildReceivedMessage messageType fields) of
 	Right x -> return x
 	Left err -> E.throwErrorT (UnmarshalError (Data.Text.pack (concat
 		[ "Header field "
