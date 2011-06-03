@@ -115,7 +115,7 @@ strict.
 
 :d DBus.Wire
 data WireR s a
-	= WireRL Text
+	= WireRL String
 	| WireRR a {-# UNPACK #-} !s
 
 newtype Wire s a = Wire
@@ -137,7 +137,7 @@ instance Monad (Wire s) where
 		WireRR _ s' -> unWire k e s'
 
 throwError :: String -> Wire s a
-throwError err = Wire (\_ _ -> WireRL (Data.Text.pack err))
+throwError err = Wire (\_ _ -> WireRL err)
 
 {-# INLINE getState #-}
 getState :: Wire s s
@@ -212,16 +212,6 @@ marshalAtom (AtomSignature x) = marshalSignature x
 
 \clearpage
 
-Clients can perform marshaling via {\tt marshal} and {\tt runMarshal},
-which will generate a {\tt ByteString} with the fully marshaled data.
-
-:d DBus.Wire
-runMarshal :: Marshal () -> Endianness -> Either MarshalError Data.ByteString.Lazy.ByteString
-runMarshal m e = case unWire m e (MarshalState Data.Binary.Builder.empty 0) of
-	WireRL err -> Left (MarshalError err)
-	WireRR _ (MarshalState builder _) -> Right $ Data.Binary.Builder.toLazyByteString builder
-:
-
 TODO: describe these functions
 
 :d DBus.Wire
@@ -252,7 +242,10 @@ Most numeric values already have marshalers implemented in the
 {\tt Data.Binary.Builder} module; this function lets them be re-used easily.
 
 :d DBus.Wire
-marshalBuilder :: Word8 -> (a -> Data.Binary.Builder.Builder) -> (a -> Data.Binary.Builder.Builder) -> a -> Marshal ()
+marshalBuilder :: Word8
+               -> (a -> Data.Binary.Builder.Builder)
+               -> (a -> Data.Binary.Builder.Builder)
+               -> a -> Marshal ()
 marshalBuilder size be le x = do
 	pad size
 	Wire $ \e (MarshalState builder count) -> let
@@ -318,13 +311,6 @@ unmarshal TypeVariant = unmarshalVariant
 
 \clearpage
 
-:d DBus.Wire
-runUnmarshal :: Unmarshal a -> Endianness -> Data.ByteString.Lazy.ByteString -> Either UnmarshalError a
-runUnmarshal m e bytes = case unWire m e (UnmarshalState bytes 0) of
-	WireRL err -> Left (UnmarshalError err)
-	WireRR a _ -> Right a
-:
-
 TODO: describe these functions
 
 :d DBus.Wire
@@ -360,31 +346,15 @@ skipPadding count = do
 :d DBus.Wire
 skipTerminator :: Unmarshal ()
 skipTerminator = do
-	bytes <- consume 1
-	unless (Data.ByteString.Lazy.all (== 0) bytes) (throwError (concat
-		[ "Textual value is not NUL-terminated."
-		]))
+	byte <- unmarshalWord8
+	when (byte /= 0) (throwError "Textual value is not NUL-terminated.")
 :
 
 :d DBus.Wire
 fromMaybeU :: Show a => String -> (a -> Maybe b) -> a -> Unmarshal b
-fromMaybeU = fromMaybeU2 show
-
-fromMaybeU2 :: (a -> String) -> String -> (a -> Maybe b) -> a -> Unmarshal b
-fromMaybeU2 show' label f x = case f x of
+fromMaybeU label f x = case f x of
 	Just x' -> return x'
-	Nothing -> throwError (concat
-		[ "Invalid "
-		, label
-		, ": "
-		, show' x
-		])
-
-fromMaybeU' :: (Show a, IsValue b) => String -> (a -> Maybe b) -> a
-           -> Unmarshal Value
-fromMaybeU' label f x = do
-	x' <- fromMaybeU label f x
-	return (toValue x')
+	Nothing -> throwError (concat ["Invalid ", label, ": ", show x])
 :
 
 :d DBus.Wire
@@ -817,7 +787,7 @@ decodeField' x f label = case fromVariant x of
 |apidoc marshalMessage|
 marshalMessage :: Message a => Endianness -> Serial -> a
                -> Either MarshalError Data.ByteString.Lazy.ByteString
-marshalMessage e serial msg = runMarshal marshaler e where
+marshalMessage e serial msg = runMarshal where
 	body = messageBody msg
 	marshaler = do
 		sig <- checkBodySig body
@@ -832,6 +802,10 @@ marshalMessage e serial msg = runMarshal marshaler e where
 		pad 8
 		appendL bodyBytes
 		checkMaximumSize
+	emptyState = MarshalState Data.Binary.Builder.empty 0
+	runMarshal = case unWire marshaler e emptyState of
+		WireRL err -> Left (MarshalError (Data.Text.pack err))
+		WireRR _ (MarshalState builder _) -> Right (Data.Binary.Builder.toLazyByteString builder)
 :
 
 :d DBus.Wire
@@ -933,9 +907,9 @@ can be decoded
 
 :d read fixed-length header
 let unmarshalSig = mapM unmarshal . signatureTypes
-let unmarshal' x bytes = case runUnmarshal (unmarshalSig x) endianness bytes of
-	Right x' -> return x'
-	Left  e  -> E.throwErrorT e
+let unmarshal' x bytes = case unWire (unmarshalSig x) endianness (UnmarshalState bytes 0) of
+	WireRR x' _ -> return x'
+	WireRL err  -> E.throwErrorT (UnmarshalError (Data.Text.pack err))
 fixed <- unmarshal' fixedSig fixedBytes
 let messageType = fromJust . fromValue $ fixed !! 1
 let flags = decodeFlags . fromJust . fromValue $ fixed !! 2
