@@ -119,6 +119,7 @@ A transport is anything which can send and receive bytestrings, typically
 via a socket.
 
 :d connection imports
+import qualified Data.ByteString
 import qualified Data.ByteString.Lazy as L
 import Data.Word (Word32)
 :
@@ -434,7 +435,8 @@ error is encountered while unmarshaling, an exception will be thrown.
 |apidoc receive|
 receive :: Connection -> IO (Either W.UnmarshalError M.ReceivedMessage)
 receive (Connection _ t _ lock _) = C.withMVar lock $ \_ ->
-	W.unmarshalMessage $ transportRecv t
+	let toStrict = Data.ByteString.concat . L.toChunks in
+	W.unmarshalMessage (fmap toStrict . transportRecv t)
 :
 
 :d connection exports

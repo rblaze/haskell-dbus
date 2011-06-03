@@ -28,23 +28,25 @@ import DBus.Message.Internal
 :
 
 :f DBus/Message/Internal.hs
+{-# LANGUAGE OverloadedStrings #-}
 |copyright|
-|text extensions|
 module DBus.Message.Internal where
-|text imports|
-import qualified Data.Set as S
-import Data.Word (Word8, Word32)
-import Data.Maybe (fromMaybe)
-import qualified DBus.Types as T
-import DBus.Util (maybeIndex)
+import qualified Data.Set
+import           Data.Set (Set)
+import qualified Data.Text
+import           Data.Text (Text)
+import           Data.Word (Word8, Word32)
+import           Data.Maybe (fromMaybe)
+import           DBus.Types hiding (errorName)
+import           DBus.Util (maybeIndex)
 :
 
 :f DBus/Message/Internal.hs
 class Message a where
 	messageTypeCode     :: a -> Word8
 	messageHeaderFields :: a -> [HeaderField]
-	messageFlags        :: a -> S.Set Flag
-	messageBody         :: a -> [T.Variant]
+	messageFlags        :: a -> Set Flag
+	messageBody         :: a -> [Variant]
 :
 
 :d message exports
@@ -68,8 +70,8 @@ the bus.
 :f DBus/Message/Internal.hs
 data Unknown = Unknown
 	{ unknownType    :: Word8
-	, unknownFlags   :: S.Set Flag
-	, unknownBody    :: [T.Variant]
+	, unknownFlags   :: Set Flag
+	, unknownBody    :: [Variant]
 	}
 	deriving (Show, Eq)
 :
@@ -91,14 +93,14 @@ TODO
 
 :f DBus/Message/Internal.hs
 data HeaderField
-	= Path        T.ObjectPath
-	| Interface   T.InterfaceName
-	| Member      T.MemberName
-	| ErrorName   T.ErrorName
-	| ReplySerial Serial
-	| Destination T.BusName
-	| Sender      T.BusName
-	| Signature   T.Signature
+	= HeaderPath        ObjectPath
+	| HeaderInterface   InterfaceName
+	| HeaderMember      MemberName
+	| HeaderErrorName   ErrorName
+	| HeaderReplySerial Serial
+	| HeaderDestination BusName
+	| HeaderSender      BusName
+	| HeaderSignature   Signature
 	deriving (Show, Eq)
 :
 
@@ -144,9 +146,9 @@ added type-safety.
 newtype Serial = Serial Word32
 	deriving (Eq, Ord, Show)
 
-instance T.IsVariant Serial where
-	toVariant (Serial x) = T.toVariant x
-	fromVariant = fmap Serial . T.fromVariant
+instance IsVariant Serial where
+	toVariant (Serial x) = toVariant x
+	fromVariant = fmap Serial . fromVariant
 :
 
 \end{multicols}
@@ -197,12 +199,12 @@ arbitrary serials doesn't make any sense.
 
 :f DBus/Message/Internal.hs
 data MethodCall = MethodCall
-	{ methodCallPath        :: T.ObjectPath
-	, methodCallMember      :: T.MemberName
-	, methodCallInterface   :: Maybe T.InterfaceName
-	, methodCallDestination :: Maybe T.BusName
-	, methodCallFlags       :: S.Set Flag
-	, methodCallBody        :: [T.Variant]
+	{ methodCallPath        :: ObjectPath
+	, methodCallMember      :: MemberName
+	, methodCallInterface   :: Maybe InterfaceName
+	, methodCallDestination :: Maybe BusName
+	, methodCallFlags       :: Set Flag
+	, methodCallBody        :: [Variant]
 	}
 	deriving (Show, Eq)
 
@@ -211,11 +213,11 @@ instance Message MethodCall where
 	messageFlags      = methodCallFlags
 	messageBody       = methodCallBody
 	messageHeaderFields m = concat
-		[ [ Path    $ methodCallPath m
-		  ,  Member $ methodCallMember m
+		[ [ HeaderPath (methodCallPath m)
+		  , HeaderMember (methodCallMember m)
 		  ]
-		, maybe' Interface . methodCallInterface $ m
-		, maybe' Destination . methodCallDestination $ m
+		, maybe' HeaderInterface (methodCallInterface m)
+		, maybe' HeaderDestination (methodCallDestination m)
 		]
 :
 
@@ -229,19 +231,19 @@ instance Message MethodCall where
 :f DBus/Message/Internal.hs
 data MethodReturn = MethodReturn
 	{ methodReturnSerial      :: Serial
-	, methodReturnDestination :: Maybe T.BusName
-	, methodReturnBody        :: [T.Variant]
+	, methodReturnDestination :: Maybe BusName
+	, methodReturnBody        :: [Variant]
 	}
 	deriving (Show, Eq)
 
 instance Message MethodReturn where
 	messageTypeCode _ = 2
-	messageFlags    _ = S.fromList [NoReplyExpected, NoAutoStart]
+	messageFlags    _ = Data.Set.fromList [NoReplyExpected, NoAutoStart]
 	messageBody       = methodReturnBody
 	messageHeaderFields m = concat
-		[ [ ReplySerial $ methodReturnSerial m
+		[ [ HeaderReplySerial (methodReturnSerial m)
 		  ]
-		, maybe' Destination . methodReturnDestination $ m
+		, maybe' HeaderDestination (methodReturnDestination m)
 		]
 :
 
@@ -254,22 +256,22 @@ instance Message MethodReturn where
 
 :f DBus/Message/Internal.hs
 data Error = Error
-	{ errorName        :: T.ErrorName
+	{ errorName        :: ErrorName
 	, errorSerial      :: Serial
-	, errorDestination :: Maybe T.BusName
-	, errorBody        :: [T.Variant]
+	, errorDestination :: Maybe BusName
+	, errorBody        :: [Variant]
 	}
 	deriving (Show, Eq)
 
 instance Message Error where
 	messageTypeCode _ = 3
-	messageFlags    _ = S.fromList [NoReplyExpected, NoAutoStart]
+	messageFlags    _ = Data.Set.fromList [NoReplyExpected, NoAutoStart]
 	messageBody       = errorBody
 	messageHeaderFields m = concat
-		[ [ ErrorName   $ errorName m
-		  , ReplySerial $ errorSerial m
+		[ [ HeaderErrorName (errorName m)
+		  , HeaderReplySerial (errorSerial m)
 		  ]
-		, maybe' Destination . errorDestination $ m
+		, maybe' HeaderDestination (errorDestination m)
 		]
 :
 
@@ -281,8 +283,8 @@ message was found.
 errorMessage :: Error -> Text
 errorMessage msg = fromMaybe "(no error message)" $ do
 	field <- maybeIndex (errorBody msg) 0
-	text <- T.fromVariant field
-	if TL.null text
+	text <- fromVariant field
+	if Data.Text.null text
 		then Nothing
 		else return text
 :
@@ -297,24 +299,24 @@ errorMessage msg = fromMaybe "(no error message)" $ do
 
 :f DBus/Message/Internal.hs
 data Signal = Signal
-	{ signalPath        :: T.ObjectPath
-	, signalMember      :: T.MemberName
-	, signalInterface   :: T.InterfaceName
-	, signalDestination :: Maybe T.BusName
-	, signalBody        :: [T.Variant]
+	{ signalPath        :: ObjectPath
+	, signalMember      :: MemberName
+	, signalInterface   :: InterfaceName
+	, signalDestination :: Maybe BusName
+	, signalBody        :: [Variant]
 	}
 	deriving (Show, Eq)
 
 instance Message Signal where
 	messageTypeCode _ = 4
-	messageFlags    _ = S.fromList [NoReplyExpected, NoAutoStart]
+	messageFlags    _ = Data.Set.fromList [NoReplyExpected, NoAutoStart]
 	messageBody       = signalBody
 	messageHeaderFields m = concat
-		[ [ Path      $ signalPath m
-		  , Member    $ signalMember m
-		  , Interface $ signalInterface m
+		[ [ HeaderPath (signalPath m)
+		  , HeaderMember (signalMember m)
+		  , HeaderInterface (signalInterface m)
 		  ]
-		, maybe' Destination . signalDestination $ m
+		, maybe' HeaderDestination (signalDestination m)
 		]
 :
 
@@ -334,11 +336,11 @@ for sending an error reply.
 :f DBus/Message/Internal.hs
 |apidoc ReceivedMessage|
 data ReceivedMessage
-	= ReceivedMethodCall   Serial (Maybe T.BusName) MethodCall
-	| ReceivedMethodReturn Serial (Maybe T.BusName) MethodReturn
-	| ReceivedError        Serial (Maybe T.BusName) Error
-	| ReceivedSignal       Serial (Maybe T.BusName) Signal
-	| ReceivedUnknown      Serial (Maybe T.BusName) Unknown
+	= ReceivedMethodCall   Serial (Maybe BusName) MethodCall
+	| ReceivedMethodReturn Serial (Maybe BusName) MethodReturn
+	| ReceivedError        Serial (Maybe BusName) Error
+	| ReceivedSignal       Serial (Maybe BusName) Signal
+	| ReceivedUnknown      Serial (Maybe BusName) Unknown
 	deriving (Show, Eq)
 :
 
@@ -352,7 +354,7 @@ receivedSerial (ReceivedUnknown      s _ _) = s
 :
 
 :f DBus/Message/Internal.hs
-receivedSender :: ReceivedMessage -> Maybe T.BusName
+receivedSender :: ReceivedMessage -> Maybe BusName
 receivedSender (ReceivedMethodCall   _ s _) = s
 receivedSender (ReceivedMethodReturn _ s _) = s
 receivedSender (ReceivedError        _ s _) = s
@@ -361,7 +363,7 @@ receivedSender (ReceivedUnknown      _ s _) = s
 :
 
 :f DBus/Message/Internal.hs
-receivedBody :: ReceivedMessage -> [T.Variant]
+receivedBody :: ReceivedMessage -> [Variant]
 receivedBody (ReceivedMethodCall   _ _ x) = messageBody x
 receivedBody (ReceivedMethodReturn _ _ x) = messageBody x
 receivedBody (ReceivedError        _ _ x) = messageBody x

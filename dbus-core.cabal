@@ -94,6 +94,4 @@ library
     DBus.Util
     DBus.Util.MonadError
     DBus.Wire.Internal
-    DBus.Wire.Marshal
     DBus.Wire.Unicode
-    DBus.Wire.Unmarshal

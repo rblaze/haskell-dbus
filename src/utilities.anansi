@@ -70,6 +70,18 @@ void :: Monad m => m a -> m ()
 void m = m >> return ()
 :
 
+:f DBus/Util.hs
+untilM :: Monad m => m Bool -> m a -> m [a]
+untilM test comp = do
+	done <- test
+	if done
+		then return []
+		else do
+			x <- comp
+			xs <- untilM test comp
+			return (x:xs)
+:
+
 \subsection*{Bundled ErrorT variant}
 
 The default {\tt ErrorT} type in the {\tt transformers} package has an idiotic

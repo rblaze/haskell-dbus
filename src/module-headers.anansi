@@ -16,6 +16,7 @@
 \section{Module headers}
 
 :f DBus/Types.hs
+|copyright|
 module DBus.Types
 	( Type(..)
 	
@@ -61,6 +62,7 @@ import DBus.Types.Internal
 :
 
 :f DBus/Types/Internal.hs
+|copyright|
 module DBus.Types.Internal where
 import           Control.Monad (when)
 import           Data.ByteString (ByteString)
@@ -79,9 +81,71 @@ import           Data.Word
 |text validation imports|
 |signature parsing imports|
 
+import           DBus.Util (void)
+
 |DBus.Types|
 |text validation|
+:
 
-void :: Functor f => f a -> f ()
-void = fmap (const ())
+:f DBus/Wire.hs
+|copyright|
+module DBus.Wire
+	( Endianness (..)
+	, MarshalError
+	, UnmarshalError
+	, marshalMessage
+	, unmarshalMessage
+	) where
+import DBus.Wire.Internal
+:
+
+:f DBus/Wire/Internal.hs
+{-# LANGUAGE OverloadedStrings #-}
+|copyright|
+module DBus.Wire.Internal where
+import Control.Monad (liftM, when, unless)
+
+import qualified Data.Binary.Builder
+import qualified Data.Binary.Get
+import           Data.Binary.Put (runPut)
+import           Data.Bits ((.&.), (.|.))
+import qualified Data.ByteString
+import           Data.ByteString (ByteString)
+import qualified Data.ByteString.Char8
+import qualified Data.ByteString.Lazy
+import           Data.Int (Int16, Int32, Int64)
+import qualified Data.Map
+import           Data.Map (Map)
+import           Data.Maybe (fromJust, listToMaybe, fromMaybe)
+import qualified Data.Set
+import           Data.Set (Set)
+import qualified Data.Text
+import           Data.Text (Text)
+import qualified Data.Text.Encoding
+import qualified Data.Vector
+import           Data.Vector (Vector)
+import           Data.Word (Word8, Word16, Word32, Word64)
+
+import qualified Data.Binary.IEEE754
+
+import           DBus.Message.Internal
+import           DBus.Types.Internal
+import           DBus.Wire.Unicode (maybeDecodeUtf8)
+import           DBus.Util (void, untilM)
+import qualified DBus.Util.MonadError as E
+
+|DBus.Wire|
+:
+
+:f DBus/Wire/Unicode.hs
+module DBus.Wire.Unicode
+	( maybeDecodeUtf8
+	) where
+import Data.ByteString (ByteString)
+import Data.Text (Text)
+import Data.Text.Encoding (decodeUtf8)
+import Data.Text.Encoding.Error (UnicodeException)
+import qualified Control.Exception as Exc
+import System.IO.Unsafe (unsafePerformIO)
+|DBus.Wire.Unicode|
 :
