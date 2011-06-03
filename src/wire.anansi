@@ -114,15 +114,15 @@ strict.
 \columnbreak
 
 :d DBus.Wire
-data WireR e s a
-	= WireRL e
+data WireR s a
+	= WireRL Text
 	| WireRR a {-# UNPACK #-} !s
 
-newtype Wire e s a = Wire
-	{ unWire :: Endianness -> s -> WireR e s a
+newtype Wire s a = Wire
+	{ unWire :: Endianness -> s -> WireR s a
 	}
 
-instance Monad (Wire e s) where
+instance Monad (Wire s) where
 	{-# INLINE return #-}
 	return a = Wire (\_ s -> WireRR a s)
 	
@@ -136,15 +136,15 @@ instance Monad (Wire e s) where
 		WireRL err -> WireRL err
 		WireRR _ s' -> unWire k e s'
 
-throwError :: e -> Wire e s a
-throwError err = Wire (\_ _ -> WireRL err)
+throwError :: String -> Wire s a
+throwError err = Wire (\_ _ -> WireRL (Data.Text.pack err))
 
 {-# INLINE getState #-}
-getState :: Wire e s s
+getState :: Wire s s
 getState = Wire (\_ s -> WireRR s s)
 
 {-# INLINE putState #-}
-putState :: s -> Wire e s ()
+putState :: s -> Wire s ()
 putState s = Wire (\_ _ -> WireRR () s)
 :
 
@@ -164,52 +164,14 @@ of its internal buffer, so the byte count is tracked separately.
 \columnbreak
 
 :d DBus.Wire
-type Marshal = Wire MarshalError MarshalState
+type Marshal = Wire MarshalState
+
+newtype MarshalError = MarshalError Text
+	deriving (Show, Eq)
 
 data MarshalState = MarshalState
 	{-# UNPACK #-} !Data.Binary.Builder.Builder
 	{-# UNPACK #-} !Word64
-:
-
-\end{multicols}
-
-\begin{multicols}{2}
-
-Marshaling may fail due to:
-
-\begin{itemize}
-\item The message exceeds the maximum message size of $2^{27}$ bytes.
-\item An array in the message exceeds the maximum array size of $2^{26}$ bytes.
-\item The body's signature is not valid (for example, more than 255 fields).
-\item A variant's signature is not valid -- same causes as an invalid body
-      signature.
-\item Some text is invalid -- for example, it contains {\sc nul}
-      ({\tt '\textbackslash{}0'}) or invalid Unicode.
-\end{itemize}
-
-\vfill
-\columnbreak
-
-:d DBus.Wire
-data MarshalError
-	= MessageTooLong Word64
-	| ArrayTooLong Word64
-	| InvalidBodySignature Text
-	| InvalidVariantSignature Text
-	| InvalidText Text
-	deriving (Eq)
-
-instance Show MarshalError where
-	show (MessageTooLong x) = concat
-		["Message too long (", show x, " bytes)."]
-	show (ArrayTooLong x) = concat
-		["Array too long (", show x, " bytes)."]
-	show (InvalidBodySignature x) = concat
-		["Invalid body signature: ", show x]
-	show (InvalidVariantSignature x) = concat
-		["Invalid variant signature: ", show x]
-	show (InvalidText x) = concat
-		["Text cannot be marshaled: ", show x]
 :
 
 \end{multicols}
@@ -256,7 +218,7 @@ which will generate a {\tt ByteString} with the fully marshaled data.
 :d DBus.Wire
 runMarshal :: Marshal () -> Endianness -> Either MarshalError Data.ByteString.Lazy.ByteString
 runMarshal m e = case unWire m e (MarshalState Data.Binary.Builder.empty 0) of
-	WireRL err -> Left err
+	WireRL err -> Left (MarshalError err)
 	WireRR _ (MarshalState builder _) -> Right $ Data.Binary.Builder.toLazyByteString builder
 :
 
@@ -313,61 +275,14 @@ TODO
 \columnbreak
 
 :d DBus.Wire
-type Unmarshal = Wire UnmarshalError UnmarshalState
+type Unmarshal = Wire UnmarshalState
+
+newtype UnmarshalError = UnmarshalError Text
+	deriving (Show, Eq)
 
 data UnmarshalState = UnmarshalState
 	Data.ByteString.Lazy.ByteString
 	{-# UNPACK #-} !Word64
-:
-
-\end{multicols}
-
-\begin{multicols}{2}
-
-Unmarshaling may fail due to:
-
-\begin{itemize}
-\item The message's declared protocol version is unsupported.
-\item Unexpected {\sc eof}, when there are less bytes remaining than are
-      required.
-\item An invalid byte sequence for a given value type.
-\item Missing required header fields for the declared message type.
-\item Non-zero bytes were found where padding was expected.
-\item A string, signature, or object path was not {\sc null}-terminated.
-\item An array's size didn't match the number of elements
-\end{itemize}
-
-\vfill
-\columnbreak
-
-:d DBus.Wire
-data UnmarshalError
-	= UnsupportedProtocolVersion Word8
-	| UnexpectedEOF Word64
-	| Invalid Text Text
-	| MissingHeaderField Text
-	| InvalidHeaderField Text Variant
-	| InvalidPadding Word64
-	| MissingTerminator Word64
-	| ArraySizeMismatch
-	deriving (Eq)
-
-instance Show UnmarshalError where
-	show (UnsupportedProtocolVersion x) = concat
-		["Unsupported protocol version: ", show x]
-	show (UnexpectedEOF pos) = concat
-		["Unexpected EOF at position ", show pos]
-	show (Invalid label x) = Data.Text.unpack $ Data.Text.concat
-		["Invalid ", label, ": ", x]
-	show (MissingHeaderField x) = concat
-		["Required field " , show x , " is missing."]
-	show (InvalidHeaderField x got) = concat
-		[ "Invalid header field ", show x, ": ", show got]
-	show (InvalidPadding pos) = concat
-		["Invalid padding at position ", show pos]
-	show (MissingTerminator pos) = concat
-		["Missing NUL terminator at position ", show pos]
-	show ArraySizeMismatch = "Array size mismatch"
 :
 
 \end{multicols}
@@ -406,7 +321,7 @@ unmarshal TypeVariant = unmarshalVariant
 :d DBus.Wire
 runUnmarshal :: Unmarshal a -> Endianness -> Data.ByteString.Lazy.ByteString -> Either UnmarshalError a
 runUnmarshal m e bytes = case unWire m e (UnmarshalState bytes 0) of
-	WireRL err -> Left err
+	WireRL err -> Left (UnmarshalError err)
 	WireRR a _ -> Right a
 :
 
@@ -415,12 +330,19 @@ TODO: describe these functions
 :d DBus.Wire
 {-# INLINE consume #-}
 consume :: Word64 -> Unmarshal Data.ByteString.Lazy.ByteString
-consume count = Wire $ \_ (UnmarshalState bytes offset) -> let
-	count' = fromIntegral count
-	(x, bytes') = Data.ByteString.Lazy.splitAt count' bytes
-	in if Data.ByteString.Lazy.length x == count'
-		then WireRR x (UnmarshalState bytes' (offset + count))
-		else WireRL $ UnexpectedEOF offset
+consume count = do
+	(UnmarshalState bytes offset) <- getState
+	let count' = fromIntegral count
+	let (x, bytes') = Data.ByteString.Lazy.splitAt count' bytes
+	let lenConsumed = Data.ByteString.Lazy.length x
+	if lenConsumed == count'
+		then do
+			putState (UnmarshalState bytes' (offset + count))
+			return x
+		else throwError (concat
+			[ "Unexpected EOF at offset "
+			, show (offset + fromIntegral lenConsumed)
+			])
 :
 
 :d DBus.Wire
@@ -428,8 +350,11 @@ skipPadding :: Word8 -> Unmarshal ()
 skipPadding count = do
 	(UnmarshalState _ offset) <- getState
 	bytes <- consume $ padding offset count
-	unless (Data.ByteString.Lazy.all (== 0) bytes) $
-		throwError $ InvalidPadding offset
+	unless (Data.ByteString.Lazy.all (== 0) bytes) (throwError (concat
+		[ "Value padding "
+		, show bytes
+		, " contains invalid bytes."
+		]))
 :
 
 :d DBus.Wire
@@ -437,20 +362,26 @@ skipTerminator :: Unmarshal ()
 skipTerminator = do
 	(UnmarshalState _ offset) <- getState
 	bytes <- consume 1
-	unless (Data.ByteString.Lazy.all (== 0) bytes) $
-		throwError $ MissingTerminator offset
+	unless (Data.ByteString.Lazy.all (== 0) bytes) (throwError (concat
+		[ "Textual value is not NUL-terminated."
+		]))
 :
 
 :d DBus.Wire
-fromMaybeU :: Show a => Text -> (a -> Maybe b) -> a -> Unmarshal b
+fromMaybeU :: Show a => String -> (a -> Maybe b) -> a -> Unmarshal b
 fromMaybeU = fromMaybeU2 show
 
-fromMaybeU2 :: (a -> String) -> Text -> (a -> Maybe b) -> a -> Unmarshal b
+fromMaybeU2 :: (a -> String) -> String -> (a -> Maybe b) -> a -> Unmarshal b
 fromMaybeU2 show' label f x = case f x of
 	Just x' -> return x'
-	Nothing -> throwError . Invalid label . Data.Text.pack . show' $ x
+	Nothing -> throwError (concat
+		[ "Invalid "
+		, label
+		, ": "
+		, show' x
+		])
 
-fromMaybeU' :: (Show a, IsValue b) => Text -> (a -> Maybe b) -> a
+fromMaybeU' :: (Show a, IsValue b) => String -> (a -> Maybe b) -> a
            -> Unmarshal Value
 fromMaybeU' label f x = do
 	x' <- fromMaybeU label f x
@@ -570,7 +501,10 @@ unmarshalBool = do
 	case word of
 		0 -> return False
 		1 -> return True
-		_ -> throwError (Invalid "boolean" (Data.Text.pack (show word)))
+		_ -> throwError (concat
+			[ "Invalid boolean: "
+			, show word
+			])
 :
 
 \clearpage
@@ -591,21 +525,19 @@ excToMaybe x = unsafePerformIO $ fmap Just (Exc.evaluate x) `Exc.catch` unicodeE
 unicodeError :: UnicodeException -> IO (Maybe a)
 unicodeError = const $ return Nothing
 
-maybeEncodeUtf8 :: Text -> Maybe ByteString
-maybeEncodeUtf8 = excToMaybe . encodeUtf8
-
 maybeDecodeUtf8 :: ByteString -> Maybe Text
 maybeDecodeUtf8 = excToMaybe . decodeUtf8
 :
 
 :d DBus.Wire
 marshalText :: Text -> Marshal ()
-marshalText x = do
-	bytes <- case maybeEncodeUtf8 x of
-		Just x' -> return x'
-		Nothing -> throwError $ InvalidText x
-	when (Data.ByteString.any (== 0) bytes) $
-		throwError $ InvalidText x
+marshalText text = do
+	let bytes = Data.Text.Encoding.encodeUtf8 text
+	when (Data.ByteString.any (== 0) bytes) (throwError (concat
+		[ "String "
+		, show text
+		, " contained forbidden character: '\\x00'"
+		]))
 	marshalWord32 . fromIntegral . Data.ByteString.length $ bytes
 	appendS bytes
 	marshalWord8 0
@@ -669,7 +601,7 @@ Marshaling arrays is complicated, because the array body must be marshaled
 temporary marshaler, to get the padding right.
 
 :d DBus.Wire
-arrayMaximumLength :: Word32
+arrayMaximumLength :: Int64
 arrayMaximumLength = 67108864
 :
 
@@ -678,8 +610,13 @@ marshalVector :: Type -> Vector Value -> Marshal ()
 marshalVector t x = do
 	(arrayPadding, arrayBytes) <- getArrayBytes t x
 	let arrayLen = Data.ByteString.Lazy.length arrayBytes
-	when (arrayLen > fromIntegral arrayMaximumLength)
-		(throwError $ ArrayTooLong $ fromIntegral arrayLen)
+	when (arrayLen > arrayMaximumLength) (throwError (concat
+		[ "Marshaled array size ("
+		, show arrayLen
+		, " bytes) exceeds maximum limit of ("
+		, show arrayMaximumLength
+		, " bytes)."
+		]))
 	marshalWord32 $ fromIntegral arrayLen
 	appendL $ Data.ByteString.Lazy.replicate arrayPadding 0
 	appendL arrayBytes
@@ -716,8 +653,10 @@ unmarshalArray itemType = do
 	let end = start + fromIntegral byteCount
 	vs <- untilM (liftM (>= end) getOffset) (unmarshal itemType)
 	end' <- getOffset
-	when (end' > end) $
-		throwError ArraySizeMismatch
+	when (end' > end) (throwError (concat
+		[ "Array data size exeeds array size of "
+		, show end
+		]))
 	return (Data.Vector.fromList vs)
 :
 
@@ -777,7 +716,11 @@ marshalVariant (Variant val) = do
 	let textSig = Data.Text.pack (typeCode (valueType val))
 	sig <- case signature textSig of
 		Just x' -> return x'
-		Nothing -> throwError $ InvalidVariantSignature textSig
+		Nothing -> throwError (concat
+			[ "Variant signature "
+			, show textSig
+			, " is malformed or too large."
+			])
 	marshalSignature sig
 	marshal val
 :
@@ -799,7 +742,7 @@ unmarshalVariant = do
 protocolVersion :: Word8
 protocolVersion = 1
 
-messageMaximumLength :: Word32
+messageMaximumLength :: Word64
 messageMaximumLength = 134217728
 :
 
@@ -857,7 +800,12 @@ decodeField' :: IsVariant a => Variant -> (a -> b) -> Text
              -> E.ErrorM UnmarshalError [b]
 decodeField' x f label = case fromVariant x of
 	Just x' -> return [f x']
-	Nothing -> E.throwErrorM $ InvalidHeaderField label x
+	Nothing -> E.throwErrorM (UnmarshalError (Data.Text.pack (concat
+		[ "Header field "
+		, show label
+		, " contains invalid value "
+		, show x
+		])))
 :
 
 \clearpage
@@ -890,10 +838,13 @@ checkBodySig vs = let
 	strSig = concatMap (typeCode . variantType) vs
 	textSig = Data.Text.pack strSig
 	bytesSig = Data.ByteString.Char8.pack strSig
-	invalid = throwError $ InvalidBodySignature textSig
 	in case parseSignature bytesSig of
 		Just x -> return x
-		Nothing -> invalid
+		Nothing -> throwError (concat
+			[ "Message body signature "
+			, show bytesSig
+			, " is malformed or too large."
+			])
 :
 
 :d DBus.Wire
@@ -919,8 +870,13 @@ marshalEndianness = marshal . toValue . encodeEndianness
 checkMaximumSize :: Marshal ()
 checkMaximumSize = do
 	(MarshalState _ messageLength) <- getState
-	when (messageLength > fromIntegral messageMaximumLength)
-		(throwError $ MessageTooLong $ fromIntegral messageLength)
+	when (messageLength > messageMaximumLength) (throwError (concat
+		[ "Marshaled message size ("
+		, show messageLength
+		, " bytes) exeeds maximum limit of ("
+		, show messageMaximumLength
+		, " bytes)."
+		]))
 :
 
 \clearpage
@@ -953,8 +909,10 @@ parsed.
 
 :d read fixed-length header
 let messageVersion = Data.ByteString.Lazy.index fixedBytes 3
-when (messageVersion /= protocolVersion) $
-	E.throwErrorT $ UnsupportedProtocolVersion messageVersion
+when (messageVersion /= protocolVersion) (E.throwErrorT (UnmarshalError (Data.Text.pack (concat
+	[ "Unsupported protocol version: "
+	, show messageVersion
+	]))))
 :
 
 Next is the endianness, used for parsing pretty much every other field.
@@ -963,7 +921,10 @@ Next is the endianness, used for parsing pretty much every other field.
 let eByte = Data.ByteString.Lazy.index fixedBytes 0
 endianness <- case decodeEndianness eByte of
 	Just x' -> return x'
-	Nothing -> E.throwErrorT . Invalid "endianness" . Data.Text.pack . show $ eByte
+	Nothing -> E.throwErrorT (UnmarshalError (Data.Text.pack (concat
+		[ "Invalid endianness: "
+		, show eByte
+		])))
 :
 
 With the endianness out of the way, the rest of the fixed header
@@ -1038,7 +999,11 @@ Even if the received message was structurally valid, building the
 :d build message
 y <- case E.runErrorM $ buildReceivedMessage messageType fields of
 	Right x -> return x
-	Left err -> E.throwErrorT $ MissingHeaderField err
+	Left err -> E.throwErrorT (UnmarshalError (Data.Text.pack (concat
+		[ "Header field "
+		, show err
+		, " is required, but missing"
+		])))
 return (y serial flags (map Variant body))
 :
 

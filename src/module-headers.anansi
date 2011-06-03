@@ -91,8 +91,8 @@ import           DBus.Util (void)
 |copyright|
 module DBus.Wire
 	( Endianness (..)
-	, MarshalError (..)
-	, UnmarshalError (..)
+	, MarshalError
+	, UnmarshalError
 	, marshalMessage
 	, unmarshalMessage
 	) where
@@ -120,6 +120,7 @@ import qualified Data.Set
 import           Data.Set (Set)
 import qualified Data.Text
 import           Data.Text (Text)
+import qualified Data.Text.Encoding
 import qualified Data.Vector
 import           Data.Vector (Vector)
 import           Data.Word (Word8, Word16, Word32, Word64)
@@ -128,7 +129,7 @@ import qualified Data.Binary.IEEE754
 
 import           DBus.Message.Internal
 import           DBus.Types.Internal
-import           DBus.Wire.Unicode (maybeEncodeUtf8, maybeDecodeUtf8)
+import           DBus.Wire.Unicode (maybeDecodeUtf8)
 import           DBus.Util (void, untilM)
 import qualified DBus.Util.MonadError as E
 
@@ -137,12 +138,11 @@ import qualified DBus.Util.MonadError as E
 
 :f DBus/Wire/Unicode.hs
 module DBus.Wire.Unicode
-	( maybeEncodeUtf8
-	, maybeDecodeUtf8
+	( maybeDecodeUtf8
 	) where
 import Data.ByteString (ByteString)
 import Data.Text (Text)
-import Data.Text.Encoding (encodeUtf8, decodeUtf8)
+import Data.Text.Encoding (decodeUtf8)
 import Data.Text.Encoding.Error (UnicodeException)
 import qualified Control.Exception as Exc
 import System.IO.Unsafe (unsafePerformIO)
