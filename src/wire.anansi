@@ -215,7 +215,7 @@ marshalAtom (AtomSignature x) = marshalSignature x
 TODO: describe these functions
 
 :d DBus.Wire
-appendS :: Data.ByteString.ByteString -> Marshal ()
+appendS :: ByteString -> Marshal ()
 appendS bytes = Wire $ \_ (MarshalState builder count) -> let
 	builder' = Data.Binary.Builder.append builder $ Data.Binary.Builder.fromByteString bytes
 	count' = count + fromIntegral (Data.ByteString.length bytes)
@@ -274,7 +274,7 @@ newtype UnmarshalError = UnmarshalError Text
 	deriving (Show, Eq)
 
 data UnmarshalState = UnmarshalState
-	Data.ByteString.Lazy.ByteString
+	{-# UNPACK #-} !ByteString
 	{-# UNPACK #-} !Word64
 :
 
@@ -315,12 +315,12 @@ TODO: describe these functions
 
 :d DBus.Wire
 {-# INLINE consume #-}
-consume :: Word64 -> Unmarshal Data.ByteString.Lazy.ByteString
+consume :: Word64 -> Unmarshal ByteString
 consume count = do
 	(UnmarshalState bytes offset) <- getState
 	let count' = fromIntegral count
-	let (x, bytes') = Data.ByteString.Lazy.splitAt count' bytes
-	let lenConsumed = Data.ByteString.Lazy.length x
+	let (x, bytes') = Data.ByteString.splitAt count' bytes
+	let lenConsumed = Data.ByteString.length x
 	if lenConsumed == count'
 		then do
 			putState (UnmarshalState bytes' (offset + count))
@@ -335,10 +335,9 @@ consume count = do
 skipPadding :: Word8 -> Unmarshal ()
 skipPadding count = do
 	(UnmarshalState _ offset) <- getState
-	bytes <- consume $ padding offset count
-	unless (Data.ByteString.Lazy.all (== 0) bytes) (throwError (concat
-		[ "Value padding "
-		, show bytes
+	bytes <- consume (padding offset count)
+	unless (Data.ByteString.all (== 0) bytes) (throwError (concat
+		[ "Value padding ", show bytes
 		, " contains invalid bytes."
 		]))
 :
@@ -361,13 +360,14 @@ fromMaybeU label f x = case f x of
 unmarshalGet :: Word8 -> Data.Binary.Get.Get a -> Data.Binary.Get.Get a -> Unmarshal a
 unmarshalGet count be le = do
 	skipPadding count
-	bs <- consume . fromIntegral $ count
+	bs <- consume (fromIntegral count)
+	let lazy = Data.ByteString.Lazy.fromChunks [bs]
 	
 	Wire $ \e s -> let
 		get = case e of
 			BigEndian -> be
 			LittleEndian -> le
-		in WireRR (Data.Binary.Get.runGet get bs) s
+		in WireRR (Data.Binary.Get.runGet get lazy) s
 :
 
 
@@ -407,7 +407,7 @@ marshalInt64 = marshalWord64 . fromIntegral
 
 :d DBus.Wire
 unmarshalWord8 :: Unmarshal Word8
-unmarshalWord8 = liftM Data.ByteString.Lazy.head (consume 1)
+unmarshalWord8 = liftM Data.ByteString.head (consume 1)
 
 unmarshalWord16 :: Unmarshal Word16
 unmarshalWord16 = unmarshalGet 2 Data.Binary.Get.getWord16be Data.Binary.Get.getWord16le
@@ -516,9 +516,9 @@ marshalText text = do
 unmarshalText :: Unmarshal Text
 unmarshalText = do
 	byteCount <- unmarshalWord32
-	bytes <- consume . fromIntegral $ byteCount
+	bytes <- consume (fromIntegral byteCount)
 	skipTerminator
-	fromMaybeU "text" maybeDecodeUtf8 (Data.ByteString.concat (Data.ByteString.Lazy.toChunks bytes))
+	fromMaybeU "text" maybeDecodeUtf8 bytes
 :
 
 :d DBus.Wire
@@ -540,7 +540,7 @@ Signatures are similar to strings, except their length is limited to 255
 characters and is therefore stored as a single byte.
 
 :d DBus.Wire
-signatureBytes :: Signature -> Data.ByteString.ByteString
+signatureBytes :: Signature -> ByteString
 signatureBytes (Signature ts) = Data.ByteString.Char8.pack (concatMap typeCode ts)
 
 marshalSignature :: Signature -> Marshal ()
@@ -555,10 +555,9 @@ marshalSignature x = do
 :d DBus.Wire
 unmarshalSignature :: Unmarshal Signature
 unmarshalSignature = do
-	byteCount <- Data.ByteString.Lazy.head `liftM` consume 1
-	lazy <- consume $ fromIntegral byteCount
+	byteCount <- unmarshalWord8
+	bytes <- consume (fromIntegral byteCount)
 	skipTerminator
-	let bytes = Data.ByteString.concat $ Data.ByteString.Lazy.toChunks lazy
 	fromMaybeU "signature" parseSignature bytes
 :
 
@@ -586,8 +585,8 @@ marshalVector t x = do
 		, show arrayMaximumLength
 		, " bytes)."
 		]))
-	marshalWord32 $ fromIntegral arrayLen
-	appendL $ Data.ByteString.Lazy.replicate arrayPadding 0
+	marshalWord32 (fromIntegral arrayLen)
+	appendL (Data.ByteString.Lazy.replicate arrayPadding 0)
 	appendL arrayBytes
 :
 
@@ -859,7 +858,7 @@ checkMaximumSize = do
 
 :d DBus.Wire
 |apidoc unmarshalMessage|
-unmarshalMessage :: Monad m => (Word32 -> m Data.ByteString.Lazy.ByteString)
+unmarshalMessage :: Monad m => (Word32 -> m ByteString)
                  -> m (Either UnmarshalError ReceivedMessage)
 unmarshalMessage getBytes' = E.runErrorT $ do
 	let getBytes = E.ErrorT . liftM Right . getBytes'
@@ -883,7 +882,7 @@ message's version is different from this library, the message cannot be
 parsed.
 
 :d read fixed-length header
-let messageVersion = Data.ByteString.Lazy.index fixedBytes 3
+let messageVersion = Data.ByteString.index fixedBytes 3
 when (messageVersion /= protocolVersion) (E.throwErrorT (UnmarshalError (Data.Text.pack (concat
 	[ "Unsupported protocol version: "
 	, show messageVersion
@@ -893,7 +892,7 @@ when (messageVersion /= protocolVersion) (E.throwErrorT (UnmarshalError (Data.Te
 Next is the endianness, used for parsing pretty much every other field.
 
 :d read fixed-length header
-let eByte = Data.ByteString.Lazy.index fixedBytes 0
+let eByte = Data.ByteString.index fixedBytes 0
 endianness <- case decodeEndianness eByte of
 	Just x' -> return x'
 	Nothing -> E.throwErrorT (UnmarshalError (Data.Text.pack (concat
@@ -931,7 +930,7 @@ pulled out of the monad.
 :d read full header
 let headerSig  = "yyyyuua(yv)"
 fieldBytes <- getBytes fieldByteCount
-let headerBytes = Data.ByteString.Lazy.append fixedBytes fieldBytes
+let headerBytes = Data.ByteString.append fixedBytes fieldBytes
 header <- unmarshal' headerSig headerBytes
 :
 
