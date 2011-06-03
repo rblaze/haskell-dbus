@@ -686,6 +686,7 @@ marshalMap t x = let
 :
 
 :d DBus.Wire
+unmarshalDictionary :: Type -> Type -> Unmarshal Value
 unmarshalDictionary kt vt = do
 	let pairType = TypeStructure [kt, vt]
 	array <- unmarshalArray pairType
@@ -703,6 +704,7 @@ marshalStructure vs = do
 :
 
 :d DBus.Wire
+unmarshalStructure :: [Type] -> Unmarshal Value
 unmarshalStructure ts = do
 	skipPadding 8
 	liftM ValueStructure (mapM unmarshal ts)
@@ -726,6 +728,7 @@ marshalVariant (Variant val) = do
 :
 
 :d DBus.Wire
+unmarshalVariant :: Unmarshal Value
 unmarshalVariant = do
 	let getType sig = case signatureTypes sig of
 		[t] -> Just t
