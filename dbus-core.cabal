@@ -29,10 +29,7 @@ extra-source-files:
   scripts/run-benchmarks
   scripts/run-tests
   --
-  src/addresses.anansi
   src/api-docs.anansi
-  src/authentication.anansi
-  src/bus.anansi
   src/connections.anansi
   src/constants.anansi
   src/copyright.anansi
@@ -76,8 +73,6 @@ library
 
   exposed-modules:
     DBus.Address
-    DBus.Authentication
-    DBus.Bus
     DBus.Connection
     DBus.Constants
     DBus.Introspection
@@ -85,10 +80,12 @@ library
     DBus.Message
     DBus.NameReservation
     DBus.Types
-    DBus.UUID
     DBus.Wire
 
   other-modules:
+    DBus.Connection.Authentication
+    DBus.Connection.Error
+    DBus.Connection.Transport
     DBus.Message.Internal
     DBus.Types.Internal
     DBus.Util

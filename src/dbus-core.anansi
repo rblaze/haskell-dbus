@@ -57,7 +57,7 @@
 
 \begin{document}
 
-\newgeometry{left=1.1cm,top=1cm,right=1.1cm}
+\newgeometry{left=1.5cm,top=2cm,right=1.5cm}
 
 \maketitle
 
@@ -88,10 +88,6 @@
 
 \newpage
 :i connections.anansi
-
-\newpage
-:i bus.anansi
-:i addresses.anansi
 
 \newpage
 :i introspection.anansi

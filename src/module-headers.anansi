@@ -138,6 +138,7 @@ import qualified DBus.Util.MonadError as E
 :
 
 :f DBus/Wire/Unicode.hs
+|copyright|
 module DBus.Wire.Unicode
 	( maybeDecodeUtf8
 	) where
@@ -148,4 +149,115 @@ import Data.Text.Encoding.Error (UnicodeException)
 import qualified Control.Exception as Exc
 import System.IO.Unsafe (unsafePerformIO)
 |DBus.Wire.Unicode|
+:
+
+:f DBus/Address.hs
+{-# LANGUAGE OverloadedStrings #-}
+|copyright|
+module DBus.Address
+	( Address
+	, addressMethod
+	, addressParameters
+	, address
+	, addresses
+	, addressText
+	) where
+import           Data.Char (ord, chr)
+import qualified Data.Map
+import           Data.Map (Map)
+import qualified Data.Text
+import           Data.Text (Text)
+import           Text.Printf (printf)
+import           Text.ParserCombinators.Parsec hiding (runParser)
+import           DBus.Util (hexToInt, void)
+import           DBus.Types.Internal (runParser)
+|DBus.Address|
+:
+
+:f DBus/Connection.hs
+{-# LANGUAGE OverloadedStrings #-}
+|copyright|
+module DBus.Connection
+	( Connection
+	, connectionAddress
+	, connect
+	, disconnect
+	, send
+	, receive
+	) where
+import           Control.Concurrent
+import qualified Control.Exception
+import           Control.Monad (when)
+import qualified Data.ByteString
+import qualified Data.ByteString.Lazy
+
+import           DBus.Address
+import           DBus.Connection.Authentication
+import           DBus.Connection.Error
+import           DBus.Connection.Transport
+import           DBus.Message
+import           DBus.Wire
+
+|DBus.Connection|
+:
+
+:f DBus/Connection/Authentication.hs
+|copyright|
+module DBus.Connection.Authentication
+	( Mechanism
+	, authenticate
+	, external
+	) where
+import           Prelude hiding (getLine, head)
+import           Control.Monad (liftM)
+import qualified Data.ByteString.Char8
+import           Data.Char (ord)
+import qualified System.Posix.User
+import           Text.Printf (printf)
+
+import           DBus.Connection.Transport
+import           DBus.Util (readUntil, dropEnd)
+
+|DBus.Connection.Authentication|
+:
+
+:f DBus/Connection/Error.hs
+{-# LANGUAGE DeriveDataTypeable #-}
+|copyright|
+module DBus.Connection.Error where
+import           Control.Exception (Exception, throwIO)
+import           Data.Typeable (Typeable)
+|DBus.Connection.Error|
+:
+
+:f DBus/Connection/Transport.hs
+{-# LANGUAGE OverloadedStrings #-}
+|copyright|
+module DBus.Connection.Transport
+	( Transport
+	, transportPut
+	, transportGet
+	, transportClose
+	, connectHandle
+	, connectUNIX
+	, connectTCP
+	) where
+import qualified Control.Exception
+import           Control.Monad (unless)
+import qualified Data.Binary.Get
+import qualified Data.Binary.Put
+import qualified Data.ByteString
+import           Data.ByteString (ByteString)
+import qualified Data.Map
+import qualified Data.Text
+import           Data.Word (Word32)
+import qualified Network
+import qualified Network.Socket
+import qualified System.IO
+import           Text.ParserCombinators.Parsec
+
+import           DBus.Address
+import           DBus.Connection.Error
+
+|DBus.Connection.Transport|
 :
