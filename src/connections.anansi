@@ -69,7 +69,7 @@ While not particularly useful for other functions, being able to
 :f DBus/Connection.hs
 instance Show Connection where
 	showsPrec d con = showParen (d > 10) strCon where
-		addr = A.strAddress $ connectionAddress con
+		addr = A.addressText $ connectionAddress con
 		strCon = s "<Connection " . shows addr . s ">"
 		s = showString
 :
@@ -154,6 +154,7 @@ be specified.
 :d connection imports
 import qualified Network as N
 import qualified Data.Map as Map
+import qualified Data.Text as T
 :
 
 :f DBus/Connection.hs
@@ -172,8 +173,8 @@ unix a = port >>= N.connectTo "localhost" >>= handleTransport where
 	path' = case (path, abstract) of
 		(Just _, Just _) -> E.throwIO $ BadParameters a tooMany
 		(Nothing, Nothing) -> E.throwIO $ BadParameters a tooFew
-		(Just x, Nothing) -> return $ TL.unpack x
-		(Nothing, Just x) -> return $ '\x00' : TL.unpack x
+		(Just x, Nothing) -> return $ T.unpack x
+		(Nothing, Just x) -> return $ '\x00' : T.unpack x
 :
 
 \subsubsection*{TCP}
@@ -210,11 +211,12 @@ tcp a = openHandle >>= handleTransport where
 Parameter parsing...
 
 :f DBus/Connection.hs
-	hostname = maybe "localhost" TL.unpack $ Map.lookup "host" params
+	hostname = maybe "localhost" T.unpack $ Map.lookup "host" params
 :
 
 :f DBus/Connection.hs
-	unknownFamily x = TL.concat ["Unknown socket family for TCP transport: ", x]
+	unknownFamily x = TL.concat ["Unknown socket family for TCP transport: "
+	                            , TL.fromStrict x]
 	getFamily = case Map.lookup "family" params of
 		Just "ipv4" -> return NS.AF_INET
 		Just "ipv6" -> return NS.AF_INET6
@@ -224,10 +226,11 @@ Parameter parsing...
 
 :f DBus/Connection.hs
 	missingPort = "TCP transport requires the ``port'' parameter."
-	badPort x = TL.concat ["Invalid socket port for TCP transport: ", x]
+	badPort x = TL.concat ["Invalid socket port for TCP transport: "
+	                      , TL.fromStrict x]
 	getPort = case Map.lookup "port" params of
 		Nothing -> E.throwIO $ BadParameters a missingPort
-		Just x -> case P.parse parseWord16 "" (TL.unpack x) of
+		Just x -> case P.parse parseWord16 "" (T.unpack x) of
 			Right x' -> return $ NS.PortNum x'
 			Left  _  -> E.throwIO $ BadParameters a $ badPort x
 :

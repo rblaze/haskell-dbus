@@ -50,25 +50,25 @@ main = F.defaultMain tests
 test_Address :: F.Test
 test_Address = F.testGroup "address"
 	[ F.testGroup "valid"
-	  [ testCase "colon" (assertJust (mkAddresses ":"))
-	  , testCase "just-scheme" (assertJust (mkAddresses "a:"))
-	  , testCase "param" (assertJust (mkAddresses "a:b=c"))
-	  , testCase "trailing-semicolon" (assertJust (mkAddresses "a:;"))
-	  , testCase "two-schemes" (assertJust (mkAddresses "a:;b:"))
-	  , testCase "trailing-comma" (assertJust (mkAddresses "a:b=c,"))
-	  , testCase "encoded" (assertEqual "" (mkAddresses "a:b=g8") (mkAddresses "a:b=%678"))
+	  [ testCase "colon" (assertJust (address ":"))
+	  , testCase "just-scheme" (assertJust (address "a:"))
+	  , testCase "param" (assertJust (address "a:b=c"))
+	  , testCase "trailing-semicolon" (assertJust (addresses "a:;"))
+	  , testCase "two-schemes" (assertJust (addresses "a:;b:"))
+	  , testCase "trailing-comma" (assertJust (address "a:b=c,"))
+	  , testCase "encoded" (assertEqual "" (address "a:b=g8") (address "a:b=%678"))
 	  ]
 	, F.testGroup "invalid"
-	  [ testCase "empty" (assertNothing (mkAddresses ""))
-	  , testCase "no-colon" (assertNothing (mkAddresses "a"))
-	  , testCase "no-equals" (assertNothing (mkAddresses "a:b"))
-	  , testCase "no-param" (assertNothing (mkAddresses "a:,"))
-	  , testCase "no-param-value" (assertNothing (mkAddresses "a:b="))
+	  [ testCase "empty" (assertNothing (address ""))
+	  , testCase "no-colon" (assertNothing (address "a"))
+	  , testCase "no-equals" (assertNothing (address "a:b"))
+	  , testCase "no-param" (assertNothing (address "a:,"))
+	  , testCase "no-param-value" (assertNothing (address "a:b="))
 	  ]
 	, F.testGroup "passthrough"
-	  [ testCase "plain" (assertEqual "" (Just "a:b=c") (strAddress `fmap` head `fmap` mkAddresses "a:b=c"))
-	  , testCase "encoded" (assertEqual "" (Just "a:b=Z%5B") (strAddress `fmap` head `fmap` mkAddresses "a:b=%5a%5b"))
-	  , testCase "optionally-encoded" (assertEqual "" (Just "a:b=-_/\\*.") (strAddress `fmap` head `fmap` mkAddresses "a:b=-_/\\*."))
+	  [ testCase "plain" (assertEqual "" (Just "a:b=c") (addressText `fmap` address "a:b=c"))
+	  , testCase "encoded" (assertEqual "" (Just "a:b=Z%5B") (addressText `fmap` address "a:b=%5a%5b"))
+	  , testCase "optionally-encoded" (assertEqual "" (Just "a:b=-_/\\*.") (addressText `fmap` address "a:b=-_/\\*."))
 	  ]
 	]
 

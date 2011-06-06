@@ -31,6 +31,7 @@ import qualified Control.Exception as E
 import Control.Monad (when)
 import Data.Maybe (fromJust, isNothing)
 import qualified Data.Set as Set
+import qualified Data.Text as T
 import System.Environment (getEnv)
 
 import qualified DBus.Address as A
@@ -90,11 +91,11 @@ getStarterBus = getBus' $ getEnv "DBUS_STARTER_ADDRESS"
 :f DBus/Bus.hs
 getBus' :: IO String -> IO (C.Connection, T.BusName)
 getBus' io = do
-	addr <- fmap TL.pack io
-	case A.mkAddresses addr of
+	addr <- fmap T.pack io
+	case A.addresses addr of
 		Just [x] -> getBus Auth.realUserID x
 		Just  xs -> getFirstBus [(Auth.realUserID,x) | x <- xs]
-		_        -> E.throwIO $ C.InvalidAddress addr
+		_        -> E.throwIO $ C.InvalidAddress (TL.fromStrict addr)
 :
 
 \subsection*{Sending the ``hello'' message}
