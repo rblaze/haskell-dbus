@@ -28,16 +28,12 @@ manages actually sending bytes between the two applications.
 
 :d DBus.Connection
 data Connection = Connection
-	Address
-	Transport
-	(MVar Serial)
-	(MVar ())
-
-connectionAddress :: Connection -> Address
-connectionAddress (Connection x _ _ _) = x
-
-connectionTransport :: Connection -> Transport
-connectionTransport (Connection _ x _ _) = x
+	{ connectionAddress :: Address
+	, connectionTransport :: Transport
+	, connectionSerial :: IORef Serial
+	, connectionReadLock :: MVar ()
+	, connectionWriteLock :: MVar ()
+	}
 :
 
 \end{multicols}
@@ -62,9 +58,10 @@ connect addr = do
 	authed <- authenticate transport [external]
 	when (not authed) (throwError "Authentication failed")
 	
-	lock <- newMVar ()
-	serial <- newMVar firstSerial
-	return (Connection addr transport serial lock)
+	serial <- newIORef (Serial 1)
+	readLock <- newMVar ()
+	writeLock <- newMVar ()
+	return (Connection addr transport serial readLock writeLock)
 
 disconnect :: Connection -> IO ()
 disconnect = transportClose . connectionTransport
@@ -527,26 +524,22 @@ multi-threaded clients.
 
 :d DBus.Connection
 |apidoc send|
-send :: Message a => Connection -> (Serial -> IO b) -> a
-     -> IO (Either MarshalError b)
-send (Connection _ t mvar _) io msg = withSerial mvar $ \serial ->
+send :: Message msg => Connection -> msg -> IO (Either MarshalError Serial)
+send connection msg = do
+	serial <- nextSerial connection
 	case marshalMessage LittleEndian serial msg of
 		Right lazy -> do
-			x <- io serial
 			let bytes = Data.ByteString.concat (Data.ByteString.Lazy.toChunks lazy)
-			transportPut t bytes
-			return (Right x)
+			let transport = connectionTransport connection
+			let lock = connectionWriteLock connection
+			withMVar lock (\_ -> transportPut transport bytes)
+			return (Right serial)
 		Left err -> return (Left err)
-:
 
-:d DBus.Connection
-withSerial :: MVar Serial -> (Serial -> IO a) -> IO a
-withSerial m io = Control.Exception.block $ do
-	s <- takeMVar m
-	let s' = nextSerial s
-	x <- Control.Exception.unblock (io s) `Control.Exception.onException` putMVar m s'
-	putMVar m s'
-	return x
+nextSerial :: Connection -> IO Serial
+nextSerial connection = atomicModifyIORef
+	(connectionSerial connection)
+	(\serial@(Serial x) -> (Serial (x + 1), serial))
 :
 
 Messages are received wrapped in a {\tt ReceivedMessage} value. If an
@@ -555,6 +548,8 @@ error is encountered while unmarshaling, an exception will be thrown.
 :d DBus.Connection
 |apidoc receive|
 receive :: Connection -> IO (Either UnmarshalError ReceivedMessage)
-receive (Connection _ t _ lock) = withMVar lock $ \_ ->
-	unmarshalMessage (transportGet t)
+receive connection = do
+	let transport = connectionTransport connection
+	let lock = connectionReadLock connection
+	withMVar lock (\_ -> unmarshalMessage (transportGet transport))
 :

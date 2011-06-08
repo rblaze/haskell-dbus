@@ -162,12 +162,6 @@ Additionally, some useful functions exist for incrementing serials.
 \columnbreak
 
 :f DBus/Message/Internal.hs
-firstSerial :: Serial
-firstSerial = Serial 1
-
-nextSerial :: Serial -> Serial
-nextSerial (Serial x) = Serial (x + 1)
-
 serialValue :: Serial -> Word32
 serialValue (Serial x) = x
 :
@@ -186,8 +180,6 @@ arbitrary serials doesn't make any sense.
 :d message exports
 , Serial
 , serialValue
-, firstSerial
-, nextSerial
 :
 
 \end{multicols}
