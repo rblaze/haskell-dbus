@@ -50,8 +50,8 @@ TODO
 \columnbreak
 
 :d DBus.Connection
-connect :: Address -> [Mechanism] -> IO Connection
-connect addr mechanisms = do
+connect :: Address -> IO Connection
+connect addr = do
 	transport <- case addressMethod addr of
 		"unix" -> connectUNIX addr
 		"tcp" -> connectTCP addr
@@ -59,7 +59,7 @@ connect addr mechanisms = do
 			[ "Unknown address method: "
 			, show method
 			])
-	authed <- authenticate transport mechanisms
+	authed <- authenticate transport [external]
 	when (not authed) (throwError "Authentication failed")
 	
 	lock <- newMVar ()
