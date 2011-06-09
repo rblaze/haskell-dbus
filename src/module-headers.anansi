@@ -57,6 +57,13 @@ module DBus.Types
 	, busName
 	, busName_
 	, busNameText
+	
+	, Structure
+	, Array
+	, Dictionary
+	, structureItems
+	, arrayItems
+	, dictionaryItems
 	) where
 import DBus.Types.Internal
 :
