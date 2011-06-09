@@ -1089,3 +1089,44 @@ dict ii = do
 					t1 <- mt1
 					Just (ii' + 1, TypeDictionary t1 t2)
 :
+
+\clearpage
+\subsection{Container boxes}
+
+:d DBus.Types
+newtype Structure = Structure [Value]
+
+instance IsVariant Structure where
+	toVariant (Structure xs) = Variant (ValueStructure xs)
+	fromVariant (Variant (ValueStructure xs)) = Just (Structure xs)
+	fromVariant _ = Nothing
+
+structureItems :: Structure -> [Variant]
+structureItems (Structure xs) = map Variant xs
+:
+
+:d DBus.Types
+data Array = Array Type (Vector Value)
+
+instance IsVariant Array where
+	toVariant (Array t xs) = Variant (ValueVector t xs)
+	fromVariant (Variant (ValueVector t xs)) = Just (Array t xs)
+	fromVariant _ = Nothing
+
+arrayItems :: Array -> [Variant]
+arrayItems (Array _ xs) = map Variant (Data.Vector.toList xs)
+:
+
+:d DBus.Types
+data Dictionary = Dictionary Type (Map Atom Value)
+
+instance IsVariant Dictionary where
+	toVariant (Dictionary t xs) = Variant (ValueMap t xs)
+	fromVariant (Variant (ValueMap t xs)) = Just (Dictionary t xs)
+	fromVariant _ = Nothing
+
+dictionaryItems :: Dictionary -> [(Variant, Variant)]
+dictionaryItems (Dictionary _ xs) = do
+	(k, v) <- Data.Map.toList xs
+	return (Variant (ValueAtom k), Variant v)
+:
