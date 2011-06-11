@@ -444,13 +444,15 @@ TODO
 authenticate :: Transport
              -> [Mechanism]
              -> IO Bool
-authenticate t ms = unAuth (loop ms) t where
-	loop [] = return False
-	loop ((Mechanism m):next) = do
-		success <- m
-		if success
-			then return True
-			else loop next
+authenticate t mechanisms = do
+	transportPut t (Data.ByteString.pack [0])
+	let loop [] = return False
+	    loop ((Mechanism m):next) = do
+	    	success <- m
+	    	if success
+	    		then return True
+	    		else loop next
+	unAuth (loop mechanisms) t
 :
 
 :d DBus.Connection.Authentication
@@ -510,7 +512,9 @@ external = Mechanism $ do
 	putLine ("AUTH EXTERNAL " ++ token)
 	resp <- getLine
 	case takeWhile (/= ' ') resp of
-		"OK" -> return True
+		"OK" -> do
+			putLine "BEGIN"
+			return True
 		_ -> return False
 :
 
