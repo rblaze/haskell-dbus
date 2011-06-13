@@ -528,16 +528,17 @@ multi-threaded clients.
 
 :d DBus.Connection
 |apidoc send|
-send :: Message msg => Connection -> msg -> IO (Either MarshalError Serial)
-send connection msg = do
+send :: Message msg => Connection -> msg -> (Serial -> IO a) -> IO (Either MarshalError a)
+send connection msg io = do
 	serial <- nextSerial connection
 	case marshalMessage LittleEndian serial msg of
 		Right lazy -> do
 			let bytes = Data.ByteString.concat (Data.ByteString.Lazy.toChunks lazy)
 			let transport = connectionTransport connection
 			let lock = connectionWriteLock connection
+			result <- io serial
 			withMVar lock (\_ -> transportPut transport bytes)
-			return (Right serial)
+			return (Right result)
 		Left err -> return (Left err)
 
 nextSerial :: Connection -> IO Serial
