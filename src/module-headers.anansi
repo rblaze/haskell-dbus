@@ -216,6 +216,7 @@ module DBus.Connection.Authentication
 	) where
 import           Prelude hiding (getLine, head)
 import           Control.Monad (liftM)
+import qualified Data.ByteString
 import qualified Data.ByteString.Char8
 import           Data.Char (ord)
 import qualified System.Posix.User
