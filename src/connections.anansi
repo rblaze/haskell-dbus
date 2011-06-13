@@ -45,26 +45,14 @@ TODO
 \vfill
 \columnbreak
 
-:d DBus.Connection
-connect :: Address -> IO Connection
-connect addr = do
-	transport <- case addressMethod addr of
-		"unix" -> connectUNIX addr
-		"tcp" -> connectTCP addr
-		method -> throwError (concat
-			[ "Unknown address method: "
-			, show method
-			])
-	authed <- authenticate transport [external]
-	when (not authed) (throwError "Authentication failed")
-	
-	serial <- newIORef (Serial 1)
-	readLock <- newMVar ()
-	writeLock <- newMVar ()
-	return (Connection addr transport serial readLock writeLock)
+:d DBus.Connection.Error
+newtype ConnectionError = ConnectionError String
+	deriving (Show, Eq, Typeable)
 
-disconnect :: Connection -> IO ()
-disconnect = transportClose . connectionTransport
+instance Exception ConnectionError
+
+throwError :: String -> IO a
+throwError = throwIO . ConnectionError
 :
 
 \end{multicols}
@@ -76,14 +64,28 @@ TODO
 \vfill
 \columnbreak
 
-:d DBus.Connection.Error
-newtype ConnectionError = ConnectionError String
-	deriving (Show, Eq, Typeable)
+:d DBus.Connection
+connect :: Address -> IO Connection
+connect addr = do
+	transport <- case addressMethod addr of
+		"unix" -> connectUNIX addr
+		"tcp" -> connectTCP addr
+		method -> throwError (concat
+			[ "Unknown address method: "
+			, show method
+			])
+	authed <- authenticate transport [external]
+	when (not authed)
+		(throwError "Authentication failed")
+	
+	serial <- newIORef (Serial 1)
+	readLock <- newMVar ()
+	writeLock <- newMVar ()
+	return (Connection addr transport serial
+	                   readLock writeLock)
 
-instance Exception ConnectionError
-
-throwError :: String -> IO a
-throwError = throwIO . ConnectionError
+disconnect :: Connection -> IO ()
+disconnect = transportClose . connectionTransport
 :
 
 \end{multicols}
@@ -192,6 +194,7 @@ addresses = runParser $ do
 \end{multicols}
 
 \clearpage
+\subsubsection{Printing addresses}
 
 \begin{multicols}{2}
 
