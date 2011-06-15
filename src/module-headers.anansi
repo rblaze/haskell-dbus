@@ -276,3 +276,98 @@ import           DBus.Connection.Error
 
 |DBus.Connection.Transport|
 :
+
+:f DBus/Client/Internal.hs
+{-# LANGUAGE OverloadedStrings #-}
+|copyright|
+module DBus.Client.Internal where
+import           Control.Concurrent
+import           Control.Monad (forever)
+import           Control.Monad.Fix (mfix)
+import qualified Data.Map
+import           Data.Map (Map)
+import           Data.Maybe (isJust)
+import qualified Data.Set
+
+import           DBus.Connection hiding (receive)
+import qualified DBus.Connection
+import           DBus.Connection.Error
+import           DBus.Message
+import           DBus.Util (void)
+
+|DBus.Client|
+:
+
+:f DBus/Client/Simple.hs
+|copyright|
+module DBus.Client.Simple
+	(
+	-- * Clients
+	  Client
+	, connectSystem
+	, connectSession
+	, connectStarter
+	, disconnect
+	
+	-- ** Proxies
+	, Proxy
+	, proxy
+	, call
+	, call_
+	
+	-- * Types
+	
+	-- ** Variants
+	, Variant
+	, IsVariant(..)
+	, IsValue
+	, IsAtom
+	
+	-- ** Signatures
+	, Signature
+	, signature
+	, signature_
+	, signatureText
+	
+	-- ** Object paths
+	, ObjectPath
+	, objectPath
+	, objectPath_
+	, objectPathText
+	
+	-- ** Interface names
+	, InterfaceName
+	, interfaceName
+	, interfaceName_
+	, interfaceNameText
+	
+	-- ** Member names
+	, MemberName
+	, memberName
+	, memberName_
+	, memberNameText
+	
+	-- ** Error names
+	, ErrorName
+	, errorName
+	, errorName_
+	, errorNameText
+	
+	-- ** Bus names
+	, BusName
+	, busName
+	, busName_
+	, busNameText
+	) where
+
+import qualified Data.Set
+import qualified Data.Text
+
+import           DBus.Client.Internal hiding (call)
+import qualified DBus.Connection
+import           DBus.Connection.Error
+import           DBus.Message hiding (errorName)
+import           DBus.Types
+
+|DBus.Client.Simple|
+:

@@ -30,6 +30,7 @@ extra-source-files:
   scripts/run-tests
   --
   src/api-docs.anansi
+  src/client.anansi
   src/connections.anansi
   src/constants.anansi
   src/copyright.anansi
@@ -73,6 +74,7 @@ library
 
   exposed-modules:
     DBus.Address
+    DBus.Client.Simple
     DBus.Connection
     DBus.Constants
     DBus.Introspection
@@ -83,6 +85,7 @@ library
     DBus.Wire
 
   other-modules:
+    DBus.Client.Internal
     DBus.Connection.Authentication
     DBus.Connection.Error
     DBus.Connection.Transport
