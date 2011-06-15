@@ -1,4 +1,6 @@
--- Copyright (C) 2009 John Millikin <jmillikin@gmail.com>
+{-# LANGUAGE OverloadedStrings #-}
+
+-- Copyright (C) 2009-2011 John Millikin <jmillikin@gmail.com>
 -- 
 -- This program is free software: you can redistribute it and/or modify
 -- it under the terms of the GNU General Public License as published by
@@ -13,52 +15,24 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{-# LANGUAGE OverloadedStrings #-}
 module Main (main) where
 
-import DBus.Bus
-import DBus.Connection
-import DBus.Message
-import DBus.Types
-import qualified Data.Set as Set
+import Data.Text
 import Data.List (sort)
+import DBus.Client.Simple
 
 main :: IO ()
 main = do
-	-- Connect to the bus, and print which name was assigned to this
-	-- connection.
-	(bus, name) <- getSessionBus
-	putStrLn $ "Connected as: " ++ show name
+	client <- connectSession
 	
 	-- Request a list of connected clients from the bus
-	Right serial <- send bus return $ MethodCall
-		{ methodCallPath = "/org/freedesktop/DBus"
-		, methodCallMember = "ListNames"
-		, methodCallInterface = Just "org.freedesktop.DBus"
-		, methodCallDestination = Just "org.freedesktop.DBus"
-		, methodCallFlags = Set.empty
-		, methodCallBody = []
-		}
+	bus <- proxy client "org.freedesktop.DBus" "/org/freedesktop/DBus"
+	reply <- call_ bus "org.freedesktop.DBus" "ListNames" []
 	
-	-- Wait for the reply
-	reply <- waitForReply bus serial
-	
-	-- Pull out the body, and convert it to [String]
-	let Just names = fromArray =<< fromVariant (messageBody reply !! 0)
+	-- org.freedesktop.DBus.ListNames returns a single value, which is
+	-- a list of names (here represented as [Text])
+	let Just names = fromVariant (reply !! 0)
 	
 	-- Print each name on a line, sorted so reserved names are below
 	-- temporary names.
-	mapM_ putStrLn $ sort names
-
-waitForReply :: Connection -> Serial -> IO MethodReturn
-waitForReply bus serial = wait where
-	wait = do
-		received <- receive bus
-		case received of
-			Right (ReceivedMethodReturn _ _ ret) ->
-				if methodReturnSerial ret == serial
-					then return ret
-					else wait
-			Right _ -> wait
-			Left err -> error $ show err
-
+	mapM_ (putStrLn . unpack) (sort names)
