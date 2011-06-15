@@ -17,6 +17,7 @@ extra-source-files:
   readme.txt
   --
   examples/dbus-monitor.hs
+  examples/introspect.hs
   examples/simple.hs
   --
   latex/geometry.sty
