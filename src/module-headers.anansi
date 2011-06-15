@@ -186,16 +186,24 @@ import           DBus.Types.Internal (runParser)
 |copyright|
 module DBus.Connection
 	( Connection
+	, ConnectionError
 	, connect
+	, connectFirst
+	, connectSession
+	, connectSystem
+	, connectStarter
 	, disconnect
 	, send
 	, receive
 	) where
 import           Control.Concurrent
+import qualified Control.Exception
 import           Control.Monad (when)
 import qualified Data.ByteString
 import qualified Data.ByteString.Lazy
 import           Data.IORef
+import qualified Data.Text
+import qualified System.Environment
 
 import           DBus.Address
 import           DBus.Connection.Authentication

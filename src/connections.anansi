@@ -90,6 +90,27 @@ disconnect = transportClose . connectionTransport
 
 \end{multicols}
 
+\begin{multicols}{2}
+
+TODO
+
+\vfill
+\columnbreak
+
+:d DBus.Connection
+connectFirst :: [Address] -> IO Connection
+connectFirst addrs = loop addrs where
+	loop [] = throwError (concat
+		[ "connectFirst: no usable"
+		, " addresses in "
+		, show addrs])
+	loop (a:as) = Control.Exception.catch
+		(connect a)
+		(\(ConnectionError _) -> loop as)
+:
+
+\end{multicols}
+
 \clearpage
 \subsection{Addresses}
 
@@ -251,6 +272,30 @@ addressText addr = Data.Text.concat chunks where
 :
 
 \end{multicols}
+
+\subsubsection{Well-known bus addresses}
+
+:d DBus.Connection
+connectEnv :: String -> IO Connection
+connectEnv addr = case addresses (Data.Text.pack addr) of
+	Just [addr'] -> connect addr'
+	Just addrs -> connectFirst addrs
+	Nothing -> throwError ("Invalid bus address: " ++ show addr)
+
+connectSystem :: IO Connection
+connectSystem = do
+	let system = "unix:path=/var/run/dbus/system_bus_socket"
+	env <- Control.Exception.catch
+		(System.Environment.getEnv "DBUS_SYSTEM_BUS_ADDRESS")
+		(\(Control.Exception.SomeException _) -> return system)
+	connectEnv env
+
+connectSession :: IO Connection
+connectSession = System.Environment.getEnv "DBUS_SESSION_BUS_ADDRESS" >>= connectEnv
+
+connectStarter :: IO Connection
+connectStarter = System.Environment.getEnv "DBUS_STARTER_BUS_ADDRESS" >>= connectEnv
+:
 
 \clearpage
 \subsection{Transports}
