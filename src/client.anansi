@@ -22,31 +22,49 @@ data Client = Client
 	, clientCallbacks :: MVar (Map Serial Callback)
 	, clientSignalHandlers :: MVar [Callback]
 	, clientThreadID :: ThreadId
+	, clientMessageProcessor :: IORef (ReceivedMessage -> IO Bool)
 	}
 
 type Callback = (ReceivedMessage -> IO ())
 :
 
 :d DBus.Client
-attach :: Connection -> IO Client
-attach connection = do
+connect :: Address -> IO Client
+connect addr = do
+	connection <- DBus.Connection.connect addr
 	callbacks <- newMVar Data.Map.empty
 	signalHandlers <- newMVar []
+	processor <- newIORef (\_ -> return False)
 	
 	client <- mfix $ \client -> do
 		threadID <- forkIO (mainLoop client)
-		return (Client connection callbacks signalHandlers threadID)
+		return (Client
+			{ clientConnection = connection
+			, clientCallbacks = callbacks
+			, clientSignalHandlers = signalHandlers
+			, clientThreadID = threadID
+			, clientMessageProcessor = processor
+			})
 	
 	sendHello client
 	return client
 :
 
 :d DBus.Client
-detach :: Client -> IO ()
-detach client = do
+disconnect :: Client -> IO ()
+disconnect client = do
+	let connection = clientConnection client
 	killThread (clientThreadID client)
 	modifyMVar_ (clientCallbacks client) (\_ -> return Data.Map.empty)
 	modifyMVar_ (clientSignalHandlers client) (\_ -> return [])
+	DBus.Connection.disconnect connection
+:
+
+:d DBus.Client
+setMessageProcessor :: Client -> (ReceivedMessage -> IO Bool) -> IO ()
+setMessageProcessor client io = atomicModifyIORef
+	(clientMessageProcessor client)
+	(\_ -> (io, ()))
 :
 
 :d DBus.Client
@@ -62,9 +80,9 @@ sendHello client = void (callBlocking client (MethodCall
 :
 
 :d DBus.Client
-send_ :: Message msg => Connection -> msg -> (Serial -> IO a) -> IO a
-send_ connection msg io = do
-	result <- send connection msg io
+send_ :: Message msg => Client -> msg -> (Serial -> IO a) -> IO a
+send_ client msg io = do
+	result <- DBus.Connection.send (clientConnection client) msg io
 	case result of
 		Right serial -> return serial
 		Left err -> throwError ("Error sending message: " ++ show err)
@@ -79,11 +97,10 @@ call client msg onError onReply = do
 	    callback (ReceivedMethodReturn _ _ reply) = onReply reply
 	    callback _ = return ()
 	
-	send_ (clientConnection client) msg
-		(\serial -> do
-			let mvar = clientCallbacks client
-			modifyMVar_ mvar (\callbacks ->
-				return (Data.Map.insert serial callback callbacks)))
+	send_ client msg (\serial -> do
+		let mvar = clientCallbacks client
+		modifyMVar_ mvar (\callbacks ->
+			return (Data.Map.insert serial callback callbacks)))
 
 callBlocking :: Client -> MethodCall -> IO (Either Error MethodReturn)
 callBlocking client msg = do
@@ -96,25 +113,24 @@ callBlocking client msg = do
 
 :d DBus.Client
 mainLoop :: Client -> IO ()
-mainLoop client = forever (receive >>= dispatch) where
-	connection = clientConnection client
+mainLoop client = forever $ do
+	let connection = clientConnection client
 	
-	receive = do
-		received <- DBus.Connection.receive connection
-		case received of
-			Left err -> do
-				detach client
-				disconnect connection
-				throwError ("Received invalid message: " ++ show err)
-			Right msg -> return msg
+	received <- DBus.Connection.receive connection
+	msg <- case received of
+		Left err -> do
+			disconnect client
+			throwError ("Received invalid message: " ++ show err)
+		Right msg -> return msg
 	
-	dispatch received@(ReceivedMethodReturn _ _ msg) = onReply (methodReturnSerial msg) received
-	dispatch received@(ReceivedError _ _ msg) = onReply (errorSerial msg) received
-	dispatch (ReceivedSignal _ _ _) = return ()
-	dispatch (ReceivedMethodCall _ _ _) = return ()
-	dispatch (ReceivedUnknown _ _ _) = return ()
+	dispatch client msg
+
+dispatch :: Client -> ReceivedMessage -> IO ()
+dispatch client received = void . forkIO $ do
+	process <- readIORef (clientMessageProcessor client)
+	handled <- process received
 	
-	onReply serial msg = do
+	let onReply serial = do
 		let mvar = clientCallbacks client
 		maybeCB <- modifyMVar mvar $ \callbacks -> let
 			x = Data.Map.lookup serial callbacks
@@ -123,8 +139,13 @@ mainLoop client = forever (receive >>= dispatch) where
 				else callbacks
 			in return (callbacks', x)
 		case maybeCB of
-			Just cb -> void (forkIO (cb msg))
+			Just cb -> void (cb received)
 			Nothing -> return ()
+	
+	unless handled $ case received of
+		(ReceivedMethodReturn _ _ msg) -> onReply (methodReturnSerial msg)
+		(ReceivedError _ _ msg) -> onReply (errorSerial msg)
+		_ -> return ()
 :
 
 \clearpage
@@ -132,13 +153,13 @@ mainLoop client = forever (receive >>= dispatch) where
 
 :d DBus.Client.Simple
 connectFirst :: [Address] -> IO Client
-connectFirst addrs = loop addrs >>= attach where
+connectFirst addrs = loop addrs where
 	loop [] = throwError (concat
 		[ "connectFirst: no usable"
 		, " addresses in "
 		, show addrs])
 	loop (a:as) = Control.Exception.catch
-		(DBus.Connection.connect a)
+		(DBus.Client.connect a)
 		(\(ConnectionError _) -> loop as)
 
 connectSession :: IO Client
@@ -170,12 +191,6 @@ connectStarter = do
 			, " missing or invalid."
 			])
 		Just addrs -> connectFirst addrs
-
-disconnect :: Client -> IO ()
-disconnect client = do
-	let connection = clientConnection client
-	detach client
-	DBus.Connection.disconnect connection
 :
 
 :d DBus.Client.Simple

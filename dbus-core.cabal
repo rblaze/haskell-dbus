@@ -75,6 +75,7 @@ library
 
   exposed-modules:
     DBus.Address
+    DBus.Client
     DBus.Client.Simple
     DBus.Connection
     DBus.Constants

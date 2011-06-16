@@ -278,20 +278,35 @@ import           DBus.Connection.Error
 |DBus.Connection.Transport|
 :
 
+:f DBus/Client.hs
+|copyright|
+module DBus.Client
+	( Client
+	, connect
+	, disconnect
+	, call
+	, callBlocking
+	, setMessageProcessor
+	) where
+import           DBus.Client.Internal
+:
+
 :f DBus/Client/Internal.hs
 {-# LANGUAGE OverloadedStrings #-}
 |copyright|
 module DBus.Client.Internal where
 import           Control.Concurrent
-import           Control.Monad (forever)
+import           Control.Monad (forever, unless)
 import           Control.Monad.Fix (mfix)
+import           Data.IORef
 import qualified Data.Map
 import           Data.Map (Map)
 import           Data.Maybe (isJust)
 import qualified Data.Set
 
-import           DBus.Connection hiding (receive)
+import           DBus.Address
 import qualified DBus.Connection
+import           DBus.Connection (Connection)
 import           DBus.Connection.Error
 import           DBus.Message
 import           DBus.Util (void)
@@ -366,9 +381,7 @@ import qualified Data.Set
 import qualified Data.Text
 
 import           DBus.Address
-import           DBus.Client.Internal hiding (call)
-import           DBus.Connection (Connection)
-import qualified DBus.Connection
+import           DBus.Client hiding (call)
 import           DBus.Connection.Error
 import           DBus.Message hiding (errorName)
 import           DBus.Types
