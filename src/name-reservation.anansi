@@ -18,28 +18,7 @@
 The central bus allows clients to register a well-known bus name, which
 enables other clients to connect with or start a particular application.
 
-:f DBus/NameReservation.hs
-|copyright|
-{-# LANGUAGE OverloadedStrings #-}
-module DBus.NameReservation
-	( RequestNameFlag (..)
-	, RequestNameReply (..)
-	, ReleaseNameReply (..)
-	, requestName
-	, releaseName
-	, mkRequestNameReply
-	, mkReleaseNameReply
-	) where
-import Data.Word (Word32)
-import Data.Bits ((.|.))
-import qualified Data.Set as Set
-import qualified DBus.Types as T
-import qualified DBus.Message as M
-import qualified DBus.Constants as C
-import DBus.Util (maybeIndex)
-:
-
-:f DBus/NameReservation.hs
+:d DBus.NameReservation
 data RequestNameFlag
 	= AllowReplacement
 	| ReplaceExisting
@@ -47,7 +26,7 @@ data RequestNameFlag
 	deriving (Show)
 :
 
-:f DBus/NameReservation.hs
+:d DBus.NameReservation
 encodeFlags :: [RequestNameFlag] -> Word32
 encodeFlags = foldr (.|.) 0 . map flagValue where
 	flagValue AllowReplacement = 0x1
@@ -58,7 +37,7 @@ encodeFlags = foldr (.|.) 0 . map flagValue where
 There are only two methods of interest here, {\tt RequestName} and
 {\tt ReleaseName}.
 
-:f DBus/NameReservation.hs
+:d DBus.NameReservation
 |apidoc requestName|
 requestName :: T.BusName -> [RequestNameFlag] -> M.MethodCall
 requestName name flags = M.MethodCall
@@ -73,7 +52,7 @@ requestName name flags = M.MethodCall
 	}
 :
 
-:f DBus/NameReservation.hs
+:d DBus.NameReservation
 data RequestNameReply
 	= PrimaryOwner
 	| InQueue
@@ -82,7 +61,7 @@ data RequestNameReply
 	deriving (Show)
 :
 
-:f DBus/NameReservation.hs
+:d DBus.NameReservation
 mkRequestNameReply :: M.MethodReturn -> Maybe RequestNameReply
 mkRequestNameReply msg =
 	maybeIndex (M.messageBody msg) 0 >>=
@@ -90,7 +69,7 @@ mkRequestNameReply msg =
 	decodeRequestReply
 :
 
-:f DBus/NameReservation.hs
+:d DBus.NameReservation
 decodeRequestReply :: Word32 -> Maybe RequestNameReply
 decodeRequestReply 1 = Just PrimaryOwner
 decodeRequestReply 2 = Just InQueue
@@ -99,7 +78,7 @@ decodeRequestReply 4 = Just AlreadyOwner
 decodeRequestReply _ = Nothing
 :
 
-:f DBus/NameReservation.hs
+:d DBus.NameReservation
 |apidoc releaseName|
 releaseName :: T.BusName -> M.MethodCall
 releaseName name = M.MethodCall
@@ -112,7 +91,7 @@ releaseName name = M.MethodCall
 	}
 :
 
-:f DBus/NameReservation.hs
+:d DBus.NameReservation
 data ReleaseNameReply
 	= Released
 	| NonExistent
@@ -120,7 +99,7 @@ data ReleaseNameReply
 	deriving (Show)
 :
 
-:f DBus/NameReservation.hs
+:d DBus.NameReservation
 mkReleaseNameReply :: M.MethodReturn -> Maybe ReleaseNameReply
 mkReleaseNameReply msg =
 	maybeIndex (M.messageBody msg) 0 >>=
@@ -128,7 +107,7 @@ mkReleaseNameReply msg =
 	decodeReleaseReply
 :
 
-:f DBus/NameReservation.hs
+:d DBus.NameReservation
 decodeReleaseReply :: Word32 -> Maybe ReleaseNameReply
 decodeReleaseReply 1 = Just Released
 decodeReleaseReply 2 = Just NonExistent

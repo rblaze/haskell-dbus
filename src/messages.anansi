@@ -15,33 +15,7 @@
 
 \section{Messages}
 
-To prevent internal details of messages from leaking out to clients,
-declarations are contained in an internal module and then re-exported
-in the public module.
-
-:f DBus/Message.hs
-|copyright|
-module DBus.Message (
-	|message exports|
-	) where
-import DBus.Message.Internal
-:
-
-:f DBus/Message/Internal.hs
-{-# LANGUAGE OverloadedStrings #-}
-|copyright|
-module DBus.Message.Internal where
-import qualified Data.Set
-import           Data.Set (Set)
-import qualified Data.Text
-import           Data.Text (Text)
-import           Data.Word (Word8, Word32)
-import           Data.Maybe (fromMaybe)
-import           DBus.Types hiding (errorName)
-import           DBus.Util (maybeIndex)
-:
-
-:f DBus/Message/Internal.hs
+:d DBus.Message
 class Message a where
 	messageTypeCode     :: a -> Word8
 	messageHeaderFields :: a -> [HeaderField]
@@ -49,13 +23,7 @@ class Message a where
 	messageBody         :: a -> [Variant]
 :
 
-:d message exports
-Message ( messageFlags
-        , messageBody
-        )
-:
-
-:f DBus/Message/Internal.hs
+:d DBus.Message
 maybe' :: (a -> b) -> Maybe a -> [b]
 maybe' f = maybe [] (\x' -> [f x'])
 :
@@ -67,17 +35,13 @@ a recognised type code. They are not instances of {\tt Message}, because
 if they were, then clients could accidentally send invalid messages over
 the bus.
 
-:f DBus/Message/Internal.hs
+:d DBus.Message
 data Unknown = Unknown
 	{ unknownType    :: Word8
 	, unknownFlags   :: Set Flag
 	, unknownBody    :: [Variant]
 	}
 	deriving (Show, Eq)
-:
-
-:d message exports
-, Unknown (..)
 :
 
 \clearpage
@@ -91,7 +55,7 @@ TODO
 
 \columnbreak
 
-:f DBus/Message/Internal.hs
+:d DBus.Message
 data HeaderField
 	= HeaderPath        ObjectPath
 	| HeaderInterface   InterfaceName
@@ -117,15 +81,11 @@ no inherent ordering.
 
 \columnbreak
 
-:f DBus/Message/Internal.hs
+:d DBus.Message
 data Flag
 	= NoReplyExpected
 	| NoAutoStart
 	deriving (Show, Eq, Ord)
-:
-
-:d message exports
-, Flag (..)
 :
 
 \end{multicols}
@@ -141,7 +101,7 @@ added type-safety.
 
 \columnbreak
 
-:f DBus/Message/Internal.hs
+:d DBus.Message
 |apidoc Serial|
 newtype Serial = Serial Word32
 	deriving (Eq, Ord, Show)
@@ -161,7 +121,7 @@ Additionally, some useful functions exist for incrementing serials.
 
 \columnbreak
 
-:f DBus/Message/Internal.hs
+:d DBus.Message
 serialValue :: Serial -> Word32
 serialValue (Serial x) = x
 :
@@ -177,11 +137,6 @@ arbitrary serials doesn't make any sense.
 
 \columnbreak
 
-:d message exports
-, Serial
-, serialValue
-:
-
 \end{multicols}
 
 \clearpage
@@ -189,7 +144,7 @@ arbitrary serials doesn't make any sense.
 
 \subsubsection{Method calls}
 
-:f DBus/Message/Internal.hs
+:d DBus.Message
 data MethodCall = MethodCall
 	{ methodCallPath        :: ObjectPath
 	, methodCallMember      :: MemberName
@@ -213,14 +168,10 @@ instance Message MethodCall where
 		]
 :
 
-:d message exports
-, MethodCall (..)
-:
-
 \clearpage
 \subsubsection{Method returns}
 
-:f DBus/Message/Internal.hs
+:d DBus.Message
 data MethodReturn = MethodReturn
 	{ methodReturnSerial      :: Serial
 	, methodReturnDestination :: Maybe BusName
@@ -239,14 +190,10 @@ instance Message MethodReturn where
 		]
 :
 
-:d message exports
-, MethodReturn (..)
-:
-
 \clearpage
 \subsubsection{Errors}
 
-:f DBus/Message/Internal.hs
+:d DBus.Message
 data Error = Error
 	{ errorName        :: ErrorName
 	, errorSerial      :: Serial
@@ -271,7 +218,7 @@ Errors usually contain a human-readable message in their first body field.
 This function lets it be retrieved easily, with a fallback if no valid
 message was found.
 
-:f DBus/Message/Internal.hs
+:d DBus.Message
 errorMessage :: Error -> Text
 errorMessage msg = fromMaybe "(no error message)" $ do
 	field <- maybeIndex (errorBody msg) 0
@@ -281,15 +228,10 @@ errorMessage msg = fromMaybe "(no error message)" $ do
 		else return text
 :
 
-:d message exports
-, Error (..)
-, errorMessage
-:
-
 \clearpage
 \subsubsection{Signals}
 
-:f DBus/Message/Internal.hs
+:d DBus.Message
 data Signal = Signal
 	{ signalPath        :: ObjectPath
 	, signalMember      :: MemberName
@@ -312,10 +254,6 @@ instance Message Signal where
 		]
 :
 
-:d message exports
-, Signal (..)
-:
-
 \clearpage
 \subsection{Received messages}
 
@@ -325,7 +263,7 @@ when sending.
 If a message has an unknown type, its serial and origin are still useful
 for sending an error reply.
 
-:f DBus/Message/Internal.hs
+:d DBus.Message
 |apidoc ReceivedMessage|
 data ReceivedMessage
 	= ReceivedMethodCall   Serial (Maybe BusName) MethodCall
@@ -336,7 +274,7 @@ data ReceivedMessage
 	deriving (Show, Eq)
 :
 
-:f DBus/Message/Internal.hs
+:d DBus.Message
 receivedSerial :: ReceivedMessage -> Serial
 receivedSerial (ReceivedMethodCall   s _ _) = s
 receivedSerial (ReceivedMethodReturn s _ _) = s
@@ -345,7 +283,7 @@ receivedSerial (ReceivedSignal       s _ _) = s
 receivedSerial (ReceivedUnknown      s _ _) = s
 :
 
-:f DBus/Message/Internal.hs
+:d DBus.Message
 receivedSender :: ReceivedMessage -> Maybe BusName
 receivedSender (ReceivedMethodCall   _ s _) = s
 receivedSender (ReceivedMethodReturn _ s _) = s
@@ -354,18 +292,11 @@ receivedSender (ReceivedSignal       _ s _) = s
 receivedSender (ReceivedUnknown      _ s _) = s
 :
 
-:f DBus/Message/Internal.hs
+:d DBus.Message
 receivedBody :: ReceivedMessage -> [Variant]
 receivedBody (ReceivedMethodCall   _ _ x) = messageBody x
 receivedBody (ReceivedMethodReturn _ _ x) = messageBody x
 receivedBody (ReceivedError        _ _ x) = messageBody x
 receivedBody (ReceivedSignal       _ _ x) = messageBody x
 receivedBody (ReceivedUnknown      _ _ x) = unknownBody x
-:
-
-:d message exports
-, ReceivedMessage (..)
-, receivedSerial
-, receivedSender
-, receivedBody
 :

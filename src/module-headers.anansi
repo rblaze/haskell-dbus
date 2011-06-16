@@ -94,6 +94,46 @@ import           DBus.Util (void)
 |text validation|
 :
 
+:f DBus/Message.hs
+|copyright|
+module DBus.Message
+	( Message ( messageFlags
+	          , messageBody
+	          )
+	, Flag (..)
+	, Serial
+	, serialValue
+	, Unknown (..)
+	, MethodCall (..)
+	, MethodReturn (..)
+	, Error (..)
+	, errorMessage
+	, Signal (..)
+	, ReceivedMessage (..)
+	, receivedSerial
+	, receivedSender
+	, receivedBody
+	) where
+import DBus.Message.Internal
+:
+
+:f DBus/Message/Internal.hs
+{-# LANGUAGE OverloadedStrings #-}
+|copyright|
+module DBus.Message.Internal where
+import           Data.Maybe (fromMaybe)
+import qualified Data.Set
+import           Data.Set (Set)
+import qualified Data.Text
+import           Data.Text (Text)
+import           Data.Word (Word8, Word32)
+
+import           DBus.Types hiding (errorName)
+import           DBus.Util (maybeIndex)
+
+|DBus.Message|
+:
+
 :f DBus/Wire.hs
 |copyright|
 module DBus.Wire
@@ -387,4 +427,83 @@ import           DBus.Message hiding (errorName)
 import           DBus.Types
 
 |DBus.Client.Simple|
+:
+
+:f DBus/Introspection.hs
+{-# LANGUAGE OverloadedStrings #-}
+|copyright|
+module DBus.Introspection
+	( Object (..)
+	, Interface (..)
+	, Method (..)
+	, Signal (..)
+	, Parameter (..)
+	, Property (..)
+	, PropertyAccess (..)
+	, toXML
+	, fromXML
+	) where
+import           Control.Monad ((>=>))
+import           Control.Monad.ST (runST)
+import           Data.Maybe (fromMaybe, listToMaybe)
+import qualified Data.STRef as ST
+import qualified Data.Text
+import           Data.Text (Text)
+import qualified Data.Text.Lazy
+import qualified Data.XML.Types as X
+import qualified Text.XML.LibXML.SAX as SAX
+
+import qualified DBus.Types as T
+
+|DBus.Introspection|
+:
+
+:f DBus/MatchRule.hs
+{-# LANGUAGE OverloadedStrings #-}
+|copyright|
+module DBus.MatchRule (
+	  MatchRule (..)
+	, MessageType (..)
+	, ParameterValue (..)
+	, formatRule
+	, addMatch
+	, matchAll
+	, matches
+	) where
+import           Data.Maybe (fromMaybe, mapMaybe)
+import qualified Data.Set as Set
+import qualified Data.Text as T
+import           Data.Text (Text)
+import           Data.Word (Word8)
+
+import qualified DBus.Constants as C
+import qualified DBus.Message as M
+import qualified DBus.Types as T
+import           DBus.Util (maybeIndex)
+
+|DBus.MatchRule|
+:
+
+:f DBus/NameReservation.hs
+{-# LANGUAGE OverloadedStrings #-}
+|copyright|
+module DBus.NameReservation
+	( RequestNameFlag (..)
+	, RequestNameReply (..)
+	, ReleaseNameReply (..)
+	, requestName
+	, releaseName
+	, mkRequestNameReply
+	, mkReleaseNameReply
+	) where
+import           Data.Bits ((.|.))
+import qualified Data.Set as Set
+import           Data.Word (Word32)
+
+import qualified DBus.Constants as C
+import qualified DBus.Message as M
+import qualified DBus.Types as T
+import           DBus.Util (maybeIndex)
+
+|DBus.NameReservation|
 :

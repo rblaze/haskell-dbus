@@ -19,30 +19,7 @@ Match rules are used to indicate that the client is interested in messages
 matching a particular filter. This module provides an interface for building
 match rule strings. Eventually, it will support parsing them also.
 
-:f DBus/MatchRule.hs
-|copyright|
-|text extensions|
-module DBus.MatchRule (
-	  MatchRule (..)
-	, MessageType (..)
-	, ParameterValue (..)
-	, formatRule
-	, addMatch
-	, matchAll
-	, matches
-	) where
-import qualified Data.Text as T
-import           Data.Text (Text)
-import Data.Word (Word8)
-import Data.Maybe (fromMaybe, mapMaybe)
-import qualified Data.Set as Set
-import qualified DBus.Types as T
-import qualified DBus.Message as M
-import qualified DBus.Constants as C
-import DBus.Util (maybeIndex)
-:
-
-:f DBus/MatchRule.hs
+:d DBus.MatchRule
 -- | A match rule is a set of filters; most filters may have one possible
 -- value assigned, such as a single message type. The exception are parameter
 -- filters, which are limited in number only by the server implementation.
@@ -59,7 +36,7 @@ data MatchRule = MatchRule
 	deriving (Show)
 :
 
-:f DBus/MatchRule.hs
+:d DBus.MatchRule
 -- | Parameters may match against two types, strings and object paths. It's
 -- probably an error to have two values for the same parameter.
 -- 
@@ -73,7 +50,7 @@ data ParameterValue
 	deriving (Show, Eq)
 :
 
-:f DBus/MatchRule.hs
+:d DBus.MatchRule
 -- | The set of allowed message types to filter on is separate from the set
 -- supported for sending over the wire. This allows the server to support
 -- additional types not yet implemented in the library, or vice-versa.
@@ -89,7 +66,7 @@ data MessageType
 There's currently only one operation to perform on match rules, and that's
 to format them.
 
-:f DBus/MatchRule.hs
+:d DBus.MatchRule
 |apidoc formatRule|
 formatRule :: MatchRule -> Text
 formatRule rule = T.intercalate "," filters where
@@ -106,7 +83,7 @@ formatRule rule = T.intercalate "," filters where
 	unpack (key, mkValue) = formatFilter' key `fmap` mkValue rule
 :
 
-:f DBus/MatchRule.hs
+:d DBus.MatchRule
 formatParameter :: ParameterValue -> Text
 formatParameter (StringValue index x) = formatFilter' key x where
 	key = "arg" `T.append` T.pack (show index)
@@ -118,7 +95,7 @@ formatParameter (PathValue index x) = formatFilter' key value where
 FIXME: what are the escaping rules for match rules? Other bindings don't
 seem to perform any escaping at all.
 
-:f DBus/MatchRule.hs
+:d DBus.MatchRule
 formatFilter' :: Text -> Text -> Text
 formatFilter' key value = T.concat [key, "='", value, "'"]
 
@@ -132,7 +109,7 @@ formatType Error        = "error"
 And since the only real reason for formatting a match rule is to send it,
 it's useful to have a message-building function pre-defined.
 
-:f DBus/MatchRule.hs
+:d DBus.MatchRule
 |apidoc addMatch|
 addMatch :: MatchRule -> M.MethodCall
 addMatch rule = M.MethodCall
@@ -147,7 +124,7 @@ addMatch rule = M.MethodCall
 Most match rules will have only one or two fields filled in, so defining
 an empty rule allows clients to set only the fields they care about.
 
-:f DBus/MatchRule.hs
+:d DBus.MatchRule
 |apidoc matchAll|
 matchAll :: MatchRule
 matchAll = MatchRule
@@ -164,7 +141,7 @@ matchAll = MatchRule
 It's useful to match against a rule client-side, eg when listening for
 signals.
 
-:f DBus/MatchRule.hs
+:d DBus.MatchRule
 |apidoc matches|
 matches :: MatchRule -> M.ReceivedMessage -> Bool
 matches rule msg = and . mapMaybe ($ rule) $
@@ -178,7 +155,7 @@ matches rule msg = and . mapMaybe ($ rule) $
 	]
 :
 
-:f DBus/MatchRule.hs
+:d DBus.MatchRule
 typeMatches :: M.ReceivedMessage -> MessageType -> Bool
 typeMatches (M.ReceivedMethodCall   _ _ _) MethodCall   = True
 typeMatches (M.ReceivedMethodReturn _ _ _) MethodReturn = True
@@ -187,12 +164,12 @@ typeMatches (M.ReceivedError        _ _ _) Error        = True
 typeMatches _ _ = False
 :
 
-:f DBus/MatchRule.hs
+:d DBus.MatchRule
 senderMatches :: M.ReceivedMessage -> T.BusName -> Bool
 senderMatches msg name = M.receivedSender msg == Just name
 :
 
-:f DBus/MatchRule.hs
+:d DBus.MatchRule
 ifaceMatches :: M.ReceivedMessage -> T.InterfaceName -> Bool
 ifaceMatches (M.ReceivedMethodCall _ _ msg) name =
 	Just name == M.methodCallInterface msg
@@ -201,7 +178,7 @@ ifaceMatches (M.ReceivedSignal _ _ msg) name =
 ifaceMatches _ _ = False
 :
 
-:f DBus/MatchRule.hs
+:d DBus.MatchRule
 memberMatches :: M.ReceivedMessage -> T.MemberName -> Bool
 memberMatches (M.ReceivedMethodCall _ _ msg) name =
 	name == M.methodCallMember msg
@@ -210,7 +187,7 @@ memberMatches (M.ReceivedSignal _ _ msg) name =
 memberMatches _ _ = False
 :
 
-:f DBus/MatchRule.hs
+:d DBus.MatchRule
 pathMatches :: M.ReceivedMessage -> T.ObjectPath -> Bool
 pathMatches (M.ReceivedMethodCall _ _ msg) path =
 	path == M.methodCallPath msg
@@ -219,7 +196,7 @@ pathMatches (M.ReceivedSignal _ _ msg) path =
 pathMatches _ _ = False
 :
 
-:f DBus/MatchRule.hs
+:d DBus.MatchRule
 destMatches :: M.ReceivedMessage -> T.BusName -> Bool
 destMatches (M.ReceivedMethodCall _ _ msg) name =
 	Just name == M.methodCallDestination msg
@@ -232,7 +209,7 @@ destMatches (M.ReceivedSignal _ _ msg) name =
 destMatches _ _ = False
 :
 
-:f DBus/MatchRule.hs
+:d DBus.MatchRule
 parametersMatch :: M.ReceivedMessage -> [ParameterValue] -> Bool
 parametersMatch _ [] = True
 parametersMatch msg values = all validParam values where

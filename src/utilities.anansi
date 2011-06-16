@@ -126,17 +126,3 @@ instance Monad m => Monad (ErrorT e m) where
 throwErrorT :: Monad m => e -> ErrorT e m a
 throwErrorT = ErrorT . return . Left
 :
-
-\subsection*{Text values}
-
-Most of the functions in this library use the types and functions defined
-in {\tt Data.Text}, in preference to the {\tt String} type.
-
-:d text extensions
-{-# LANGUAGE OverloadedStrings #-}
-:
-
-:d text imports
-import Data.Text.Lazy (Text)
-import qualified Data.Text.Lazy as TL
-:
