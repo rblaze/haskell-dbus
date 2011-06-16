@@ -1,42 +1,39 @@
-{-
-  Copyright (C) 2009 John Millikin <jmillikin@gmail.com>
-  
-  This program is free software: you can redistribute it and/or modify
-  it under the terms of the GNU General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  any later version.
-  
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License for more details.
-  
-  You should have received a copy of the GNU General Public License
-  along with this program.  If not, see <http://www.gnu.org/licenses/>.
--}
-
 {-# LANGUAGE OverloadedStrings #-}
 
-import DBus.Address
-import DBus.Authentication
-import DBus.Bus
-import DBus.Connection
-import DBus.Constants
-import DBus.Message
-import DBus.Types
-import DBus.Wire
+-- Copyright (C) 2009-2011 John Millikin <jmillikin@gmail.com>
+-- 
+-- This program is free software: you can redistribute it and/or modify
+-- it under the terms of the GNU General Public License as published by
+-- the Free Software Foundation, either version 3 of the License, or
+-- any later version.
+-- 
+-- This program is distributed in the hope that it will be useful,
+-- but WITHOUT ANY WARRANTY; without even the implied warranty of
+-- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+-- GNU General Public License for more details.
+-- 
+-- You should have received a copy of the GNU General Public License
+-- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import Control.Monad
-import qualified Data.Set as Set
-import Data.List
-import Data.Maybe
-import Data.Int
-import Data.Word
-import Data.Text.Lazy (Text)
-import qualified Data.Text.Lazy as TL
-import System
-import System.IO
-import System.Console.GetOpt
+module Main (main) where
+
+import           Control.Concurrent.MVar
+import           Control.Monad
+import           Data.List
+import           Data.Maybe
+import           Data.Int
+import           Data.Word
+import           Data.Text (Text)
+import qualified Data.Text
+import           System
+import           System.IO
+import           System.Console.GetOpt
+
+import           DBus.Address
+import           DBus.Client (connect, setMessageProcessor)
+import           DBus.Client.Simple
+import           DBus.Message
+import           DBus.Types
 
 data Bus = Session | System
 	deriving (Show)
@@ -57,30 +54,21 @@ optionInfo = [
 usage :: String -> String
 usage name = "Usage: " ++ name ++ " [OPTION...]"
 
-findBus :: [Option] -> IO (Connection, BusName)
-findBus []    = getSessionBus
-findBus (o:_) = case o of
-	BusOption Session -> getSessionBus
-	BusOption System  -> getSystemBus
-	AddressOption addr -> case mkAddresses (TL.pack addr) of
-			Just [x] -> getBus realUserID x
-			Just  xs -> getFirstBus [(realUserID, addr) | addr <- xs]
-			_        -> error $ "Invalid address: " ++ show addr
+findClient :: [Option] -> IO Client
+findClient []    = connectSession
+findClient (o:_) = case o of
+	BusOption Session -> connectSession
+	BusOption System  -> connectSystem
+	AddressOption addr -> case address (Data.Text.pack addr) of
+			Just addr' -> connect addr'
+			_ -> error ("Invalid address: " ++ show addr)
 
-addMatchMsg :: String -> MethodCall
-addMatchMsg match = MethodCall
-	{ methodCallPath = dbusPath
-	, methodCallMember = "AddMatch"
-	, methodCallInterface = Just dbusInterface
-	, methodCallDestination = Just dbusName
-	, methodCallFlags = Set.empty
-	, methodCallBody = [toVariant match]
-	}
+addMatch :: Proxy -> Text -> IO ()
+addMatch bus match = do
+	call bus "org.freedesktop.DBus" "AddMatch" [toVariant match]
+	return ()
 
-addMatch :: Connection -> String -> IO ()
-addMatch c s = send c return (addMatchMsg s) >> return ()
-
-defaultFilters :: [String]
+defaultFilters :: [Text]
 defaultFilters =
 	[ "type='signal'"
 	, "type='method_call'"
@@ -88,193 +76,222 @@ defaultFilters =
 	, "type='error'"
 	]
 
-onMessage :: Either UnmarshalError ReceivedMessage -> IO ()
-onMessage (Right msg) = putStrLn $ (TL.unpack $ formatMessage msg) ++ "\n"
-onMessage (Left err) = error $ show err
-
 main :: IO ()
 main = do
 	args <- getArgs
 	let (options, userFilters, errors) = getOpt Permute optionInfo args
 	unless (null errors) $ do
 		name <- getProgName
-		hPutStrLn stderr $ concat errors
-		hPutStrLn stderr $ usageInfo (usage name) optionInfo
+		hPutStrLn stderr (concat errors)
+		hPutStrLn stderr (usageInfo (usage name) optionInfo)
 		exitFailure
 	
-	(bus, _) <- findBus options
+	client <- findClient options
+	setMessageProcessor client (\msg -> do
+		putStrLn (Data.Text.unpack (formatMessage msg) ++ "\n")
+		return False)
 	
 	let filters = if null userFilters
 		then defaultFilters
-		else userFilters
+		else map Data.Text.pack userFilters
 	
+	bus <- proxy client "org.freedesktop.DBus" "/org/freedesktop/DBus"
 	mapM_ (addMatch bus) filters
 	
-	forever (receive bus >>= onMessage)
+	-- wait forever
+	done <- newEmptyMVar
+	takeMVar done
 
 -- Message formatting is verbose and mostly uninteresting, except as an
 -- excersise in string manipulation.
 
+showT :: Show a => a -> Text
+showT = Data.Text.pack . show
+
 formatMessage :: ReceivedMessage -> Text
 
 -- Method call
-formatMessage (ReceivedMethodCall serial sender msg) = TL.concat
+formatMessage (ReceivedMethodCall serial sender msg) = Data.Text.concat
 	[ "method call"
 	, " sender="
-	, fromMaybe "(null)" . fmap strBusName $ sender
+	, fromMaybe "(null)" (fmap busNameText sender)
 	, " -> dest="
-	, fromMaybe "(null)" . fmap strBusName . methodCallDestination $ msg
+	, fromMaybe "(null)" (fmap busNameText (methodCallDestination msg))
 	, " serial="
-	, TL.pack . show $ serial
+	, showT (serialValue serial)
 	, " path="
-	, strObjectPath . methodCallPath $ msg
+	, objectPathText (methodCallPath msg)
 	, "; interface="
-	, fromMaybe "(null)" . fmap strInterfaceName . methodCallInterface $ msg
+	, fromMaybe "(null)" (fmap interfaceNameText (methodCallInterface msg))
 	, "; member="
-	, strMemberName . methodCallMember $ msg
+	, memberNameText (methodCallMember msg)
 	, formatBody msg
 	]
 
 -- Method return
-formatMessage (ReceivedMethodReturn _ sender msg) = TL.concat
+formatMessage (ReceivedMethodReturn _ sender msg) = Data.Text.concat
 	[ "method return"
 	, " sender="
-	, fromMaybe "(null)" . fmap strBusName $ sender
+	, fromMaybe "(null)" (fmap busNameText sender)
 	, " -> dest="
-	, fromMaybe "(null)" . fmap strBusName . methodReturnDestination $ msg
+	, fromMaybe "(null)" (fmap busNameText (methodReturnDestination msg))
 	, " reply_serial="
-	, TL.pack . show . methodReturnSerial $ msg
+	, showT (serialValue (methodReturnSerial msg))
 	, formatBody msg
 	]
 
 -- Error
-formatMessage (ReceivedError _ sender msg) = TL.concat
+formatMessage (ReceivedError _ sender msg) = Data.Text.concat
 	[ "error"
 	, " sender="
-	, fromMaybe "(null)" . fmap strBusName $ sender
+	, fromMaybe "(null)" (fmap busNameText sender)
 	, " -> dest="
-	, fromMaybe "(null)" . fmap strBusName . errorDestination $ msg
+	, fromMaybe "(null)" (fmap busNameText (errorDestination msg))
 	, " error_name="
-	, strErrorName . errorName $ msg
+	, errorNameText (DBus.Message.errorName msg)
 	, " reply_serial="
-	, TL.pack . show . errorSerial $ msg
+	, showT (serialValue (errorSerial msg))
 	, formatBody msg
 	]
 
 -- Signal
-formatMessage (ReceivedSignal serial sender msg) = TL.concat
+formatMessage (ReceivedSignal serial sender msg) = Data.Text.concat
 	[ "signal"
 	, " sender="
-	, fromMaybe "(null)" . fmap strBusName $ sender
+	, fromMaybe "(null)" (fmap busNameText sender)
 	, " -> dest="
-	, fromMaybe "(null)" . fmap strBusName . signalDestination $ msg
+	, fromMaybe "(null)" (fmap busNameText (signalDestination msg))
 	, " serial="
-	, TL.pack . show $ serial
+	, showT (serialValue serial)
 	, " path="
-	, strObjectPath . signalPath $ msg
+	, objectPathText (signalPath msg)
 	, "; interface="
-	, strInterfaceName . signalInterface $ msg
+	, interfaceNameText (signalInterface msg)
 	, "; member="
-	, strMemberName . signalMember $ msg
+	, memberNameText (signalMember msg)
 	, formatBody msg
 	]
 
-formatMessage (ReceivedUnknown serial sender _) = TL.concat
+formatMessage (ReceivedUnknown serial sender _) = Data.Text.concat
 	[ "unknown"
 	, " sender="
-	, fromMaybe "(null)" . fmap strBusName $ sender
+	, fromMaybe "(null)" (fmap busNameText sender)
 	, " serial="
-	, TL.pack .  show $ serial
+	, showT (serialValue serial)
 	]
 
 formatBody :: Message a => a -> Text
 formatBody msg = formatted where
-	tree = Children $ map formatVariant body
+	tree = Children (map formatVariant body)
 	body = messageBody msg
-	formatted = TL.intercalate "\n" (TL.empty : collapseTree 1 tree)
+	formatted = Data.Text.intercalate "\n" ("" : collapseTree 1 tree)
 
 -- A string tree allows easy indentation of nested structures
 data StringTree = Line Text | MultiLine [StringTree] | Children [StringTree]
 	deriving (Show)
 
-collapseTree :: Int64 -> StringTree -> [Text]
-collapseTree d (Line x)       = [TL.append (TL.replicate d "   ") x]
+collapseTree :: Int -> StringTree -> [Text]
+collapseTree d (Line x)       = [Data.Text.append (Data.Text.replicate d "   ") x]
 collapseTree d (MultiLine xs) = concatMap (collapseTree d) xs
 collapseTree d (Children xs)  = concatMap (collapseTree (d + 1)) xs
 
 -- Formatting for various kinds of variants, keyed to their signature type.
 formatVariant :: Variant -> StringTree
-formatVariant v = formatVariant' (variantType v) v where
-
-showT :: Show a => a -> Text
-showT = TL.pack . show
-
-formatVariant' :: Type -> Variant -> StringTree
-
-formatVariant' DBusBoolean x = Line $ TL.append "boolean " strX where
-	x' = fromJust . fromVariant $ x :: Bool
-	strX = if x' then "true" else "false"
-
-formatVariant' DBusByte x = Line $ TL.append "byte " $ showT x' where
-	x' = fromJust . fromVariant $ x :: Word8
-
-formatVariant' DBusInt16 x = Line $ TL.append "int16 " $ showT x' where
-	x' = fromJust . fromVariant $ x :: Int16
-
-formatVariant' DBusInt32 x = Line $ TL.append "int32 " $ showT x' where
-	x' = fromJust . fromVariant $ x :: Int32
-
-formatVariant' DBusInt64 x = Line $ TL.append "int64 " $ showT x' where
-	x' = fromJust . fromVariant $ x :: Int64
-
-formatVariant' DBusWord16 x = Line $ TL.append "uint16 " $ showT x' where
-	x' = fromJust . fromVariant $ x :: Word16
-
-formatVariant' DBusWord32 x = Line $ TL.append "uint32 " $ showT x' where
-	x' = fromJust . fromVariant $ x :: Word32
-
-formatVariant' DBusWord64 x = Line $ TL.append "uint64 " $ showT x' where
-	x' = fromJust . fromVariant $ x :: Word64
-
-formatVariant' DBusDouble x = Line $ TL.append "double " $ showT x' where
-	x' = fromJust . fromVariant $ x :: Double
-
-formatVariant' DBusString x = Line $ TL.append "string " $ showT x' where
-	x' = fromJust . fromVariant $ x :: String
-
-formatVariant' DBusObjectPath x = Line $ TL.append "object path " $ showT x' where
-	x' = strObjectPath . fromJust . fromVariant $ x
-
-formatVariant' DBusSignature x = Line $ TL.append "signature " $ showT x' where
-	x' = strSignature . fromJust . fromVariant $ x
-
-formatVariant' (DBusArray _) x = MultiLine lines' where
-	items = arrayItems . fromJust . fromVariant $ x
-	lines' =
-		[ Line "array ["
-		, Children . map formatVariant $ items
-		, Line "]"
-		]
-
-formatVariant' (DBusDictionary _ _) x = MultiLine lines' where
-	items = dictionaryItems . fromJust . fromVariant $ x
-	lines' = [ Line "dictionary {"
-		, Children . map formatItem $ items
-		, Line "}"
-		]
-	formatItem (k, v) = MultiLine $ firstLine : vTail where
-		Line k' = formatVariant k
-		v' = collapseTree 0 (formatVariant v)
-		vHead = head v'
-		vTail = map Line $ tail v'
-		firstLine = Line $ TL.concat [k', " -> ", vHead]
-
-formatVariant' (DBusStructure _) x = MultiLine lines' where
-	Structure items = fromJust . fromVariant $ x
-	lines' =
-		[ Line "struct ("
-		, Children . map formatVariant $ items
-		, Line ")"
-		]
-
-formatVariant' DBusVariant x = formatVariant . fromJust . fromVariant $ x
+formatVariant x = case variantType x of
+	
+	TypeBoolean -> Line $ let
+		Just x' = fromVariant x
+		strX = if x' then "true" else "false"
+		in Data.Text.append "boolean " strX
+	
+	TypeWord8 -> Line $ let
+		Just x' = fromVariant x
+		strX = showT (x' :: Word8)
+		in Data.Text.append "byte " strX
+	
+	TypeWord16 -> Line $ let
+		Just x' = fromVariant x
+		strX = showT (x' :: Word16)
+		in Data.Text.append "uint16 " strX
+	
+	TypeWord32 -> Line $ let
+		Just x' = fromVariant x
+		strX = showT (x' :: Word32)
+		in Data.Text.append "uint32 " strX
+	
+	TypeWord64 -> Line $ let
+		Just x' = fromVariant x
+		strX = showT (x' :: Word64)
+		in Data.Text.append "uint64 " strX
+	
+	TypeInt16 -> Line $ let
+		Just x' = fromVariant x
+		strX = showT (x' :: Int16)
+		in Data.Text.append "int16 " strX
+	
+	TypeInt32 -> Line $ let
+		Just x' = fromVariant x
+		strX = showT (x' :: Int32)
+		in Data.Text.append "int32 " strX
+	
+	TypeInt64 -> Line $ let
+		Just x' = fromVariant x
+		strX = showT (x' :: Int64)
+		in Data.Text.append "int64 " strX
+	
+	TypeDouble -> Line $ let
+		Just x' = fromVariant x
+		strX = showT (x' :: Double)
+		in Data.Text.append "double " strX
+	
+	TypeString -> Line $ let
+		Just x' = fromVariant x
+		strX = showT (x' :: Text)
+		in Data.Text.append "string " strX
+	
+	TypeObjectPath -> Line $ let
+		Just x' = fromVariant x
+		strX = showT (objectPathText x')
+		in Data.Text.append "object path " strX
+	
+	TypeSignature -> Line $ let
+		Just x' = fromVariant x
+		strX = showT (signatureText x')
+		in Data.Text.append "signature " strX
+	
+	TypeArray _ -> MultiLine $ let
+		Just x' = fromVariant x
+		items = arrayItems x'
+		lines' = [ Line "array ["
+		         , Children (map formatVariant items)
+		         , Line "]"
+		         ]
+		in lines'
+	
+	TypeDictionary _ _ -> MultiLine $ let
+		Just x' = fromVariant x
+		items = dictionaryItems x'
+		lines' = [ Line "dictionary {"
+		         , Children (map formatItem items)
+		         , Line "}"
+		         ]
+		formatItem (k, v) = MultiLine (firstLine : vTail) where
+			Line k' = formatVariant k
+			v' = collapseTree 0 (formatVariant v)
+			vHead = head v'
+			vTail = map Line (tail v')
+			firstLine = Line (Data.Text.concat [k', " -> ", vHead])
+		in lines'
+	
+	TypeStructure _ -> MultiLine $ let
+		Just x' = fromVariant x
+		items = structureItems x'
+		lines' = [ Line "struct ("
+		         , Children (map formatVariant items)
+		         , Line ")"
+		         ]
+		in lines'
+	
+	TypeVariant -> let
+		Just x' = fromVariant x
+		in formatVariant x'

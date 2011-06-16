@@ -1,0 +1,226 @@
+:# Copyright (C) 2009-2011 John Millikin <jmillikin@gmail.com>
+:# 
+:# This program is free software: you can redistribute it and/or modify
+:# it under the terms of the GNU General Public License as published by
+:# the Free Software Foundation, either version 3 of the License, or
+:# any later version.
+:# 
+:# This program is distributed in the hope that it will be useful,
+:# but WITHOUT ANY WARRANTY; without even the implied warranty of
+:# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+:# GNU General Public License for more details.
+:# 
+:# You should have received a copy of the GNU General Public License
+:# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+\clearpage
+\section{D-Bus clients}
+
+:d DBus.Client
+data Client = Client
+	{ clientConnection :: Connection
+	, clientCallbacks :: MVar (Map Serial Callback)
+	, clientSignalHandlers :: MVar [Callback]
+	, clientThreadID :: ThreadId
+	, clientMessageProcessor :: IORef (ReceivedMessage -> IO Bool)
+	}
+
+type Callback = (ReceivedMessage -> IO ())
+:
+
+:d DBus.Client
+connect :: Address -> IO Client
+connect addr = do
+	connection <- DBus.Connection.connect addr
+	callbacks <- newMVar Data.Map.empty
+	signalHandlers <- newMVar []
+	processor <- newIORef (\_ -> return False)
+	
+	client <- mfix $ \client -> do
+		threadID <- forkIO (mainLoop client)
+		return (Client
+			{ clientConnection = connection
+			, clientCallbacks = callbacks
+			, clientSignalHandlers = signalHandlers
+			, clientThreadID = threadID
+			, clientMessageProcessor = processor
+			})
+	
+	sendHello client
+	return client
+:
+
+:d DBus.Client
+disconnect :: Client -> IO ()
+disconnect client = do
+	let connection = clientConnection client
+	killThread (clientThreadID client)
+	modifyMVar_ (clientCallbacks client) (\_ -> return Data.Map.empty)
+	modifyMVar_ (clientSignalHandlers client) (\_ -> return [])
+	DBus.Connection.disconnect connection
+:
+
+:d DBus.Client
+setMessageProcessor :: Client -> (ReceivedMessage -> IO Bool) -> IO ()
+setMessageProcessor client io = atomicModifyIORef
+	(clientMessageProcessor client)
+	(\_ -> (io, ()))
+:
+
+:d DBus.Client
+sendHello :: Client -> IO ()
+sendHello client = void (callBlocking client (MethodCall
+	{ methodCallDestination = Just "org.freedesktop.DBus"
+	, methodCallMember = "Hello"
+	, methodCallInterface = Just "org.freedesktop.DBus"
+	, methodCallPath = "/org/freedesktop/DBus"
+	, methodCallFlags = Data.Set.empty
+	, methodCallBody = []
+	}))
+:
+
+:d DBus.Client
+send_ :: Message msg => Client -> msg -> (Serial -> IO a) -> IO a
+send_ client msg io = do
+	result <- DBus.Connection.send (clientConnection client) msg io
+	case result of
+		Right serial -> return serial
+		Left err -> throwError ("Error sending message: " ++ show err)
+
+call :: Client
+     -> MethodCall
+     -> (Error -> IO ())
+     -> (MethodReturn -> IO ())
+     -> IO ()
+call client msg onError onReply = do
+	let callback (ReceivedError _ _ err) = onError err
+	    callback (ReceivedMethodReturn _ _ reply) = onReply reply
+	    callback _ = return ()
+	
+	send_ client msg (\serial -> do
+		let mvar = clientCallbacks client
+		modifyMVar_ mvar (\callbacks ->
+			return (Data.Map.insert serial callback callbacks)))
+
+callBlocking :: Client -> MethodCall -> IO (Either Error MethodReturn)
+callBlocking client msg = do
+	mvar <- newEmptyMVar
+	call client msg
+		(putMVar mvar . Left)
+		(putMVar mvar . Right)
+	takeMVar mvar
+:
+
+:d DBus.Client
+mainLoop :: Client -> IO ()
+mainLoop client = forever $ do
+	let connection = clientConnection client
+	
+	received <- DBus.Connection.receive connection
+	msg <- case received of
+		Left err -> do
+			disconnect client
+			throwError ("Received invalid message: " ++ show err)
+		Right msg -> return msg
+	
+	dispatch client msg
+
+dispatch :: Client -> ReceivedMessage -> IO ()
+dispatch client received = void . forkIO $ do
+	process <- readIORef (clientMessageProcessor client)
+	handled <- process received
+	
+	let onReply serial = do
+		let mvar = clientCallbacks client
+		maybeCB <- modifyMVar mvar $ \callbacks -> let
+			x = Data.Map.lookup serial callbacks
+			callbacks' = if isJust x
+				then Data.Map.delete serial callbacks
+				else callbacks
+			in return (callbacks', x)
+		case maybeCB of
+			Just cb -> void (cb received)
+			Nothing -> return ()
+	
+	unless handled $ case received of
+		(ReceivedMethodReturn _ _ msg) -> onReply (methodReturnSerial msg)
+		(ReceivedError _ _ msg) -> onReply (errorSerial msg)
+		_ -> return ()
+:
+
+\clearpage
+\subsection{Simple clients}
+
+:d DBus.Client.Simple
+connectFirst :: [Address] -> IO Client
+connectFirst addrs = loop addrs where
+	loop [] = throwError (concat
+		[ "connectFirst: no usable"
+		, " addresses in "
+		, show addrs])
+	loop (a:as) = Control.Exception.catch
+		(DBus.Client.connect a)
+		(\(ConnectionError _) -> loop as)
+
+connectSession :: IO Client
+connectSession = do
+	env <- DBus.Address.getSession
+	case env of
+		Nothing -> throwError (concat
+			[ "connectSession: DBUS_SESSION_BUS_ADDRESS is"
+			, " missing or invalid."
+			])
+		Just addrs -> connectFirst addrs
+
+connectSystem :: IO Client
+connectSystem = do
+	env <- DBus.Address.getSystem
+	case env of
+		Nothing -> throwError (concat
+			[ "connectSession: DBUS_SYSTEM_BUS_ADDRESS is"
+			, " invalid."
+			])
+		Just addrs -> connectFirst addrs
+
+connectStarter :: IO Client
+connectStarter = do
+	env <- DBus.Address.getStarter
+	case env of
+		Nothing -> throwError (concat
+			[ "connectSession: DBUS_STARTER_BUS_ADDRESS is"
+			, " missing or invalid."
+			])
+		Just addrs -> connectFirst addrs
+:
+
+:d DBus.Client.Simple
+data Proxy = Proxy Client BusName ObjectPath
+:
+
+:d DBus.Client.Simple
+proxy :: Client -> BusName -> ObjectPath -> IO Proxy
+proxy client dest path = return (Proxy client dest path)
+:
+
+:d DBus.Client.Simple
+call :: Proxy -> InterfaceName -> MemberName -> [Variant] -> IO (Either Error [Variant])
+call (Proxy client dest path) iface member body = do
+	response <- callBlocking client $ MethodCall
+		{ methodCallDestination = Just dest
+		, methodCallMember = member
+		, methodCallInterface = Just iface
+		, methodCallPath = path
+		, methodCallFlags = Data.Set.empty
+		, methodCallBody = body
+		}
+	case response of
+		Left err -> return (Left err)
+		Right ret -> return (Right (methodReturnBody ret))
+
+call_ :: Proxy -> InterfaceName -> MemberName -> [Variant] -> IO [Variant]
+call_ proxy' iface member body = do
+	result <- call proxy' iface member body
+	case result of
+		Left err -> throwError ("Call failed: " ++ Data.Text.unpack (errorMessage err))
+		Right ret -> return ret
+:
