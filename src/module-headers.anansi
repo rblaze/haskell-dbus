@@ -168,14 +168,22 @@ module DBus.Address
 	, address
 	, addresses
 	, addressText
+	
+	-- * Environmental addresses
+	, getSystem
+	, getSession
+	, getStarter
 	) where
+import qualified Control.Exception
 import           Data.Char (ord, chr)
 import qualified Data.Map
 import           Data.Map (Map)
 import qualified Data.Text
 import           Data.Text (Text)
+import qualified System.Environment
 import           Text.Printf (printf)
 import           Text.ParserCombinators.Parsec hiding (runParser)
+
 import           DBus.Util (hexToInt, void)
 import           DBus.Types.Internal (runParser)
 |DBus.Address|
@@ -188,22 +196,15 @@ module DBus.Connection
 	( Connection
 	, ConnectionError
 	, connect
-	, connectFirst
-	, connectSession
-	, connectSystem
-	, connectStarter
 	, disconnect
 	, send
 	, receive
 	) where
 import           Control.Concurrent
-import qualified Control.Exception
 import           Control.Monad (when)
 import qualified Data.ByteString
 import qualified Data.ByteString.Lazy
 import           Data.IORef
-import qualified Data.Text
-import qualified System.Environment
 
 import           DBus.Address
 import           DBus.Connection.Authentication
@@ -360,10 +361,13 @@ module DBus.Client.Simple
 	, busNameText
 	) where
 
+import qualified Control.Exception
 import qualified Data.Set
 import qualified Data.Text
 
+import           DBus.Address
 import           DBus.Client.Internal hiding (call)
+import           DBus.Connection (Connection)
 import qualified DBus.Connection
 import           DBus.Connection.Error
 import           DBus.Message hiding (errorName)

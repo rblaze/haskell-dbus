@@ -131,20 +131,45 @@ mainLoop client = forever (receive >>= dispatch) where
 \subsection{Simple clients}
 
 :d DBus.Client.Simple
+connectFirst :: [Address] -> IO Client
+connectFirst addrs = loop addrs >>= attach where
+	loop [] = throwError (concat
+		[ "connectFirst: no usable"
+		, " addresses in "
+		, show addrs])
+	loop (a:as) = Control.Exception.catch
+		(DBus.Connection.connect a)
+		(\(ConnectionError _) -> loop as)
+
 connectSession :: IO Client
 connectSession = do
-	connection <- DBus.Connection.connectSession
-	attach connection
+	env <- DBus.Address.getSession
+	case env of
+		Nothing -> throwError (concat
+			[ "connectSession: DBUS_SESSION_BUS_ADDRESS is"
+			, " missing or invalid."
+			])
+		Just addrs -> connectFirst addrs
 
 connectSystem :: IO Client
 connectSystem = do
-	connection <- DBus.Connection.connectSystem
-	attach connection
+	env <- DBus.Address.getSystem
+	case env of
+		Nothing -> throwError (concat
+			[ "connectSession: DBUS_SYSTEM_BUS_ADDRESS is"
+			, " invalid."
+			])
+		Just addrs -> connectFirst addrs
 
 connectStarter :: IO Client
 connectStarter = do
-	connection <- DBus.Connection.connectStarter
-	attach connection
+	env <- DBus.Address.getStarter
+	case env of
+		Nothing -> throwError (concat
+			[ "connectSession: DBUS_STARTER_BUS_ADDRESS is"
+			, " missing or invalid."
+			])
+		Just addrs -> connectFirst addrs
 
 disconnect :: Client -> IO ()
 disconnect client = do

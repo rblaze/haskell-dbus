@@ -90,27 +90,6 @@ disconnect = transportClose . connectionTransport
 
 \end{multicols}
 
-\begin{multicols}{2}
-
-TODO
-
-\vfill
-\columnbreak
-
-:d DBus.Connection
-connectFirst :: [Address] -> IO Connection
-connectFirst addrs = loop addrs where
-	loop [] = throwError (concat
-		[ "connectFirst: no usable"
-		, " addresses in "
-		, show addrs])
-	loop (a:as) = Control.Exception.catch
-		(connect a)
-		(\(ConnectionError _) -> loop as)
-:
-
-\end{multicols}
-
 \clearpage
 \subsection{Addresses}
 
@@ -273,28 +252,29 @@ addressText addr = Data.Text.concat chunks where
 
 \end{multicols}
 
-\subsubsection{Well-known bus addresses}
+\subsubsection{Environmental addresses}
 
-:d DBus.Connection
-connectEnv :: String -> IO Connection
-connectEnv addr = case addresses (Data.Text.pack addr) of
-	Just [addr'] -> connect addr'
-	Just addrs -> connectFirst addrs
-	Nothing -> throwError ("Invalid bus address: " ++ show addr)
+:d DBus.Address
+getenv :: String -> IO (Maybe Text)
+getenv name = Control.Exception.catch
+	(fmap (Just . Data.Text.pack) (System.Environment.getEnv name))
+	(\(Control.Exception.SomeException _) -> return Nothing)
 
-connectSystem :: IO Connection
-connectSystem = do
+getSystem :: IO (Maybe [Address])
+getSystem = do
 	let system = "unix:path=/var/run/dbus/system_bus_socket"
-	env <- Control.Exception.catch
-		(System.Environment.getEnv "DBUS_SYSTEM_BUS_ADDRESS")
-		(\(Control.Exception.SomeException _) -> return system)
-	connectEnv env
+	env <- getenv "DBUS_SYSTEM_BUS_ADDRESS"
+	return (addresses (maybe system id env))
 
-connectSession :: IO Connection
-connectSession = System.Environment.getEnv "DBUS_SESSION_BUS_ADDRESS" >>= connectEnv
+getSession :: IO (Maybe [Address])
+getSession = do
+	env <- getenv "DBUS_SESSION_BUS_ADDRESS"
+	return (env >>= addresses)
 
-connectStarter :: IO Connection
-connectStarter = System.Environment.getEnv "DBUS_STARTER_BUS_ADDRESS" >>= connectEnv
+getStarter :: IO (Maybe [Address])
+getStarter = do
+	env <- getenv "DBUS_STARTER_BUS_ADDRESS"
+	return (env >>= addresses)
 :
 
 \clearpage
