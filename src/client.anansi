@@ -224,3 +224,63 @@ call_ proxy' iface member body = do
 		Left err -> throwError ("Call failed: " ++ Data.Text.unpack (errorMessage err))
 		Right ret -> return ret
 :
+
+\clearpage
+\subsubsection{Name reservation}
+
+:d DBus.Client.Simple
+data RequestNameFlag
+	= AllowReplacement
+	| ReplaceExisting
+	| DoNotQueue
+	deriving (Show)
+
+data RequestNameReply
+	= PrimaryOwner
+	| InQueue
+	| Exists
+	| AlreadyOwner
+	deriving (Show)
+
+data ReleaseNameReply
+	= Released
+	| NonExistent
+	| NotOwner
+	deriving (Show)
+:
+
+:d DBus.Client.Simple
+encodeFlags :: [RequestNameFlag] -> Word32
+encodeFlags = foldr (.|.) 0 . map flagValue where
+	flagValue AllowReplacement = 0x1
+	flagValue ReplaceExisting  = 0x2
+	flagValue DoNotQueue       = 0x4
+:
+
+:d DBus.Client.Simple
+requestName :: Client -> BusName -> [RequestNameFlag] -> IO RequestNameReply
+requestName client name flags = do
+	bus <- proxy client "org.freedesktop.DBus" "/org/freedesktop/DBus"
+	reply <- call_ bus "org.freedesktop.DBus" "RequestName"
+		[ toVariant name
+		, toVariant (encodeFlags flags)
+		]
+	case (maybeIndex reply 0 >>= fromVariant :: Maybe Word32) of
+		Just 1 -> return PrimaryOwner
+		Just 2 -> return InQueue
+		Just 3 -> return Exists
+		Just 4 -> return AlreadyOwner
+		_ -> throwError ("Call failed: received invalid reply")
+
+releaseName :: Client -> BusName -> IO ReleaseNameReply
+releaseName client name = do
+	bus <- proxy client "org.freedesktop.DBus" "/org/freedesktop/DBus"
+	reply <- call_ bus "org.freedesktop.DBus" "ReleaseName"
+		[ toVariant name
+		]
+	case (maybeIndex reply 0 >>= fromVariant :: Maybe Word32) of
+		Just 1 -> return Released
+		Just 2 -> return NonExistent
+		Just 3 -> return NotOwner
+		_ -> throwError ("Call failed: received invalid reply")
+:

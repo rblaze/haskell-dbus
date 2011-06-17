@@ -40,7 +40,6 @@ extra-source-files:
   src/match-rules.anansi
   src/messages.anansi
   src/module-headers.anansi
-  src/name-reservation.anansi
   src/summary.anansi
   src/type-instances.anansi
   src/types.anansi
@@ -82,7 +81,6 @@ library
     DBus.Introspection
     DBus.MatchRule
     DBus.Message
-    DBus.NameReservation
     DBus.Types
     DBus.Wire
 

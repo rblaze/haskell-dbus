@@ -356,6 +356,7 @@ import           DBus.Util (void)
 :
 
 :f DBus/Client/Simple.hs
+{-# LANGUAGE OverloadedStrings #-}
 |copyright|
 module DBus.Client.Simple
 	(
@@ -371,6 +372,13 @@ module DBus.Client.Simple
 	, proxy
 	, call
 	, call_
+	
+	-- * Name reservation
+	, RequestNameFlag(..)
+	, RequestNameReply(..)
+	, ReleaseNameReply(..)
+	, requestName
+	, releaseName
 	
 	-- * Types
 	
@@ -418,14 +426,17 @@ module DBus.Client.Simple
 	) where
 
 import qualified Control.Exception
+import           Data.Bits ((.|.))
 import qualified Data.Set
 import qualified Data.Text
+import           Data.Word (Word32)
 
 import           DBus.Address
 import           DBus.Client hiding (call)
 import           DBus.Connection.Error
 import           DBus.Message hiding (errorName)
 import           DBus.Types
+import           DBus.Util (maybeIndex)
 
 |DBus.Client.Simple|
 :
@@ -483,28 +494,4 @@ import qualified DBus.Types as T
 import           DBus.Util (maybeIndex)
 
 |DBus.MatchRule|
-:
-
-:f DBus/NameReservation.hs
-{-# LANGUAGE OverloadedStrings #-}
-|copyright|
-module DBus.NameReservation
-	( RequestNameFlag (..)
-	, RequestNameReply (..)
-	, ReleaseNameReply (..)
-	, requestName
-	, releaseName
-	, mkRequestNameReply
-	, mkReleaseNameReply
-	) where
-import           Data.Bits ((.|.))
-import qualified Data.Set as Set
-import           Data.Word (Word32)
-
-import qualified DBus.Constants as C
-import qualified DBus.Message as M
-import qualified DBus.Types as T
-import           DBus.Util (maybeIndex)
-
-|DBus.NameReservation|
 :

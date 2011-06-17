@@ -42,7 +42,6 @@ import           DBus.Client ()
 import           DBus.Connection ()
 import           DBus.MatchRule ()
 import           DBus.Message ()
-import           DBus.NameReservation ()
 import           DBus.Types
 import           DBus.Types.Internal (typeCode, checkSignature)
 import           DBus.Wire ()
