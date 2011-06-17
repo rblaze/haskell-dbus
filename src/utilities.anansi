@@ -17,33 +17,19 @@
 
 :f DBus/Util.hs
 |copyright|
-module DBus.Util where
-import Text.ParserCombinators.Parsec (Parser, parse)
+module DBus.Util
+	( hexToInt
+	, maybeIndex
+	, readUntil
+	, dropEnd
+	, void
+	, untilM
+	) where
 import Data.Char (digitToInt)
 import Data.List (isPrefixOf)
 
-checkLength :: Int -> String -> Maybe String
-checkLength length' s | length s <= length' = Just s
-checkLength _ _ = Nothing
-
-parseMaybe :: Parser a -> String -> Maybe a
-parseMaybe p = either (const Nothing) Just . parse p ""
-
-mkUnsafe :: Show a => String -> (a -> Maybe b) -> a -> b
-mkUnsafe label f x = case f x of
-	Just x' -> x'
-	Nothing -> error $ "Invalid " ++ label ++ ": " ++ show x
-
 hexToInt :: String -> Int
 hexToInt = foldl ((+) . (16 *)) 0 . map digitToInt
-
-eitherToMaybe :: Either a b -> Maybe b
-eitherToMaybe (Left  _) = Nothing
-eitherToMaybe (Right x) = Just x
-
-fromRight :: Either a b -> b
-fromRight (Right x) = x
-fromRight _ = error "DBus.Util.fromRight: Left"
 
 maybeIndex :: [a] -> Int -> Maybe a
 maybeIndex (x:_ ) 0         = Just x

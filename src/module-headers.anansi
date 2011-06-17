@@ -428,7 +428,6 @@ module DBus.Client.Simple
 import qualified Control.Exception
 import           Data.Bits ((.|.))
 import qualified Data.Set
-import qualified Data.Text
 import           Data.Word (Word32)
 
 import           DBus.Address
