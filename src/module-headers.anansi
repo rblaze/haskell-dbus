@@ -326,7 +326,7 @@ module DBus.Client
 	, connect
 	, disconnect
 	, call
-	, callBlocking
+	, call_
 	, setMessageProcessor
 	) where
 import           DBus.Client.Internal
@@ -343,6 +343,7 @@ import           Data.IORef
 import qualified Data.Map
 import           Data.Map (Map)
 import           Data.Maybe (isJust)
+import qualified Data.Text
 import qualified Data.Set
 
 import           DBus.Address
@@ -371,7 +372,6 @@ module DBus.Client.Simple
 	, Proxy
 	, proxy
 	, call
-	, call_
 	
 	-- * Name reservation
 	, RequestNameFlag(..)

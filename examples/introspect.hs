@@ -39,7 +39,7 @@ main = do
 introspect :: Client -> BusName -> ObjectPath -> IO I.Object
 introspect client service path = do
 	obj <- proxy client service path
-	reply <- call_ obj "org.freedesktop.DBus.Introspectable" "Introspect" []
+	reply <- call obj "org.freedesktop.DBus.Introspectable" "Introspect" []
 	let Just xml = fromVariant (reply !! 0)
 	case I.fromXML path xml of
 		Just info -> return info

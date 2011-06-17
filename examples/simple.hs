@@ -27,7 +27,7 @@ main = do
 	
 	-- Request a list of connected clients from the bus
 	bus <- proxy client "org.freedesktop.DBus" "/org/freedesktop/DBus"
-	reply <- call_ bus "org.freedesktop.DBus" "ListNames" []
+	reply <- call bus "org.freedesktop.DBus" "ListNames" []
 	
 	-- org.freedesktop.DBus.ListNames returns a single value, which is
 	-- a list of names (here represented as [Text])

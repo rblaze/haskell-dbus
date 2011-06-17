@@ -69,7 +69,7 @@ setMessageProcessor client io = atomicModifyIORef
 
 :d DBus.Client
 sendHello :: Client -> IO ()
-sendHello client = void (callBlocking client (MethodCall
+sendHello client = void (call_ client (MethodCall
 	{ methodCallDestination = Just "org.freedesktop.DBus"
 	, methodCallMember = "Hello"
 	, methodCallInterface = Just "org.freedesktop.DBus"
@@ -87,28 +87,26 @@ send_ client msg io = do
 		Right serial -> return serial
 		Left err -> throwError ("Error sending message: " ++ show err)
 
-call :: Client
-     -> MethodCall
-     -> (Error -> IO ())
-     -> (MethodReturn -> IO ())
-     -> IO ()
-call client msg onError onReply = do
-	let callback (ReceivedError _ _ err) = onError err
-	    callback (ReceivedMethodReturn _ _ reply) = onReply reply
+call :: Client -> MethodCall -> IO (Either Error MethodReturn)
+call client msg = do
+	mvar <- newEmptyMVar
+	
+	let callback (ReceivedError _ _ err) = putMVar mvar (Left err)
+	    callback (ReceivedMethodReturn _ _ reply) = putMVar mvar (Right reply)
 	    callback _ = return ()
 	
-	send_ client msg (\serial -> do
-		let mvar = clientCallbacks client
-		modifyMVar_ mvar (\callbacks ->
+	send_ client msg (\serial ->
+		modifyMVar_ (clientCallbacks client) (\callbacks ->
 			return (Data.Map.insert serial callback callbacks)))
-
-callBlocking :: Client -> MethodCall -> IO (Either Error MethodReturn)
-callBlocking client msg = do
-	mvar <- newEmptyMVar
-	call client msg
-		(putMVar mvar . Left)
-		(putMVar mvar . Right)
+	
 	takeMVar mvar
+
+call_ :: Client -> MethodCall -> IO MethodReturn
+call_ client msg = do
+	result <- call client msg
+	case result of
+		Left err -> throwError ("Call failed: " ++ Data.Text.unpack (errorMessage err))
+		Right ret -> return ret
 :
 
 :d DBus.Client
@@ -203,9 +201,9 @@ proxy client dest path = return (Proxy client dest path)
 :
 
 :d DBus.Client.Simple
-call :: Proxy -> InterfaceName -> MemberName -> [Variant] -> IO (Either Error [Variant])
+call :: Proxy -> InterfaceName -> MemberName -> [Variant] -> IO [Variant]
 call (Proxy client dest path) iface member body = do
-	response <- callBlocking client $ MethodCall
+	reply <- DBus.Client.call_ client $ MethodCall
 		{ methodCallDestination = Just dest
 		, methodCallMember = member
 		, methodCallInterface = Just iface
@@ -213,16 +211,7 @@ call (Proxy client dest path) iface member body = do
 		, methodCallFlags = Data.Set.empty
 		, methodCallBody = body
 		}
-	case response of
-		Left err -> return (Left err)
-		Right ret -> return (Right (methodReturnBody ret))
-
-call_ :: Proxy -> InterfaceName -> MemberName -> [Variant] -> IO [Variant]
-call_ proxy' iface member body = do
-	result <- call proxy' iface member body
-	case result of
-		Left err -> throwError ("Call failed: " ++ Data.Text.unpack (errorMessage err))
-		Right ret -> return ret
+	return (methodReturnBody reply)
 :
 
 \clearpage
@@ -261,7 +250,7 @@ encodeFlags = foldr (.|.) 0 . map flagValue where
 requestName :: Client -> BusName -> [RequestNameFlag] -> IO RequestNameReply
 requestName client name flags = do
 	bus <- proxy client "org.freedesktop.DBus" "/org/freedesktop/DBus"
-	reply <- call_ bus "org.freedesktop.DBus" "RequestName"
+	reply <- call bus "org.freedesktop.DBus" "RequestName"
 		[ toVariant name
 		, toVariant (encodeFlags flags)
 		]
@@ -275,7 +264,7 @@ requestName client name flags = do
 releaseName :: Client -> BusName -> IO ReleaseNameReply
 releaseName client name = do
 	bus <- proxy client "org.freedesktop.DBus" "/org/freedesktop/DBus"
-	reply <- call_ bus "org.freedesktop.DBus" "ReleaseName"
+	reply <- call bus "org.freedesktop.DBus" "ReleaseName"
 		[ toVariant name
 		]
 	case (maybeIndex reply 0 >>= fromVariant :: Maybe Word32) of
