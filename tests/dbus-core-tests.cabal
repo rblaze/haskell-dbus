@@ -19,3 +19,16 @@ executable dbus-core_tests
     , test-framework >= 0.2 && < 0.4
     , test-framework-quickcheck2 == 0.2.9
     , test-framework-hunit == 0.2.6
+
+executable dbus-core_benchmarks
+  main-is: Benchmarks.hs
+  ghc-options: -Wall -O2 -fno-warn-orphans
+
+  build-depends:
+      base > 3 && < 5
+    , bytestring
+    , text
+    , dbus-core
+    , containers
+    , criterion
+    , deepseq
