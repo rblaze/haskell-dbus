@@ -707,13 +707,12 @@ unmarshalStructure ts = do
 
 :d DBus.Wire
 marshalVariant :: Variant -> Marshal ()
-marshalVariant (Variant val) = do
-	let textSig = Data.Text.pack (typeCode (valueType val))
-	sig <- case signature textSig of
+marshalVariant var@(Variant val) = do
+	sig <- case checkSignature [valueType val] of
 		Just x' -> return x'
 		Nothing -> throwError (concat
-			[ "Variant signature "
-			, show textSig
+			[ "Signature for variant "
+			, show var
 			, " is malformed or too large."
 			])
 	marshalSignature sig
@@ -831,15 +830,12 @@ marshalMessage e serial msg = runMarshal where
 		WireRR _ (MarshalState builder _) -> Right (Data.Binary.Builder.toLazyByteString builder)
 
 checkBodySig :: [Variant] -> Marshal Signature
-checkBodySig vs = let
-	strSig = concatMap (typeCode . variantType) vs
-	bytesSig = Data.ByteString.Char8.pack strSig
-	in case parseSignature bytesSig of
-		Just x -> return x
-		Nothing -> throwError (concat
-			[ "Message body signature ", show bytesSig
-			, " is malformed or too large."
-			])
+checkBodySig vs = case checkSignature (map variantType vs) of
+	Just x -> return x
+	Nothing -> throwError (concat
+		[ "Message body ", show vs
+		, " has too many items"
+		])
 
 marshalHeader :: Message a => a -> Serial -> Signature -> Word32
               -> Marshal ()

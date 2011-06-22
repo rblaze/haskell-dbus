@@ -145,6 +145,21 @@ typeCode (TypeDictionary kt vt) = concat ["a{", typeCode kt, typeCode vt, "}"]
 typeCode (TypeStructure ts) = '(' : (concatMap typeCode ts ++ ")")
 :
 
+:d DBus.Types
+checkSignature :: [Type] -> Maybe Signature
+checkSignature = check where
+	check ts = if sumLen ts > 255
+		then Nothing
+		else Just (Signature ts)
+	sumLen :: [Type] -> Int
+	sumLen = sum . map len
+
+	len (TypeArray t) = 1 + len t
+	len (TypeDictionary kt vt) = 3 + len kt + len vt
+	len (TypeStructure ts) = 2 + sumLen ts
+	len _ = 1
+:
+
 \columnbreak
 
 ~
