@@ -11,7 +11,8 @@ fi
 require_anansi
 require_cabal_dev
 
-clean_dev_install
+rm -rf hs dist
+$ANANSI -o hs src/dbus-core.anansi || exit 1
 
 pushd tests
 rm -rf dist
