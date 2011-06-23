@@ -23,5 +23,5 @@ popd
 rm dbus-core_tests.tix
 cabal-dev/bin/dbus-core_tests
 
-hpc markup --srcdir=hs --srcdir=tests/ dbus-core_tests.tix --destdir=hpc-markup
-hpc report --srcdir=hs --srcdir=tests/ dbus-core_tests.tix
+hpc markup --srcdir=hs --srcdir=tests/ dbus-core_tests.tix --destdir=hpc-markup --exclude=Main
+hpc report --srcdir=hs --srcdir=tests/ dbus-core_tests.tix --exclude=Main
