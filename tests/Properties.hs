@@ -26,7 +26,9 @@ import           Test.QuickCheck
 import qualified Data.Text as T
 import           Data.Word (Word8, Word16, Word32, Word64)
 import           Data.Int (Int16, Int32, Int64)
-import           Data.Maybe (isJust, isNothing)
+import qualified Data.Map
+import           Data.Maybe (isJust, isNothing, fromJust)
+import           Data.String (IsString, fromString)
 
 import           DBus.Address
 import           DBus.Client ()
@@ -41,6 +43,8 @@ import           DBus.Introspection ()
 tests :: [F.Test]
 tests = [ test_Address
 	, test_Signature
+	, test_Types
+	, test_Variant
 	, test_ObjectPath
 	, test_InterfaceName
 	, test_MemberName
@@ -112,6 +116,45 @@ test_Signature = F.testGroup "signature"
 	  [ testCase "length-254"  (assertJust (signature (T.replicate 254 "y")))
 	  , testCase "length-255" (assertJust (signature (T.replicate 255 "y")))
 	  , testCase "length-256" (assertNothing (signature (T.replicate 256 "y")))
+	  ]
+	, F.testGroup "instances"
+	  [ testCase "show" (assertEqual "" "(Signature \"y\")" (showsPrec 11 (fromJust (signature "y")) ""))
+	  ]
+	]
+
+test_Types :: F.Test
+test_Types = F.testGroup "types"
+	[ F.testGroup "instances"
+	  [ testCase "eq" (assertEqual "" TypeWord8 TypeWord8)
+	  , F.testGroup "show"
+	    [ testCase "Boolean" (assertEqual "" "Bool" (show TypeBoolean))
+	    , testCase "Word8" (assertEqual "" "Word8" (show TypeWord8))
+	    , testCase "Word16" (assertEqual "" "Word16" (show TypeWord16))
+	    , testCase "Word32" (assertEqual "" "Word32" (show TypeWord32))
+	    , testCase "Word64" (assertEqual "" "Word64" (show TypeWord64))
+	    , testCase "Int16" (assertEqual "" "Int16" (show TypeInt16))
+	    , testCase "Int32" (assertEqual "" "Int32" (show TypeInt32))
+	    , testCase "Int64" (assertEqual "" "Int64" (show TypeInt64))
+	    , testCase "Double" (assertEqual "" "Double" (show TypeDouble))
+	    , testCase "String" (assertEqual "" "String" (show TypeString))
+	    , testCase "Signature" (assertEqual "" "Signature" (show TypeSignature))
+	    , testCase "ObjectPath" (assertEqual "" "ObjectPath" (show TypeObjectPath))
+	    , testCase "Variant" (assertEqual "" "Variant" (show TypeVariant))
+	    , testCase "Array" (assertEqual "" "[Word8]" (show (TypeArray TypeWord8)))
+	    , testCase "Dictionary" (assertEqual "" "Map Word8 (Map Word8 Word8)" (show (TypeDictionary TypeWord8 (TypeDictionary TypeWord8 TypeWord8))))
+	    , testCase "Structure" (assertEqual "" "(Word8, Word16)" (show (TypeStructure [TypeWord8, TypeWord16])))
+	    ]
+	  ]
+	]
+
+test_Variant :: F.Test
+test_Variant = F.testGroup "variant"
+	[ F.testGroup "instances"
+	  [ F.testGroup "show"
+	    [ testCase "array" (assertEqual "" "(Variant [True, False, True])" (showsPrec 11 (toVariant [True, False, True]) ""))
+	    , testCase "dictionary" (assertEqual "" "(Variant {False: True, True: False})" (showsPrec 11 (toVariant (Data.Map.fromList [(True, False), (False, True)])) ""))
+	    , testCase "structure" (assertEqual "" "(Variant (True, False))" (showsPrec 11 (toVariant (True, False)) ""))
+	    ]
 	  ]
 	]
 
