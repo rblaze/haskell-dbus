@@ -23,12 +23,14 @@ import           Test.Framework.Providers.HUnit (testCase)
 import           Test.HUnit (Assertion, assertFailure, assertEqual)
 import           Test.QuickCheck
 
+import qualified Control.Exception
 import qualified Data.Text as T
 import           Data.Word (Word8, Word16, Word32, Word64)
 import           Data.Int (Int16, Int32, Int64)
 import qualified Data.Map
 import           Data.Maybe (isJust, isNothing, fromJust)
 import           Data.String (IsString, fromString)
+import qualified System.Posix.Env
 
 import           DBus.Address
 import           DBus.Client ()
@@ -77,6 +79,25 @@ test_Address = F.testGroup "address"
 	  [ testCase "plain" (assertEqual "" (Just "a:b=c") (addressText `fmap` address "a:b=c"))
 	  , testCase "encoded" (assertEqual "" (Just "a:b=Z%5B") (addressText `fmap` address "a:b=%5a%5b"))
 	  , testCase "optionally-encoded" (assertEqual "" (Just "a:b=-_/\\*.") (addressText `fmap` address "a:b=-_/\\*."))
+	  , testCase "multiple-params" (assertEqual "" (Just "a:b=c,d=e") (addressText `fmap` address "a:b=c,d=e"))
+	  ]
+	, F.testGroup "instances"
+	  [ testCase "eq" (assertEqual "" (address "a:b=c") (address "a:b=c"))
+	  , testCase "show" (assertEqual "" "(Address \"a:b=c\")" (showsPrec 11 (fromJust (address "a:b=c")) ""))
+	  ]
+	, F.testGroup "well-known"
+	  [ testCase "system" (withEnv "DBUS_SYSTEM_BUS_ADDRESS" (Just "a:b=c;d:") (do
+	    	addrs <- getSystem
+	    	assertEqual "" addrs (Just ["a:b=c", "d:"])))
+	  , testCase "default-system" (withEnv "DBUS_SYSTEM_BUS_ADDRESS" Nothing (do
+	    	addrs <- getSystem
+	    	assertEqual "" addrs (Just ["unix:path=/var/run/dbus/system_bus_socket"])))
+	  , testCase "session" (withEnv "DBUS_SESSION_BUS_ADDRESS" (Just "a:b=c;d:") (do
+	    	addrs <- getSession
+	    	assertEqual "" addrs (Just ["a:b=c", "d:"])))
+	  , testCase "starter" (withEnv "DBUS_STARTER_BUS_ADDRESS" (Just "a:b=c;d:") (do
+	    	addrs <- getStarter
+	    	assertEqual "" addrs (Just ["a:b=c", "d:"])))
 	  ]
 	]
 
@@ -270,3 +291,16 @@ assertJust Nothing  = assertFailure "expected: (Just _)\n but got: Nothing"
 assertNothing :: Maybe a -> Assertion
 assertNothing Nothing = return ()
 assertNothing (Just _)  = assertFailure "expected: (Just _)\n but got: Nothing"
+
+withEnv :: String -> Maybe String -> IO a -> IO a
+withEnv name value io = do
+	let set val = case val of
+		Just x -> System.Posix.Env.setEnv name x True
+		Nothing -> System.Posix.Env.unsetEnv name
+	old <- System.Posix.Env.getEnv name
+	Control.Exception.bracket_ (set value) (set old) io
+
+instance IsString Address where
+	fromString s = case address (T.pack s) of
+		Just addr -> addr
+		Nothing -> error ("Invalid address: " ++ show s)
