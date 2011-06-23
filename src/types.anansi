@@ -120,7 +120,10 @@ instance Show Signature where
 
 :d DBus.Types
 signatureText :: Signature -> Text
-signatureText (Signature ts) = Data.Text.pack (concatMap typeCode ts)
+signatureText = Data.Text.Encoding.decodeASCII
+              . Data.ByteString.Char8.pack
+              . concatMap typeCode
+              . signatureTypes
 :
 
 \begin{multicols}{2}
