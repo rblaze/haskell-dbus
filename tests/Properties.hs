@@ -29,10 +29,14 @@ import           Data.Int (Int16, Int32, Int64)
 import           Data.Maybe (isJust, isNothing)
 
 import           DBus.Address
-import qualified DBus.Message as M
+import           DBus.Client ()
+import           DBus.Connection ()
+import           DBus.MatchRule ()
+import           DBus.Message ()
+import           DBus.NameReservation ()
 import           DBus.Types
-import           DBus.Wire
-import qualified DBus.Introspection as I
+import           DBus.Wire ()
+import           DBus.Introspection ()
 
 tests :: [F.Test]
 tests = [ test_Address
