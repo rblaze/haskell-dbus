@@ -17,7 +17,8 @@
 
 module Main (tests, main) where
 
-import qualified Test.Framework as F
+import           Test.Framework (Test, testGroup)
+import qualified Test.Framework
 import           Test.Framework.Providers.QuickCheck2 (testProperty)
 import           Test.Framework.Providers.HUnit (testCase)
 import           Test.HUnit (Assertion, assertFailure)
@@ -43,7 +44,7 @@ import           DBus.Types
 import           DBus.Wire ()
 import           DBus.Introspection ()
 
-tests :: [F.Test]
+tests :: [Test]
 tests = [ test_Address
 	, test_Signature
 	, test_Types
@@ -56,11 +57,11 @@ tests = [ test_Address
 	]
 
 main :: IO ()
-main = F.defaultMain tests
+main = Test.Framework.defaultMain tests
 
-test_Address :: F.Test
-test_Address = F.testGroup "address"
-	[ F.testGroup "valid"
+test_Address :: Test
+test_Address = testGroup "address"
+	[ testGroup "valid"
 	  [ testCase "colon" $ do
 	    	addr <- requireJust (address ":")
 	    	assertEqual (addressMethod addr) ""
@@ -96,24 +97,24 @@ test_Address = F.testGroup "address"
 	    	assertEqual (addressMethod addr) "a"
 	    	assertEqual (addressParameters addr) (Data.Map.fromList [("b", "g8")])
 	  ]
-	, F.testGroup "invalid"
+	, testGroup "invalid"
 	  [ testCase "empty" (assertNothing (address ""))
 	  , testCase "no-colon" (assertNothing (address "a"))
 	  , testCase "no-equals" (assertNothing (address "a:b"))
 	  , testCase "no-param" (assertNothing (address "a:,"))
 	  , testCase "no-param-value" (assertNothing (address "a:b="))
 	  ]
-	, F.testGroup "passthrough"
+	, testGroup "passthrough"
 	  [ testCase "plain" (assertEqual (Just "a:b=c") (addressText `fmap` address "a:b=c"))
 	  , testCase "encoded" (assertEqual (Just "a:b=Z%5B") (addressText `fmap` address "a:b=%5a%5b"))
 	  , testCase "optionally-encoded" (assertEqual (Just "a:b=-_/\\*.") (addressText `fmap` address "a:b=-_/\\*."))
 	  , testCase "multiple-params" (assertEqual (Just "a:b=c,d=e") (addressText `fmap` address "a:b=c,d=e"))
 	  ]
-	, F.testGroup "instances"
+	, testGroup "instances"
 	  [ testCase "eq" (assertEqual (address "a:b=c") (address "a:b=c"))
 	  , testCase "show" (assertEqual "(Address \"a:b=c\")" (showsPrec 11 (fromJust (address "a:b=c")) ""))
 	  ]
-	, F.testGroup "well-known"
+	, testGroup "well-known"
 	  [ testCase "system" (withEnv "DBUS_SYSTEM_BUS_ADDRESS" (Just "a:b=c;d:") (do
 	    	addrs <- getSystem
 	    	assertEqual addrs (Just ["a:b=c", "d:"])))
@@ -129,10 +130,10 @@ test_Address = F.testGroup "address"
 	  ]
 	]
 
-test_Signature :: F.Test
-test_Signature = F.testGroup "signature"
-	[ F.testGroup "valid"
-	  [ F.testGroup "atom"
+test_Signature :: Test
+test_Signature = testGroup "signature"
+	[ testGroup "valid"
+	  [ testGroup "atom"
 	    [ testCase "bool" $ do
 	      	sig <- requireJust (signature "b")
 	      	assertEqual (signatureTypes sig) [TypeBoolean]
@@ -170,7 +171,7 @@ test_Signature = F.testGroup "signature"
 	      	sig <- requireJust (signature "g")
 	      	assertEqual (signatureTypes sig) [TypeSignature]
 	    ]
-	  , F.testGroup "container"
+	  , testGroup "container"
 	    [ testCase "variant" $ do
 	      	sig <- requireJust (signature "v")
 	      	assertEqual (signatureTypes sig) [TypeVariant]
@@ -188,14 +189,14 @@ test_Signature = F.testGroup "signature"
 	    	sig <- requireJust (signature "")
 	    	assertEqual (signatureTypes sig) []
 	  ]
-	, F.testGroup "invalid"
+	, testGroup "invalid"
 	  [ testCase "struct-code" (assertNothing (signature "r"))
 	  , testCase "struct-empty" (assertNothing (signature "()"))
 	  , testCase "dict-code" (assertNothing (signature "e"))
 	  , testCase "dict-container-key" (assertNothing (signature "a{vy}"))
 	  , testCase "unix-fd" (assertNothing (signature "h"))
 	  ]
-	, F.testGroup "length"
+	, testGroup "length"
 	  [ testCase "length-254" $ do
 	    	sig <- requireJust (signature (T.replicate 254 "y"))
 	    	assertEqual (signatureTypes sig) (replicate 254 TypeWord8)
@@ -204,16 +205,16 @@ test_Signature = F.testGroup "signature"
 	    	assertEqual (signatureTypes sig) (replicate 255 TypeWord8)
 	  , testCase "length-256" (assertNothing (signature (T.replicate 256 "y")))
 	  ]
-	, F.testGroup "instances"
+	, testGroup "instances"
 	  [ testCase "show" (assertEqual "(Signature \"y\")" (showsPrec 11 (fromJust (signature "y")) ""))
 	  ]
 	]
 
-test_Types :: F.Test
-test_Types = F.testGroup "types"
-	[ F.testGroup "instances"
+test_Types :: Test
+test_Types = testGroup "types"
+	[ testGroup "instances"
 	  [ testCase "eq" (assertEqual TypeWord8 TypeWord8)
-	  , F.testGroup "show"
+	  , testGroup "show"
 	    [ testCase "Boolean" (assertEqual "Bool" (show TypeBoolean))
 	    , testCase "Word8" (assertEqual "Word8" (show TypeWord8))
 	    , testCase "Word16" (assertEqual "Word16" (show TypeWord16))
@@ -234,10 +235,10 @@ test_Types = F.testGroup "types"
 	  ]
 	]
 
-test_Variant :: F.Test
-test_Variant = F.testGroup "variant"
-	[ F.testGroup "instances"
-	  [ F.testGroup "show"
+test_Variant :: Test
+test_Variant = testGroup "variant"
+	[ testGroup "instances"
+	  [ testGroup "show"
 	    [ testCase "array" (assertEqual "(Variant [True, False, True])" (showsPrec 11 (toVariant [True, False, True]) ""))
 	    , testCase "dictionary" (assertEqual "(Variant {False: True, True: False})" (showsPrec 11 (toVariant (Data.Map.fromList [(True, False), (False, True)])) ""))
 	    , testCase "structure" (assertEqual "(Variant (True, False))" (showsPrec 11 (toVariant (True, False)) ""))
@@ -245,16 +246,16 @@ test_Variant = F.testGroup "variant"
 	  ]
 	]
 
-test_ObjectPath :: F.Test
-test_ObjectPath = F.testGroup "object-path"
-	[ F.testGroup "valid"
+test_ObjectPath :: Test
+test_ObjectPath = testGroup "object-path"
+	[ testGroup "valid"
 	  [ testCase "root" (assertJust (objectPath "/"))
 	  , testCase "plain-1" (assertJust (objectPath "/foo"))
 	  , testCase "plain-2" (assertJust (objectPath "/foo/bar"))
 	  , testCase "start-with-digit" (assertJust (objectPath "/foo/0"))
 	  , testCase "all-characters" (assertJust (objectPath "/abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789"))
 	  ]
-	, F.testGroup "invalid"
+	, testGroup "invalid"
 	  [ testCase "empty" (assertNothing (objectPath ""))
 	  , testCase "bad-char" (assertNothing (objectPath "/f!oo"))
 	  , testCase "end-with-slash" (assertNothing (objectPath "/foo/"))
@@ -263,87 +264,87 @@ test_ObjectPath = F.testGroup "object-path"
 	  ]
 	]
 
-test_InterfaceName :: F.Test
-test_InterfaceName = F.testGroup "interface-name"
-	[ F.testGroup "valid"
+test_InterfaceName :: Test
+test_InterfaceName = testGroup "interface-name"
+	[ testGroup "valid"
 	  [ testCase "plain" (assertJust (interfaceName "foo.bar"))
 	  , testCase "has-digit" (assertJust (interfaceName "foo.bar0"))
 	  , testCase "all-characters" (assertJust (interfaceName "a.abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789"))
 	  ]
-	, F.testGroup "invalid"
+	, testGroup "invalid"
 	  [ testCase "empty" (assertNothing (interfaceName ""))
 	  , testCase "one-element" (assertNothing (interfaceName "foo"))
 	  , testCase "start-with-digit" (assertNothing (interfaceName "foo.0bar"))
 	  , testCase "trailing-chars" (assertNothing (interfaceName "foo.bar!"))
 	  ]
-	, F.testGroup "length"
+	, testGroup "length"
 	  [ testCase "length-254"  (assertJust (interfaceName ("f." `T.append` T.replicate 252 "y")))
 	  , testCase "length-255" (assertJust (interfaceName ("f." `T.append` T.replicate 253 "y")))
 	  , testCase "length-256" (assertNothing (interfaceName ("f." `T.append` T.replicate 254 "y")))
 	  ]
 	]
 
-test_MemberName :: F.Test
-test_MemberName = F.testGroup "member-name"
-	[ F.testGroup "valid"
+test_MemberName :: Test
+test_MemberName = testGroup "member-name"
+	[ testGroup "valid"
 	  [ testCase "plain" (assertJust (memberName "foo"))
 	  , testCase "has-digit" (assertJust (memberName "foo0"))
 	  , testCase "all-characters" (assertJust (memberName "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789"))
 	  ]
-	, F.testGroup "invalid"
+	, testGroup "invalid"
 	  [ testCase "empty" (assertNothing (memberName ""))
 	  , testCase "start-with-digit" (assertNothing (memberName "0foo"))
 	  , testCase "trailing-chars" (assertNothing (memberName "foo!"))
 	  ]
-	, F.testGroup "length"
+	, testGroup "length"
 	  [ testCase "length-254"  (assertJust (memberName (T.replicate 254 "y")))
 	  , testCase "length-255" (assertJust (memberName (T.replicate 255 "y")))
 	  , testCase "length-256" (assertNothing (memberName (T.replicate 256 "y")))
 	  ]
 	]
 
-test_ErrorName :: F.Test
-test_ErrorName = F.testGroup "error-name"
-	[ F.testGroup "valid"
+test_ErrorName :: Test
+test_ErrorName = testGroup "error-name"
+	[ testGroup "valid"
 	  [ testCase "plain" (assertJust (errorName "foo.bar"))
 	  , testCase "has-digit" (assertJust (errorName "foo.bar0"))
 	  , testCase "all-characters" (assertJust (errorName "a.abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789"))
 	  ]
-	, F.testGroup "invalid"
+	, testGroup "invalid"
 	  [ testCase "empty" (assertNothing (errorName ""))
 	  , testCase "one-element" (assertNothing (errorName "foo"))
 	  , testCase "start-with-digit" (assertNothing (errorName "foo.0bar"))
 	  , testCase "trailing-chars" (assertNothing (errorName "foo.bar!"))
 	  ]
-	, F.testGroup "length"
+	, testGroup "length"
 	  [ testCase "length-254"  (assertJust (errorName ("f." `T.append` T.replicate 252 "y")))
 	  , testCase "length-255" (assertJust (errorName ("f." `T.append` T.replicate 253 "y")))
 	  , testCase "length-256" (assertNothing (errorName ("f." `T.append` T.replicate 254 "y")))
 	  ]
 	]
 
-test_BusName :: F.Test
-test_BusName = F.testGroup "bus-name"
-	[ F.testGroup "valid"
-	  [ F.testGroup "unique"
+test_BusName :: Test
+test_BusName = testGroup "bus-name"
+	[ testGroup "valid"
+	  [ testGroup "unique"
 	    [ testCase "plain" (assertJust (busName ":foo.bar"))
 	    , testCase "start-with-digit" (assertJust (busName ":foo.0bar"))
 	    , testCase "all-characters" (assertJust (busName ":a.abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789"))
 	    ]
-	  , F.testGroup "well-known"
+	  , testGroup "well-known"
 	    [ testCase "plain" (assertJust (busName "foo.bar"))
 	    , testCase "has-digit" (assertJust (busName "foo.bar0"))
 	    , testCase "all-characters" (assertJust (busName "a.abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789"))
 	    ]
 	  ]
-	, F.testGroup "invalid"
+	, testGroup "invalid"
 	  [ testCase "empty" (assertNothing (busName ""))
 	  , testCase "well-known-start-with-digit" (assertNothing (busName "foo.0bar"))
 	  , testCase "well-known-one-element" (assertNothing (busName "foo"))
 	  , testCase "unique-one-element" (assertNothing (busName ":foo"))
 	  , testCase "trailing-chars" (assertNothing (busName "foo.bar!"))
 	  ]
-	, F.testGroup "length"
+	, testGroup "length"
 	  [ testCase "length-254"  (assertJust (busName (":0." `T.append` T.replicate 251 "y")))
 	  , testCase "length-255" (assertJust (busName (":0." `T.append` T.replicate 252 "y")))
 	  , testCase "length-256" (assertNothing (busName (":0." `T.append` T.replicate 253 "y")))
