@@ -20,7 +20,8 @@ module Main (tests, main) where
 import qualified Test.Framework as F
 import           Test.Framework.Providers.QuickCheck2 (testProperty)
 import           Test.Framework.Providers.HUnit (testCase)
-import           Test.HUnit (Assertion, assertFailure, assertEqual)
+import           Test.HUnit (Assertion, assertFailure)
+import qualified Test.HUnit
 import           Test.QuickCheck
 
 import qualified Control.Exception
@@ -60,13 +61,40 @@ main = F.defaultMain tests
 test_Address :: F.Test
 test_Address = F.testGroup "address"
 	[ F.testGroup "valid"
-	  [ testCase "colon" (assertJust (address ":"))
-	  , testCase "just-scheme" (assertJust (address "a:"))
-	  , testCase "param" (assertJust (address "a:b=c"))
-	  , testCase "trailing-semicolon" (assertJust (addresses "a:;"))
-	  , testCase "two-schemes" (assertJust (addresses "a:;b:"))
-	  , testCase "trailing-comma" (assertJust (address "a:b=c,"))
-	  , testCase "encoded" (assertEqual "" (address "a:b=g8") (address "a:b=%678"))
+	  [ testCase "colon" $ do
+	    	addr <- requireJust (address ":")
+	    	assertEqual (addressMethod addr) ""
+	    	assertEqual (addressParameters addr) (Data.Map.fromList [])
+	  , testCase "just-scheme" $ do
+	    	addr <- requireJust (address "a:")
+	    	assertEqual (addressMethod addr) "a"
+	    	assertEqual (addressParameters addr) (Data.Map.fromList [])
+	  , testCase "param" $ do
+	    	addr <- requireJust (address "a:b=c")
+	    	assertEqual (addressMethod addr) "a"
+	    	assertEqual (addressParameters addr) (Data.Map.fromList [("b", "c")])
+	  , testCase "trailing-semicolon" $ do
+	    	addrs <- requireJust (addresses "a:;")
+	    	assertEqual (length addrs) 1
+	    	let [addr1] = addrs
+	    	assertEqual (addressMethod addr1) "a"
+	    	assertEqual (addressParameters addr1) (Data.Map.fromList [])
+	  , testCase "two-schemes" $ do
+	    	addrs <- requireJust (addresses "a:;b:")
+	    	assertEqual (length addrs) 2
+	    	let [addr1, addr2] = addrs
+	    	assertEqual (addressMethod addr1) "a"
+	    	assertEqual (addressParameters addr1) (Data.Map.fromList [])
+	    	assertEqual (addressMethod addr2) "b"
+	    	assertEqual (addressParameters addr2) (Data.Map.fromList [])
+	  , testCase "trailing-comma" $ do
+	    	addr <- requireJust (address "a:b=c,")
+	    	assertEqual (addressMethod addr) "a"
+	    	assertEqual (addressParameters addr) (Data.Map.fromList [("b", "c")])
+	  , testCase "encoded" $ do
+	    	addr <- requireJust (address "a:b=%678")
+	    	assertEqual (addressMethod addr) "a"
+	    	assertEqual (addressParameters addr) (Data.Map.fromList [("b", "g8")])
 	  ]
 	, F.testGroup "invalid"
 	  [ testCase "empty" (assertNothing (address ""))
@@ -76,28 +104,28 @@ test_Address = F.testGroup "address"
 	  , testCase "no-param-value" (assertNothing (address "a:b="))
 	  ]
 	, F.testGroup "passthrough"
-	  [ testCase "plain" (assertEqual "" (Just "a:b=c") (addressText `fmap` address "a:b=c"))
-	  , testCase "encoded" (assertEqual "" (Just "a:b=Z%5B") (addressText `fmap` address "a:b=%5a%5b"))
-	  , testCase "optionally-encoded" (assertEqual "" (Just "a:b=-_/\\*.") (addressText `fmap` address "a:b=-_/\\*."))
-	  , testCase "multiple-params" (assertEqual "" (Just "a:b=c,d=e") (addressText `fmap` address "a:b=c,d=e"))
+	  [ testCase "plain" (assertEqual (Just "a:b=c") (addressText `fmap` address "a:b=c"))
+	  , testCase "encoded" (assertEqual (Just "a:b=Z%5B") (addressText `fmap` address "a:b=%5a%5b"))
+	  , testCase "optionally-encoded" (assertEqual (Just "a:b=-_/\\*.") (addressText `fmap` address "a:b=-_/\\*."))
+	  , testCase "multiple-params" (assertEqual (Just "a:b=c,d=e") (addressText `fmap` address "a:b=c,d=e"))
 	  ]
 	, F.testGroup "instances"
-	  [ testCase "eq" (assertEqual "" (address "a:b=c") (address "a:b=c"))
-	  , testCase "show" (assertEqual "" "(Address \"a:b=c\")" (showsPrec 11 (fromJust (address "a:b=c")) ""))
+	  [ testCase "eq" (assertEqual (address "a:b=c") (address "a:b=c"))
+	  , testCase "show" (assertEqual "(Address \"a:b=c\")" (showsPrec 11 (fromJust (address "a:b=c")) ""))
 	  ]
 	, F.testGroup "well-known"
 	  [ testCase "system" (withEnv "DBUS_SYSTEM_BUS_ADDRESS" (Just "a:b=c;d:") (do
 	    	addrs <- getSystem
-	    	assertEqual "" addrs (Just ["a:b=c", "d:"])))
+	    	assertEqual addrs (Just ["a:b=c", "d:"])))
 	  , testCase "default-system" (withEnv "DBUS_SYSTEM_BUS_ADDRESS" Nothing (do
 	    	addrs <- getSystem
-	    	assertEqual "" addrs (Just ["unix:path=/var/run/dbus/system_bus_socket"])))
+	    	assertEqual addrs (Just ["unix:path=/var/run/dbus/system_bus_socket"])))
 	  , testCase "session" (withEnv "DBUS_SESSION_BUS_ADDRESS" (Just "a:b=c;d:") (do
 	    	addrs <- getSession
-	    	assertEqual "" addrs (Just ["a:b=c", "d:"])))
+	    	assertEqual addrs (Just ["a:b=c", "d:"])))
 	  , testCase "starter" (withEnv "DBUS_STARTER_BUS_ADDRESS" (Just "a:b=c;d:") (do
 	    	addrs <- getStarter
-	    	assertEqual "" addrs (Just ["a:b=c", "d:"])))
+	    	assertEqual addrs (Just ["a:b=c", "d:"])))
 	  ]
 	]
 
@@ -105,26 +133,60 @@ test_Signature :: F.Test
 test_Signature = F.testGroup "signature"
 	[ F.testGroup "valid"
 	  [ F.testGroup "atom"
-	    [ testCase "bool" (assertJust (signature "b"))
-	    , testCase "word8" (assertJust (signature "y"))
-	    , testCase "word16" (assertJust (signature "q"))
-	    , testCase "word32" (assertJust (signature "u"))
-	    , testCase "word64" (assertJust (signature "t"))
-	    , testCase "int16" (assertJust (signature "x"))
-	    , testCase "int32" (assertJust (signature "i"))
-	    , testCase "int64" (assertJust (signature "x"))
-	    , testCase "double" (assertJust (signature "d"))
-	    , testCase "string" (assertJust (signature "s"))
-	    , testCase "object-path" (assertJust (signature "o"))
-	    , testCase "signature" (assertJust (signature "g"))
+	    [ testCase "bool" $ do
+	      	sig <- requireJust (signature "b")
+	      	assertEqual (signatureTypes sig) [TypeBoolean]
+	    , testCase "word8" $ do
+	      	sig <- requireJust (signature "y")
+	      	assertEqual (signatureTypes sig) [TypeWord8]
+	    , testCase "word16" $ do
+	      	sig <- requireJust (signature "q")
+	      	assertEqual (signatureTypes sig) [TypeWord16]
+	    , testCase "word32" $ do
+	      	sig <- requireJust (signature "u")
+	      	assertEqual (signatureTypes sig) [TypeWord32]
+	    , testCase "word64" $ do
+	      	sig <- requireJust (signature "t")
+	      	assertEqual (signatureTypes sig) [TypeWord64]
+	    , testCase "int16" $ do
+	      	sig <- requireJust (signature "n")
+	      	assertEqual (signatureTypes sig) [TypeInt16]
+	    , testCase "int32" $ do
+	      	sig <- requireJust (signature "i")
+	      	assertEqual (signatureTypes sig) [TypeInt32]
+	    , testCase "int64" $ do
+	      	sig <- requireJust (signature "x")
+	      	assertEqual (signatureTypes sig) [TypeInt64]
+	    , testCase "double" $ do
+	      	sig <- requireJust (signature "d")
+	      	assertEqual (signatureTypes sig) [TypeDouble]
+	    , testCase "string" $ do
+	      	sig <- requireJust (signature "s")
+	      	assertEqual (signatureTypes sig) [TypeString]
+	    , testCase "object-path" $ do
+	      	sig <- requireJust (signature "o")
+	      	assertEqual (signatureTypes sig) [TypeObjectPath]
+	    , testCase "signature" $ do
+	      	sig <- requireJust (signature "g")
+	      	assertEqual (signatureTypes sig) [TypeSignature]
 	    ]
 	  , F.testGroup "container"
-	    [ testCase "variant" (assertJust (signature "v"))
-	    , testCase "array" (assertJust (signature "ay"))
-	    , testCase "struct" (assertJust (signature "(yy)"))
-	    , testCase "dictionary" (assertJust (signature "a{yy}"))
+	    [ testCase "variant" $ do
+	      	sig <- requireJust (signature "v")
+	      	assertEqual (signatureTypes sig) [TypeVariant]
+	    , testCase "array" $ do
+	      	sig <- requireJust (signature "ay")
+	      	assertEqual (signatureTypes sig) [TypeArray TypeWord8]
+	    , testCase "struct" $ do
+	      	sig <- requireJust (signature "(yy)")
+	      	assertEqual (signatureTypes sig) [TypeStructure [TypeWord8, TypeWord8]]
+	    , testCase "dictionary" $ do
+	      	sig <- requireJust (signature "a{yy}")
+	      	assertEqual (signatureTypes sig) [TypeDictionary TypeWord8 TypeWord8]
 	    ]
-	  , testCase "empty" (assertJust (signature ""))
+	  , testCase "empty" $ do
+	    	sig <- requireJust (signature "")
+	    	assertEqual (signatureTypes sig) []
 	  ]
 	, F.testGroup "invalid"
 	  [ testCase "struct-code" (assertNothing (signature "r"))
@@ -134,36 +196,40 @@ test_Signature = F.testGroup "signature"
 	  , testCase "unix-fd" (assertNothing (signature "h"))
 	  ]
 	, F.testGroup "length"
-	  [ testCase "length-254"  (assertJust (signature (T.replicate 254 "y")))
-	  , testCase "length-255" (assertJust (signature (T.replicate 255 "y")))
+	  [ testCase "length-254" $ do
+	    	sig <- requireJust (signature (T.replicate 254 "y"))
+	    	assertEqual (signatureTypes sig) (replicate 254 TypeWord8)
+	  , testCase "length-255" $ do
+	    	sig <- requireJust (signature (T.replicate 255 "y"))
+	    	assertEqual (signatureTypes sig) (replicate 255 TypeWord8)
 	  , testCase "length-256" (assertNothing (signature (T.replicate 256 "y")))
 	  ]
 	, F.testGroup "instances"
-	  [ testCase "show" (assertEqual "" "(Signature \"y\")" (showsPrec 11 (fromJust (signature "y")) ""))
+	  [ testCase "show" (assertEqual "(Signature \"y\")" (showsPrec 11 (fromJust (signature "y")) ""))
 	  ]
 	]
 
 test_Types :: F.Test
 test_Types = F.testGroup "types"
 	[ F.testGroup "instances"
-	  [ testCase "eq" (assertEqual "" TypeWord8 TypeWord8)
+	  [ testCase "eq" (assertEqual TypeWord8 TypeWord8)
 	  , F.testGroup "show"
-	    [ testCase "Boolean" (assertEqual "" "Bool" (show TypeBoolean))
-	    , testCase "Word8" (assertEqual "" "Word8" (show TypeWord8))
-	    , testCase "Word16" (assertEqual "" "Word16" (show TypeWord16))
-	    , testCase "Word32" (assertEqual "" "Word32" (show TypeWord32))
-	    , testCase "Word64" (assertEqual "" "Word64" (show TypeWord64))
-	    , testCase "Int16" (assertEqual "" "Int16" (show TypeInt16))
-	    , testCase "Int32" (assertEqual "" "Int32" (show TypeInt32))
-	    , testCase "Int64" (assertEqual "" "Int64" (show TypeInt64))
-	    , testCase "Double" (assertEqual "" "Double" (show TypeDouble))
-	    , testCase "String" (assertEqual "" "String" (show TypeString))
-	    , testCase "Signature" (assertEqual "" "Signature" (show TypeSignature))
-	    , testCase "ObjectPath" (assertEqual "" "ObjectPath" (show TypeObjectPath))
-	    , testCase "Variant" (assertEqual "" "Variant" (show TypeVariant))
-	    , testCase "Array" (assertEqual "" "[Word8]" (show (TypeArray TypeWord8)))
-	    , testCase "Dictionary" (assertEqual "" "Map Word8 (Map Word8 Word8)" (show (TypeDictionary TypeWord8 (TypeDictionary TypeWord8 TypeWord8))))
-	    , testCase "Structure" (assertEqual "" "(Word8, Word16)" (show (TypeStructure [TypeWord8, TypeWord16])))
+	    [ testCase "Boolean" (assertEqual "Bool" (show TypeBoolean))
+	    , testCase "Word8" (assertEqual "Word8" (show TypeWord8))
+	    , testCase "Word16" (assertEqual "Word16" (show TypeWord16))
+	    , testCase "Word32" (assertEqual "Word32" (show TypeWord32))
+	    , testCase "Word64" (assertEqual "Word64" (show TypeWord64))
+	    , testCase "Int16" (assertEqual "Int16" (show TypeInt16))
+	    , testCase "Int32" (assertEqual "Int32" (show TypeInt32))
+	    , testCase "Int64" (assertEqual "Int64" (show TypeInt64))
+	    , testCase "Double" (assertEqual "Double" (show TypeDouble))
+	    , testCase "String" (assertEqual "String" (show TypeString))
+	    , testCase "Signature" (assertEqual "Signature" (show TypeSignature))
+	    , testCase "ObjectPath" (assertEqual "ObjectPath" (show TypeObjectPath))
+	    , testCase "Variant" (assertEqual "Variant" (show TypeVariant))
+	    , testCase "Array" (assertEqual "[Word8]" (show (TypeArray TypeWord8)))
+	    , testCase "Dictionary" (assertEqual "Map Word8 (Map Word8 Word8)" (show (TypeDictionary TypeWord8 (TypeDictionary TypeWord8 TypeWord8))))
+	    , testCase "Structure" (assertEqual "(Word8, Word16)" (show (TypeStructure [TypeWord8, TypeWord16])))
 	    ]
 	  ]
 	]
@@ -172,9 +238,9 @@ test_Variant :: F.Test
 test_Variant = F.testGroup "variant"
 	[ F.testGroup "instances"
 	  [ F.testGroup "show"
-	    [ testCase "array" (assertEqual "" "(Variant [True, False, True])" (showsPrec 11 (toVariant [True, False, True]) ""))
-	    , testCase "dictionary" (assertEqual "" "(Variant {False: True, True: False})" (showsPrec 11 (toVariant (Data.Map.fromList [(True, False), (False, True)])) ""))
-	    , testCase "structure" (assertEqual "" "(Variant (True, False))" (showsPrec 11 (toVariant (True, False)) ""))
+	    [ testCase "array" (assertEqual "(Variant [True, False, True])" (showsPrec 11 (toVariant [True, False, True]) ""))
+	    , testCase "dictionary" (assertEqual "(Variant {False: True, True: False})" (showsPrec 11 (toVariant (Data.Map.fromList [(True, False), (False, True)])) ""))
+	    , testCase "structure" (assertEqual "(Variant (True, False))" (showsPrec 11 (toVariant (True, False)) ""))
 	    ]
 	  ]
 	]
@@ -284,13 +350,22 @@ test_BusName = F.testGroup "bus-name"
 	  ]
 	]
 
-assertJust :: Maybe a -> Assertion
+requireJust :: Maybe a -> IO a
+requireJust (Just a) = return a
+requireJust Nothing  = do
+	assertFailure "expected: (Just _)\n but got: Nothing" -- throws
+	error "requireJust: assertFailure didn't fail"
+
+assertJust :: Maybe a -> IO ()
 assertJust (Just _) = return ()
 assertJust Nothing  = assertFailure "expected: (Just _)\n but got: Nothing"
 
 assertNothing :: Maybe a -> Assertion
 assertNothing Nothing = return ()
 assertNothing (Just _)  = assertFailure "expected: (Just _)\n but got: Nothing"
+
+assertEqual :: (Show a, Eq a) => a -> a -> Assertion
+assertEqual = Test.HUnit.assertEqual ""
 
 withEnv :: String -> Maybe String -> IO a -> IO a
 withEnv name value io = do
