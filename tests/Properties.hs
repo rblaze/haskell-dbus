@@ -26,6 +26,7 @@ import qualified Test.HUnit
 import           Test.QuickCheck
 
 import qualified Control.Exception
+import           Control.Monad (liftM, liftM2)
 import           Data.List (intercalate)
 import           Data.Text (Text)
 import qualified Data.Text as T
@@ -43,6 +44,7 @@ import           DBus.MatchRule ()
 import           DBus.Message ()
 import           DBus.NameReservation ()
 import           DBus.Types
+import           DBus.Types.Internal (typeCode, checkSignature)
 import           DBus.Wire ()
 import           DBus.Introspection ()
 
@@ -63,6 +65,7 @@ properties :: Test
 properties = testGroup "properties"
 	[ testProperty "address-parsing" prop_AddressParsing
 	, testProperty "signature-parsing" prop_SignatureParsing
+	, testProperty "check-signature" prop_CheckSignature
 	]
 
 main :: IO ()
@@ -419,6 +422,10 @@ genSignatureText = gen where
 			then halfSized gen
 			else return (T.pack chars)
 
+prop_CheckSignature :: Property
+prop_CheckSignature = forAll (listOf1 arbitrary) prop where
+	prop types = checkSignature types == signature (T.pack (concatMap typeCode types))
+
 halfSized :: Gen a -> Gen a
 halfSized gen = sized (\n -> if n > 0
 	then resize (div n 2) gen
@@ -453,3 +460,26 @@ instance IsString Address where
 	fromString s = case address (T.pack s) of
 		Just addr -> addr
 		Nothing -> error ("Invalid address: " ++ show s)
+
+instance Arbitrary Type where
+	arbitrary = oneof [atom, container] where
+		atom = elements
+			[ TypeBoolean
+			, TypeWord8
+			, TypeWord16
+			, TypeWord32
+			, TypeWord64
+			, TypeInt16
+			, TypeInt32
+			, TypeInt64
+			, TypeDouble
+			, TypeString
+			, TypeObjectPath
+			, TypeSignature
+			]
+		container = oneof
+			[ return TypeVariant
+			, liftM TypeArray arbitrary
+			, liftM2 TypeDictionary atom arbitrary
+			, liftM TypeStructure (listOf1 (halfSized arbitrary))
+			]
