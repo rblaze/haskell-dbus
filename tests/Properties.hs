@@ -26,6 +26,8 @@ import qualified Test.HUnit
 import           Test.QuickCheck
 
 import qualified Control.Exception
+import           Data.List (intercalate)
+import           Data.Text (Text)
 import qualified Data.Text as T
 import           Data.Word (Word8, Word16, Word32, Word64)
 import           Data.Int (Int16, Int32, Int64)
@@ -44,8 +46,9 @@ import           DBus.Types
 import           DBus.Wire ()
 import           DBus.Introspection ()
 
-tests :: [Test]
-tests = [ test_Address
+tests :: Test
+tests = testGroup "tests"
+	[ test_Address
 	, test_Signature
 	, test_Types
 	, test_Variant
@@ -56,8 +59,14 @@ tests = [ test_Address
 	, test_BusName
 	]
 
+properties :: Test
+properties = testGroup "properties"
+	[ testProperty "address-parsing" prop_AddressParsing
+	, testProperty "signature-parsing" prop_SignatureParsing
+	]
+
 main :: IO ()
-main = Test.Framework.defaultMain tests
+main = Test.Framework.defaultMain [tests, properties]
 
 test_Address :: Test
 test_Address = testGroup "address"
@@ -350,6 +359,70 @@ test_BusName = testGroup "bus-name"
 	  , testCase "length-256" (assertNothing (busName (":0." `T.append` T.replicate 253 "y")))
 	  ]
 	]
+
+prop_AddressParsing :: Property
+prop_AddressParsing = forAll genAddressText (isJust . address)
+
+genAddressText :: Gen Text
+genAddressText = gen where
+	methodChars = filter (`notElem` ":;") ['!'..'~']
+	keyChars = filter (`notElem` "=;,") ['!'..'~']
+	optionallyEncoded = map (:[]) (concat
+		[ ['0'..'9']
+		, ['a'..'z']
+		, ['A'..'Z']
+		, "-_/\\*."
+		])
+	
+	param = do
+		key <- listOf1 (elements keyChars)
+		value <- listOf1 (oneof
+			[ elements optionallyEncoded
+			, do
+			  	c1 <- genHex
+			  	c2 <- genHex
+			  	return ['%', c1, c2]
+			])
+		return (key ++ "=" ++ concat value)
+	
+	gen = do
+		method <- listOf (elements methodChars)
+		params <- listOf param
+		return (T.pack (method ++ ":" ++ (intercalate "," params)))
+
+genHex :: Gen Char
+genHex = elements (['0'..'9'] ++ ['a'..'f'] ++ ['A'..'F'])
+
+prop_SignatureParsing :: Property
+prop_SignatureParsing = forAll genSignatureText (isJust . signature)
+
+genSignatureText :: Gen Text
+genSignatureText = gen where
+	any = oneof [atom, container]
+	atom = elements ["b", "y", "q", "u", "t", "n", "i", "x", "d", "s", "o", "g"]
+	container = oneof
+		[ return "v"
+		, do
+		  	t <- any
+		  	return ('a' : t)
+		, do
+		  	kt <- atom
+		  	vt <- any
+		  	return (concat ["a{", kt, vt, "}"])
+		, do
+		  	ts <- listOf1 (halfSized any)
+		  	return (concat (["("] ++ ts ++ [")"]))
+		]
+	gen = do
+		chars <- fmap concat (listOf any)
+		if length chars > 255
+			then halfSized gen
+			else return (T.pack chars)
+
+halfSized :: Gen a -> Gen a
+halfSized gen = sized (\n -> if n > 0
+	then resize (div n 2) gen
+	else gen)
 
 requireJust :: Maybe a -> IO a
 requireJust (Just a) = return a
