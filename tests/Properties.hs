@@ -249,9 +249,40 @@ test_Types = testGroup "types"
 
 test_Variant :: Test
 test_Variant = testGroup "variant"
-	[ testGroup "instances"
+	[ testGroup "variantType"
+	  [ testCase "bool" (assertEqual TypeBoolean (variantType (toVariant True)))
+	  , testCase "word8" (assertEqual TypeWord8 (variantType (toVariant (0 :: Word8))))
+	  , testCase "word16" (assertEqual TypeWord16 (variantType (toVariant (0 :: Word16))))
+	  , testCase "word32" (assertEqual TypeWord32 (variantType (toVariant (0 :: Word32))))
+	  , testCase "word64" (assertEqual TypeWord64 (variantType (toVariant (0 :: Word64))))
+	  , testCase "int16" (assertEqual TypeInt16 (variantType (toVariant (0 :: Int16))))
+	  , testCase "int32" (assertEqual TypeInt32 (variantType (toVariant (0 :: Int32))))
+	  , testCase "int64" (assertEqual TypeInt64 (variantType (toVariant (0 :: Int64))))
+	  , testCase "double" (assertEqual TypeDouble (variantType (toVariant (0 :: Double))))
+	  , testCase "string" (assertEqual TypeString (variantType (toVariant (T.pack ""))))
+	  , testCase "object-path" (assertEqual TypeObjectPath (variantType (toVariant (objectPath_ "/"))))
+	  , testCase "signature" (assertEqual TypeSignature (variantType (toVariant (signature_ ""))))
+	  , testCase "variant" (assertEqual TypeVariant (variantType (toVariant (toVariant True))))
+	  , testCase "array" (assertEqual (TypeArray TypeBoolean) (variantType (toVariant [True])))
+	  , testCase "dictionary" (assertEqual (TypeDictionary TypeBoolean TypeBoolean) (variantType (toVariant (Data.Map.fromList [(True, True)]))))
+	  , testCase "structure" (assertEqual (TypeStructure [TypeBoolean, TypeBoolean]) (variantType (toVariant (True, True))))
+	  ]
+	, testGroup "instances"
 	  [ testGroup "show"
-	    [ testCase "array" (assertEqual "(Variant [True, False, True])" (showsPrec 11 (toVariant [True, False, True]) ""))
+	    [ testCase "bool" (assertEqual "Variant True" (show (toVariant True)))
+	    , testCase "word8" (assertEqual "Variant 0" (show (toVariant (0 :: Word8))))
+	    , testCase "word16" (assertEqual "Variant 0" (show (toVariant (0 :: Word16))))
+	    , testCase "word32" (assertEqual "Variant 0" (show (toVariant (0 :: Word32))))
+	    , testCase "word64" (assertEqual "Variant 0" (show (toVariant (0 :: Word64))))
+	    , testCase "int16" (assertEqual "Variant 0" (show (toVariant (0 :: Int16))))
+	    , testCase "int32" (assertEqual "Variant 0" (show (toVariant (0 :: Int32))))
+	    , testCase "int64" (assertEqual "Variant 0" (show (toVariant (0 :: Int64))))
+	    , testCase "double" (assertEqual "Variant 0.1" (show (toVariant (0.1 :: Double))))
+	    , testCase "string" (assertEqual "Variant \"\"" (show (toVariant (T.pack ""))))
+	    , testCase "object-path" (assertEqual "Variant (ObjectPath \"/\")" (show (toVariant (objectPath_ "/"))))
+	    , testCase "signature" (assertEqual "Variant (Signature \"\")" (show (toVariant (signature_ ""))))
+	    , testCase "variant" (assertEqual "Variant (Variant True)" (show (toVariant (toVariant True))))
+	    , testCase "array" (assertEqual "(Variant [True, False, True])" (showsPrec 11 (toVariant [True, False, True]) ""))
 	    , testCase "dictionary" (assertEqual "(Variant {False: True, True: False})" (showsPrec 11 (toVariant (Data.Map.fromList [(True, False), (False, True)])) ""))
 	    , testCase "structure" (assertEqual "(Variant (True, False))" (showsPrec 11 (toVariant (True, False)) ""))
 	    ]

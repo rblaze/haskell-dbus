@@ -301,27 +301,27 @@ the actual data, this is somewhat complex.
 
 \begin{quote}
 :d DBus.Types
-showAtom :: Atom -> String
-showAtom (AtomBool x) = show x
-showAtom (AtomWord8 x) = show x
-showAtom (AtomWord16 x) = show x
-showAtom (AtomWord32 x) = show x
-showAtom (AtomWord64 x) = show x
-showAtom (AtomInt16 x) = show x
-showAtom (AtomInt32 x) = show x
-showAtom (AtomInt64 x) = show x
-showAtom (AtomDouble x) = show x
-showAtom (AtomText x) = show x
-showAtom (AtomSignature x) = show x
-showAtom (AtomObjectPath x) = show x
+showAtom :: Bool -> Atom -> String
+showAtom _ (AtomBool x) = show x
+showAtom _ (AtomWord8 x) = show x
+showAtom _ (AtomWord16 x) = show x
+showAtom _ (AtomWord32 x) = show x
+showAtom _ (AtomWord64 x) = show x
+showAtom _ (AtomInt16 x) = show x
+showAtom _ (AtomInt32 x) = show x
+showAtom _ (AtomInt64 x) = show x
+showAtom _ (AtomDouble x) = show x
+showAtom _ (AtomText x) = show x
+showAtom p (AtomSignature x) = showsPrec (if p then 11 else 0) x ""
+showAtom p (AtomObjectPath x) = showsPrec (if p then 11 else 0) x ""
 
-showValue :: Value -> String
-showValue (ValueAtom x) = showAtom x
-showValue (ValueVariant x) = show x
-showValue (ValueVector _ xs) = showThings "[" showValue "]" (Data.Vector.toList xs)
-showValue (ValueMap _ xs) = showThings "{" showPair "}" (Data.Map.toList xs) where
-	showPair (k, v) = showAtom k ++ ": " ++ showValue v
-showValue (ValueStructure xs) = showThings "(" showValue ")" xs
+showValue :: Bool -> Value -> String
+showValue p (ValueAtom x) = showAtom p x
+showValue p (ValueVariant x) = showsPrec (if p then 11 else 0) x ""
+showValue _ (ValueVector _ xs) = showThings "[" (showValue False) "]" (Data.Vector.toList xs)
+showValue _ (ValueMap _ xs) = showThings "{" showPair "}" (Data.Map.toList xs) where
+	showPair (k, v) = showAtom False k ++ ": " ++ showValue False v
+showValue _ (ValueStructure xs) = showThings "(" (showValue False) ")" xs
 
 showThings :: String -> (a -> String) -> String -> [a] -> String
 showThings a s z xs = a ++ intercalate ", " (map s xs) ++ z
@@ -354,14 +354,14 @@ fromList [("foo","bar")]
 \end{multicols}
 
 To preserve the variant-based public interface, {\tt showAtom} and
-{\tt showUser} are not exported to the user. This preserves the
+{\tt showValue} are not exported to the user. This preserves the
 appearance that {\tt Variant} is a simple wrapping box.
 
 \begin{quote}
 :d DBus.Types
 instance Show Variant where
 	showsPrec d (Variant x) = showParen (d > 10) $
-		showString "Variant " .  showString (showValue x)
+		showString "Variant " .  showString (showValue True x)
 :
 \end{quote}
 
