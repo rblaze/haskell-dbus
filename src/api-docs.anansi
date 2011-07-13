@@ -23,16 +23,6 @@ will be included in Haddock output for public functions.
 There's no real order to this section; it exists only because Haddock
 can't merge documentation from external files.
 
-:d apidoc isAtomicType
--- | \"Atomic\" types are any which can't contain any other types. Only
--- atomic types may be used as dictionary keys.
-:
-
-:d apidoc typeCode
--- | Every type has an associated type code; a textual representation of
--- the type, useful for debugging.
-:
-
 :d apidoc Variant
 -- | 'Variant's may contain any other built-in D-Bus value. Besides
 -- representing native @VARIANT@ values, they allow type-safe storage and
@@ -43,11 +33,6 @@ can't merge documentation from external files.
 -- | Every variant is strongly-typed; that is, the type of its contained
 -- value is known at all times. This function retrieves that type, so that
 -- the correct cast can be used to retrieve the value.
-:
-
-:d apidoc arrayType
--- | This is the type contained within the array, not the type of the array
--- itself.
 :
 
 :d apidoc Connection
@@ -76,10 +61,10 @@ can't merge documentation from external files.
 :
 
 :d apidoc send
--- | Send a single message, with a generated 'M.Serial'. The second parameter
+-- | Send a single message, with a generated 'Serial'. The second parameter
 -- exists to prevent race conditions when registering a reply handler; it
--- receives the serial the message /will/ be sent with, before it's actually
--- sent.
+-- receives the serial the message /will/ be sent with, before it&#8217;s
+-- actually sent.
 --
 -- Only one message may be sent at a time; if multiple threads attempt to
 -- send messages in parallel, one will block until after the other has
@@ -95,29 +80,19 @@ can't merge documentation from external files.
 -- finished.
 :
 
-:d apidoc getBus
--- | Similar to 'C.connect', but additionally sends @Hello@ messages to the
--- central bus.
-:
-
-:d apidoc getFirstBus
--- | Similar to 'C.connectFirst', but additionally sends @Hello@ messages to
--- the central bus.
-:
-
-:d apidoc getSystemBus
+:d apidoc connectSystem
 -- | Connect to the bus specified in the environment variable
 -- @DBUS_SYSTEM_BUS_ADDRESS@, or to
 -- @unix:path=\/var\/run\/dbus\/system_bus_socket@ if @DBUS_SYSTEM_BUS_ADDRESS@
 -- is not set.
 :
 
-:d apidoc getSessionBus
+:d apidoc connectSession
 -- | Connect to the bus specified in the environment variable
 -- @DBUS_SESSION_BUS_ADDRESS@, which must be set.
 :
 
-:d apidoc getStarterBus
+:d apidoc connectStarter
 -- | Connect to the bus specified in the environment variable
 -- @DBUS_STARTER_ADDRESS@, which must be set.
 :
@@ -140,14 +115,6 @@ can't merge documentation from external files.
 -- for implementing signal handlers.
 :
 
-:d apidoc requestName
--- | Build a 'M.MethodCall' for requesting a registered bus name.
-:
-
-:d apidoc releaseName
--- | Build a 'M.MethodCall' for releasing a registered bus name.
-:
-
 :d apidoc Serial
 -- | A value used to uniquely identify a particular message within a session.
 -- 'Serial's are 32-bit unsigned integers, and eventually wrap.
@@ -155,14 +122,14 @@ can't merge documentation from external files.
 
 :d apidoc ReceivedMessage
 -- | Not an actual message type, but a wrapper around messages received from
--- the bus. Each value contains the message's 'Serial' and possibly the
--- origin's 'T.BusName'
+-- the bus. Each value contains the message&#8217;s 'Serial' and possibly the
+-- origin&#8217;s 'BusName'
 :
 
 :d apidoc marshalMessage
--- | Convert a 'M.Message' into a 'L.ByteString'. Although unusual, it is
--- possible for marshaling to fail -- if this occurs, an appropriate error
--- will be returned instead.
+-- | Convert a 'Message' into a 'Data.ByteString.Lazy.ByteString'. Although
+-- unusual, it is possible for marshaling to fail &#8212; if this occurs, an
+-- appropriate error will be returned instead.
 :
 
 :d apidoc unmarshalMessage

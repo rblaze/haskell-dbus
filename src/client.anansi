@@ -160,6 +160,7 @@ connectFirst addrs = loop addrs where
 		(DBus.Client.connect a)
 		(\(ConnectionError _) -> loop as)
 
+|apidoc connectSession|
 connectSession :: IO Client
 connectSession = do
 	env <- DBus.Address.getSession
@@ -170,6 +171,7 @@ connectSession = do
 			])
 		Just addrs -> connectFirst addrs
 
+|apidoc connectSystem|
 connectSystem :: IO Client
 connectSystem = do
 	env <- DBus.Address.getSystem
@@ -180,6 +182,7 @@ connectSystem = do
 			])
 		Just addrs -> connectFirst addrs
 
+|apidoc connectStarter|
 connectStarter :: IO Client
 connectStarter = do
 	env <- DBus.Address.getStarter
