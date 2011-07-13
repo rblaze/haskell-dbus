@@ -327,6 +327,7 @@ module DBus.Client
 	, disconnect
 	, call
 	, call_
+	, listen
 	, setMessageProcessor
 	) where
 import           DBus.Client.Internal
@@ -350,7 +351,9 @@ import           DBus.Address
 import qualified DBus.Connection
 import           DBus.Connection (Connection)
 import           DBus.Connection.Error
+import qualified DBus.MatchRule
 import           DBus.Message
+import           DBus.Types (BusName)
 import           DBus.Util (void)
 
 |DBus.Client|
@@ -372,6 +375,7 @@ module DBus.Client.Simple
 	, Proxy
 	, proxy
 	, call
+	, DBus.Client.Simple.listen
 	
 	-- * Name reservation
 	, RequestNameFlag(..)
@@ -433,6 +437,7 @@ import           Data.Word (Word32)
 import           DBus.Address
 import           DBus.Client hiding (call)
 import           DBus.Connection.Error
+import qualified DBus.MatchRule
 import           DBus.Message hiding (errorName)
 import           DBus.Types
 import           DBus.Util (maybeIndex)

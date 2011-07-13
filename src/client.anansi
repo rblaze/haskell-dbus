@@ -110,6 +110,19 @@ call_ client msg = do
 :
 
 :d DBus.Client
+listen :: Client -> DBus.MatchRule.MatchRule -> (BusName -> Signal -> IO ()) -> IO ()
+listen client rule io = do
+	let rule' = rule { DBus.MatchRule.matchType = Just DBus.MatchRule.Signal }
+	
+	let handler msg@(ReceivedSignal _ (Just sender) signal)
+		| DBus.MatchRule.matches rule' msg = io sender signal
+	    handler _ = return ()
+	
+	void (call_ client (DBus.MatchRule.addMatch rule'))
+	modifyMVar_ (clientSignalHandlers client) (\hs -> return (handler : hs))
+:
+
+:d DBus.Client
 mainLoop :: Client -> IO ()
 mainLoop client = forever $ do
 	let connection = clientConnection client
@@ -143,6 +156,9 @@ dispatch client received = void . forkIO $ do
 	unless handled $ case received of
 		(ReceivedMethodReturn _ _ msg) -> onReply (methodReturnSerial msg)
 		(ReceivedError _ _ msg) -> onReply (errorSerial msg)
+		(ReceivedSignal _ _ _) -> do
+			handlers <- readMVar (clientSignalHandlers client)
+			mapM_ ($ received) handlers
 		_ -> return ()
 :
 
@@ -194,6 +210,9 @@ connectStarter = do
 		Just addrs -> connectFirst addrs
 :
 
+\clearpage
+\subsubsection{Remote object proxies}
+
 :d DBus.Client.Simple
 data Proxy = Proxy Client BusName ObjectPath
 :
@@ -215,6 +234,20 @@ call (Proxy client dest path) iface member body = do
 		, methodCallBody = body
 		}
 	return (methodReturnBody reply)
+:
+
+:d DBus.Client.Simple
+listen :: Proxy -> InterfaceName -> MemberName -> (BusName -> Signal -> IO ()) -> IO ()
+listen (Proxy client dest path) iface member = DBus.Client.listen client
+	(DBus.MatchRule.MatchRule
+		{ DBus.MatchRule.matchType = Nothing
+		, DBus.MatchRule.matchSender = Just dest
+		, DBus.MatchRule.matchInterface = Just iface
+		, DBus.MatchRule.matchMember = Just member
+		, DBus.MatchRule.matchPath = Just path
+		, DBus.MatchRule.matchDestination = Nothing
+		, DBus.MatchRule.matchParameters = []
+		})
 :
 
 \clearpage
