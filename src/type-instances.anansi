@@ -142,6 +142,15 @@ instance IsValue Text where
 	typeOf _ = TypeString
 	toValue = atomToValue
 	fromValue = atomFromValue
+
+instance IsAtom Data.Text.Lazy.Text where
+	toAtom = toAtom . Data.Text.Lazy.toStrict
+	fromAtom = fmap Data.Text.Lazy.fromStrict . fromAtom
+
+instance IsValue Data.Text.Lazy.Text where
+	typeOf _ = TypeString
+	toValue = atomToValue
+	fromValue = atomFromValue
 :
 
 :d DBus.Types
@@ -170,6 +179,11 @@ instance IsValue a => IsValue (Vector a) where
 	toValue as = ValueVector (typeOf as) (Data.Vector.map toValue as)
 	fromValue (ValueVector _ v) = Data.Vector.mapM fromValue v
 	fromValue _ = Nothing
+
+instance IsValue a => IsValue [a] where
+	typeOf v = TypeArray (typeOf (undefined `asTypeOf` head v))
+	toValue = toValue . Data.Vector.fromList
+	fromValue = fmap Data.Vector.toList . fromValue
 :
 
 :d DBus.Types
