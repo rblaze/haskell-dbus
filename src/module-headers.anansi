@@ -250,7 +250,7 @@ import           Data.IORef
 import           DBus.Address
 import           DBus.Connection.Authentication
 import           DBus.Connection.Error
-import           DBus.Connection.Transport
+import           DBus.Connection.Transport.Internal
 import           DBus.Message.Internal
 import           DBus.Wire
 
@@ -287,18 +287,11 @@ import           Data.Typeable (Typeable)
 |DBus.Connection.Error|
 :
 
-:f DBus/Connection/Transport.hs
+:f DBus/Connection/Transport/Internal.hs
 {-# LANGUAGE OverloadedStrings #-}
 |copyright|
-module DBus.Connection.Transport
-	( Transport
-	, transportPut
-	, transportGet
-	, transportClose
-	, connectHandle
-	, connectUNIX
-	, connectTCP
-	) where
+module DBus.Connection.Transport.Internal where
+
 import qualified Control.Exception
 import           Control.Monad (unless)
 import qualified Data.Binary.Get
@@ -307,6 +300,7 @@ import qualified Data.ByteString
 import           Data.ByteString (ByteString)
 import qualified Data.Map
 import qualified Data.Text
+import           Data.Text (Text)
 import           Data.Word (Word32)
 import qualified Network
 import qualified Network.Socket
@@ -317,6 +311,23 @@ import           DBus.Address
 import           DBus.Connection.Error
 
 |DBus.Connection.Transport|
+:
+
+:f DBus/Connection/Transport.hs
+|copyright|
+module DBus.Connection.Transport
+	( Transport
+	, transport
+	
+	, Socket
+	, socket
+	, socketPut
+	, socketGet
+	
+	, tcp
+	, unix
+	) where
+import           DBus.Connection.Transport.Internal
 :
 
 :f DBus/Client.hs
@@ -351,6 +362,7 @@ import           DBus.Address
 import qualified DBus.Connection
 import           DBus.Connection (Connection)
 import           DBus.Connection.Authentication (external)
+import           DBus.Connection.Transport (unix, tcp)
 import           DBus.Connection.Error
 import qualified DBus.MatchRule
 import           DBus.Message
