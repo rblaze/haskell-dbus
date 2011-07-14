@@ -508,6 +508,9 @@ authenticate s mechanisms = do
 :d DBus.Connection.Authentication
 newtype Mechanism = Mechanism (Socket -> IO Bool)
 
+mechanism :: (Socket -> IO Bool) -> Mechanism
+mechanism = Mechanism
+
 data Auth a = Auth
 	{ unAuth :: Socket -> IO a
 	}

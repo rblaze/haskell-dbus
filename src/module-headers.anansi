@@ -240,6 +240,22 @@ module DBus.Connection
 	, disconnect
 	, send
 	, receive
+	
+	-- * Authentication
+	, Mechanism(..)
+	, mechanism
+	, external
+	
+	-- * Transports
+	, Transport
+	, Socket
+	, transport
+	, socket
+	, socketPut
+	, socketGet
+	
+	, unix
+	, tcp
 	) where
 import           Control.Concurrent
 import           Control.Monad (when)
@@ -250,7 +266,7 @@ import           Data.IORef
 import           DBus.Address
 import           DBus.Connection.Authentication
 import           DBus.Connection.Error
-import           DBus.Connection.Transport.Internal
+import           DBus.Connection.Transport
 import           DBus.Message.Internal
 import           DBus.Wire
 
@@ -260,10 +276,12 @@ import           DBus.Wire
 :f DBus/Connection/Authentication.hs
 |copyright|
 module DBus.Connection.Authentication
-	( Mechanism(..)
+	( Mechanism
+	, mechanism
 	, authenticate
 	, external
 	) where
+
 import           Prelude hiding (getLine, head)
 import           Control.Monad (liftM)
 import qualified Data.ByteString
@@ -287,10 +305,21 @@ import           Data.Typeable (Typeable)
 |DBus.Connection.Error|
 :
 
-:f DBus/Connection/Transport/Internal.hs
+:f DBus/Connection/Transport.hs
 {-# LANGUAGE OverloadedStrings #-}
 |copyright|
-module DBus.Connection.Transport.Internal where
+module DBus.Connection.Transport
+	( Transport
+	, transport
+	, Socket
+	, socket
+	, socketPut
+	, socketGet
+	, socketClose
+	, tcp
+	, unix
+	, connectTransport
+	) where
 
 import qualified Control.Exception
 import           Control.Monad (unless)
@@ -311,23 +340,6 @@ import           DBus.Address
 import           DBus.Connection.Error
 
 |DBus.Connection.Transport|
-:
-
-:f DBus/Connection/Transport.hs
-|copyright|
-module DBus.Connection.Transport
-	( Transport
-	, transport
-	
-	, Socket
-	, socket
-	, socketPut
-	, socketGet
-	
-	, tcp
-	, unix
-	) where
-import           DBus.Connection.Transport.Internal
 :
 
 :f DBus/Client.hs
