@@ -242,7 +242,7 @@ module DBus.Connection
 	, receive
 	
 	-- * Authentication
-	, Mechanism(..)
+	, Mechanism
 	, mechanism
 	, external
 	
