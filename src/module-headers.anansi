@@ -335,6 +335,7 @@ import           DBus.Connection.Transport.Internal
 module DBus.Client
 	( Client
 	, connect
+	, attach
 	, disconnect
 	, call
 	, call_

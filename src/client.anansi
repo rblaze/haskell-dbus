@@ -32,6 +32,10 @@ type Callback = (ReceivedMessage -> IO ())
 connect :: Address -> IO Client
 connect addr = do
 	connection <- DBus.Connection.connect [unix, tcp] [external] addr
+	attach connection
+
+attach :: Connection -> IO Client
+attach connection = do
 	callbacks <- newMVar Data.Map.empty
 	signalHandlers <- newMVar []
 	processor <- newIORef (\_ -> return False)
