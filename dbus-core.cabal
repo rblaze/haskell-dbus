@@ -77,6 +77,8 @@ library
     DBus.Client
     DBus.Client.Simple
     DBus.Connection
+    DBus.Connection.Authentication
+    DBus.Connection.Transport
     DBus.Constants
     DBus.Introspection
     DBus.MatchRule
@@ -86,9 +88,7 @@ library
 
   other-modules:
     DBus.Client.Internal
-    DBus.Connection.Authentication
     DBus.Connection.Error
-    DBus.Connection.Transport
     DBus.Message.Internal
     DBus.Types.Internal
     DBus.Util

@@ -260,7 +260,7 @@ import           DBus.Wire
 :f DBus/Connection/Authentication.hs
 |copyright|
 module DBus.Connection.Authentication
-	( Mechanism
+	( Mechanism(..)
 	, authenticate
 	, external
 	) where
@@ -350,6 +350,7 @@ import qualified Data.Set
 import           DBus.Address
 import qualified DBus.Connection
 import           DBus.Connection (Connection)
+import           DBus.Connection.Authentication (external)
 import           DBus.Connection.Error
 import qualified DBus.MatchRule
 import           DBus.Message

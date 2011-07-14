@@ -65,8 +65,8 @@ TODO
 \columnbreak
 
 :d DBus.Connection
-connect :: Address -> IO Connection
-connect addr = do
+connect :: Address -> [Mechanism] -> IO Connection
+connect addr mechanisms = do
 	transport <- case addressMethod addr of
 		"unix" -> connectUNIX addr
 		"tcp" -> connectTCP addr
@@ -74,7 +74,7 @@ connect addr = do
 			[ "Unknown address method: "
 			, show method
 			])
-	authed <- authenticate transport [external]
+	authed <- authenticate transport mechanisms
 	when (not authed)
 		(throwError "Authentication failed")
 	
@@ -476,15 +476,15 @@ authenticate t mechanisms = do
 	transportPut t (Data.ByteString.pack [0])
 	let loop [] = return False
 	    loop ((Mechanism m):next) = do
-	    	success <- m
+	    	success <- m t
 	    	if success
 	    		then return True
 	    		else loop next
-	unAuth (loop mechanisms) t
+	loop mechanisms
 :
 
 :d DBus.Connection.Authentication
-newtype Mechanism = Mechanism (Auth Bool)
+newtype Mechanism = Mechanism (Transport -> IO Bool)
 
 data Auth a = Auth
 	{ unAuth :: Transport -> IO a
@@ -534,7 +534,7 @@ mechanism, I have never seen it used in real life. Everything actually uses
 
 :d DBus.Connection.Authentication
 external :: Mechanism
-external = Mechanism $ do
+external = Mechanism $ unAuth $ do
 	uid <- liftIO System.Posix.User.getRealUserID
 	let token = concatMap (printf "%02X" . ord) (show uid)
 	putLine ("AUTH EXTERNAL " ++ token)
