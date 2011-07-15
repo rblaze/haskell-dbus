@@ -446,49 +446,8 @@ module DBus.Client.Simple
 	, export
 	, throwError
 	
-	-- * Types
-	
-	-- ** Variants
-	, Variant
-	, IsVariant(..)
-	, IsValue
-	, IsAtom
-	
-	-- ** Signatures
-	, Signature
-	, signature
-	, signature_
-	, signatureText
-	
-	-- ** Object paths
-	, ObjectPath
-	, objectPath
-	, objectPath_
-	, objectPathText
-	
-	-- ** Interface names
-	, InterfaceName
-	, interfaceName
-	, interfaceName_
-	, interfaceNameText
-	
-	-- ** Member names
-	, MemberName
-	, memberName
-	, memberName_
-	, memberNameText
-	
-	-- ** Error names
-	, ErrorName
-	, errorName
-	, errorName_
-	, errorNameText
-	
-	-- ** Bus names
-	, BusName
-	, busName
-	, busName_
-	, busNameText
+	-- * Re-exported modules
+	, module DBus.Types
 	) where
 
 import qualified Control.Exception

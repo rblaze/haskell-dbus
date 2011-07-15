@@ -33,7 +33,6 @@ import           DBus.Address
 import           DBus.Client (connect, setMessageProcessor)
 import           DBus.Client.Simple
 import           DBus.Message
-import           DBus.Types
 
 data Bus = Session | System
 	deriving (Show)
