@@ -807,7 +807,7 @@ decodeField' x f label = case fromVariant x of
 \subsubsection{Marshaling}
 
 :d DBus.Wire
-|apidoc marshalMessage|
+|apidoc DBus.Wire.marshalMessage|
 marshalMessage :: Message a => Endianness -> Serial -> a
                -> Either MarshalError Data.ByteString.Lazy.ByteString
 marshalMessage e serial msg = runMarshal where
@@ -863,7 +863,7 @@ checkMaximumSize = do
 \subsubsection{Unmarshaling}
 
 :d DBus.Wire
-|apidoc unmarshalMessage|
+|apidoc DBus.Wire.unmarshalMessage|
 unmarshalMessage :: Monad m => (Word32 -> m ByteString)
                  -> m (Either UnmarshalError ReceivedMessage)
 unmarshalMessage getBytes' = E.runErrorT $ do

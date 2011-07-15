@@ -23,6 +23,14 @@ will be included in Haddock output for public functions.
 There's no real order to this section; it exists only because Haddock
 can't merge documentation from external files.
 
+:d apidoc DBus.Client.throwError
+-- | Normally, any exceptions raised while executing a method will be
+-- given the generic @\"org.freedesktop.DBus.Error.Failed\"@ name.
+-- 'throwError' allows the programmer to specify an error name, and provide
+-- additional information to the remote application. You may use this instead
+-- of 'Control.Exception.throwIO' to abort a method call.
+:
+
 :d apidoc DBus.Client.Simple.AutoSignature
 -- | Used to automatically generate method signatures for introspection
 -- documents. To support automatic signatures, a method's parameters and
@@ -45,6 +53,23 @@ can't merge documentation from external files.
 --
 -- To match common Haskell use, if the return value is a tuple, it will be
 -- converted to a list of return values.
+:
+
+:d apidoc DBus.Client.Simple.connectSession
+-- | Connect to the bus specified in the environment variable
+-- @DBUS_SESSION_BUS_ADDRESS@, which must be set.
+:
+
+:d apidoc DBus.Client.Simple.connectStarter
+-- | Connect to the bus specified in the environment variable
+-- @DBUS_STARTER_ADDRESS@, which must be set.
+:
+
+:d apidoc DBus.Client.Simple.connectSystem
+-- | Connect to the bus specified in the environment variable
+-- @DBUS_SYSTEM_BUS_ADDRESS@, or to
+-- @unix:path=\/var\/run\/dbus\/system_bus_socket@ if @DBUS_SYSTEM_BUS_ADDRESS@
+-- is not set.
 :
 
 :d apidoc DBus.Client.Simple.export
@@ -70,52 +95,36 @@ can't merge documentation from external files.
 -- 'DBus.Client.method' instead.
 :
 
-:d apidoc DBus.Client.throwError
--- | Normally, any exceptions raised while executing a method will be
--- given the generic @\"org.freedesktop.DBus.Error.Failed\"@ name.
--- 'throwError' allows the programmer to specify an error name, and provide
--- additional information to the remote application. You may use this instead
--- of 'Control.Exception.throwIO' to abort a method call.
-:
-
-:d apidoc Variant
--- | 'Variant's may contain any other built-in D-Bus value. Besides
--- representing native @VARIANT@ values, they allow type-safe storage and
--- deconstruction of heterogeneous collections.
-:
-
-:d apidoc variantType
--- | Every variant is strongly-typed; that is, the type of its contained
--- value is known at all times. This function retrieves that type, so that
--- the correct cast can be used to retrieve the value.
-:
-
-:d apidoc Connection
+:d apidoc DBus.Connection.Connection
 -- | A 'Connection' is an opaque handle to an open D-Bus channel, with an
 -- internal state for maintaining the current message serial.
 :
 
-:d apidoc Transport
+:d apidoc DBus.Connection.Transport
 -- | A 'Transport' is anything which can send and receive bytestrings,
 -- typically via a socket.
 :
 
-:d apidoc connect
+:d apidoc DBus.Connection.connect
 -- | Open a connection to some address, using a given authentication
 -- mechanism. If the connection fails, a 'ConnectionError' will be thrown.
 :
 
-:d apidoc connectFirst
--- | Try to open a connection to various addresses, returning the first
--- connection which could be successfully opened.
-:
-
-:d apidoc connectionClose
+:d apidoc DBus.Connection.disconnect
 -- | Close an open connection. Once closed, the 'Connection' is no longer
 -- valid and must not be used.
 :
 
-:d apidoc send
+:d apidoc DBus.Connection.receive
+-- | Receive the next message from the connection, blocking until one is
+-- available.
+--
+-- Only one message may be received at a time; if multiple threads attempt
+-- to receive messages in parallel, one will block until after the other has
+-- finished.
+:
+
+:d apidoc DBus.Connection.send
 -- | Send a single message, with a generated 'Serial'. The second parameter
 -- exists to prevent race conditions when registering a reply handler; it
 -- receives the serial the message /will/ be sent with, before it&#8217;s
@@ -126,67 +135,35 @@ can't merge documentation from external files.
 -- finished.
 :
 
-:d apidoc receive
--- | Receive the next message from the connection, blocking until one is
--- available.
---
--- Only one message may be received at a time; if multiple threads attempt
--- to receive messages in parallel, one will block until after the other has
--- finished.
-:
-
-:d apidoc connectSystem
--- | Connect to the bus specified in the environment variable
--- @DBUS_SYSTEM_BUS_ADDRESS@, or to
--- @unix:path=\/var\/run\/dbus\/system_bus_socket@ if @DBUS_SYSTEM_BUS_ADDRESS@
--- is not set.
-:
-
-:d apidoc connectSession
--- | Connect to the bus specified in the environment variable
--- @DBUS_SESSION_BUS_ADDRESS@, which must be set.
-:
-
-:d apidoc connectStarter
--- | Connect to the bus specified in the environment variable
--- @DBUS_STARTER_ADDRESS@, which must be set.
-:
-
-:d apidoc formatRule
--- | Format a 'MatchRule' as the bus expects to receive in a call to
--- @AddMatch@.
-:
-
-:d apidoc addMatch
--- | Build a 'M.MethodCall' for adding a match rule to the bus.
-:
-
-:d apidoc matchAll
--- | An empty match rule, which matches everything.
-:
-
-:d apidoc matches
--- | Whether a 'M.ReceivedMessage' matches a given rule. This is useful
--- for implementing signal handlers.
-:
-
-:d apidoc Serial
--- | A value used to uniquely identify a particular message within a session.
--- 'Serial's are 32-bit unsigned integers, and eventually wrap.
-:
-
-:d apidoc ReceivedMessage
+:d apidoc DBus.Message.ReceivedMessage
 -- | Not an actual message type, but a wrapper around messages received from
 -- the bus. Each value contains the message&#8217;s 'Serial' and possibly the
 -- origin&#8217;s 'BusName'
 :
 
-:d apidoc marshalMessage
+:d apidoc DBus.Message.Serial
+-- | A value used to uniquely identify a particular message within a session.
+-- 'Serial's are 32-bit unsigned integers, and eventually wrap.
+:
+
+:d apidoc DBus.Types.Variant
+-- | 'Variant's may contain any other built-in D-Bus value. Besides
+-- representing native @VARIANT@ values, they allow type-safe storage and
+-- deconstruction of heterogeneous collections.
+:
+
+:d apidoc DBus.Types.variantType
+-- | Every variant is strongly-typed; that is, the type of its contained
+-- value is known at all times. This function retrieves that type, so that
+-- the correct cast can be used to retrieve the value.
+:
+
+:d apidoc DBus.Wire.marshalMessage
 -- | Convert a 'Message' into a 'Data.ByteString.Lazy.ByteString'. Although
 -- unusual, it is possible for marshaling to fail &#8212; if this occurs, an
 -- appropriate error will be returned instead.
 :
 
-:d apidoc unmarshalMessage
+:d apidoc DBus.Wire.unmarshalMessage
 -- | Read bytes from a monad until a complete message has been received.
 :

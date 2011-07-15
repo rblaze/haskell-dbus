@@ -67,7 +67,6 @@ There's currently only one operation to perform on match rules, and that's
 to format them.
 
 :d DBus.MatchRule
-|apidoc formatRule|
 formatRule :: MatchRule -> Text
 formatRule rule = T.intercalate "," filters where
 	filters = structureFilters ++ parameterFilters
@@ -110,7 +109,6 @@ And since the only real reason for formatting a match rule is to send it,
 it's useful to have a message-building function pre-defined.
 
 :d DBus.MatchRule
-|apidoc addMatch|
 addMatch :: MatchRule -> M.MethodCall
 addMatch rule = M.MethodCall
 	C.dbusPath
@@ -125,7 +123,6 @@ Most match rules will have only one or two fields filled in, so defining
 an empty rule allows clients to set only the fields they care about.
 
 :d DBus.MatchRule
-|apidoc matchAll|
 matchAll :: MatchRule
 matchAll = MatchRule
 	{ matchType        = Nothing
@@ -142,7 +139,6 @@ It's useful to match against a rule client-side, eg when listening for
 signals.
 
 :d DBus.MatchRule
-|apidoc matches|
 matches :: MatchRule -> M.ReceivedMessage -> Bool
 matches rule msg = and . mapMaybe ($ rule) $
 	[ fmap      (typeMatches msg) . matchType

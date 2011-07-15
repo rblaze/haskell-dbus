@@ -27,6 +27,7 @@ manages actually sending bytes between the two applications.
 \columnbreak
 
 :d DBus.Connection
+|apidoc DBus.Connection.Connection|
 data Connection = Connection
 	{ connectionAddress :: Address
 	, connectionSocket :: Socket
@@ -65,6 +66,7 @@ TODO
 \columnbreak
 
 :d DBus.Connection
+|apidoc DBus.Connection.connect|
 connect :: [Transport] -> [Mechanism] -> Address -> IO Connection
 connect transports mechanisms addr = do
 	msock <- connectTransport transports addr
@@ -84,6 +86,7 @@ connect transports mechanisms addr = do
 	return (Connection addr sock serial
 	                   readLock writeLock)
 
+|apidoc DBus.Connection.disconnect|
 disconnect :: Connection -> IO ()
 disconnect = socketClose . connectionSocket
 :
@@ -292,6 +295,7 @@ so those methods are bundled into {\tt Transport}.
 \columnbreak
 
 :d DBus.Connection.Transport
+|apidoc DBus.Connection.Transport|
 data Transport = Transport Text (Address -> IO Socket)
 
 data Socket = Socket
@@ -580,7 +584,7 @@ the message has actually been sent, which avoids race conditions in
 multi-threaded clients.
 
 :d DBus.Connection
-|apidoc send|
+|apidoc DBus.Connection.send|
 send :: Message msg => Connection -> msg -> (Serial -> IO a) -> IO (Either MarshalError a)
 send connection msg io = do
 	serial <- nextSerial connection
@@ -604,7 +608,7 @@ Messages are received wrapped in a {\tt ReceivedMessage} value. If an
 error is encountered while unmarshaling, an exception will be thrown.
 
 :d DBus.Connection
-|apidoc receive|
+|apidoc DBus.Connection.receive|
 receive :: Connection -> IO (Either UnmarshalError ReceivedMessage)
 receive connection = do
 	let sock = connectionSocket connection

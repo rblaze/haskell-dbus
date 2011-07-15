@@ -279,6 +279,7 @@ homogenous containers must instance {\tt IsValue}.
 \columnbreak
 
 :d DBus.Types
+|apidoc DBus.Types.Variant|
 newtype Variant = Variant Value
 	deriving (Eq)
 
@@ -376,6 +377,7 @@ only accept integers of a particular size.
 \begin{multicols}{2}
 
 :d DBus.Types
+|apidoc DBus.Types.variantType|
 variantType :: Variant -> Type
 variantType (Variant val) = valueType val
 

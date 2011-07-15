@@ -102,7 +102,7 @@ added type-safety.
 \columnbreak
 
 :d DBus.Message
-|apidoc Serial|
+|apidoc DBus.Message.Serial|
 newtype Serial = Serial Word32
 	deriving (Eq, Ord, Show)
 
@@ -264,7 +264,7 @@ If a message has an unknown type, its serial and origin are still useful
 for sending an error reply.
 
 :d DBus.Message
-|apidoc ReceivedMessage|
+|apidoc DBus.Message.ReceivedMessage|
 data ReceivedMessage
 	= ReceivedMethodCall   Serial (Maybe BusName) MethodCall
 	| ReceivedMethodReturn Serial (Maybe BusName) MethodReturn
