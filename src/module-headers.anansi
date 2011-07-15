@@ -399,10 +399,13 @@ import           DBus.Connection (Connection)
 import           DBus.Connection.Authentication (external)
 import           DBus.Connection.Transport (unix, tcp)
 import           DBus.Connection.Error
-import           DBus.Constants (errorFailed, errorUnknownMethod)
+import           DBus.Constants ( errorFailed, errorUnknownMethod
+                                , errorInvalidArgs)
 import qualified DBus.MatchRule
 import           DBus.Message
+import qualified DBus.Introspection
 import           DBus.Types
+import           DBus.Types.Internal (Signature(..))
 import           DBus.Util (void)
 
 |DBus.Client|

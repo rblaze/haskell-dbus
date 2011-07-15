@@ -59,6 +59,8 @@ attach connection = do
 			, clientMessageProcessor = processor
 			})
 	
+	export client "/" [introspectRoot client]
+	
 	sendHello client
 	return client
 :
@@ -215,17 +217,24 @@ method iface name inSig outSig io = Method iface name inSig outSig
 
 export :: Client -> ObjectPath -> [Method] -> IO ()
 export client path methods = modifyMVar_ (clientObjects client) addObject where
-	addObject objs = return (Data.Map.insert path info objs) where
-		info = foldl' addMethod Data.Map.empty methods
-		addMethod m (Method iface name inSig outSig cb) = Data.Map.insertWith'
-			Data.Map.union iface
-			(Data.Map.fromList [(name, MemberMethod inSig outSig (wrapCB cb))]) m
-		wrapCB cb (ReceivedMethodCall serial sender msg) = do
-			reply <- cb (methodCallBody msg)
-			case reply of
-				ReplyReturn vs -> send_ client (MethodReturn serial sender vs) (\_ -> return ())
-				ReplyError name vs -> send_ client (Error name serial sender vs) (\_ -> return ())
-		wrapCB _ _ = return ()
+	addObject objs = return (Data.Map.insert path info objs)
+	
+	info = foldl' addMethod Data.Map.empty (defaultIntrospect : methods)
+	addMethod m (Method iface name inSig outSig cb) = Data.Map.insertWith'
+		Data.Map.union iface
+		(Data.Map.fromList [(name, MemberMethod inSig outSig (wrapCB cb))]) m
+	
+	wrapCB cb (ReceivedMethodCall serial sender msg) = do
+		reply <- cb (methodCallBody msg)
+		case reply of
+			ReplyReturn vs -> send_ client (MethodReturn serial sender vs) (\_ -> return ())
+			ReplyError name vs -> send_ client (Error name serial sender vs) (\_ -> return ())
+	wrapCB _ _ = return ()
+	
+	defaultIntrospect = methodIntrospect $ do
+		objects <- readMVar (clientObjects client)
+		let Just obj = Data.Map.lookup path objects
+		return (introspect path obj)
 :
 
 :d DBus.Client
@@ -238,6 +247,57 @@ findMethod objects msg = do
 	case member of
 		MemberMethod _ _ io -> return io
 		_ -> Nothing
+:
+
+:d DBus.Client
+introspectRoot :: Client -> Method
+introspectRoot client = methodIntrospect $ do
+	objects <- readMVar (clientObjects client)
+	let paths = filter (/= "/") (Data.Map.keys objects)
+	let iface = "org.freedesktop.DBus.Introspectable"
+	let name = "Introspect"
+	return (DBus.Introspection.Object "/"
+		[DBus.Introspection.Interface iface
+			[DBus.Introspection.Method name
+				[]
+				[DBus.Introspection.Parameter "" "s"]]
+			[] []]
+		[DBus.Introspection.Object p [] [] | p <- paths])
+:
+
+:d DBus.Client
+methodIntrospect :: IO DBus.Introspection.Object -> Method
+methodIntrospect get = method iface name "" "s" impl where
+	iface = "org.freedesktop.DBus.Introspectable"
+	name = "Introspect"
+	impl [] = do
+		obj <- get
+		let Just xml = DBus.Introspection.toXML obj
+		return (ReplyReturn [toVariant xml])
+	impl _ = return (ReplyError errorInvalidArgs [])
+
+introspect :: ObjectPath -> ObjectInfo -> DBus.Introspection.Object
+introspect path obj = DBus.Introspection.Object path interfaces [] where
+	interfaces = map introspectIface (Data.Map.toList obj)
+	
+	introspectIface (name, iface) = let
+		members = Data.Map.toList iface
+		methods = concatMap introspectMethod members
+		signals = concatMap introspectSignal members
+		in DBus.Introspection.Interface name methods signals []
+	
+	introspectMethod (name, (MemberMethod inSig outSig _)) =
+		[DBus.Introspection.Method name
+			(map introspectParam (signatureTypes inSig))
+			(map introspectParam (signatureTypes outSig))]
+	introspectMethod _ = []
+	
+	introspectSignal (name, (MemberSignal sig)) =
+		[DBus.Introspection.Signal name
+			(map introspectParam (signatureTypes sig))]
+	introspectSignal _ = []
+	
+	introspectParam t = DBus.Introspection.Parameter "" (Signature [t])
 :
 
 \clearpage
