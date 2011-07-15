@@ -23,6 +23,61 @@ will be included in Haddock output for public functions.
 There's no real order to this section; it exists only because Haddock
 can't merge documentation from external files.
 
+:d apidoc DBus.Client.Simple.AutoSignature
+-- | Used to automatically generate method signatures for introspection
+-- documents. To support automatic signatures, a method's parameters and
+-- return value must all be instances of 'IsValue'.
+--
+-- This class maps Haskell idioms to D-Bus; it is therefore unable to
+-- generate some signatures. In particular, it does not support methods
+-- which accept/return a single structure, or single-element structures.
+-- It also cannot generate signatures for methods with parameters or return
+-- values which are only instances of 'IsVariant'. For these cases, please
+-- use 'DBus.Client.method'.
+--
+-- To match common Haskell use, if the return value is a tuple, it will be
+-- converted to a list of return values.
+:
+
+:d apidoc DBus.Client.Simple.AutoReply
+-- | Used to automatically generate a 'Reply' from a return value. See
+-- 'AutoSignature' for some caveats about supported signatures.
+--
+-- To match common Haskell use, if the return value is a tuple, it will be
+-- converted to a list of return values.
+:
+
+:d apidoc DBus.Client.Simple.export
+-- | Export the given functions under the given 'ObjectPath' and
+-- 'InterfaceName'. The functions may accept/return any types that are
+-- instances of 'IsValue'; see 'AutoSignature'.
+--
+-- @
+--sayHello :: Text -> IO Text
+--sayHello name = return ('Data.Text.concat' [\"Hello \", name, \"!\"])
+--
+--export client \"/hello_world\"
+--    [ 'method' \"com.example.HelloWorld\" \"Hello\" sayHello
+--    ]
+-- @
+:
+
+:d apidoc DBus.Client.Simple.method
+-- | Prepare a Haskell function for export. This automatically detects the
+-- function's type signature; see 'AutoSignature' and 'AutoReply'.
+--
+-- To manage the type signature and marshaling yourself, use
+-- 'DBus.Client.method' instead.
+:
+
+:d apidoc DBus.Client.throwError
+-- | Normally, any exceptions raised while executing a method will be
+-- given the generic @\"org.freedesktop.DBus.Error.Failed\"@ name.
+-- 'throwError' allows the programmer to specify an error name, and provide
+-- additional information to the remote application. You may use this instead
+-- of 'Control.Exception.throwIO' to abort a method call.
+:
+
 :d apidoc Variant
 -- | 'Variant's may contain any other built-in D-Bus value. Besides
 -- representing native @VARIANT@ values, they allow type-safe storage and

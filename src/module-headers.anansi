@@ -350,13 +350,24 @@ import           DBus.Connection.Error
 :f DBus/Client.hs
 |copyright|
 module DBus.Client
-	( Client
+	(
+	-- * Clients
+	  Client
 	, connect
 	, attach
 	, disconnect
 	, call
 	, call_
 	, listen
+	
+	-- * Exporting objects
+	, Method
+	, Reply(..)
+	, throwError
+	, method
+	, export
+	
+	-- * Other
 	, setMessageProcessor
 	) where
 import           DBus.Client.Internal
@@ -364,16 +375,22 @@ import           DBus.Client.Internal
 
 :f DBus/Client/Internal.hs
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 |copyright|
 module DBus.Client.Internal where
 import           Control.Concurrent
+import           Control.Exception (SomeException)
+import qualified Control.Exception
 import           Control.Monad (forever, unless)
 import           Control.Monad.Fix (mfix)
 import           Data.IORef
+import           Data.List (foldl')
 import qualified Data.Map
 import           Data.Map (Map)
 import           Data.Maybe (isJust)
+import           Data.Text (Text)
 import qualified Data.Text
+import           Data.Typeable (Typeable)
 import qualified Data.Set
 
 import           DBus.Address
@@ -382,9 +399,10 @@ import           DBus.Connection (Connection)
 import           DBus.Connection.Authentication (external)
 import           DBus.Connection.Transport (unix, tcp)
 import           DBus.Connection.Error
+import           DBus.Constants (errorFailed, errorUnknownMethod)
 import qualified DBus.MatchRule
 import           DBus.Message
-import           DBus.Types (BusName)
+import           DBus.Types
 import           DBus.Util (void)
 
 |DBus.Client|
@@ -392,6 +410,8 @@ import           DBus.Util (void)
 
 :f DBus/Client/Simple.hs
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE OverlappingInstances #-}
 |copyright|
 module DBus.Client.Simple
 	(
@@ -402,7 +422,7 @@ module DBus.Client.Simple
 	, connectStarter
 	, disconnect
 	
-	-- ** Proxies
+	-- * Proxies
 	, Proxy
 	, proxy
 	, call
@@ -414,6 +434,14 @@ module DBus.Client.Simple
 	, ReleaseNameReply(..)
 	, requestName
 	, releaseName
+	
+	-- * Exporting objects
+	, Method
+	, AutoSignature
+	, AutoReply
+	, method
+	, export
+	, throwError
 	
 	-- * Types
 	
@@ -462,15 +490,19 @@ module DBus.Client.Simple
 
 import qualified Control.Exception
 import           Data.Bits ((.|.))
+import qualified Data.Text -- for haddock
 import qualified Data.Set
 import           Data.Word (Word32)
 
 import           DBus.Address
-import           DBus.Client hiding (call)
+import           DBus.Client hiding (call, method, export)
+import qualified DBus.Client
 import           DBus.Connection.Error
+import           DBus.Constants (errorInvalidArgs)
 import qualified DBus.MatchRule
 import           DBus.Message hiding (errorName)
 import           DBus.Types
+import           DBus.Types.Internal (checkSignature)
 import           DBus.Util (maybeIndex)
 
 |DBus.Client.Simple|

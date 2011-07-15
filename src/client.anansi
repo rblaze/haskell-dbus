@@ -21,11 +21,18 @@ data Client = Client
 	{ clientConnection :: Connection
 	, clientCallbacks :: MVar (Map Serial Callback)
 	, clientSignalHandlers :: MVar [Callback]
+	, clientObjects :: MVar (Map ObjectPath ObjectInfo)
 	, clientThreadID :: ThreadId
 	, clientMessageProcessor :: IORef (ReceivedMessage -> IO Bool)
 	}
 
 type Callback = (ReceivedMessage -> IO ())
+
+type ObjectInfo = Map InterfaceName InterfaceInfo
+type InterfaceInfo = Map MemberName MemberInfo
+data MemberInfo
+	= MemberMethod Signature Signature Callback
+	| MemberSignal Signature
 :
 
 :d DBus.Client
@@ -38,6 +45,7 @@ attach :: Connection -> IO Client
 attach connection = do
 	callbacks <- newMVar Data.Map.empty
 	signalHandlers <- newMVar []
+	objects <- newMVar Data.Map.empty
 	processor <- newIORef (\_ -> return False)
 	
 	client <- mfix $ \client -> do
@@ -46,6 +54,7 @@ attach connection = do
 			{ clientConnection = connection
 			, clientCallbacks = callbacks
 			, clientSignalHandlers = signalHandlers
+			, clientObjects = objects
 			, clientThreadID = threadID
 			, clientMessageProcessor = processor
 			})
@@ -61,6 +70,7 @@ disconnect client = do
 	killThread (clientThreadID client)
 	modifyMVar_ (clientCallbacks client) (\_ -> return Data.Map.empty)
 	modifyMVar_ (clientSignalHandlers client) (\_ -> return [])
+	modifyMVar_ (clientObjects client) (\_ -> return Data.Map.empty)
 	DBus.Connection.disconnect connection
 :
 
@@ -163,7 +173,71 @@ dispatch client received = void . forkIO $ do
 		(ReceivedSignal _ _ _) -> do
 			handlers <- readMVar (clientSignalHandlers client)
 			mapM_ ($ received) handlers
+		(ReceivedMethodCall serial sender msg) -> do
+			objects <- readMVar (clientObjects client)
+			case findMethod objects msg of
+				Just io -> io received
+				Nothing -> send_ client
+					(Error errorUnknownMethod serial sender [])
+					(\_ -> return ())
 		_ -> return ()
+:
+
+\clearpage
+\subsubsection{Exporting objects and methods}
+
+:d DBus.Client
+data MethodError = MethodError ErrorName [Variant]
+	deriving (Show, Eq, Typeable)
+
+instance Control.Exception.Exception MethodError
+
+|apidoc DBus.Client.throwError|
+throwError :: ErrorName -> Text -> [Variant] -> IO a
+throwError name message extra = Control.Exception.throwIO (MethodError name (toVariant message : extra))
+:
+
+:d DBus.Client
+data Reply
+	= ReplyReturn [Variant]
+	| ReplyError ErrorName [Variant]
+
+data Method = Method InterfaceName MemberName Signature Signature ([Variant] -> IO Reply)
+
+method :: InterfaceName -> MemberName -> Signature -> Signature -> ([Variant] -> IO Reply) -> Method
+method iface name inSig outSig io = Method iface name inSig outSig
+	(\vs -> Control.Exception.catch
+		(Control.Exception.catch
+			(io vs)
+			(\(MethodError name' vs') -> return (ReplyError name' vs')))
+		(\exc -> return (ReplyError errorFailed
+			[toVariant (Data.Text.pack (show (exc :: SomeException)))])))
+
+export :: Client -> ObjectPath -> [Method] -> IO ()
+export client path methods = modifyMVar_ (clientObjects client) addObject where
+	addObject objs = return (Data.Map.insert path info objs) where
+		info = foldl' addMethod Data.Map.empty methods
+		addMethod m (Method iface name inSig outSig cb) = Data.Map.insertWith'
+			Data.Map.union iface
+			(Data.Map.fromList [(name, MemberMethod inSig outSig (wrapCB cb))]) m
+		wrapCB cb (ReceivedMethodCall serial sender msg) = do
+			reply <- cb (methodCallBody msg)
+			case reply of
+				ReplyReturn vs -> send_ client (MethodReturn serial sender vs) (\_ -> return ())
+				ReplyError name vs -> send_ client (Error name serial sender vs) (\_ -> return ())
+		wrapCB _ _ = return ()
+:
+
+:d DBus.Client
+findMethod :: Map ObjectPath ObjectInfo -> MethodCall -> Maybe Callback
+findMethod objects msg = do
+	ifaceName <- methodCallInterface msg
+	obj <- Data.Map.lookup (methodCallPath msg) objects
+	iface <- Data.Map.lookup ifaceName obj
+	member <- Data.Map.lookup (methodCallMember msg) iface
+	case member of
+		MemberMethod _ _ io -> return io
+		_ -> Nothing
 :
 
 \clearpage
@@ -312,4 +386,86 @@ releaseName client name = do
 		Just 2 -> return NonExistent
 		Just 3 -> return NotOwner
 		_ -> connectionError "Call failed: received invalid reply"
+:
+
+\clearpage
+\subsubsection{Exporting objects and methods}
+
+:d DBus.Client.Simple
+|apidoc DBus.Client.Simple.AutoSignature|
+class AutoSignature a where
+	funTypes :: a -> ([Type], [Type])
+
+instance AutoSignature (IO ()) where
+	funTypes _ = ([], [])
+
+instance IsValue a => AutoSignature (IO a) where
+	funTypes io = ([], case ioT io undefined of
+		(_, t) -> case t of
+			TypeStructure ts -> ts
+			_ -> [t])
+
+ioT :: IsValue a => IO a -> a -> (a, Type)
+ioT _ a = (a, typeOf a)
+
+instance (IsValue a, AutoSignature fun) => AutoSignature (a -> fun) where
+	funTypes fn = case valueT undefined of
+		(a, t) -> case funTypes (fn a) of
+			(ts, ts') -> (t : ts, ts')
+
+valueT :: IsValue a => a -> (a, Type)
+valueT a = (a, typeOf a)
+:
+
+:d DBus.Client.Simple
+|apidoc DBus.Client.Simple.AutoReply|
+class AutoReply fun where
+	apply :: fun -> [Variant] -> Maybe (IO [Variant])
+
+instance AutoReply (IO ()) where
+	apply io [] = Just (io >> return [])
+	apply _ _ = Nothing
+
+instance IsVariant a => AutoReply (IO a) where
+	apply io [] = Just (do
+		var <- fmap toVariant io
+		case fromVariant var of
+			Just struct -> return (structureItems struct)
+			Nothing -> return [var])
+	apply _ _ = Nothing
+
+instance (IsVariant a, AutoReply fun) => AutoReply (a -> fun) where
+	apply _ [] = Nothing
+	apply fn (v:vs) = case fromVariant v of
+		Just v' -> apply (fn v') vs
+		Nothing -> Nothing
+:
+
+:d DBus.Client.Simple
+|apidoc DBus.Client.Simple.method|
+method :: (AutoSignature fun, AutoReply fun) => InterfaceName -> MemberName -> fun -> Method
+method iface name fun = DBus.Client.method iface name inSig outSig io where
+	(typesIn, typesOut) = funTypes fun
+	inSig = case checkSignature typesIn of
+		Just sig -> sig
+		Nothing -> invalid "input"
+	outSig = case checkSignature typesOut of
+		Just sig -> sig
+		Nothing -> invalid "output"
+	io vs = case apply fun vs of
+		Nothing -> return (ReplyError errorInvalidArgs [])
+		Just io' -> fmap ReplyReturn io'
+	
+	invalid label = error (concat
+		[ "Method "
+		, Data.Text.unpack (interfaceNameText iface)
+		, "."
+		, Data.Text.unpack (memberNameText name)
+		, " has an invalid "
+		, label
+		, " signature."])
+
+|apidoc DBus.Client.Simple.export|
+export :: Client -> ObjectPath -> [Method] -> IO ()
+export = DBus.Client.export
 :
