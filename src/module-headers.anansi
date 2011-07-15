@@ -78,7 +78,9 @@ typeOf = DBus.Types.Internal.typeOf
 module DBus.Types.Internal where
 import           Control.Monad (when)
 import           Data.ByteString (ByteString)
+import qualified Data.ByteString
 import qualified Data.ByteString.Char8
+import qualified Data.ByteString.Lazy
 import           Data.Int
 import           Data.List (intercalate)
 import qualified Data.Map

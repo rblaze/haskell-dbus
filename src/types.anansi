@@ -200,6 +200,8 @@ types, but the additional indirection causes slower message parsing.
 data Value
 	= ValueAtom Atom
 	| ValueVariant Variant
+	| ValueStrictBytes ByteString
+	| ValueLazyBytes Data.ByteString.Lazy.ByteString
 	| ValueVector Type (Vector Value)
 	| ValueMap Type (Map Atom Value)
 	| ValueStructure [Value]
@@ -319,6 +321,9 @@ showAtom p (AtomObjectPath x) = showsPrec (if p then 11 else 0) x ""
 showValue :: Bool -> Value -> String
 showValue p (ValueAtom x) = showAtom p x
 showValue p (ValueVariant x) = showsPrec (if p then 11 else 0) x ""
+showValue _ (ValueStrictBytes xs) = 'b' : show xs
+showValue _ (ValueLazyBytes xs) = 'b' : show (Data.ByteString.concat (Data.ByteString.Lazy.toChunks xs))
+showValue _ (ValueVector TypeWord8 xs) = 'b' : show (vectorToBytes xs)
 showValue _ (ValueVector _ xs) = showThings "[" (showValue False) "]" (Data.Vector.toList xs)
 showValue _ (ValueMap _ xs) = showThings "{" showPair "}" (Data.Map.toList xs) where
 	showPair (k, v) = showAtom False k ++ ": " ++ showValue False v
@@ -326,6 +331,9 @@ showValue _ (ValueStructure xs) = showThings "(" (showValue False) ")" xs
 
 showThings :: String -> (a -> String) -> String -> [a] -> String
 showThings a s z xs = a ++ intercalate ", " (map s xs) ++ z
+
+vectorToBytes :: Vector Value -> ByteString
+vectorToBytes = Data.ByteString.pack . Data.Vector.toList . Data.Vector.map (\(ValueAtom (AtomWord8 x)) -> x)
 :
 \end{quote}
 
@@ -385,6 +393,8 @@ valueType :: Value -> Type
 valueType (ValueAtom x) = atomType x
 valueType (ValueVariant _) = TypeVariant
 valueType (ValueVector t _) = t
+valueType (ValueStrictBytes _) = TypeArray TypeWord8
+valueType (ValueLazyBytes _) = TypeArray TypeWord8
 valueType (ValueMap t _) = t
 valueType (ValueStructure vs) = TypeStructure (map valueType vs)
 
@@ -1126,15 +1136,24 @@ structureItems (Structure xs) = map Variant xs
 :
 
 :d DBus.Types
-data Array = Array Type (Vector Value)
+data Array
+	= Array Type (Vector Value)
+	| ArrayStrictBytes ByteString
+	| ArrayLazyBytes Data.ByteString.Lazy.ByteString
 
 instance IsVariant Array where
 	toVariant (Array t xs) = Variant (ValueVector t xs)
+	toVariant (ArrayStrictBytes bs) = Variant (ValueStrictBytes bs)
+	toVariant (ArrayLazyBytes bs) = Variant (ValueLazyBytes bs)
 	fromVariant (Variant (ValueVector t xs)) = Just (Array t xs)
+	fromVariant (Variant (ValueStrictBytes bs)) = Just (ArrayStrictBytes bs)
+	fromVariant (Variant (ValueLazyBytes bs)) = Just (ArrayLazyBytes bs)
 	fromVariant _ = Nothing
 
 arrayItems :: Array -> [Variant]
 arrayItems (Array _ xs) = map Variant (Data.Vector.toList xs)
+arrayItems (ArrayStrictBytes bs) = map toVariant (Data.ByteString.unpack bs)
+arrayItems (ArrayLazyBytes bs) = map toVariant (Data.ByteString.Lazy.unpack bs)
 :
 
 :d DBus.Types

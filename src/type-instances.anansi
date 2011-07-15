@@ -187,6 +187,24 @@ instance IsValue a => IsValue [a] where
 :
 
 :d DBus.Types
+instance IsValue ByteString where
+	typeOf _ = TypeArray TypeWord8
+	toValue = ValueStrictBytes
+	fromValue (ValueStrictBytes bs) = Just bs
+	fromValue (ValueLazyBytes bs) = Just (Data.ByteString.concat (Data.ByteString.Lazy.toChunks bs))
+	fromValue (ValueVector TypeWord8 v) = Just (vectorToBytes v)
+	fromValue _ = Nothing
+
+instance IsValue Data.ByteString.Lazy.ByteString where
+	typeOf _ = TypeArray TypeWord8
+	toValue = ValueLazyBytes
+	fromValue (ValueStrictBytes bs) = Just (Data.ByteString.Lazy.fromChunks [bs])
+	fromValue (ValueLazyBytes bs) = Just bs
+	fromValue (ValueVector TypeWord8 v) = Just (Data.ByteString.Lazy.fromChunks [vectorToBytes v])
+	fromValue _ = Nothing
+:
+
+:d DBus.Types
 instance (Ord k, IsAtom k, IsValue v) => IsValue (Map k v) where
 	typeOf m = TypeDictionary (typeOf k) (typeOf v) where
 		(k, v) = mapTypes m
@@ -492,6 +510,16 @@ instance (IsValue a, Eq a) => IsVariant [a] where
 
 :d DBus.Types
 instance (IsValue a, Eq a) => IsVariant (Vector a) where
+	toVariant = Variant . toValue
+	fromVariant (Variant val) = fromValue val
+:
+
+:d DBus.Types
+instance IsVariant ByteString where
+	toVariant = Variant . toValue
+	fromVariant (Variant val) = fromValue val
+
+instance IsVariant Data.ByteString.Lazy.ByteString where
 	toVariant = Variant . toValue
 	fromVariant (Variant val) = fromValue val
 :
