@@ -28,8 +28,9 @@ module DBus.Types
 	
 	, IsValue
 	, IsAtom
-	, Variant
+	, typeOf
 	
+	, Variant
 	, IsVariant(..)
 	, variantType
 	
@@ -65,7 +66,11 @@ module DBus.Types
 	, arrayItems
 	, dictionaryItems
 	) where
-import DBus.Types.Internal
+import           DBus.Types.Internal hiding (typeOf)
+import qualified DBus.Types.Internal
+
+typeOf :: IsValue a => a -> Type
+typeOf = DBus.Types.Internal.typeOf
 :
 
 :f DBus/Types/Internal.hs
