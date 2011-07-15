@@ -17,7 +17,7 @@
 
 module Main (main) where
 
-import           Control.Concurrent.MVar
+import           Control.Concurrent (threadDelay)
 import           Control.Monad
 import           Data.List
 import           Data.Maybe
@@ -99,8 +99,7 @@ main = do
 	mapM_ (addMatch bus) filters
 	
 	-- wait forever
-	done <- newEmptyMVar
-	takeMVar done
+	forever (threadDelay 50000)
 
 -- Message formatting is verbose and mostly uninteresting, except as an
 -- excersise in string manipulation.
