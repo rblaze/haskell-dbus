@@ -126,9 +126,26 @@ call_ client msg = do
 :
 
 :d DBus.Client
-listen :: Client -> DBus.MatchRule.MatchRule -> (BusName -> Signal -> IO ()) -> IO ()
+data MatchRule = MatchRule
+	{ matchSender      :: Maybe BusName
+	, matchInterface   :: Maybe InterfaceName
+	, matchMember      :: Maybe MemberName
+	, matchPath        :: Maybe ObjectPath
+	, matchDestination :: Maybe BusName
+	}
+	deriving (Show)
+
+listen :: Client -> MatchRule -> (BusName -> Signal -> IO ()) -> IO ()
 listen client rule io = do
-	let rule' = rule { DBus.MatchRule.matchType = Just DBus.MatchRule.Signal }
+	let rule' = DBus.MatchRule.MatchRule
+		{ DBus.MatchRule.matchType = Just DBus.MatchRule.Signal
+		, DBus.MatchRule.matchSender = matchSender rule
+		, DBus.MatchRule.matchInterface = matchInterface rule
+		, DBus.MatchRule.matchMember = matchMember rule
+		, DBus.MatchRule.matchPath = matchPath rule
+		, DBus.MatchRule.matchDestination = matchDestination rule
+		, DBus.MatchRule.matchParameters = []
+		}
 	
 	let handler msg@(ReceivedSignal _ (Just sender) signal)
 		| DBus.MatchRule.matches rule' msg = io sender signal
@@ -376,16 +393,13 @@ call (Proxy client dest path) iface member body = do
 
 :d DBus.Client.Simple
 listen :: Proxy -> InterfaceName -> MemberName -> (BusName -> Signal -> IO ()) -> IO ()
-listen (Proxy client dest path) iface member = DBus.Client.listen client
-	(DBus.MatchRule.MatchRule
-		{ DBus.MatchRule.matchType = Nothing
-		, DBus.MatchRule.matchSender = Just dest
-		, DBus.MatchRule.matchInterface = Just iface
-		, DBus.MatchRule.matchMember = Just member
-		, DBus.MatchRule.matchPath = Just path
-		, DBus.MatchRule.matchDestination = Nothing
-		, DBus.MatchRule.matchParameters = []
-		})
+listen (Proxy client dest path) iface member = DBus.Client.listen client (MatchRule
+	{ matchSender = Just dest
+	, matchInterface = Just iface
+	, matchMember = Just member
+	, matchPath = Just path
+	, matchDestination = Nothing
+	})
 :
 
 \clearpage

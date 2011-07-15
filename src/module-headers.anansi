@@ -358,6 +358,9 @@ module DBus.Client
 	, disconnect
 	, call
 	, call_
+	
+	-- * Listening for signals
+	, MatchRule(..)
 	, listen
 	
 	-- * Exporting objects
@@ -429,6 +432,7 @@ module DBus.Client.Simple
 	, Proxy
 	, proxy
 	, call
+	, MatchRule(..)
 	, DBus.Client.Simple.listen
 	
 	-- * Name reservation
@@ -461,7 +465,6 @@ import           DBus.Client hiding (call, method, export)
 import qualified DBus.Client
 import           DBus.Connection.Error
 import           DBus.Constants (errorInvalidArgs)
-import qualified DBus.MatchRule
 import           DBus.Message hiding (errorName)
 import           DBus.Types
 import           DBus.Types.Internal (checkSignature)
