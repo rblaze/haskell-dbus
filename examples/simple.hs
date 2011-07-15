@@ -17,9 +17,10 @@
 
 module Main (main) where
 
-import Data.Text
-import Data.List (sort)
-import DBus.Client.Simple
+import           Data.Text
+import           Data.List (sort)
+
+import           DBus.Client.Simple
 
 main :: IO ()
 main = do

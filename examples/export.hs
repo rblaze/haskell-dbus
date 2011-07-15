@@ -20,6 +20,7 @@ module Main (main) where
 import           Control.Concurrent (threadDelay)
 import           Control.Monad (forever)
 import           Data.Text
+
 import           DBus.Client.Simple
 
 onFoo :: Text -> Text -> IO (Text, Text)

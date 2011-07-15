@@ -16,6 +16,7 @@
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 module Main (main) where
+
 import           Data.String (fromString)
 import qualified Data.Text
 import           System (getArgs, getProgName, exitFailure)

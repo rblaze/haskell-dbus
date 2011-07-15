@@ -19,7 +19,6 @@ module Main (main) where
 
 import           Control.Concurrent (threadDelay)
 import           Control.Monad
-import           Data.List
 import           Data.Maybe
 import           Data.Int
 import           Data.Word
@@ -64,7 +63,7 @@ findClient (o:_) = case o of
 
 addMatch :: Proxy -> Text -> IO ()
 addMatch bus match = do
-	call bus "org.freedesktop.DBus" "AddMatch" [toVariant match]
+	_ <- call bus "org.freedesktop.DBus" "AddMatch" [toVariant match]
 	return ()
 
 defaultFilters :: [Text]
