@@ -51,8 +51,8 @@ newtype ConnectionError = ConnectionError String
 
 instance Exception ConnectionError
 
-throwError :: String -> IO a
-throwError = throwIO . ConnectionError
+connectionError :: String -> IO a
+connectionError = throwIO . ConnectionError
 :
 
 \end{multicols}
@@ -70,13 +70,13 @@ connect transports mechanisms addr = do
 	msock <- connectTransport transports addr
 	sock <- case msock of
 		Just s -> return s
-		Nothing -> throwError (concat
+		Nothing -> connectionError (concat
 			[ "Unknown address method: "
 			, show (addressMethod addr)
 			])
 	authed <- authenticate sock mechanisms
 	when (not authed)
-		(throwError "Authentication failed")
+		(connectionError "Authentication failed")
 	
 	serial <- newIORef (Serial 1)
 	readLock <- newMVar ()
@@ -372,8 +372,8 @@ connectUNIX a = getHandle >>= connectHandle where
 	         \ `unix' transport."
 	
 	path = case (param "path", param "abstract") of
-		(Just _, Just _) -> throwError tooMany
-		(Nothing, Nothing) -> throwError tooFew
+		(Just _, Just _) -> connectionError tooMany
+		(Nothing, Nothing) -> connectionError tooFew
 		(Just x, Nothing) -> return (Data.Text.unpack x)
 		(Nothing, Just x) -> return ('\x00' : Data.Text.unpack x)
 	
@@ -415,14 +415,14 @@ connectTCP a = getHandle >>= connectHandle where
 		Just "ipv4" -> return Network.Socket.AF_INET
 		Just "ipv6" -> return Network.Socket.AF_INET6
 		Nothing     -> return Network.Socket.AF_UNSPEC
-		Just x      -> throwError (unknownFamily x)
+		Just x      -> connectionError (unknownFamily x)
 	missingPort = "TCP transport requires the `port' parameter."
 	badPort x = concat ["Invalid socket port for TCP transport: ", show x]
 	getPort = case param "port" of
-		Nothing -> throwError missingPort
+		Nothing -> connectionError missingPort
 		Just x -> case parse parseWord16 "" (Data.Text.unpack x) of
 			Right x' -> return (Network.Socket.PortNum x')
-			Left  _  -> throwError (badPort x)
+			Left  _  -> connectionError (badPort x)
 :
 
 Parsing the port is a bit complicated; assuming every character is an ASCII
@@ -469,7 +469,7 @@ until a valid address is found. If none are found, or are usable, an
 exception will be thrown.
 
 :d DBus.Connection.Transport
-	openSocket _ [] = throwError ("Failed to open socket to address " ++ show a)
+	openSocket _ [] = connectionError ("Failed to open socket to address " ++ show a)
 	openSocket port (addr:addrs) = Control.Exception.catch (openSocket' port addr) $
 		\(Control.Exception.SomeException _) -> openSocket port addrs
 	openSocket' port addr = do
