@@ -8,7 +8,7 @@ flag coverage
   manual: True
 
 executable dbus-core_tests
-  main-is: Properties.hs
+  main-is: Tests.hs
   ghc-options: -Wall
   hs-source-dirs: ../hs,.
 

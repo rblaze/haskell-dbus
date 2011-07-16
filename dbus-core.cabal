@@ -46,7 +46,7 @@ extra-source-files:
   src/utilities.anansi
   src/wire.anansi
   --
-  tests/Properties.hs
+  tests/Tests.hs
   tests/dbus-core-tests.cabal
 
 source-repository head
