@@ -71,8 +71,8 @@ library
     , containers >= 0.1 && < 0.5
     , unix >= 2.2 && < 2.5
     , network >= 2.2 && < 2.4
-    , libxml-sax >= 0.6 && < 0.7
-    , xml-types >= 0.1 && < 0.2
+    , libxml-sax >= 0.7 && < 0.8
+    , xml-types >= 0.3 && < 0.4
     , vector >= 0.7 && < 0.8
 
   exposed-modules:

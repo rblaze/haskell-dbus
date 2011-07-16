@@ -491,11 +491,11 @@ module DBus.Introspection
 	) where
 import           Control.Monad ((>=>))
 import           Control.Monad.ST (runST)
-import           Data.Maybe (fromMaybe, listToMaybe)
+import           Data.Maybe (fromMaybe)
 import qualified Data.STRef as ST
 import qualified Data.Text
 import           Data.Text (Text)
-import qualified Data.Text.Lazy
+import qualified Data.Text.Encoding
 import qualified Data.XML.Types as X
 import qualified Text.XML.LibXML.SAX as SAX
 

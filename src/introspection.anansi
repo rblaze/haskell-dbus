@@ -86,7 +86,9 @@ the element attributes and nesting are preserved.
 parseElement :: Text -> Maybe X.Element
 parseElement text = runST $ do
 	stackRef <- ST.newSTRef [([], [])]
-	let onError _ = ST.writeSTRef stackRef []
+	let onError _ = do
+		ST.writeSTRef stackRef []
+		return False
 	let onBegin _ attrs = do
 		ST.modifySTRef stackRef ((attrs, []):)
 		return True
@@ -99,10 +101,11 @@ parseElement text = runST $ do
 		ST.writeSTRef stackRef (parent:stack'')
 		return True
 	
-	p <- SAX.newParserST onError Nothing
+	p <- SAX.newParserST Nothing
 	SAX.setCallback p SAX.parsedBeginElement onBegin
 	SAX.setCallback p SAX.parsedEndElement onEnd
-	SAX.parseText p text
+	SAX.setCallback p SAX.reportError onError
+	SAX.parseBytes p (Data.Text.Encoding.encodeUtf8 text)
 	SAX.parseComplete p
 	stack <- ST.readSTRef stackRef
 	return $ case stack of
@@ -120,7 +123,7 @@ still be a valid object path.
 :d DBus.Introspection
 parseRoot :: T.ObjectPath -> X.Element -> Maybe Object
 parseRoot defaultPath e = do
-	path <- case getattrM "name" e of
+	path <- case X.attributeText "name" e of
 		Nothing -> Just defaultPath
 		Just x  -> T.objectPath x
 	parseObject path e
@@ -136,7 +139,7 @@ parseChild parentPath e = do
 	let parentPath' = case T.objectPathText parentPath of
 		"/" -> "/"
 		x   -> Data.Text.append x "/"
-	pathSegment <- getattrM "name" e
+	pathSegment <- X.attributeText "name" e
 	path <- T.objectPath $ Data.Text.append parentPath' pathSegment
 	parseObject path e
 :
@@ -146,9 +149,9 @@ contents.  They may contain interface definitions, and child {\tt node}s.
 
 :d DBus.Introspection
 parseObject :: T.ObjectPath -> X.Element -> Maybe Object
-parseObject path e | X.elementName e == toName "node" = do
-	interfaces <- children parseInterface (named "interface") e
-	children' <- children (parseChild path) (named "node") e
+parseObject path e | X.elementName e == "node" = do
+	interfaces <- children parseInterface (X.isNamed "interface") e
+	children' <- children (parseChild path) (X.isNamed "node") e
 	return $ Object path interfaces children'
 parseObject _ _ = Nothing
 :
@@ -158,10 +161,10 @@ Interfaces may contain methods, signals, and properties.
 :d DBus.Introspection
 parseInterface :: X.Element -> Maybe Interface
 parseInterface e = do
-	name <- T.interfaceName =<< getattrM "name" e
-	methods <- children parseMethod (named "method") e
-	signals <- children parseSignal (named "signal") e
-	properties <- children parseProperty (named "property") e
+	name <- T.interfaceName =<< X.attributeText "name" e
+	methods <- children parseMethod (X.isNamed "method") e
+	signals <- children parseSignal (X.isNamed "signal") e
+	properties <- children parseProperty (X.isNamed "property") e
 	return $ Interface name methods signals properties
 :
 
@@ -171,7 +174,7 @@ if no direction is specified.
 :d DBus.Introspection
 parseMethod :: X.Element -> Maybe Method
 parseMethod e = do
-	name <- T.memberName =<< getattrM "name" e
+	name <- T.memberName =<< X.attributeText "name" e
 	paramsIn <- children parseParameter (isParam ["in", ""]) e
 	paramsOut <- children parseParameter (isParam ["out"]) e
 	return $ Method name paramsIn paramsOut
@@ -182,7 +185,7 @@ Signals are similar to methods, except they have no ``in'' parameters.
 :d DBus.Introspection
 parseSignal :: X.Element -> Maybe Signal
 parseSignal e = do
-	name <- T.memberName =<< getattrM "name" e
+	name <- T.memberName =<< X.attributeText "name" e
 	params <- children parseParameter (isParam ["out", ""]) e
 	return $ Signal name params
 :
@@ -200,7 +203,7 @@ parseParameter e = do
 :d DBus.Introspection
 parseType :: X.Element -> Maybe T.Signature
 parseType e = do
-	sig <- T.signature =<< getattrM "type" e
+	sig <- T.signature =<< X.attributeText "type" e
 	case T.signatureTypes sig of
 		[_] -> Just sig
 		_   -> Nothing
@@ -224,27 +227,15 @@ parseProperty e = do
 :
 
 :d DBus.Introspection
-getattrM :: Text -> X.Element -> Maybe Text
-getattrM name = fmap attrText . listToMaybe . attrs where
-	attrText = textContent . X.attributeContent
-	attrs = X.elementAttributes >=> X.isNamed (toName name)
-	textContent cs = Data.Text.Lazy.toStrict (Data.Text.Lazy.concat [t | X.ContentText t <- cs])
-
-getattr :: Text -> X.Element -> Text
-getattr = (fromMaybe "" .) . getattrM
+getattr :: X.Name -> X.Element -> Text
+getattr = (fromMaybe "" .) . X.attributeText
 
 isParam :: [Text] -> X.Element -> [X.Element]
-isParam dirs = named "arg" >=> checkDir where
+isParam dirs = X.isNamed "arg" >=> checkDir where
 	checkDir e = [e | getattr "direction" e `elem` dirs]
 
 children :: Monad m => (X.Element -> m b) -> (X.Element -> [X.Element]) -> X.Element -> m [b]
 children f p = mapM f . concatMap p . X.elementChildren
-
-named :: X.Named a => Text -> a -> [a]
-named = X.isNamed . toName
-
-toName :: Text -> X.Name
-toName t = X.Name (Data.Text.Lazy.fromStrict t) Nothing Nothing
 :
 
 \subsection*{Generating XML}
