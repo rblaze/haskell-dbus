@@ -17,6 +17,7 @@ extra-source-files:
   readme.txt
   --
   examples/dbus-monitor.hs
+  examples/export.hs
   examples/introspect.hs
   examples/simple.hs
   --
@@ -28,6 +29,7 @@ extra-source-files:
   scripts/haddock
   scripts/latex
   scripts/run-benchmarks
+  scripts/run-coverage
   scripts/run-tests
   --
   src/api-docs.anansi
@@ -46,6 +48,7 @@ extra-source-files:
   src/utilities.anansi
   src/wire.anansi
   --
+  tests/Benchmarks.hs
   tests/Tests.hs
   tests/dbus-core-tests.cabal
 
