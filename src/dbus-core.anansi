@@ -26,6 +26,7 @@
 \usepackage{booktabs}
 \usepackage{multirow}
 \usepackage[titles]{tocloft}
+\usepackage{graphicx}
 
 \usepackage{latex/noweb}
 \usepackage[margin=2cm]{latex/geometry}
@@ -78,6 +79,9 @@
 \restoregeometry
 
 \newpage
+:i introduction.anansi
+
+\newpage
 :i types.anansi
 
 \newpage
@@ -100,7 +104,6 @@
 
 \newpage
 \appendix
-:i copyright.anansi
 :i module-headers.anansi
 :i type-instances.anansi
 :i constants.anansi

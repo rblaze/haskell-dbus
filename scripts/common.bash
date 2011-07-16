@@ -5,6 +5,7 @@ VERSION=$(awk '/^version:/{print $2}' dbus-core.cabal)
 CABAL_DEV=$(which cabal-dev)
 ANANSI=$(which anansi)
 XELATEX=$(which xelatex)
+INKSCAPE=$(which inkscape)
 XZ=$(which xz)
 
 require_cabal_dev()
@@ -39,13 +40,23 @@ require_xelatex()
 	fi
 }
 
+require_inkscape()
+{
+	if [ -z "$INKSCAPE" ]; then
+		echo "Can't find 'inkscape' executable; make sure it exists on your "'$PATH'
+		exit 1
+	fi
+}
+
 make_pdf()
 {
 	require_anansi
 	require_xelatex
+	require_inkscape
 	
 	rm -f *.{aux,tex,idx,log,out,toc,pdf}
 	$ANANSI -w -l latex-noweb -o dbus-core.tex src/dbus-core.anansi || exit 1
+	$INKSCAPE --export-eps=latex/figure_1.eps latex/figure_1.svg
 	$XELATEX dbus-core.tex > /dev/null || exit 1
 	$XELATEX dbus-core.tex > /dev/null || exit 1
 	rm -f *.{aux,tex,idx,log,out,toc}
