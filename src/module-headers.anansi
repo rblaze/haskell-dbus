@@ -392,7 +392,7 @@ import           Data.IORef
 import           Data.List (foldl')
 import qualified Data.Map
 import           Data.Map (Map)
-import           Data.Maybe (isJust)
+import           Data.Maybe (isJust, catMaybes)
 import           Data.Text (Text)
 import qualified Data.Text
 import           Data.Typeable (Typeable)
@@ -404,9 +404,9 @@ import           DBus.Connection (Connection)
 import           DBus.Connection.Authentication (external)
 import           DBus.Connection.Transport (unix, tcp)
 import           DBus.Connection.Error
+import qualified DBus.Constants
 import           DBus.Constants ( errorFailed, errorUnknownMethod
                                 , errorInvalidArgs)
-import qualified DBus.MatchRule
 import           DBus.Message
 import qualified DBus.Introspection
 import           DBus.Types
@@ -434,7 +434,6 @@ module DBus.Client.Simple
 	, Proxy
 	, proxy
 	, call
-	, MatchRule(..)
 	, DBus.Client.Simple.listen
 	
 	-- * Name reservation
@@ -502,30 +501,4 @@ import qualified Text.XML.LibXML.SAX as SAX
 import qualified DBus.Types as T
 
 |DBus.Introspection|
-:
-
-:f DBus/MatchRule.hs
-{-# LANGUAGE OverloadedStrings #-}
-|copyright|
-module DBus.MatchRule (
-	  MatchRule (..)
-	, MessageType (..)
-	, ParameterValue (..)
-	, formatRule
-	, addMatch
-	, matchAll
-	, matches
-	) where
-import           Data.Maybe (fromMaybe, mapMaybe)
-import qualified Data.Set as Set
-import qualified Data.Text as T
-import           Data.Text (Text)
-import           Data.Word (Word8)
-
-import qualified DBus.Constants as C
-import qualified DBus.Message as M
-import qualified DBus.Types as T
-import           DBus.Util (maybeIndex)
-
-|DBus.MatchRule|
 :

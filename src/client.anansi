@@ -16,6 +16,8 @@
 \clearpage
 \section{D-Bus clients}
 
+\subsection{Client types}
+
 :d DBus.Client
 data Client = Client
 	{ clientConnection :: Connection
@@ -28,6 +30,12 @@ data Client = Client
 
 type Callback = (ReceivedMessage -> IO ())
 
+data Reply
+	= ReplyReturn [Variant]
+	| ReplyError ErrorName [Variant]
+
+data Method = Method InterfaceName MemberName Signature Signature ([Variant] -> IO Reply)
+
 type ObjectInfo = Map InterfaceName InterfaceInfo
 type InterfaceInfo = Map MemberName MemberInfo
 data MemberInfo
@@ -35,12 +43,10 @@ data MemberInfo
 	| MemberSignal Signature
 :
 
-:d DBus.Client
-connect :: Address -> IO Client
-connect addr = do
-	connection <- DBus.Connection.connect [unix, tcp] [external] addr
-	attach connection
+\clearpage
+\subsection{Connecting and disconnecting clients}
 
+:d DBus.Client
 attach :: Connection -> IO Client
 attach connection = do
 	callbacks <- newMVar Data.Map.empty
@@ -61,11 +67,24 @@ attach connection = do
 	
 	export client "/" [introspectRoot client]
 	
-	sendHello client
+	void (call_ client (MethodCall
+		{ methodCallDestination = Just "org.freedesktop.DBus"
+		, methodCallMember = "Hello"
+		, methodCallInterface = Just "org.freedesktop.DBus"
+		, methodCallPath = "/org/freedesktop/DBus"
+		, methodCallFlags = Data.Set.empty
+		, methodCallBody = []
+		}))
+	
 	return client
 :
 
 :d DBus.Client
+connect :: Address -> IO Client
+connect addr = do
+	connection <- DBus.Connection.connect [unix, tcp] [external] addr
+	attach connection
+
 disconnect :: Client -> IO ()
 disconnect client = do
 	let connection = clientConnection client
@@ -76,83 +95,14 @@ disconnect client = do
 	DBus.Connection.disconnect connection
 :
 
+\clearpage
+\subsection{Main message dispatch loop}
+
 :d DBus.Client
 setMessageProcessor :: Client -> (ReceivedMessage -> IO Bool) -> IO ()
 setMessageProcessor client io = atomicModifyIORef
 	(clientMessageProcessor client)
 	(\_ -> (io, ()))
-:
-
-:d DBus.Client
-sendHello :: Client -> IO ()
-sendHello client = void (call_ client (MethodCall
-	{ methodCallDestination = Just "org.freedesktop.DBus"
-	, methodCallMember = "Hello"
-	, methodCallInterface = Just "org.freedesktop.DBus"
-	, methodCallPath = "/org/freedesktop/DBus"
-	, methodCallFlags = Data.Set.empty
-	, methodCallBody = []
-	}))
-:
-
-:d DBus.Client
-send_ :: Message msg => Client -> msg -> (Serial -> IO a) -> IO a
-send_ client msg io = do
-	result <- DBus.Connection.send (clientConnection client) msg io
-	case result of
-		Right serial -> return serial
-		Left err -> connectionError ("Error sending message: " ++ show err)
-
-call :: Client -> MethodCall -> IO (Either Error MethodReturn)
-call client msg = do
-	mvar <- newEmptyMVar
-	
-	let callback (ReceivedError _ _ err) = putMVar mvar (Left err)
-	    callback (ReceivedMethodReturn _ _ reply) = putMVar mvar (Right reply)
-	    callback _ = return ()
-	
-	send_ client msg (\serial ->
-		modifyMVar_ (clientCallbacks client) (\callbacks ->
-			return (Data.Map.insert serial callback callbacks)))
-	
-	takeMVar mvar
-
-call_ :: Client -> MethodCall -> IO MethodReturn
-call_ client msg = do
-	result <- call client msg
-	case result of
-		Left err -> connectionError ("Call failed: " ++ Data.Text.unpack (errorMessage err))
-		Right ret -> return ret
-:
-
-:d DBus.Client
-data MatchRule = MatchRule
-	{ matchSender      :: Maybe BusName
-	, matchInterface   :: Maybe InterfaceName
-	, matchMember      :: Maybe MemberName
-	, matchPath        :: Maybe ObjectPath
-	, matchDestination :: Maybe BusName
-	}
-	deriving (Show)
-
-listen :: Client -> MatchRule -> (BusName -> Signal -> IO ()) -> IO ()
-listen client rule io = do
-	let rule' = DBus.MatchRule.MatchRule
-		{ DBus.MatchRule.matchType = Just DBus.MatchRule.Signal
-		, DBus.MatchRule.matchSender = matchSender rule
-		, DBus.MatchRule.matchInterface = matchInterface rule
-		, DBus.MatchRule.matchMember = matchMember rule
-		, DBus.MatchRule.matchPath = matchPath rule
-		, DBus.MatchRule.matchDestination = matchDestination rule
-		, DBus.MatchRule.matchParameters = []
-		}
-	
-	let handler msg@(ReceivedSignal _ (Just sender) signal)
-		| DBus.MatchRule.matches rule' msg = io sender signal
-	    handler _ = return ()
-	
-	void (call_ client (DBus.MatchRule.addMatch rule'))
-	modifyMVar_ (clientSignalHandlers client) (\hs -> return (handler : hs))
 :
 
 :d DBus.Client
@@ -203,7 +153,94 @@ dispatch client received = void . forkIO $ do
 :
 
 \clearpage
-\subsubsection{Exporting objects and methods}
+\subsection{Making method calls}
+
+:d DBus.Client
+send_ :: Message msg => Client -> msg -> (Serial -> IO a) -> IO a
+send_ client msg io = do
+	result <- DBus.Connection.send (clientConnection client) msg io
+	case result of
+		Right serial -> return serial
+		Left err -> connectionError ("Error sending message: " ++ show err)
+
+call :: Client -> MethodCall -> IO (Either Error MethodReturn)
+call client msg = do
+	mvar <- newEmptyMVar
+	
+	let callback (ReceivedError _ _ err) = putMVar mvar (Left err)
+	    callback (ReceivedMethodReturn _ _ reply) = putMVar mvar (Right reply)
+	    callback _ = return ()
+	
+	send_ client msg (\serial ->
+		modifyMVar_ (clientCallbacks client) (\callbacks ->
+			return (Data.Map.insert serial callback callbacks)))
+	
+	takeMVar mvar
+
+call_ :: Client -> MethodCall -> IO MethodReturn
+call_ client msg = do
+	result <- call client msg
+	case result of
+		Left err -> connectionError ("Call failed: " ++ Data.Text.unpack (errorMessage err))
+		Right ret -> return ret
+:
+
+\clearpage
+\subsection{Receiving signals}
+
+:d DBus.Client
+data MatchRule = MatchRule
+	{ matchSender      :: Maybe BusName
+	, matchDestination :: Maybe BusName
+	, matchPath        :: Maybe ObjectPath
+	, matchInterface   :: Maybe InterfaceName
+	, matchMember      :: Maybe MemberName
+	}
+	deriving (Show)
+
+listen :: Client -> MatchRule -> (BusName -> Signal -> IO ()) -> IO ()
+listen client rule io = do
+	let handler (ReceivedSignal _ (Just sender) msg)
+	    	| checkMatchRule rule sender msg = io sender msg
+	    handler _ = return ()
+	
+	modifyMVar_ (clientSignalHandlers client) (\hs -> return (handler : hs))
+	void (call_ client (MethodCall
+		{ methodCallPath = DBus.Constants.dbusPath
+		, methodCallMember = "AddMatch"
+		, methodCallInterface = Just DBus.Constants.dbusInterface
+		, methodCallDestination = Just DBus.Constants.dbusName
+		, methodCallFlags = Data.Set.empty
+		, methodCallBody = [toVariant (formatMatchRule rule)]
+		}))
+
+formatMatchRule :: MatchRule -> Text
+formatMatchRule rule = Data.Text.intercalate "," predicates where
+	predicates = catMaybes
+		[ f "sender" matchSender busNameText
+		, f "destination" matchDestination busNameText
+		, f "path" matchPath objectPathText
+		, f "interface" matchInterface interfaceNameText
+		, f "member" matchMember memberNameText
+		]
+	
+	f :: Text -> (MatchRule -> Maybe a) -> (a -> Text) -> Maybe Text
+	f key get text = do
+		val <- fmap text (get rule)
+		return (Data.Text.concat [key, "='", val, "'"])
+
+checkMatchRule :: MatchRule -> BusName -> Signal -> Bool
+checkMatchRule rule sender msg = and
+	[ maybe True (== sender) (matchSender rule)
+	, maybe True (\x -> signalDestination msg == Just x) (matchDestination rule)
+	, maybe True (== signalPath msg) (matchPath rule)
+	, maybe True (== signalInterface msg) (matchInterface rule)
+	, maybe True (== signalMember msg) (matchMember rule)
+	]
+:
+
+\clearpage
+\subsection{Exporting objects and methods}
 
 :d DBus.Client
 data MethodError = MethodError ErrorName [Variant]
@@ -217,12 +254,6 @@ throwError name message extra = Control.Exception.throwIO (MethodError name (toV
 :
 
 :d DBus.Client
-data Reply
-	= ReplyReturn [Variant]
-	| ReplyError ErrorName [Variant]
-
-data Method = Method InterfaceName MemberName Signature Signature ([Variant] -> IO Reply)
-
 method :: InterfaceName -> MemberName -> Signature -> Signature -> ([Variant] -> IO Reply) -> Method
 method iface name inSig outSig io = Method iface name inSig outSig
 	(\vs -> Control.Exception.catch
@@ -265,6 +296,9 @@ findMethod objects msg = do
 		MemberMethod _ _ io -> return io
 		_ -> Nothing
 :
+
+\clearpage
+\subsubsection{Automatic introspection}
 
 :d DBus.Client
 introspectRoot :: Client -> Method
@@ -463,7 +497,7 @@ releaseName client name = do
 :
 
 \clearpage
-\subsubsection{Exporting objects and methods}
+\subsubsection{Simplified exports}
 
 :d DBus.Client.Simple
 |apidoc DBus.Client.Simple.AutoSignature|

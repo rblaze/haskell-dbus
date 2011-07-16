@@ -39,7 +39,6 @@ extra-source-files:
   src/copyright.anansi
   src/dbus-core.anansi
   src/introspection.anansi
-  src/match-rules.anansi
   src/messages.anansi
   src/module-headers.anansi
   src/summary.anansi
@@ -91,7 +90,6 @@ library
     DBus.Connection.Error
     DBus.Connection.Authentication
     DBus.Connection.Transport
-    DBus.MatchRule
     DBus.Message.Internal
     DBus.Types.Internal
     DBus.Util

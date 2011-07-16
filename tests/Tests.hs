@@ -40,7 +40,6 @@ import qualified System.Posix.Env
 import           DBus.Address
 import           DBus.Client ()
 import           DBus.Connection ()
-import           DBus.MatchRule ()
 import           DBus.Message ()
 import           DBus.Types
 import           DBus.Types.Internal (typeCode, checkSignature)
