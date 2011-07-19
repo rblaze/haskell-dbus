@@ -738,7 +738,9 @@ marshalVariant var@(Variant val) = do
 	sig <- case checkSignature [valueType val] of
 		Just x' -> return x'
 		Nothing -> throwError (concat
-			[ "Signature for variant "
+			[ "Signature "
+			, show (typeCode (valueType val))
+			, " for variant "
 			, show var
 			, " is malformed or too large."
 			])
