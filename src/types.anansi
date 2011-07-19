@@ -205,7 +205,7 @@ data Value
 	| ValueVector Type (Vector Value)
 	| ValueMap Type Type (Map Atom Value)
 	| ValueStructure [Value]
-	deriving (Eq)
+	deriving (Show, Eq)
 
 data Atom
 	= AtomBool Bool
@@ -220,7 +220,7 @@ data Atom
 	| AtomText Text
 	| AtomSignature Signature
 	| AtomObjectPath ObjectPath
-	deriving (Eq, Ord)
+	deriving (Show, Eq, Ord)
 :
 
 \end{multicols}
@@ -1125,6 +1125,10 @@ dict ii = do
 
 :d DBus.Types
 newtype Structure = Structure [Value]
+	deriving (Eq)
+
+instance Show Structure where
+	show (Structure xs) = showValue True (ValueStructure xs)
 
 instance IsVariant Structure where
 	toVariant (Structure xs) = Variant (ValueStructure xs)
@@ -1140,6 +1144,18 @@ data Array
 	= Array Type (Vector Value)
 	| ArrayStrictBytes ByteString
 	| ArrayLazyBytes Data.ByteString.Lazy.ByteString
+
+instance Show Array where
+	show (Array t xs) = showValue True (ValueVector t xs)
+	show (ArrayStrictBytes xs) = showValue True (ValueStrictBytes xs)
+	show (ArrayLazyBytes xs) = showValue True (ValueLazyBytes xs)
+
+instance Eq Array where
+	x == y = norm x == norm y where
+		norm (Array TypeWord8 xs) = Left (Data.ByteString.Lazy.fromChunks [vectorToBytes xs])
+		norm (Array t xs) = Right (t, xs)
+		norm (ArrayStrictBytes xs) = Left (Data.ByteString.Lazy.fromChunks [xs])
+		norm (ArrayLazyBytes xs) = Left xs
 
 instance IsVariant Array where
 	toVariant (Array t xs) = Variant (ValueVector t xs)
@@ -1158,6 +1174,10 @@ arrayItems (ArrayLazyBytes bs) = map toVariant (Data.ByteString.Lazy.unpack bs)
 
 :d DBus.Types
 data Dictionary = Dictionary Type Type (Map Atom Value)
+	deriving (Eq)
+
+instance Show Dictionary where
+	show (Dictionary kt vt xs) = showValue True (ValueMap kt vt xs)
 
 instance IsVariant Dictionary where
 	toVariant (Dictionary kt vt xs) = Variant (ValueMap kt vt xs)
