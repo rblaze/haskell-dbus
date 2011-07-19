@@ -509,13 +509,13 @@ instance IsVariant Variant where
 :
 
 :d DBus.Types
-instance (IsValue a, Eq a) => IsVariant [a] where
+instance IsValue a => IsVariant [a] where
 	toVariant = toVariant . Data.Vector.fromList
 	fromVariant = fmap Data.Vector.toList . fromVariant
 :
 
 :d DBus.Types
-instance (IsValue a, Eq a) => IsVariant (Vector a) where
+instance IsValue a => IsVariant (Vector a) where
 	toVariant = Variant . toValue
 	fromVariant (Variant val) = fromValue val
 :
