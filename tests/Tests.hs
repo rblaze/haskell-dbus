@@ -65,15 +65,8 @@ tests = testGroup "tests"
 	, test_BusName
 	]
 
-properties :: Test
-properties = testGroup "properties"
-	[ testProperty "address-parsing" prop_AddressParsing
-	, testProperty "signature-parsing" prop_SignatureParsing
-	, testProperty "check-signature" prop_CheckSignature
-	]
-
 main :: IO ()
-main = Test.Framework.defaultMain [tests, properties]
+main = Test.Framework.defaultMain [tests]
 
 test_Address :: Test
 test_Address = testGroup "address"
@@ -143,6 +136,9 @@ test_Address = testGroup "address"
 	  , testCase "starter" (withEnv "DBUS_STARTER_BUS_ADDRESS" (Just "a:b=c;d:") (do
 	    	addrs <- getStarter
 	    	assertEqual addrs (Just ["a:b=c", "d:"])))
+	  ]
+	, testGroup "properties"
+	  [ testProperty "address-parsing" (forAll genAddressText (isJust . address))
 	  ]
 	]
 
@@ -223,6 +219,11 @@ test_Signature = testGroup "signature"
 	  ]
 	, testGroup "instances"
 	  [ testCase "show" (assertEqual "(Signature \"y\")" (showsPrec 11 (fromJust (signature "y")) ""))
+	  ]
+	, testGroup "properties"
+	  [ testProperty "signature-parsing" (forAll genSignatureText (isJust . signature))
+	  , let prop types = checkSignature types == signature (T.pack (concatMap typeCode types)) in
+	    testProperty "check-signature" (forAll (listOf1 arbitrary) prop)
 	  ]
 	]
 
@@ -458,8 +459,8 @@ test_BusName = testGroup "bus-name"
 	  ]
 	]
 
-prop_AddressParsing :: Property
-prop_AddressParsing = forAll genAddressText (isJust . address)
+
+
 
 genAddressText :: Gen Text
 genAddressText = gen where
@@ -491,9 +492,6 @@ genAddressText = gen where
 genHex :: Gen Char
 genHex = elements (['0'..'9'] ++ ['a'..'f'] ++ ['A'..'F'])
 
-prop_SignatureParsing :: Property
-prop_SignatureParsing = forAll genSignatureText (isJust . signature)
-
 genSignatureText :: Gen Text
 genSignatureText = gen where
 	any = oneof [atom, container]
@@ -516,10 +514,6 @@ genSignatureText = gen where
 		if length chars > 255
 			then halfSized gen
 			else return (T.pack chars)
-
-prop_CheckSignature :: Property
-prop_CheckSignature = forAll (listOf1 arbitrary) prop where
-	prop types = checkSignature types == signature (T.pack (concatMap typeCode types))
 
 halfSized :: Gen a -> Gen a
 halfSized gen = sized (\n -> if n > 0
