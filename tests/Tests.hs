@@ -27,14 +27,19 @@ import           Test.QuickCheck
 
 import qualified Control.Exception
 import           Control.Monad (liftM, liftM2)
+import qualified Data.ByteString
+import qualified Data.ByteString.Lazy
 import           Data.List (intercalate)
 import           Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text
+import qualified Data.Text.Lazy
 import           Data.Word (Word8, Word16, Word32, Word64)
 import           Data.Int (Int16, Int32, Int64)
 import qualified Data.Map
 import           Data.Maybe (isJust, isNothing, fromJust)
 import           Data.String (IsString, fromString)
+import qualified Data.Vector
 import qualified System.Posix.Env
 
 import           DBus.Address
@@ -42,7 +47,7 @@ import           DBus.Client ()
 import           DBus.Connection ()
 import           DBus.Message ()
 import           DBus.Types
-import           DBus.Types.Internal (typeCode, checkSignature)
+import           DBus.Types.Internal
 import           DBus.Wire ()
 import           DBus.Introspection ()
 
@@ -53,6 +58,7 @@ tests = testGroup "tests"
 	, test_Types
 	, test_Variant
 	, test_ObjectPath
+	, test_ContainerBoxes
 	, test_InterfaceName
 	, test_MemberName
 	, test_ErrorName
@@ -247,43 +253,99 @@ test_Types = testGroup "types"
 
 test_Variant :: Test
 test_Variant = testGroup "variant"
-	[ testGroup "variantType"
-	  [ testCase "bool" (assertEqual TypeBoolean (variantType (toVariant True)))
-	  , testCase "word8" (assertEqual TypeWord8 (variantType (toVariant (0 :: Word8))))
-	  , testCase "word16" (assertEqual TypeWord16 (variantType (toVariant (0 :: Word16))))
-	  , testCase "word32" (assertEqual TypeWord32 (variantType (toVariant (0 :: Word32))))
-	  , testCase "word64" (assertEqual TypeWord64 (variantType (toVariant (0 :: Word64))))
-	  , testCase "int16" (assertEqual TypeInt16 (variantType (toVariant (0 :: Int16))))
-	  , testCase "int32" (assertEqual TypeInt32 (variantType (toVariant (0 :: Int32))))
-	  , testCase "int64" (assertEqual TypeInt64 (variantType (toVariant (0 :: Int64))))
-	  , testCase "double" (assertEqual TypeDouble (variantType (toVariant (0 :: Double))))
-	  , testCase "string" (assertEqual TypeString (variantType (toVariant (T.pack ""))))
-	  , testCase "object-path" (assertEqual TypeObjectPath (variantType (toVariant (objectPath_ "/"))))
-	  , testCase "signature" (assertEqual TypeSignature (variantType (toVariant (signature_ ""))))
-	  , testCase "variant" (assertEqual TypeVariant (variantType (toVariant (toVariant True))))
-	  , testCase "array" (assertEqual (TypeArray TypeBoolean) (variantType (toVariant [True])))
-	  , testCase "dictionary" (assertEqual (TypeDictionary TypeBoolean TypeBoolean) (variantType (toVariant (Data.Map.fromList [(True, True)]))))
-	  , testCase "structure" (assertEqual (TypeStructure [TypeBoolean, TypeBoolean]) (variantType (toVariant (True, True))))
+	[ testGroup "instances-of-IsAtom"
+	  [ testCase "bool" (assertAtom TypeBoolean True)
+	  , testCase "word8" (assertAtom TypeWord8 (0 :: Word8))
+	  , testCase "word16" (assertAtom TypeWord16 (0 :: Word16))
+	  , testCase "word32" (assertAtom TypeWord32 (0 :: Word32))
+	  , testCase "word64" (assertAtom TypeWord64 (0 :: Word64))
+	  , testCase "int16" (assertAtom TypeInt16 (0 :: Int16))
+	  , testCase "int32" (assertAtom TypeInt32 (0 :: Int32))
+	  , testCase "int64" (assertAtom TypeInt64 (0 :: Int64))
+	  , testCase "double" (assertAtom TypeDouble (0 :: Double))
+	  , testCase "string" (assertAtom TypeString (Data.Text.pack ""))
+	  , testCase "string" (assertAtom TypeString (Data.Text.Lazy.pack ""))
+	  , testCase "object-path" (assertAtom TypeObjectPath (objectPath_ "/"))
+	  , testCase "signature" (assertAtom TypeSignature (signature_ ""))
 	  ]
-	, testGroup "instances"
-	  [ testGroup "show"
-	    [ testCase "bool" (assertEqual "Variant True" (show (toVariant True)))
-	    , testCase "word8" (assertEqual "Variant 0" (show (toVariant (0 :: Word8))))
-	    , testCase "word16" (assertEqual "Variant 0" (show (toVariant (0 :: Word16))))
-	    , testCase "word32" (assertEqual "Variant 0" (show (toVariant (0 :: Word32))))
-	    , testCase "word64" (assertEqual "Variant 0" (show (toVariant (0 :: Word64))))
-	    , testCase "int16" (assertEqual "Variant 0" (show (toVariant (0 :: Int16))))
-	    , testCase "int32" (assertEqual "Variant 0" (show (toVariant (0 :: Int32))))
-	    , testCase "int64" (assertEqual "Variant 0" (show (toVariant (0 :: Int64))))
-	    , testCase "double" (assertEqual "Variant 0.1" (show (toVariant (0.1 :: Double))))
-	    , testCase "string" (assertEqual "Variant \"\"" (show (toVariant (T.pack ""))))
-	    , testCase "object-path" (assertEqual "Variant (ObjectPath \"/\")" (show (toVariant (objectPath_ "/"))))
-	    , testCase "signature" (assertEqual "Variant (Signature \"\")" (show (toVariant (signature_ ""))))
-	    , testCase "variant" (assertEqual "Variant (Variant True)" (show (toVariant (toVariant True))))
-	    , testCase "array" (assertEqual "(Variant [True, False, True])" (showsPrec 11 (toVariant [True, False, True]) ""))
-	    , testCase "dictionary" (assertEqual "(Variant {False: True, True: False})" (showsPrec 11 (toVariant (Data.Map.fromList [(True, False), (False, True)])) ""))
-	    , testCase "structure" (assertEqual "(Variant (True, False))" (showsPrec 11 (toVariant (True, False)) ""))
+	, testGroup "instances-of-IsValue"
+	  [ testCase "variant" (assertValue TypeVariant (toVariant True))
+	  , testCase "array" (assertValue (TypeArray TypeBoolean) [True])
+	  , testGroup "array"
+	    [ testCase "bytestring-strict" (assertValue (TypeArray TypeWord8) Data.ByteString.empty)
+	    , testCase "bytestring-lazy" (assertValue (TypeArray TypeWord8) Data.ByteString.Lazy.empty)
 	    ]
+	  , testCase "dictionary" (assertValue (TypeDictionary TypeBoolean TypeBoolean) (Data.Map.fromList [(True, True)]))
+	  , testCase "tuple-2" (assertValue (TypeStructure (replicate 2 TypeBoolean)) (True, True))
+	  , testCase "tuple-3" (assertValue (TypeStructure (replicate 3 TypeBoolean)) (True, True, True))
+	  , testCase "tuple-4" (assertValue (TypeStructure (replicate 4 TypeBoolean)) (True, True, True, True))
+	  , testCase "tuple-5" (assertValue (TypeStructure (replicate 5 TypeBoolean)) (True, True, True, True, True))
+	  , testCase "tuple-6" (assertValue (TypeStructure (replicate 6 TypeBoolean)) (True, True, True, True, True, True))
+	  , testCase "tuple-7" (assertValue (TypeStructure (replicate 7 TypeBoolean)) (True, True, True, True, True, True, True))
+	  , testCase "tuple-8" (assertValue (TypeStructure (replicate 8 TypeBoolean)) (True, True, True, True, True, True, True, True))
+	  , testCase "tuple-9" (assertValue (TypeStructure (replicate 9 TypeBoolean)) (True, True, True, True, True, True, True, True, True))
+	  , testCase "tuple-10" (assertValue (TypeStructure (replicate 10 TypeBoolean)) (True, True, True, True, True, True, True, True, True, True))
+	  , testCase "tuple-11" (assertValue (TypeStructure (replicate 11 TypeBoolean)) (True, True, True, True, True, True, True, True, True, True, True))
+	  , testCase "tuple-12" (assertValue (TypeStructure (replicate 12 TypeBoolean)) (True, True, True, True, True, True, True, True, True, True, True, True))
+	  , testCase "tuple-13" (assertValue (TypeStructure (replicate 13 TypeBoolean)) (True, True, True, True, True, True, True, True, True, True, True, True, True))
+	  , testCase "tuple-14" (assertValue (TypeStructure (replicate 14 TypeBoolean)) (True, True, True, True, True, True, True, True, True, True, True, True, True, True))
+	  , testCase "tuple-15" (assertValue (TypeStructure (replicate 15 TypeBoolean)) (True, True, True, True, True, True, True, True, True, True, True, True, True, True, True))
+	  ]
+	, testGroup "show-variant"
+	  [ testCase "bool" (assertEqual "Variant True" (show (toVariant True)))
+	  , testCase "word8" (assertEqual "Variant 0" (show (toVariant (0 :: Word8))))
+	  , testCase "word16" (assertEqual "Variant 0" (show (toVariant (0 :: Word16))))
+	  , testCase "word32" (assertEqual "Variant 0" (show (toVariant (0 :: Word32))))
+	  , testCase "word64" (assertEqual "Variant 0" (show (toVariant (0 :: Word64))))
+	  , testCase "int16" (assertEqual "Variant 0" (show (toVariant (0 :: Int16))))
+	  , testCase "int32" (assertEqual "Variant 0" (show (toVariant (0 :: Int32))))
+	  , testCase "int64" (assertEqual "Variant 0" (show (toVariant (0 :: Int64))))
+	  , testCase "double" (assertEqual "Variant 0.1" (show (toVariant (0.1 :: Double))))
+	  , testCase "string" (assertEqual "Variant \"\"" (show (toVariant (T.pack ""))))
+	  , testCase "object-path" (assertEqual "Variant (ObjectPath \"/\")" (show (toVariant (objectPath_ "/"))))
+	  , testCase "signature" (assertEqual "Variant (Signature \"\")" (show (toVariant (signature_ ""))))
+	  , testCase "variant" (assertEqual "Variant (Variant True)" (show (toVariant (toVariant True))))
+	  , testCase "array" (assertEqual "Variant [True, False]" (show (toVariant [True, False])))
+	  , testGroup "array"
+	    [ testCase "bytestring-strict" (assertEqual "Variant b\"\"" (show (toVariant Data.ByteString.empty)))
+	    , testCase "bytestring-lazy" (assertEqual "Variant b\"\"" (show (toVariant Data.ByteString.Lazy.empty)))
+	    , testCase "array-of-word8" (assertEqual "Variant b\"\"" (show (toVariant ([] :: [Word8]))))
+	    ]
+	  , testCase "dictionary" (assertEqual "(Variant {False: True, True: False})" (showsPrec 11 (toVariant (Data.Map.fromList [(True, False), (False, True)])) ""))
+	  , testCase "structure" (assertEqual "(Variant (True, False))" (showsPrec 11 (toVariant (True, False)) ""))
+	  ]
+	]
+
+test_ContainerBoxes :: Test
+test_ContainerBoxes = testGroup "container-boxes"
+	[ testGroup "structure"
+	  [ testCase "instance-of-Eq" (assertEqual (Structure []) (Structure []))
+	  , testCase "instance-of-Show" (assertEqual "(True, False)" (show (Structure [toValue True, toValue False])))
+	  , testCase "instance-of-IsVariant" (assertVariant (TypeStructure [TypeBoolean]) (Structure [toValue True]))
+	  ]
+	, testGroup "array"
+	  [ testCase "instance-of-Eq" $ do
+	    	assertEqual (Array TypeBoolean (Data.Vector.fromList [toValue True]))
+	    	            (Array TypeBoolean (Data.Vector.fromList [toValue True]))
+	    	assertEqual (Array TypeWord8 (Data.Vector.fromList [toValue (0 :: Word8)]))
+	    	            (ArrayStrictBytes (Data.ByteString.pack [0]))
+	    	assertEqual (ArrayStrictBytes (Data.ByteString.pack [0]))
+	    	            (ArrayLazyBytes (Data.ByteString.Lazy.pack [0]))
+	  , testCase "instance-of-Show" $ do
+	    	assertEqual "[True, False]" (show (Array TypeBoolean (Data.Vector.fromList [toValue True, toValue False])))
+	    	assertEqual "b\"\"" (show (Array TypeWord8 Data.Vector.empty))
+	    	assertEqual "b\"\"" (show (ArrayStrictBytes Data.ByteString.empty))
+	    	assertEqual "b\"\"" (show (ArrayLazyBytes Data.ByteString.Lazy.empty))
+	  , testCase "instance-of-IsVariant" $ do
+	    	assertVariant (TypeArray TypeWord8) (Array TypeWord8 Data.Vector.empty)
+	    	assertVariant (TypeArray TypeWord8) (ArrayStrictBytes Data.ByteString.empty)
+	    	assertVariant (TypeArray TypeWord8) (ArrayLazyBytes Data.ByteString.Lazy.empty)
+	  ]
+	, testGroup "dictionary"
+	  [ testCase "instance-of-Eq" (assertEqual (Dictionary TypeWord8 TypeWord8 Data.Map.empty)
+	                                           (Dictionary TypeWord8 TypeWord8 Data.Map.empty))
+	  , testCase "instance-of-Show" (assertEqual "{}" (show (Dictionary TypeWord8 TypeWord8 Data.Map.empty)))
+	  , testCase "instance-of-IsVariant" (assertVariant (TypeDictionary TypeWord8 TypeWord8) (Dictionary TypeWord8 TypeWord8 Data.Map.empty))
 	  ]
 	]
 
@@ -307,7 +369,8 @@ test_ObjectPath = testGroup "object-path"
 
 test_InterfaceName :: Test
 test_InterfaceName = testGroup "interface-name"
-	[ testGroup "valid"
+	[ testCase "instance-of-IsVariant" (assertVariant TypeString (interfaceName_ "foo.bar"))
+	, testGroup "valid"
 	  [ testCase "plain" (assertJust (interfaceName "foo.bar"))
 	  , testCase "has-digit" (assertJust (interfaceName "foo.bar0"))
 	  , testCase "all-characters" (assertJust (interfaceName "a.abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789"))
@@ -327,7 +390,8 @@ test_InterfaceName = testGroup "interface-name"
 
 test_MemberName :: Test
 test_MemberName = testGroup "member-name"
-	[ testGroup "valid"
+	[ testCase "instance-of-IsVariant" (assertVariant TypeString (memberName_ "foo"))
+	, testGroup "valid"
 	  [ testCase "plain" (assertJust (memberName "foo"))
 	  , testCase "has-digit" (assertJust (memberName "foo0"))
 	  , testCase "all-characters" (assertJust (memberName "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789"))
@@ -346,7 +410,8 @@ test_MemberName = testGroup "member-name"
 
 test_ErrorName :: Test
 test_ErrorName = testGroup "error-name"
-	[ testGroup "valid"
+	[ testCase "instance-of-IsVariant" (assertVariant TypeString (errorName_ "foo.bar"))
+	, testGroup "valid"
 	  [ testCase "plain" (assertJust (errorName "foo.bar"))
 	  , testCase "has-digit" (assertJust (errorName "foo.bar0"))
 	  , testCase "all-characters" (assertJust (errorName "a.abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789"))
@@ -366,7 +431,8 @@ test_ErrorName = testGroup "error-name"
 
 test_BusName :: Test
 test_BusName = testGroup "bus-name"
-	[ testGroup "valid"
+	[ testCase "instance-of-IsVariant" (assertVariant TypeString (busName_ "foo.bar"))
+	, testGroup "valid"
 	  [ testGroup "unique"
 	    [ testCase "plain" (assertJust (busName ":foo.bar"))
 	    , testCase "start-with-digit" (assertJust (busName ":foo.0bar"))
@@ -476,6 +542,28 @@ assertNothing (Just _)  = assertFailure "expected: (Just _)\n but got: Nothing"
 
 assertEqual :: (Show a, Eq a) => a -> a -> Assertion
 assertEqual = Test.HUnit.assertEqual ""
+
+assertAtom :: (Eq a, Show a, IsAtom a) => Type -> a -> Assertion
+assertAtom t a = do
+	assertEqual t (atomType (toAtom a))
+	assertEqual (fromAtom (toAtom a)) (Just a)
+	assertEqual (toAtom a) (toAtom a)
+	assertValue t a
+
+assertValue :: (Eq a, Show a, IsValue a) => Type -> a -> Assertion
+assertValue t a = do
+	assertEqual t (DBus.Types.typeOf a)
+	assertEqual t (DBus.Types.Internal.typeOf a)
+	assertEqual t (valueType (toValue a))
+	assertEqual (fromValue (toValue a)) (Just a)
+	assertEqual (toValue a) (toValue a)
+	assertVariant t a
+
+assertVariant :: (Eq a, Show a, IsVariant a) => Type -> a -> Assertion
+assertVariant t a = do
+	assertEqual t (variantType (toVariant a))
+	assertEqual (fromVariant (toVariant a)) (Just a)
+	assertEqual (toVariant a) (toVariant a)
 
 withEnv :: String -> Maybe String -> IO a -> IO a
 withEnv name value io = do
