@@ -205,7 +205,33 @@ data Value
 	| ValueVector Type (Vector Value)
 	| ValueMap Type Type (Map Atom Value)
 	| ValueStructure [Value]
-	deriving (Show, Eq)
+	deriving (Show)
+
+instance Eq Value where
+	(==) (ValueStrictBytes x) y = case y of
+		ValueStrictBytes y' -> x == y'
+		ValueLazyBytes y' -> Data.ByteString.Lazy.fromChunks [x] == y'
+		ValueVector TypeWord8 y' -> x == vectorToBytes y'
+		_ -> False
+	
+	(==) (ValueLazyBytes x) y = case y of
+		ValueStrictBytes y' -> x == Data.ByteString.Lazy.fromChunks [y']
+		ValueLazyBytes y' -> x == y'
+		ValueVector TypeWord8 y' -> x == Data.ByteString.Lazy.fromChunks [vectorToBytes y']
+		_ -> False
+		
+	(==) (ValueVector TypeWord8 x) y = case y of
+		ValueStrictBytes y' -> vectorToBytes x == y'
+		ValueLazyBytes y' -> Data.ByteString.Lazy.fromChunks [vectorToBytes x] == y'
+		ValueVector TypeWord8 y' -> x == y'
+		_ -> False
+	
+	(==) (ValueAtom x) (ValueAtom y) = x == y
+	(==) (ValueVariant x) (ValueVariant y) = x == y
+	(==) (ValueVector tx x) (ValueVector ty y) = tx == ty && x == y
+	(==) (ValueMap ktx vtx x) (ValueMap kty vty y) = ktx == kty && vtx == vty && x == y
+	(==) (ValueStructure x) (ValueStructure y) = x == y
+	(==) _ _ = False
 
 data Atom
 	= AtomBool Bool

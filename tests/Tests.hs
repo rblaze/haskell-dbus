@@ -315,6 +315,27 @@ test_Variant = testGroup "variant"
 	  , testCase "dictionary" (assertEqual "(Variant {False: True, True: False})" (showsPrec 11 (toVariant (Data.Map.fromList [(True, False), (False, True)])) ""))
 	  , testCase "structure" (assertEqual "(Variant (True, False))" (showsPrec 11 (toVariant (True, False)) ""))
 	  ]
+	, testCase "compare-byte-storage" $ do
+	  	assertEqual (toValue (Data.Vector.fromList [0 :: Word8]))
+	  	            (toValue (Data.Vector.fromList [0 :: Word8]))
+	  	assertEqual (toValue (Data.Vector.fromList [0 :: Word8]))
+	  	            (toValue (Data.ByteString.pack [0]))
+	  	assertEqual (toValue (Data.Vector.fromList [0 :: Word8]))
+	  	            (toValue (Data.ByteString.Lazy.pack [0]))
+	  	
+	  	assertEqual (toValue (Data.ByteString.pack [0]))
+	  	            (toValue (Data.Vector.fromList [0 :: Word8]))
+	  	assertEqual (toValue (Data.ByteString.pack [0]))
+	  	            (toValue (Data.ByteString.pack [0]))
+	  	assertEqual (toValue (Data.ByteString.pack [0]))
+	  	            (toValue (Data.ByteString.Lazy.pack [0]))
+	  	
+	  	assertEqual (toValue (Data.ByteString.Lazy.pack [0]))
+	  	            (toValue (Data.Vector.fromList [0 :: Word8]))
+	  	assertEqual (toValue (Data.ByteString.Lazy.pack [0]))
+	  	            (toValue (Data.ByteString.pack [0]))
+	  	assertEqual (toValue (Data.ByteString.Lazy.pack [0]))
+	  	            (toValue (Data.ByteString.Lazy.pack [0]))
 	]
 
 test_ContainerBoxes :: Test
