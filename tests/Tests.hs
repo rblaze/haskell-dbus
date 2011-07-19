@@ -23,12 +23,18 @@ import           Test.Framework.Providers.QuickCheck2 (testProperty)
 import           Test.Framework.Providers.HUnit (testCase)
 import           Test.HUnit (Assertion, assertFailure)
 import qualified Test.HUnit
-import           Test.QuickCheck
+import           Test.QuickCheck hiding ((.&.))
 
+import           Control.Applicative ((<$>), (<*>))
 import qualified Control.Exception
 import           Control.Monad (liftM, liftM2)
+import qualified Data.Binary.Get
+import qualified Data.Binary.Builder
+import           Data.Bits ((.&.))
+import           Data.ByteString (ByteString)
 import qualified Data.ByteString
 import qualified Data.ByteString.Lazy
+import           Data.Char (chr)
 import           Data.List (intercalate)
 import           Data.Text (Text)
 import qualified Data.Text as T
@@ -36,8 +42,10 @@ import qualified Data.Text
 import qualified Data.Text.Lazy
 import           Data.Word (Word8, Word16, Word32, Word64)
 import           Data.Int (Int16, Int32, Int64)
+import           Data.Map (Map)
 import qualified Data.Map
 import           Data.Maybe (isJust, isNothing, fromJust)
+import qualified Data.Set
 import           Data.String (IsString, fromString)
 import qualified Data.Vector
 import qualified System.Posix.Env
@@ -46,9 +54,11 @@ import           DBus.Address
 import           DBus.Client ()
 import           DBus.Connection ()
 import           DBus.Message ()
+import           DBus.Message.Internal hiding (errorName)
 import           DBus.Types
 import           DBus.Types.Internal
-import           DBus.Wire ()
+import qualified DBus.Wire
+import qualified DBus.Wire.Internal
 import           DBus.Introspection ()
 
 tests :: Test
@@ -63,6 +73,7 @@ tests = testGroup "tests"
 	, test_MemberName
 	, test_ErrorName
 	, test_BusName
+	, test_Wire
 	]
 
 main :: IO ()
@@ -480,8 +491,51 @@ test_BusName = testGroup "bus-name"
 	  ]
 	]
 
+test_Wire :: Test
+test_Wire = testGroup "wire"
+	[ testProperty "value-passthrough" prop_ValuePassthrough
+	, testGroup "message-passthrough"
+	  [ testProperty "method-call" (forAll (arbitrary :: Gen MethodCall) (\msg e s ->
+	    	let Right bytes = marshalMessage e msg s in
+	    	let Right received = unmarshalMessage e bytes in
+	    	ReceivedMethodCall s Nothing msg == received))
+	  , testProperty "method-return" (forAll (arbitrary :: Gen MethodReturn) (\msg e s ->
+	    	let Right bytes = marshalMessage e msg s in
+	    	let Right received = unmarshalMessage e bytes in
+	    	ReceivedMethodReturn s Nothing msg == received))
+	  , testProperty "error" (forAll (arbitrary :: Gen Error) (\msg e s ->
+	    	let Right bytes = marshalMessage e msg s in
+	    	let Right received = unmarshalMessage e bytes in
+	    	ReceivedError s Nothing msg == received))
+	  , testProperty "signal" (forAll (arbitrary :: Gen Signal) (\msg e s ->
+	    	let Right bytes = marshalMessage e msg s in
+	    	let Right received = unmarshalMessage e bytes in
+	    	ReceivedSignal s Nothing msg == received))
+	  ]
+	]
 
+prop_ValuePassthrough :: Value -> DBus.Wire.Endianness -> Bool
+prop_ValuePassthrough v e = unmarshaled == v where
+	Right bytes = marshal e v
+	Right unmarshaled = unmarshal e (valueType v) bytes
 
+marshal :: DBus.Wire.Endianness -> Value -> Either String ByteString
+marshal e v = case DBus.Wire.Internal.unWire (DBus.Wire.Internal.marshal v) e (DBus.Wire.Internal.MarshalState Data.Binary.Builder.empty 0) of
+	DBus.Wire.Internal.WireRR _ (DBus.Wire.Internal.MarshalState builder _) -> Right (Data.ByteString.concat (Data.ByteString.Lazy.toChunks (Data.Binary.Builder.toLazyByteString builder)))
+	DBus.Wire.Internal.WireRL err -> Left err
+
+unmarshal :: DBus.Wire.Endianness -> Type -> ByteString -> Either String Value
+unmarshal e t bytes = case DBus.Wire.Internal.unWire (DBus.Wire.Internal.unmarshal t) e (DBus.Wire.Internal.UnmarshalState bytes 0) of
+	DBus.Wire.Internal.WireRR v _ -> Right v
+	DBus.Wire.Internal.WireRL err -> Left err
+
+marshalMessage :: Message msg => DBus.Wire.Endianness -> msg -> Serial -> Either DBus.Wire.MarshalError ByteString
+marshalMessage e msg s = case DBus.Wire.marshalMessage e s msg of
+	Right lazy -> Right (Data.ByteString.concat (Data.ByteString.Lazy.toChunks lazy))
+	Left err -> Left err
+
+unmarshalMessage :: DBus.Wire.Endianness -> ByteString -> Either DBus.Wire.UnmarshalError ReceivedMessage
+unmarshalMessage e bytes = Data.Binary.Get.runGet (DBus.Wire.unmarshalMessage (Data.Binary.Get.getBytes . fromIntegral)) (Data.ByteString.Lazy.fromChunks [bytes])
 
 genAddressText :: Gen Text
 genAddressText = gen where
@@ -615,3 +669,199 @@ instance Arbitrary Type where
 			, liftM2 TypeDictionary atom arbitrary
 			, liftM TypeStructure (listOf1 (halfSized arbitrary))
 			]
+
+instance Arbitrary Atom where
+	arbitrary = oneof
+		[ liftM AtomWord8 arbitrary
+		, liftM AtomWord16 arbitrary
+		, liftM AtomWord32 arbitrary
+		, liftM AtomWord64 arbitrary
+		, liftM AtomInt16 arbitrary
+		, liftM AtomInt32 arbitrary
+		, liftM AtomInt64 arbitrary
+		, liftM AtomBool arbitrary
+		, liftM AtomDouble arbitrary
+		, liftM AtomText arbitrary
+		, liftM AtomObjectPath arbitrary
+		, liftM AtomSignature arbitrary
+		]
+
+instance Arbitrary Value where
+	arbitrary = oneof
+		[ liftM ValueAtom arbitrary
+		, liftM ValueStrictBytes arbitrary
+		, liftM ValueLazyBytes arbitrary
+		
+		-- TODO: proper arbitrary ValueVector
+		, elements
+		  [ toValue (Data.Vector.fromList ([] :: [Word8]))
+		  , toValue (Data.Vector.fromList ([0, 1, 2, 3, 4, 5] :: [Word8]))
+		  , toValue (Data.Vector.fromList ([0, 1, 2, 3, 4, 5] :: [Word16]))
+		  , toValue (Data.Vector.fromList ([0, 1, 2, 3, 4, 5] :: [Word32]))
+		  , toValue (Data.Vector.fromList ([0, 1, 2, 3, 4, 5] :: [Word64]))
+		  , toValue (Data.Vector.fromList (["foo", "bar", "baz"] :: [Text]))
+		  ]
+		
+		-- TODO: proper arbitrary ValueMap
+		, elements
+		  [ toValue (Data.Map.fromList [] :: Map Text Text)
+		  , toValue (Data.Map.fromList [("foo", "bar"), ("baz", "qux")] :: Map Text Text)
+		  ]
+		
+		, liftM ValueStructure (listOf1 (halfSized arbitrary))
+		, liftM ValueVariant arbitrary
+		]
+
+instance Arbitrary Variant where
+	arbitrary = do
+		val <- arbitrary
+		case checkSignature [valueType val] of
+			Just _ -> return (Variant val)
+			Nothing -> halfSized arbitrary
+
+instance Arbitrary Data.Text.Text where
+	arbitrary = liftM Data.Text.pack genUnicode
+
+genUnicode :: Gen [Char]
+genUnicode = string where
+	string = sized $ \n -> do
+		k <- choose (0,n)
+		sequence [ char | _ <- [1..k] ]
+	
+	excluding :: [a -> Bool] -> Gen a -> Gen a
+	excluding bad gen = loop where
+		loop = do
+			x <- gen
+			if or (map ($ x) bad)
+				then loop
+				else return x
+	
+	reserved = [lowSurrogate, highSurrogate, noncharacter]
+	lowSurrogate c = c >= 0xDC00 && c <= 0xDFFF
+	highSurrogate c = c >= 0xD800 && c <= 0xDBFF
+	noncharacter c = masked == 0xFFFE || masked == 0xFFFF where
+		masked = c .&. 0xFFFF
+	
+	ascii = choose (1,0x7F)
+	plane0 = choose (0xF0, 0xFFFF)
+	plane1 = oneof [ choose (0x10000, 0x10FFF)
+	               , choose (0x11000, 0x11FFF)
+	               , choose (0x12000, 0x12FFF)
+	               , choose (0x13000, 0x13FFF)
+	               , choose (0x1D000, 0x1DFFF)
+	               , choose (0x1F000, 0x1FFFF)
+	               ]
+	plane2 = oneof [ choose (0x20000, 0x20FFF)
+	               , choose (0x21000, 0x21FFF)
+	               , choose (0x22000, 0x22FFF)
+	               , choose (0x23000, 0x23FFF)
+	               , choose (0x24000, 0x24FFF)
+	               , choose (0x25000, 0x25FFF)
+	               , choose (0x26000, 0x26FFF)
+	               , choose (0x27000, 0x27FFF)
+	               , choose (0x28000, 0x28FFF)
+	               , choose (0x29000, 0x29FFF)
+	               , choose (0x2A000, 0x2AFFF)
+	               , choose (0x2B000, 0x2BFFF)
+	               , choose (0x2F000, 0x2FFFF)
+	               ]
+	plane14 = choose (0xE0000, 0xE0FFF)
+	planes = [ascii, plane0, plane1, plane2, plane14]
+	
+	char = chr `fmap` excluding reserved (oneof planes)
+
+instance Arbitrary Data.ByteString.ByteString where
+	arbitrary = liftM Data.ByteString.pack arbitrary
+
+instance Arbitrary Data.ByteString.Lazy.ByteString where
+	arbitrary = liftM Data.ByteString.Lazy.fromChunks arbitrary
+
+instance Arbitrary ObjectPath where
+	-- TODO: proper arbitrary generation
+	arbitrary = elements
+		[ objectPath_ "/"
+		, objectPath_ "/foo"
+		, objectPath_ "/foo/bar"
+		]
+
+instance Arbitrary InterfaceName where
+	-- TODO: proper arbitrary generation
+	arbitrary = elements
+		[ interfaceName_ "foo.bar"
+		, interfaceName_ "foo.bar0"
+		]
+
+instance Arbitrary MemberName where
+	-- TODO: proper arbitrary generation
+	arbitrary = elements
+		[ memberName_ "foo"
+		, memberName_ "foo0"
+		]
+
+instance Arbitrary ErrorName where
+	-- TODO: proper arbitrary generation
+	arbitrary = elements
+		[ errorName_ "foo.bar"
+		, errorName_ "foo.bar0"
+		]
+
+instance Arbitrary BusName where
+	-- TODO: proper arbitrary generation
+	arbitrary = elements
+		[ busName_ "foo.bar"
+		, busName_ ":foo.bar"
+		, busName_ ":foo.bar"
+		]
+
+instance (Arbitrary a, Ord a) => Arbitrary (Data.Set.Set a) where
+	arbitrary = liftM Data.Set.fromList arbitrary
+
+instance Arbitrary Signature where
+	arbitrary = liftM signature_ genSignatureText
+
+instance Arbitrary DBus.Wire.Endianness where
+	arbitrary = elements [DBus.Wire.BigEndian, DBus.Wire.LittleEndian]
+
+instance Arbitrary Flag where
+	arbitrary = elements [NoReplyExpected, NoAutoStart]
+
+instance Arbitrary Serial where
+	arbitrary = liftM Serial arbitrary
+
+instance Arbitrary MethodCall where
+	arbitrary = MethodCall
+		<$> arbitrary
+		<*> arbitrary
+		<*> arbitrary
+		<*> arbitrary
+		<*> arbitrary
+		<*> genMessageBody
+
+instance Arbitrary MethodReturn where
+	arbitrary = MethodReturn
+		<$> arbitrary
+		<*> arbitrary
+		<*> genMessageBody
+
+instance Arbitrary Error where
+	arbitrary = Error
+		<$> arbitrary
+		<*> arbitrary
+		<*> arbitrary
+		<*> genMessageBody
+
+instance Arbitrary Signal where
+	arbitrary = Signal
+		<$> arbitrary
+		<*> arbitrary
+		<*> arbitrary
+		<*> arbitrary
+		<*> genMessageBody
+
+genMessageBody :: Gen [Variant]
+genMessageBody = do
+	vars <- arbitrary
+	case checkSignature (map variantType vars) of
+		Just _ -> return vars
+		Nothing -> halfSized genMessageBody
+

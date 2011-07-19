@@ -9,7 +9,7 @@ flag coverage
 
 executable dbus-core_tests
   main-is: Tests.hs
-  ghc-options: -Wall
+  ghc-options: -Wall -fno-warn-orphans
   hs-source-dirs: ../hs,.
 
   if flag(coverage)
