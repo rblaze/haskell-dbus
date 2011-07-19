@@ -203,7 +203,7 @@ data Value
 	| ValueStrictBytes ByteString
 	| ValueLazyBytes Data.ByteString.Lazy.ByteString
 	| ValueVector Type (Vector Value)
-	| ValueMap Type (Map Atom Value)
+	| ValueMap Type Type (Map Atom Value)
 	| ValueStructure [Value]
 	deriving (Eq)
 
@@ -325,7 +325,7 @@ showValue _ (ValueStrictBytes xs) = 'b' : show xs
 showValue _ (ValueLazyBytes xs) = 'b' : show (Data.ByteString.concat (Data.ByteString.Lazy.toChunks xs))
 showValue _ (ValueVector TypeWord8 xs) = 'b' : show (vectorToBytes xs)
 showValue _ (ValueVector _ xs) = showThings "[" (showValue False) "]" (Data.Vector.toList xs)
-showValue _ (ValueMap _ xs) = showThings "{" showPair "}" (Data.Map.toList xs) where
+showValue _ (ValueMap _ _ xs) = showThings "{" showPair "}" (Data.Map.toList xs) where
 	showPair (k, v) = showAtom False k ++ ": " ++ showValue False v
 showValue _ (ValueStructure xs) = showThings "(" (showValue False) ")" xs
 
@@ -392,10 +392,10 @@ variantType (Variant val) = valueType val
 valueType :: Value -> Type
 valueType (ValueAtom x) = atomType x
 valueType (ValueVariant _) = TypeVariant
-valueType (ValueVector t _) = t
+valueType (ValueVector t _) = TypeArray t
 valueType (ValueStrictBytes _) = TypeArray TypeWord8
 valueType (ValueLazyBytes _) = TypeArray TypeWord8
-valueType (ValueMap t _) = t
+valueType (ValueMap kt vt _) = TypeDictionary kt vt
 valueType (ValueStructure vs) = TypeStructure (map valueType vs)
 
 atomType :: Atom -> Type
@@ -1157,15 +1157,15 @@ arrayItems (ArrayLazyBytes bs) = map toVariant (Data.ByteString.Lazy.unpack bs)
 :
 
 :d DBus.Types
-data Dictionary = Dictionary Type (Map Atom Value)
+data Dictionary = Dictionary Type Type (Map Atom Value)
 
 instance IsVariant Dictionary where
-	toVariant (Dictionary t xs) = Variant (ValueMap t xs)
-	fromVariant (Variant (ValueMap t xs)) = Just (Dictionary t xs)
+	toVariant (Dictionary kt vt xs) = Variant (ValueMap kt vt xs)
+	fromVariant (Variant (ValueMap kt vt xs)) = Just (Dictionary kt vt xs)
 	fromVariant _ = Nothing
 
 dictionaryItems :: Dictionary -> [(Variant, Variant)]
-dictionaryItems (Dictionary _ xs) = do
+dictionaryItems (Dictionary _ _ xs) = do
 	(k, v) <- Data.Map.toList xs
 	return (Variant (ValueAtom k), Variant v)
 :

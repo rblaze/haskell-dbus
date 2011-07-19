@@ -176,7 +176,7 @@ instance IsValue Variant where
 :d DBus.Types
 instance IsValue a => IsValue (Vector a) where
 	typeOf v = TypeArray (typeOf (undefined `asTypeOf` Data.Vector.head v))
-	toValue as = ValueVector (typeOf as) (Data.Vector.map toValue as)
+	toValue as = ValueVector (typeOf (undefined `asTypeOf` Data.Vector.head as)) (Data.Vector.map toValue as)
 	fromValue (ValueVector _ v) = Data.Vector.mapM fromValue v
 	fromValue _ = Nothing
 
@@ -212,10 +212,16 @@ instance (Ord k, IsAtom k, IsValue v) => IsValue (Map k v) where
 		mapTypes :: Map k v -> (k, v)
 		mapTypes _ = (undefined, undefined)
 	
-	toValue m = ValueMap (typeOf m) (Data.Map.fromList (map box (Data.Map.toList m))) where
-		box (k, v) = (toAtom k, toValue v)
+	toValue m = ValueMap (typeOf k) (typeOf v) (Data.Map.fromList (map box (Data.Map.toList m))) where
+		box (k', v') = (toAtom k', toValue v')
+		
+		(k, v) = mapTypes m
+		
+		mapTypes :: Map k v -> (k, v)
+		mapTypes _ = (undefined, undefined)
 	
-	fromValue (ValueMap _ m) = fmap Data.Map.fromList (mapM unbox (Data.Map.toList m)) where
+	
+	fromValue (ValueMap _ _ m) = fmap Data.Map.fromList (mapM unbox (Data.Map.toList m)) where
 		unbox (k, v) = do
 			k' <- fromAtom k
 			v' <- fromValue v

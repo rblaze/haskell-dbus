@@ -195,7 +195,7 @@ marshal (ValueAtom x) = marshalAtom x
 marshal (ValueStrictBytes xs) = marshalStrictBytes xs
 marshal (ValueLazyBytes xs) = marshalLazyBytes xs
 marshal (ValueVector t xs) = marshalVector t xs
-marshal (ValueMap t xs) = marshalMap t xs
+marshal (ValueMap kt vt xs) = marshalMap kt vt xs
 marshal (ValueStructure xs) = marshalStructure xs
 marshal (ValueVariant x) = marshalVariant x
 :
@@ -698,9 +698,8 @@ arrayToDictionary = Data.Map.fromList . map step . Data.Vector.toList where
 :
 
 :d DBus.Wire
-marshalMap :: Type -> Map Atom Value -> Marshal ()
-marshalMap t x = let
-	TypeDictionary kt vt = t
+marshalMap :: Type -> Type -> Map Atom Value -> Marshal ()
+marshalMap kt vt x = let
 	structType = TypeStructure [kt, vt]
 	array = dictionaryToArray x
 	in marshalVector structType array
@@ -711,7 +710,7 @@ unmarshalDictionary :: Type -> Type -> Unmarshal Value
 unmarshalDictionary kt vt = do
 	let pairType = TypeStructure [kt, vt]
 	array <- unmarshalArray pairType
-	return (ValueMap (TypeDictionary kt vt) (arrayToDictionary array))
+	return (ValueMap kt vt (arrayToDictionary array))
 :
 
 \clearpage
