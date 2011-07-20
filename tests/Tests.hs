@@ -44,7 +44,7 @@ import           Data.Word (Word8, Word16, Word32, Word64)
 import           Data.Int (Int16, Int32, Int64)
 import           Data.Map (Map)
 import qualified Data.Map
-import           Data.Maybe (isJust, isNothing, fromJust)
+import           Data.Maybe (isJust, fromJust)
 import qualified Data.Set
 import           Data.String (IsString, fromString)
 import qualified Data.Vector
@@ -495,19 +495,19 @@ test_Wire = testGroup "wire"
 	, testGroup "message-passthrough"
 	  [ testProperty "method-call" (forAll (arbitrary :: Gen MethodCall) (\msg e s ->
 	    	let Right bytes = marshalMessage e msg s in
-	    	let Right received = unmarshalMessage e bytes in
+	    	let Right received = unmarshalMessage bytes in
 	    	ReceivedMethodCall s Nothing msg == received))
 	  , testProperty "method-return" (forAll (arbitrary :: Gen MethodReturn) (\msg e s ->
 	    	let Right bytes = marshalMessage e msg s in
-	    	let Right received = unmarshalMessage e bytes in
+	    	let Right received = unmarshalMessage bytes in
 	    	ReceivedMethodReturn s Nothing msg == received))
 	  , testProperty "error" (forAll (arbitrary :: Gen Error) (\msg e s ->
 	    	let Right bytes = marshalMessage e msg s in
-	    	let Right received = unmarshalMessage e bytes in
+	    	let Right received = unmarshalMessage bytes in
 	    	ReceivedError s Nothing msg == received))
 	  , testProperty "signal" (forAll (arbitrary :: Gen Signal) (\msg e s ->
 	    	let Right bytes = marshalMessage e msg s in
-	    	let Right received = unmarshalMessage e bytes in
+	    	let Right received = unmarshalMessage bytes in
 	    	ReceivedSignal s Nothing msg == received))
 	  ]
 	]
@@ -540,8 +540,8 @@ marshalMessage e msg s = case DBus.Wire.marshalMessage e s msg of
 	Right lazy -> Right (Data.ByteString.concat (Data.ByteString.Lazy.toChunks lazy))
 	Left err -> Left err
 
-unmarshalMessage :: DBus.Wire.Endianness -> ByteString -> Either DBus.Wire.UnmarshalError ReceivedMessage
-unmarshalMessage e bytes = Data.Binary.Get.runGet (DBus.Wire.unmarshalMessage (Data.Binary.Get.getBytes . fromIntegral)) (Data.ByteString.Lazy.fromChunks [bytes])
+unmarshalMessage :: ByteString -> Either DBus.Wire.UnmarshalError ReceivedMessage
+unmarshalMessage bytes = Data.Binary.Get.runGet (DBus.Wire.unmarshalMessage (Data.Binary.Get.getBytes . fromIntegral)) (Data.ByteString.Lazy.fromChunks [bytes])
 
 genAddressText :: Gen Text
 genAddressText = gen where
@@ -575,23 +575,23 @@ genHex = elements (['0'..'9'] ++ ['a'..'f'] ++ ['A'..'F'])
 
 genSignatureText :: Gen Text
 genSignatureText = gen where
-	any = oneof [atom, container]
+	anyType = oneof [atom, container]
 	atom = elements ["b", "y", "q", "u", "t", "n", "i", "x", "d", "s", "o", "g"]
 	container = oneof
 		[ return "v"
 		, do
-		  	t <- any
+		  	t <- anyType
 		  	return ('a' : t)
 		, do
 		  	kt <- atom
-		  	vt <- any
+		  	vt <- anyType
 		  	return (concat ["a{", kt, vt, "}"])
 		, do
-		  	ts <- listOf1 (halfSized any)
+		  	ts <- listOf1 (halfSized anyType)
 		  	return (concat (["("] ++ ts ++ [")"]))
 		]
 	gen = do
-		chars <- fmap concat (listOf any)
+		chars <- fmap concat (listOf anyType)
 		if length chars > 255
 			then halfSized gen
 			else return (T.pack chars)
