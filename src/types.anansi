@@ -645,6 +645,225 @@ atomType (AtomObjectPath _) = TypeObjectPath
 :
 
 \clearpage
+\subsubsection*{Generic value boxing (continued)}
+
+\begin{multicols}{2}
+
+Since atoms are stored directly in the {\tt Atom} box, there is no fancy
+logic required in their class instances. They're still pretty verbose, so
+I used a small macro to keep things reasonable.
+
+\vfill
+\columnbreak
+
+:d DBus.Types
+#define IS_ATOM(HsType, AtomCons, TypeCons) \
+	instance IsAtom HsType where \
+	{ toAtom = AtomCons \
+	; fromAtom (AtomCons x) = Just x \
+	; fromAtom _ = Nothing \
+	}; \
+	instance IsValue HsType where \
+	{ typeOf _ = TypeCons \
+	; toValue = ValueAtom . toAtom \
+	; fromValue (ValueAtom x) = fromAtom x \
+	; fromValue _ = Nothing \
+	}; \
+	instance IsVariant HsType where \
+	{ toVariant = Variant . toValue \
+	; fromVariant (Variant val) = fromValue val \
+	}
+
+IS_ATOM(Bool,       AtomBool,       TypeBoolean)
+IS_ATOM(Word8,      AtomWord8,      TypeWord8)
+IS_ATOM(Word16,     AtomWord16,     TypeWord16)
+IS_ATOM(Word32,     AtomWord32,     TypeWord32)
+IS_ATOM(Word64,     AtomWord64,     TypeWord64)
+IS_ATOM(Int16,      AtomInt16,      TypeInt16)
+IS_ATOM(Int32,      AtomInt32,      TypeInt32)
+IS_ATOM(Int64,      AtomInt64,      TypeInt64)
+IS_ATOM(Double,     AtomDouble,     TypeDouble)
+IS_ATOM(Text,       AtomText,       TypeString)
+IS_ATOM(Signature,  AtomSignature,  TypeSignature)
+IS_ATOM(ObjectPath, AtomObjectPath, TypeObjectPath)
+:
+
+\end{multicols}
+
+\begin{multicols}{2}
+
+~
+
+\vfill
+\columnbreak
+
+:d DBus.Types
+instance IsValue Variant where
+	typeOf _ = TypeVariant
+	toValue = ValueVariant
+	fromValue (ValueVariant x) = Just x
+	fromValue _ = Nothing
+
+instance IsVariant Variant where
+	toVariant = Variant . toValue
+	fromVariant (Variant val) = fromValue val
+:
+
+\end{multicols}
+
+\clearpage
+\subsubsection*{Generic value boxing (continued)}
+
+:d DBus.Types
+instance IsAtom Data.Text.Lazy.Text where
+	toAtom = toAtom . Data.Text.Lazy.toStrict
+	fromAtom = fmap Data.Text.Lazy.fromStrict . fromAtom
+
+instance IsValue Data.Text.Lazy.Text where
+	typeOf _ = TypeString
+	toValue = ValueAtom . toAtom
+	fromValue (ValueAtom x) = fromAtom x
+	fromValue _ = Nothing
+
+instance IsVariant Data.Text.Lazy.Text where
+	toVariant = Variant . toValue
+	fromVariant (Variant val) = fromValue val
+:
+
+\clearpage
+\subsubsection*{Generic value boxing (continued)}
+
+Arrays are stored as a {\tt Vector Value}; this is somewhat inefficient,
+but allows type-safe casting between different array representations.
+
+:d DBus.Types
+instance IsValue a => IsValue (Vector a) where
+	typeOf v = TypeArray (vectorItemType v)
+	toValue v = ValueVector (vectorItemType v) (Data.Vector.map toValue v)
+	fromValue (ValueVector _ v) = Data.Vector.mapM fromValue v
+	fromValue _ = Nothing
+
+vectorItemType :: IsValue a => Vector a -> Type
+vectorItemType v = typeOf (undefined `asTypeOf` Data.Vector.head v)
+
+instance IsValue a => IsVariant (Vector a) where
+	toVariant = Variant . toValue
+	fromVariant (Variant val) = fromValue val
+:
+
+:d DBus.Types
+instance IsValue a => IsValue [a] where
+	typeOf v = TypeArray (typeOf (undefined `asTypeOf` head v))
+	toValue = toValue . Data.Vector.fromList
+	fromValue = fmap Data.Vector.toList . fromValue
+
+instance IsValue a => IsVariant [a] where
+	toVariant = toVariant . Data.Vector.fromList
+	fromVariant = fmap Data.Vector.toList . fromVariant
+:
+
+As an optimization, arrays of bytes are treated specially -- they can be
+converted to/from packed bytestrings.
+
+:d DBus.Types
+instance IsValue ByteString where
+	typeOf _ = TypeArray TypeWord8
+	toValue = ValueBytes
+	fromValue (ValueBytes bs) = Just bs
+	fromValue (ValueVector TypeWord8 v) = Just (vectorToBytes v)
+	fromValue _ = Nothing
+
+instance IsVariant ByteString where
+	toVariant = Variant . toValue
+	fromVariant (Variant val) = fromValue val
+:
+
+:d DBus.Types
+instance IsValue Data.ByteString.Lazy.ByteString where
+	typeOf _ = TypeArray TypeWord8
+	toValue = toValue
+	        . Data.ByteString.concat 
+	        . Data.ByteString.Lazy.toChunks
+	fromValue = fmap (\bs -> Data.ByteString.Lazy.fromChunks [bs])
+	          . fromValue
+
+instance IsVariant Data.ByteString.Lazy.ByteString where
+	toVariant = Variant . toValue
+	fromVariant (Variant val) = fromValue val
+:
+
+\clearpage
+\subsubsection*{Generic value boxing (continued)}
+
+:d DBus.Types
+instance (Ord k, IsAtom k, IsValue v) => IsValue (Map k v) where
+	typeOf m = TypeDictionary kt vt where
+		(kt, vt) = mapItemType m
+	
+	toValue m = ValueMap kt vt (bimap box m) where
+		(kt, vt) = mapItemType m
+		box k v = (toAtom k, toValue v)
+	
+	fromValue (ValueMap _ _ m) = bimapM unbox m where
+		unbox k v = do
+			k' <- fromAtom k
+			v' <- fromValue v
+			return (k', v')
+	fromValue _ = Nothing
+
+bimap :: Ord k' => (k -> v -> (k', v')) -> Map k v -> Map k' v'
+bimap f = Data.Map.fromList . map (\(k, v) -> f k v) . Data.Map.toList
+
+bimapM :: (Monad m, Ord k') => (k -> v -> m (k', v')) -> Map k v -> m (Map k' v')
+bimapM f = liftM Data.Map.fromList . mapM (\(k, v) -> f k v) . Data.Map.toList
+
+mapItemType :: (IsValue k, IsValue v) => Map k v -> (Type, Type)
+mapItemType m = (typeOf k, typeOf v) where
+	mapItem :: Map k v -> (k, v)
+	mapItem _ = (undefined, undefined)
+	(k, v) = mapItem m
+
+instance (Ord k, IsAtom k, IsValue v) => IsVariant (Map k v) where
+	toVariant = Variant . toValue
+	fromVariant (Variant val) = fromValue val
+:
+
+\clearpage
+\subsubsection*{Generic value boxing (continued)}
+
+\dbus{}'s structures are essentially the same as Haskell's tuples, except they
+can contain up to 255 items. There's no way I'm going to define 255 instances
+for {\tt IsValue} and {\tt IsVariant}; other classes (such as {\tt Show}) only
+go up to 15 or so, so that's how far {\tt dbus-core} goes too.
+
+I'm also not going to include all the instance declarations inline in this
+document, since they're all essentially the same. Here's the instances for
+two-element tuples, as a template.
+
+:d DBus.Types
+instance (IsValue a1, IsValue a2) => IsValue (a1, a2) where
+	typeOf ~(a1, a2) = TypeStructure [typeOf a1, typeOf a2]
+	toValue (a1, a2) = ValueStructure [toValue a1, toValue a2]
+	fromValue (ValueStructure [a1, a2]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		return (a1', a2')
+	fromValue _ = Nothing
+
+instance (IsVariant a1, IsVariant a2) => IsVariant (a1, a2) where
+	toVariant (a1, a2) = Variant (ValueStructure [varToVal a1, varToVal a2])
+	fromVariant (Variant (ValueStructure [a1, a2])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		return (a1', a2')
+	fromVariant _ = Nothing
+
+varToVal :: IsVariant a => a -> Value
+varToVal a = case toVariant a of
+	Variant val -> val
+:
+
+\clearpage
 \subsection{Special string types}
 
 Various aspects of \dbus{} require the use of specially-formatted strings. Every
@@ -716,20 +935,6 @@ objectPath_ = tryParse "object path" objectPath
 
 instance Data.String.IsString ObjectPath where
 	fromString = objectPath_ . Data.Text.pack
-
-instance IsAtom ObjectPath where
-	toAtom = AtomObjectPath
-	fromAtom (AtomObjectPath x) = Just x
-	fromAtom _ = Nothing
-
-instance IsValue ObjectPath where
-	typeOf _ = TypeObjectPath
-	toValue = atomToValue
-	fromValue = atomFromValue
-
-instance IsVariant ObjectPath where
-	toVariant = Variant . toValue
-	fromVariant (Variant val) = fromValue val
 :
 
 \end{multicols}
@@ -812,7 +1017,7 @@ instance Data.String.IsString InterfaceName where
 
 instance IsVariant InterfaceName where
 	toVariant = toVariant . interfaceNameText
-	fromVariant v = fromVariant v >>= interfaceName
+	fromVariant = fromVariant >=> interfaceName
 :
 
 \end{multicols}
@@ -878,7 +1083,7 @@ instance Data.String.IsString MemberName where
 
 instance IsVariant MemberName where
 	toVariant = toVariant . memberNameText
-	fromVariant v = fromVariant v >>= memberName
+	fromVariant = fromVariant >=> memberName
 :
 
 \end{multicols}
@@ -942,7 +1147,7 @@ instance Data.String.IsString ErrorName where
 
 instance IsVariant ErrorName where
 	toVariant = toVariant . errorNameText
-	fromVariant v = fromVariant v >>= errorName
+	fromVariant = fromVariant >=> errorName
 :
 
 \end{multicols}
@@ -987,7 +1192,7 @@ instance Data.String.IsString BusName where
 
 instance IsVariant BusName where
 	toVariant = toVariant . busNameText
-	fromVariant v = fromVariant v >>= busName
+	fromVariant = fromVariant >=> busName
 :
 
 \end{multicols}
@@ -1095,3 +1300,416 @@ dictionaryItems (Dictionary _ _ xs) = do
 	(k, v) <- Data.Map.toList xs
 	return (Variant (ValueAtom k), Variant v)
 :
+
+\begin{comment}
+\clearpage
+\subsection{Boring type instances}
+
+:d DBus.Types
+instance (IsValue a1, IsValue a2, IsValue a3) => IsValue (a1, a2, a3) where
+	typeOf ~(a1, a2, a3) = TypeStructure [typeOf a1, typeOf a2, typeOf a3]
+	toValue (a1, a2, a3) = ValueStructure [toValue a1, toValue a2, toValue a3]
+	fromValue (ValueStructure [a1, a2, a3]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		return (a1', a2', a3')
+	fromValue _ = Nothing
+
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4) => IsValue (a1, a2, a3, a4) where
+	typeOf ~(a1, a2, a3, a4) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4]
+	toValue (a1, a2, a3, a4) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4]
+	fromValue (ValueStructure [a1, a2, a3, a4]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		return (a1', a2', a3', a4')
+	fromValue _ = Nothing
+
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5) => IsValue (a1, a2, a3, a4, a5) where
+	typeOf ~(a1, a2, a3, a4, a5) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4, typeOf a5]
+	toValue (a1, a2, a3, a4, a5) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5]
+	fromValue (ValueStructure [a1, a2, a3, a4, a5]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		a5' <- fromValue a5
+		return (a1', a2', a3', a4', a5')
+	fromValue _ = Nothing
+
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6) => IsValue (a1, a2, a3, a4, a5, a6) where
+	typeOf ~(a1, a2, a3, a4, a5, a6) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4, typeOf a5, typeOf a6]
+	toValue (a1, a2, a3, a4, a5, a6) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6]
+	fromValue (ValueStructure [a1, a2, a3, a4, a5, a6]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		a5' <- fromValue a5
+		a6' <- fromValue a6
+		return (a1', a2', a3', a4', a5', a6')
+	fromValue _ = Nothing
+
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7) => IsValue (a1, a2, a3, a4, a5, a6, a7) where
+	typeOf ~(a1, a2, a3, a4, a5, a6, a7) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4, typeOf a5, typeOf a6, typeOf a7]
+	toValue (a1, a2, a3, a4, a5, a6, a7) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7]
+	fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		a5' <- fromValue a5
+		a6' <- fromValue a6
+		a7' <- fromValue a7
+		return (a1', a2', a3', a4', a5', a6', a7')
+	fromValue _ = Nothing
+
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8) where
+	typeOf ~(a1, a2, a3, a4, a5, a6, a7, a8) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4, typeOf a5, typeOf a6, typeOf a7, typeOf a8]
+	toValue (a1, a2, a3, a4, a5, a6, a7, a8) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8]
+	fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		a5' <- fromValue a5
+		a6' <- fromValue a6
+		a7' <- fromValue a7
+		a8' <- fromValue a8
+		return (a1', a2', a3', a4', a5', a6', a7', a8')
+	fromValue _ = Nothing
+
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8, IsValue a9) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8, a9) where
+	typeOf ~(a1, a2, a3, a4, a5, a6, a7, a8, a9) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4, typeOf a5, typeOf a6, typeOf a7, typeOf a8, typeOf a9]
+	toValue (a1, a2, a3, a4, a5, a6, a7, a8, a9) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8, toValue a9]
+	fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		a5' <- fromValue a5
+		a6' <- fromValue a6
+		a7' <- fromValue a7
+		a8' <- fromValue a8
+		a9' <- fromValue a9
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9')
+	fromValue _ = Nothing
+
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8, IsValue a9, IsValue a10) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) where
+	typeOf ~(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4, typeOf a5, typeOf a6, typeOf a7, typeOf a8, typeOf a9, typeOf a10]
+	toValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8, toValue a9, toValue a10]
+	fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		a5' <- fromValue a5
+		a6' <- fromValue a6
+		a7' <- fromValue a7
+		a8' <- fromValue a8
+		a9' <- fromValue a9
+		a10' <- fromValue a10
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10')
+	fromValue _ = Nothing
+
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8, IsValue a9, IsValue a10, IsValue a11) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) where
+	typeOf ~(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4, typeOf a5, typeOf a6, typeOf a7, typeOf a8, typeOf a9, typeOf a10, typeOf a11]
+	toValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8, toValue a9, toValue a10, toValue a11]
+	fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		a5' <- fromValue a5
+		a6' <- fromValue a6
+		a7' <- fromValue a7
+		a8' <- fromValue a8
+		a9' <- fromValue a9
+		a10' <- fromValue a10
+		a11' <- fromValue a11
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10', a11')
+	fromValue _ = Nothing
+
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8, IsValue a9, IsValue a10, IsValue a11, IsValue a12) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) where
+	typeOf ~(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4, typeOf a5, typeOf a6, typeOf a7, typeOf a8, typeOf a9, typeOf a10, typeOf a11, typeOf a12]
+	toValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8, toValue a9, toValue a10, toValue a11, toValue a12]
+	fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		a5' <- fromValue a5
+		a6' <- fromValue a6
+		a7' <- fromValue a7
+		a8' <- fromValue a8
+		a9' <- fromValue a9
+		a10' <- fromValue a10
+		a11' <- fromValue a11
+		a12' <- fromValue a12
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10', a11', a12')
+	fromValue _ = Nothing
+
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8, IsValue a9, IsValue a10, IsValue a11, IsValue a12, IsValue a13) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) where
+	typeOf ~(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4, typeOf a5, typeOf a6, typeOf a7, typeOf a8, typeOf a9, typeOf a10, typeOf a11, typeOf a12, typeOf a13]
+	toValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8, toValue a9, toValue a10, toValue a11, toValue a12, toValue a13]
+	fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		a5' <- fromValue a5
+		a6' <- fromValue a6
+		a7' <- fromValue a7
+		a8' <- fromValue a8
+		a9' <- fromValue a9
+		a10' <- fromValue a10
+		a11' <- fromValue a11
+		a12' <- fromValue a12
+		a13' <- fromValue a13
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10', a11', a12', a13')
+	fromValue _ = Nothing
+
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8, IsValue a9, IsValue a10, IsValue a11, IsValue a12, IsValue a13, IsValue a14) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14) where
+	typeOf ~(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4, typeOf a5, typeOf a6, typeOf a7, typeOf a8, typeOf a9, typeOf a10, typeOf a11, typeOf a12, typeOf a13, typeOf a14]
+	toValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8, toValue a9, toValue a10, toValue a11, toValue a12, toValue a13, toValue a14]
+	fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		a5' <- fromValue a5
+		a6' <- fromValue a6
+		a7' <- fromValue a7
+		a8' <- fromValue a8
+		a9' <- fromValue a9
+		a10' <- fromValue a10
+		a11' <- fromValue a11
+		a12' <- fromValue a12
+		a13' <- fromValue a13
+		a14' <- fromValue a14
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10', a11', a12', a13', a14')
+	fromValue _ = Nothing
+
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8, IsValue a9, IsValue a10, IsValue a11, IsValue a12, IsValue a13, IsValue a14, IsValue a15) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15) where
+	typeOf ~(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4, typeOf a5, typeOf a6, typeOf a7, typeOf a8, typeOf a9, typeOf a10, typeOf a11, typeOf a12, typeOf a13, typeOf a14, typeOf a15]
+	toValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8, toValue a9, toValue a10, toValue a11, toValue a12, toValue a13, toValue a14, toValue a15]
+	fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		a5' <- fromValue a5
+		a6' <- fromValue a6
+		a7' <- fromValue a7
+		a8' <- fromValue a8
+		a9' <- fromValue a9
+		a10' <- fromValue a10
+		a11' <- fromValue a11
+		a12' <- fromValue a12
+		a13' <- fromValue a13
+		a14' <- fromValue a14
+		a15' <- fromValue a15
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10', a11', a12', a13', a14', a15')
+	fromValue _ = Nothing
+:
+
+:d DBus.Types
+instance (IsVariant a1, IsVariant a2, IsVariant a3) => IsVariant (a1, a2, a3) where
+	toVariant (a1, a2, a3) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3])
+	fromVariant (Variant (ValueStructure [a1, a2, a3])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		return (a1', a2', a3')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4) => IsVariant (a1, a2, a3, a4) where
+	toVariant (a1, a2, a3, a4) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		return (a1', a2', a3', a4')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5) => IsVariant (a1, a2, a3, a4, a5) where
+	toVariant (a1, a2, a3, a4, a5) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4, varToVal a5])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4, a5])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		a5' <- (fromVariant . Variant) a5
+		return (a1', a2', a3', a4', a5')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, IsVariant a6) => IsVariant (a1, a2, a3, a4, a5, a6) where
+	toVariant (a1, a2, a3, a4, a5, a6) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4, varToVal a5, varToVal a6])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4, a5, a6])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		a5' <- (fromVariant . Variant) a5
+		a6' <- (fromVariant . Variant) a6
+		return (a1', a2', a3', a4', a5', a6')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, IsVariant a6, IsVariant a7) => IsVariant (a1, a2, a3, a4, a5, a6, a7) where
+	toVariant (a1, a2, a3, a4, a5, a6, a7) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4, varToVal a5, varToVal a6, varToVal a7])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4, a5, a6, a7])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		a5' <- (fromVariant . Variant) a5
+		a6' <- (fromVariant . Variant) a6
+		a7' <- (fromVariant . Variant) a7
+		return (a1', a2', a3', a4', a5', a6', a7')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, IsVariant a6, IsVariant a7, IsVariant a8) => IsVariant (a1, a2, a3, a4, a5, a6, a7, a8) where
+	toVariant (a1, a2, a3, a4, a5, a6, a7, a8) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4, varToVal a5, varToVal a6, varToVal a7, varToVal a8])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		a5' <- (fromVariant . Variant) a5
+		a6' <- (fromVariant . Variant) a6
+		a7' <- (fromVariant . Variant) a7
+		a8' <- (fromVariant . Variant) a8
+		return (a1', a2', a3', a4', a5', a6', a7', a8')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, IsVariant a6, IsVariant a7, IsVariant a8, IsVariant a9) => IsVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9) where
+	toVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4, varToVal a5, varToVal a6, varToVal a7, varToVal a8, varToVal a9])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		a5' <- (fromVariant . Variant) a5
+		a6' <- (fromVariant . Variant) a6
+		a7' <- (fromVariant . Variant) a7
+		a8' <- (fromVariant . Variant) a8
+		a9' <- (fromVariant . Variant) a9
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, IsVariant a6, IsVariant a7, IsVariant a8, IsVariant a9, IsVariant a10) => IsVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) where
+	toVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4, varToVal a5, varToVal a6, varToVal a7, varToVal a8, varToVal a9, varToVal a10])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		a5' <- (fromVariant . Variant) a5
+		a6' <- (fromVariant . Variant) a6
+		a7' <- (fromVariant . Variant) a7
+		a8' <- (fromVariant . Variant) a8
+		a9' <- (fromVariant . Variant) a9
+		a10' <- (fromVariant . Variant) a10
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, IsVariant a6, IsVariant a7, IsVariant a8, IsVariant a9, IsVariant a10, IsVariant a11) => IsVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) where
+	toVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4, varToVal a5, varToVal a6, varToVal a7, varToVal a8, varToVal a9, varToVal a10, varToVal a11])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		a5' <- (fromVariant . Variant) a5
+		a6' <- (fromVariant . Variant) a6
+		a7' <- (fromVariant . Variant) a7
+		a8' <- (fromVariant . Variant) a8
+		a9' <- (fromVariant . Variant) a9
+		a10' <- (fromVariant . Variant) a10
+		a11' <- (fromVariant . Variant) a11
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10', a11')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, IsVariant a6, IsVariant a7, IsVariant a8, IsVariant a9, IsVariant a10, IsVariant a11, IsVariant a12) => IsVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) where
+	toVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4, varToVal a5, varToVal a6, varToVal a7, varToVal a8, varToVal a9, varToVal a10, varToVal a11, varToVal a12])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		a5' <- (fromVariant . Variant) a5
+		a6' <- (fromVariant . Variant) a6
+		a7' <- (fromVariant . Variant) a7
+		a8' <- (fromVariant . Variant) a8
+		a9' <- (fromVariant . Variant) a9
+		a10' <- (fromVariant . Variant) a10
+		a11' <- (fromVariant . Variant) a11
+		a12' <- (fromVariant . Variant) a12
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10', a11', a12')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, IsVariant a6, IsVariant a7, IsVariant a8, IsVariant a9, IsVariant a10, IsVariant a11, IsVariant a12, IsVariant a13) => IsVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) where
+	toVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4, varToVal a5, varToVal a6, varToVal a7, varToVal a8, varToVal a9, varToVal a10, varToVal a11, varToVal a12, varToVal a13])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		a5' <- (fromVariant . Variant) a5
+		a6' <- (fromVariant . Variant) a6
+		a7' <- (fromVariant . Variant) a7
+		a8' <- (fromVariant . Variant) a8
+		a9' <- (fromVariant . Variant) a9
+		a10' <- (fromVariant . Variant) a10
+		a11' <- (fromVariant . Variant) a11
+		a12' <- (fromVariant . Variant) a12
+		a13' <- (fromVariant . Variant) a13
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10', a11', a12', a13')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, IsVariant a6, IsVariant a7, IsVariant a8, IsVariant a9, IsVariant a10, IsVariant a11, IsVariant a12, IsVariant a13, IsVariant a14) => IsVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14) where
+	toVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4, varToVal a5, varToVal a6, varToVal a7, varToVal a8, varToVal a9, varToVal a10, varToVal a11, varToVal a12, varToVal a13, varToVal a14])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		a5' <- (fromVariant . Variant) a5
+		a6' <- (fromVariant . Variant) a6
+		a7' <- (fromVariant . Variant) a7
+		a8' <- (fromVariant . Variant) a8
+		a9' <- (fromVariant . Variant) a9
+		a10' <- (fromVariant . Variant) a10
+		a11' <- (fromVariant . Variant) a11
+		a12' <- (fromVariant . Variant) a12
+		a13' <- (fromVariant . Variant) a13
+		a14' <- (fromVariant . Variant) a14
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10', a11', a12', a13', a14')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, IsVariant a6, IsVariant a7, IsVariant a8, IsVariant a9, IsVariant a10, IsVariant a11, IsVariant a12, IsVariant a13, IsVariant a14, IsVariant a15) => IsVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15) where
+	toVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4, varToVal a5, varToVal a6, varToVal a7, varToVal a8, varToVal a9, varToVal a10, varToVal a11, varToVal a12, varToVal a13, varToVal a14, varToVal a15])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		a5' <- (fromVariant . Variant) a5
+		a6' <- (fromVariant . Variant) a6
+		a7' <- (fromVariant . Variant) a7
+		a8' <- (fromVariant . Variant) a8
+		a9' <- (fromVariant . Variant) a9
+		a10' <- (fromVariant . Variant) a10
+		a11' <- (fromVariant . Variant) a11
+		a12' <- (fromVariant . Variant) a12
+		a13' <- (fromVariant . Variant) a13
+		a14' <- (fromVariant . Variant) a14
+		a15' <- (fromVariant . Variant) a15
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10', a11', a12', a13', a14', a15')
+	fromVariant _ = Nothing
+:
+
+\end{comment}

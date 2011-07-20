@@ -74,9 +74,10 @@ typeOf = DBus.Types.Internal.typeOf
 :
 
 :f DBus/Types/Internal.hs
+{-# LANGUAGE CPP #-}
 |copyright|
 module DBus.Types.Internal where
-import           Control.Monad (when)
+import           Control.Monad (liftM, when, (>=>))
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString
 import qualified Data.ByteString.Char8

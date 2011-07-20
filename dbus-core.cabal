@@ -43,7 +43,6 @@ extra-source-files:
   src/messages.anansi
   src/module-headers.anansi
   src/summary.anansi
-  src/type-instances.anansi
   src/types.anansi
   src/utilities.anansi
   src/wire.anansi

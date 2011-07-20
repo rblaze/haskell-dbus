@@ -105,7 +105,6 @@
 \newpage
 \appendix
 :i module-headers.anansi
-:i type-instances.anansi
 :i constants.anansi
 
 % exclude API docs from LaTeX output, since they're generally uninteresting
