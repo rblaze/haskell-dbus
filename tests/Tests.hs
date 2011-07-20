@@ -59,7 +59,7 @@ import           DBus.Types
 import           DBus.Types.Internal
 import qualified DBus.Wire
 import qualified DBus.Wire.Internal
-import           DBus.Introspection ()
+import qualified DBus.Introspection
 
 tests :: Test
 tests = testGroup "tests"
@@ -74,6 +74,7 @@ tests = testGroup "tests"
 	, test_ErrorName
 	, test_BusName
 	, test_Wire
+	, test_Introspection
 	]
 
 main :: IO ()
@@ -514,6 +515,14 @@ test_Wire = testGroup "wire"
 	  ]
 	]
 
+test_Introspection :: Test
+test_Introspection = testGroup "introspection"
+	[ testProperty "xml-passthrough" (\obj ->
+	  	let (DBus.Introspection.Object path _ _) = obj in
+	  	let Just xml = DBus.Introspection.toXML obj in
+	  	DBus.Introspection.fromXML path xml == Just obj)
+	]
+
 prop_ValuePassthrough :: Value -> DBus.Wire.Endianness -> Bool
 prop_ValuePassthrough v e = unmarshaled == v where
 	Right bytes = marshal e v
@@ -742,7 +751,7 @@ genUnicode = string where
 	noncharacter c = masked == 0xFFFE || masked == 0xFFFF where
 		masked = c .&. 0xFFFF
 	
-	ascii = choose (1,0x7F)
+	ascii = choose (0x20, 0x7F)
 	plane0 = choose (0xF0, 0xFFFF)
 	plane1 = oneof [ choose (0x10000, 0x10FFF)
 	               , choose (0x11000, 0x11FFF)
@@ -865,3 +874,64 @@ genMessageBody = do
 		Just _ -> return vars
 		Nothing -> halfSized genMessageBody
 
+instance Arbitrary DBus.Introspection.Object where
+	arbitrary = arbitrary >>= subObject
+
+subObject :: ObjectPath -> Gen DBus.Introspection.Object
+subObject parentPath = sized $ \n -> resize (min n 4) $ do
+	let nonRoot = do
+		x <- arbitrary
+		case objectPathText x of
+			"/" -> nonRoot
+			x'  -> return x'
+	
+	thisPath <- nonRoot
+	let path' = case objectPathText parentPath of
+		"/" -> thisPath
+		x   -> Data.Text.append x thisPath
+	let path = objectPath_ path'
+	ifaces <- arbitrary
+	children <- halfSized (listOf (subObject path))
+	return (DBus.Introspection.Object path ifaces children)
+
+instance Arbitrary DBus.Introspection.Interface where
+	arbitrary = DBus.Introspection.Interface
+		<$> arbitrary
+		<*> arbitrary
+		<*> arbitrary
+		<*> arbitrary
+
+instance Arbitrary DBus.Introspection.Method where
+	arbitrary = DBus.Introspection.Method
+		<$> arbitrary
+		<*> arbitrary
+		<*> arbitrary
+
+instance Arbitrary DBus.Introspection.Signal where
+	arbitrary = DBus.Introspection.Signal
+		<$> arbitrary
+		<*> arbitrary
+
+instance Arbitrary DBus.Introspection.Parameter where
+	arbitrary = DBus.Introspection.Parameter
+		<$> arbitrary
+		<*> singleType
+
+instance Arbitrary DBus.Introspection.Property where
+	arbitrary = DBus.Introspection.Property
+		<$> arbitrary
+		<*> singleType
+		<*> elements
+			[ []
+			, [ DBus.Introspection.Read ]
+			, [ DBus.Introspection.Write ]
+			, [ DBus.Introspection.Read
+			  , DBus.Introspection.Write ]
+			]
+
+singleType :: Gen Signature
+singleType = do
+	t <- arbitrary
+	case checkSignature [t] of
+		Just s -> return s
+		Nothing -> halfSized singleType
