@@ -192,8 +192,7 @@ TODO
 :d DBus.Wire
 marshal :: Value -> Marshal ()
 marshal (ValueAtom x) = marshalAtom x
-marshal (ValueStrictBytes xs) = marshalStrictBytes xs
-marshal (ValueLazyBytes xs) = marshalLazyBytes xs
+marshal (ValueBytes xs) = marshalStrictBytes xs
 marshal (ValueVector t xs) = marshalVector t xs
 marshal (ValueMap kt vt xs) = marshalMap kt vt xs
 marshal (ValueStructure xs) = marshalStructure xs
@@ -628,19 +627,6 @@ marshalStrictBytes bytes = do
 		]))
 	marshalWord32 (fromIntegral arrayLen)
 	appendS bytes
-
-marshalLazyBytes :: Data.ByteString.Lazy.ByteString -> Marshal ()
-marshalLazyBytes bytes = do
-	let arrayLen = Data.ByteString.Lazy.length bytes
-	when (arrayLen > arrayMaximumLength) (throwError (concat
-		[ "Marshaled array size ("
-		, show arrayLen
-		, " bytes) exceeds maximum limit of ("
-		, show arrayMaximumLength
-		, " bytes)."
-		]))
-	marshalWord32 (fromIntegral arrayLen)
-	appendL bytes
 :
 
 :d DBus.Wire

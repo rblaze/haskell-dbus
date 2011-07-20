@@ -189,17 +189,15 @@ instance IsValue a => IsValue [a] where
 :d DBus.Types
 instance IsValue ByteString where
 	typeOf _ = TypeArray TypeWord8
-	toValue = ValueStrictBytes
-	fromValue (ValueStrictBytes bs) = Just bs
-	fromValue (ValueLazyBytes bs) = Just (Data.ByteString.concat (Data.ByteString.Lazy.toChunks bs))
+	toValue = ValueBytes
+	fromValue (ValueBytes bs) = Just bs
 	fromValue (ValueVector TypeWord8 v) = Just (vectorToBytes v)
 	fromValue _ = Nothing
 
 instance IsValue Data.ByteString.Lazy.ByteString where
 	typeOf _ = TypeArray TypeWord8
-	toValue = ValueLazyBytes
-	fromValue (ValueStrictBytes bs) = Just (Data.ByteString.Lazy.fromChunks [bs])
-	fromValue (ValueLazyBytes bs) = Just bs
+	toValue bs = ValueBytes (Data.ByteString.concat (Data.ByteString.Lazy.toChunks bs))
+	fromValue (ValueBytes bs) = Just (Data.ByteString.Lazy.fromChunks [bs])
 	fromValue (ValueVector TypeWord8 v) = Just (Data.ByteString.Lazy.fromChunks [vectorToBytes v])
 	fromValue _ = Nothing
 :

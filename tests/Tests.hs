@@ -363,18 +363,14 @@ test_ContainerBoxes = testGroup "container-boxes"
 	    	assertEqual (Array TypeBoolean (Data.Vector.fromList [toValue True]))
 	    	            (Array TypeBoolean (Data.Vector.fromList [toValue True]))
 	    	assertEqual (Array TypeWord8 (Data.Vector.fromList [toValue (0 :: Word8)]))
-	    	            (ArrayStrictBytes (Data.ByteString.pack [0]))
-	    	assertEqual (ArrayStrictBytes (Data.ByteString.pack [0]))
-	    	            (ArrayLazyBytes (Data.ByteString.Lazy.pack [0]))
+	    	            (ArrayBytes (Data.ByteString.pack [0]))
 	  , testCase "instance-of-Show" $ do
 	    	assertEqual "[True, False]" (show (Array TypeBoolean (Data.Vector.fromList [toValue True, toValue False])))
 	    	assertEqual "b\"\"" (show (Array TypeWord8 Data.Vector.empty))
-	    	assertEqual "b\"\"" (show (ArrayStrictBytes Data.ByteString.empty))
-	    	assertEqual "b\"\"" (show (ArrayLazyBytes Data.ByteString.Lazy.empty))
+	    	assertEqual "b\"\"" (show (ArrayBytes Data.ByteString.empty))
 	  , testCase "instance-of-IsVariant" $ do
 	    	assertVariant (TypeArray TypeWord8) (Array TypeWord8 Data.Vector.empty)
-	    	assertVariant (TypeArray TypeWord8) (ArrayStrictBytes Data.ByteString.empty)
-	    	assertVariant (TypeArray TypeWord8) (ArrayLazyBytes Data.ByteString.Lazy.empty)
+	    	assertVariant (TypeArray TypeWord8) (ArrayBytes Data.ByteString.empty)
 	  ]
 	, testGroup "dictionary"
 	  [ testCase "instance-of-Eq" (assertEqual (Dictionary TypeWord8 TypeWord8 Data.Map.empty)
@@ -699,8 +695,7 @@ instance Arbitrary Atom where
 instance Arbitrary Value where
 	arbitrary = oneof
 		[ liftM ValueAtom arbitrary
-		, liftM ValueStrictBytes arbitrary
-		, liftM ValueLazyBytes arbitrary
+		, liftM ValueBytes arbitrary
 		
 		-- TODO: proper arbitrary ValueVector
 		, elements

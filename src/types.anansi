@@ -504,8 +504,7 @@ newtype Variant = Variant Value
 data Value
 	= ValueAtom Atom
 	| ValueVariant Variant
-	| ValueStrictBytes ByteString
-	| ValueLazyBytes Data.ByteString.Lazy.ByteString
+	| ValueBytes ByteString
 	| ValueVector Type (Vector Value)
 	| ValueMap Type Type (Map Atom Value)
 	| ValueStructure [Value]
@@ -537,21 +536,13 @@ possible to derive {\tt Eq}, and the instance is quite ugly.
 
 :d DBus.Types
 instance Eq Value where
-	(==) (ValueStrictBytes x) y = case y of
-		ValueStrictBytes y' -> x == y'
-		ValueLazyBytes y' -> Data.ByteString.Lazy.fromChunks [x] == y'
+	(==) (ValueBytes x) y = case y of
+		ValueBytes y' -> x == y'
 		ValueVector TypeWord8 y' -> x == vectorToBytes y'
 		_ -> False
 	
-	(==) (ValueLazyBytes x) y = case y of
-		ValueStrictBytes y' -> x == Data.ByteString.Lazy.fromChunks [y']
-		ValueLazyBytes y' -> x == y'
-		ValueVector TypeWord8 y' -> x == Data.ByteString.Lazy.fromChunks [vectorToBytes y']
-		_ -> False
-		
 	(==) (ValueVector TypeWord8 x) y = case y of
-		ValueStrictBytes y' -> vectorToBytes x == y'
-		ValueLazyBytes y' -> Data.ByteString.Lazy.fromChunks [vectorToBytes x] == y'
+		ValueBytes y' -> vectorToBytes x == y'
 		ValueVector TypeWord8 y' -> x == y'
 		_ -> False
 	
@@ -589,8 +580,7 @@ showAtom p (AtomObjectPath x) = showsPrec (if p then 11 else 0) x ""
 showValue :: Bool -> Value -> String
 showValue p (ValueAtom x) = showAtom p x
 showValue p (ValueVariant x) = showsPrec (if p then 11 else 0) x ""
-showValue _ (ValueStrictBytes xs) = 'b' : show xs
-showValue _ (ValueLazyBytes xs) = 'b' : show (Data.ByteString.concat (Data.ByteString.Lazy.toChunks xs))
+showValue _ (ValueBytes xs) = 'b' : show xs
 showValue _ (ValueVector TypeWord8 xs) = 'b' : show (vectorToBytes xs)
 showValue _ (ValueVector _ xs) = showThings "[" (showValue False) "]" (Data.Vector.toList xs)
 showValue _ (ValueMap _ _ xs) = showThings "{" showPair "}" (Data.Map.toList xs) where
@@ -635,8 +625,7 @@ valueType :: Value -> Type
 valueType (ValueAtom x) = atomType x
 valueType (ValueVariant _) = TypeVariant
 valueType (ValueVector t _) = TypeArray t
-valueType (ValueStrictBytes _) = TypeArray TypeWord8
-valueType (ValueLazyBytes _) = TypeArray TypeWord8
+valueType (ValueBytes _) = TypeArray TypeWord8
 valueType (ValueMap kt vt _) = TypeDictionary kt vt
 valueType (ValueStructure vs) = TypeStructure (map valueType vs)
 
@@ -1065,34 +1054,28 @@ structureItems (Structure xs) = map Variant xs
 :d DBus.Types
 data Array
 	= Array Type (Vector Value)
-	| ArrayStrictBytes ByteString
-	| ArrayLazyBytes Data.ByteString.Lazy.ByteString
+	| ArrayBytes ByteString
 
 instance Show Array where
 	show (Array t xs) = showValue True (ValueVector t xs)
-	show (ArrayStrictBytes xs) = showValue True (ValueStrictBytes xs)
-	show (ArrayLazyBytes xs) = showValue True (ValueLazyBytes xs)
+	show (ArrayBytes xs) = showValue True (ValueBytes xs)
 
 instance Eq Array where
 	x == y = norm x == norm y where
-		norm (Array TypeWord8 xs) = Left (Data.ByteString.Lazy.fromChunks [vectorToBytes xs])
+		norm (Array TypeWord8 xs) = Left (vectorToBytes xs)
 		norm (Array t xs) = Right (t, xs)
-		norm (ArrayStrictBytes xs) = Left (Data.ByteString.Lazy.fromChunks [xs])
-		norm (ArrayLazyBytes xs) = Left xs
+		norm (ArrayBytes xs) = Left xs
 
 instance IsVariant Array where
 	toVariant (Array t xs) = Variant (ValueVector t xs)
-	toVariant (ArrayStrictBytes bs) = Variant (ValueStrictBytes bs)
-	toVariant (ArrayLazyBytes bs) = Variant (ValueLazyBytes bs)
+	toVariant (ArrayBytes bs) = Variant (ValueBytes bs)
 	fromVariant (Variant (ValueVector t xs)) = Just (Array t xs)
-	fromVariant (Variant (ValueStrictBytes bs)) = Just (ArrayStrictBytes bs)
-	fromVariant (Variant (ValueLazyBytes bs)) = Just (ArrayLazyBytes bs)
+	fromVariant (Variant (ValueBytes bs)) = Just (ArrayBytes bs)
 	fromVariant _ = Nothing
 
 arrayItems :: Array -> [Variant]
 arrayItems (Array _ xs) = map Variant (Data.Vector.toList xs)
-arrayItems (ArrayStrictBytes bs) = map toVariant (Data.ByteString.unpack bs)
-arrayItems (ArrayLazyBytes bs) = map toVariant (Data.ByteString.Lazy.unpack bs)
+arrayItems (ArrayBytes bs) = map toVariant (Data.ByteString.unpack bs)
 :
 
 :d DBus.Types
