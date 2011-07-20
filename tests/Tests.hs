@@ -52,6 +52,7 @@ import qualified System.Posix.Env
 
 import           DBus.Address
 import           DBus.Client ()
+import           DBus.Client.Simple ()
 import           DBus.Connection ()
 import           DBus.Message ()
 import           DBus.Message.Internal hiding (errorName)
