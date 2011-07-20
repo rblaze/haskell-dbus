@@ -277,19 +277,19 @@ test_Variant = testGroup "variant"
 	  , testCase "int32" (assertAtom TypeInt32 (0 :: Int32))
 	  , testCase "int64" (assertAtom TypeInt64 (0 :: Int64))
 	  , testCase "double" (assertAtom TypeDouble (0 :: Double))
-	  , testCase "string" (assertAtom TypeString (Data.Text.pack ""))
-	  , testCase "string" (assertAtom TypeString (Data.Text.Lazy.pack ""))
+	  , testCase "text" (assertAtom TypeString (Data.Text.pack ""))
+	  , testCase "lazy-text" (assertAtom TypeString (Data.Text.Lazy.pack ""))
+	  , testCase "string" (assertAtom TypeString ("" :: String))
 	  , testCase "object-path" (assertAtom TypeObjectPath (objectPath_ "/"))
 	  , testCase "signature" (assertAtom TypeSignature (signature_ ""))
 	  ]
 	, testGroup "instances-of-IsValue"
 	  [ testCase "variant" (assertValue TypeVariant (toVariant True))
-	  , testCase "array" (assertValue (TypeArray TypeBoolean) [True])
-	  , testGroup "array"
-	    [ testCase "bytestring-strict" (assertValue (TypeArray TypeWord8) Data.ByteString.empty)
-	    , testCase "bytestring-lazy" (assertValue (TypeArray TypeWord8) Data.ByteString.Lazy.empty)
-	    ]
-	  , testCase "dictionary" (assertValue (TypeDictionary TypeBoolean TypeBoolean) (Data.Map.fromList [(True, True)]))
+	  , testCase "list" (assertValue (TypeArray TypeBoolean) [True])
+	  , testCase "vector" (assertValue (TypeArray TypeBoolean) (Data.Vector.fromList [True]))
+	  , testCase "bytestring-strict" (assertValue (TypeArray TypeWord8) Data.ByteString.empty)
+	  , testCase "bytestring-lazy" (assertValue (TypeArray TypeWord8) Data.ByteString.Lazy.empty)
+	  , testCase "map" (assertValue (TypeDictionary TypeBoolean TypeBoolean) (Data.Map.fromList [(True, True)]))
 	  , testCase "tuple-2" (assertValue (TypeStructure (replicate 2 TypeBoolean)) (True, True))
 	  , testCase "tuple-3" (assertValue (TypeStructure (replicate 3 TypeBoolean)) (True, True, True))
 	  , testCase "tuple-4" (assertValue (TypeStructure (replicate 4 TypeBoolean)) (True, True, True, True))

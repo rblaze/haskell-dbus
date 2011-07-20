@@ -730,6 +730,22 @@ instance IsVariant Data.Text.Lazy.Text where
 	fromVariant (Variant val) = fromValue val
 :
 
+:d DBus.Types
+instance IsAtom String where
+	toAtom = toAtom . Data.Text.pack
+	fromAtom = fmap Data.Text.unpack . fromAtom
+
+instance IsValue String where
+	typeOf _ = TypeString
+	toValue = ValueAtom . toAtom
+	fromValue (ValueAtom x) = fromAtom x
+	fromValue _ = Nothing
+
+instance IsVariant String where
+	toVariant = Variant . toValue
+	fromVariant (Variant val) = fromValue val
+:
+
 \clearpage
 \subsubsection*{Generic value boxing (continued)}
 
