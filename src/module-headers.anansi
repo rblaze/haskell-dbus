@@ -81,6 +81,7 @@ import           Data.ByteString (ByteString)
 import qualified Data.ByteString
 import qualified Data.ByteString.Char8
 import qualified Data.ByteString.Lazy
+import qualified Data.ByteString.Unsafe
 import           Data.Int
 import           Data.List (intercalate)
 import qualified Data.Map
@@ -93,8 +94,10 @@ import qualified Data.Text.Lazy
 import qualified Data.Vector
 import           Data.Vector (Vector)
 import           Data.Word
+import qualified Foreign
+import           System.IO.Unsafe (unsafePerformIO)
+
 |text validation imports|
-|signature parsing imports|
 
 import           DBus.Util (void)
 
