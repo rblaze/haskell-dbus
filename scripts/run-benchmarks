@@ -14,7 +14,7 @@ require_cabal_dev
 rm -rf hs dist
 $ANANSI -o hs src/dbus-core.anansi || exit 1
 
-pushd tests
+pushd benchmarks
 rm -rf dist
 $CABAL_DEV -s ../cabal-dev install || exit 1
 popd
