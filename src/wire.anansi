@@ -310,7 +310,8 @@ unmarshal TypeBoolean = liftM toValue unmarshalBool
 unmarshal TypeString = liftM toValue unmarshalText
 unmarshal TypeObjectPath = liftM toValue unmarshalObjectPath
 unmarshal TypeSignature = liftM toValue unmarshalSignature
-unmarshal (TypeArray t) = ValueVector t `liftM` unmarshalArray t
+unmarshal (TypeArray TypeWord8) = liftM toValue unmarshalByteArray
+unmarshal (TypeArray t) = liftM (ValueVector t) (unmarshalArray t)
 unmarshal (TypeDictionary kt vt) = unmarshalDictionary kt vt
 unmarshal (TypeStructure ts) = unmarshalStructure ts
 unmarshal TypeVariant = unmarshalVariant
@@ -649,6 +650,11 @@ getArrayBytes itemType vs = do
 Unmarshaling is much easier, especially if it's a byte array.
 
 :d DBus.Wire
+unmarshalByteArray :: Unmarshal ByteString
+unmarshalByteArray = do
+	byteCount <- unmarshalWord32
+	consume (fromIntegral byteCount)
+
 unmarshalArray :: Type -> Unmarshal (Vector Value)
 unmarshalArray itemType = do
 	let getOffset = do
