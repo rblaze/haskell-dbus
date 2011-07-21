@@ -6,16 +6,11 @@ cabal-version: >= 1.6
 executable dbus-core_benchmarks
   main-is: Benchmarks.hs
   ghc-options: -Wall -O2 -fno-warn-orphans
-  hs-source-dirs: ../hs,.
 
   build-depends:
       base > 3 && < 5
     , binary
-    , bytestring
     , containers
     , criterion
-    , data-binary-ieee754
     , deepseq
-    , parsec
-    , text
-    , vector
+    , dbus-core
