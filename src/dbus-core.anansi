@@ -101,11 +101,11 @@
 
 \newpage
 :i utilities.anansi
+:i constants.anansi
 
 \newpage
 \appendix
 :i module-headers.anansi
-:i constants.anansi
 
 % exclude API docs from LaTeX output, since they're generally uninteresting
 \begin{comment}

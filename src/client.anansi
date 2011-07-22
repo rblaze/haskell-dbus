@@ -325,7 +325,7 @@ methodIntrospect get = method iface name "" "s" impl where
 		obj <- get
 		let Just xml = DBus.Introspection.toXML obj
 		return (ReplyReturn [toVariant xml])
-	impl _ = return (ReplyError errorInvalidArgs [])
+	impl _ = return (ReplyError errorInvalidParameters [])
 
 introspect :: ObjectPath -> ObjectInfo -> DBus.Introspection.Object
 introspect path obj = DBus.Introspection.Object path interfaces [] where
@@ -561,7 +561,7 @@ method iface name fun = DBus.Client.method iface name inSig outSig io where
 		Just sig -> sig
 		Nothing -> invalid "output"
 	io vs = case apply fun vs of
-		Nothing -> return (ReplyError errorInvalidArgs [])
+		Nothing -> return (ReplyError errorInvalidParameters [])
 		Just io' -> fmap ReplyReturn io'
 	
 	invalid label = error (concat

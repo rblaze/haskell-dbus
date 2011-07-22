@@ -1133,7 +1133,7 @@ parseMemberName = name >> Parsec.eof where
 Every error returned from a method call has an \emph{error name}, so
 clients can know (generally) what went wrong without having to parse the
 error message. Applications may define their own error names, or use one
-of the standardized names listed in appendix~\ref{sec:standard-error-names}.
+of the standardized names listed in section~\ref{sec:standard-error-names}.
 
 Error names have the same format as interface names, so the parser logic
 can be reused.

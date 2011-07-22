@@ -412,7 +412,7 @@ import           DBus.Connection.Transport (unix, tcp)
 import           DBus.Connection.Error
 import qualified DBus.Constants
 import           DBus.Constants ( errorFailed, errorUnknownMethod
-                                , errorInvalidArgs)
+                                , errorInvalidParameters)
 import           DBus.Message
 import qualified DBus.Introspection
 import           DBus.Types
@@ -471,7 +471,7 @@ import           DBus.Address
 import           DBus.Client hiding (call, method, export)
 import qualified DBus.Client
 import           DBus.Connection.Error
-import           DBus.Constants (errorInvalidArgs)
+import           DBus.Constants (errorInvalidParameters)
 import           DBus.Message hiding (errorName)
 import           DBus.Types
 import           DBus.Types.Internal (checkSignature)
@@ -508,3 +508,13 @@ import qualified DBus.Types as T
 
 |DBus.Introspection|
 :
+
+:f DBus/Constants.hs
+{-# LANGUAGE OverloadedStrings #-}
+|copyright|
+module DBus.Constants where
+import           DBus.Types
+
+|DBus.Constants|
+:
+
