@@ -170,7 +170,7 @@ user as if they're special strings matching the \dbus{} signature format.
 
 :d DBus.Types
 signatureText :: Signature -> Text
-signatureText = Data.Text.Encoding.decodeASCII
+signatureText = Data.Text.Encoding.decodeUtf8
               . Data.ByteString.Char8.pack
               . concatMap typeCode
               . signatureTypes

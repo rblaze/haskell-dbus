@@ -191,25 +191,10 @@ import qualified Data.Binary.IEEE754
 
 import           DBus.Message.Internal
 import           DBus.Types.Internal
-import           DBus.Wire.Unicode (maybeDecodeUtf8)
 import           DBus.Util (void, untilM)
 import qualified DBus.Util.MonadError as E
 
 |DBus.Wire|
-:
-
-:f DBus/Wire/Unicode.hs
-|copyright|
-module DBus.Wire.Unicode
-	( maybeDecodeUtf8
-	) where
-import Data.ByteString (ByteString)
-import Data.Text (Text)
-import Data.Text.Encoding (decodeUtf8)
-import Data.Text.Encoding.Error (UnicodeException)
-import qualified Control.Exception as Exc
-import System.IO.Unsafe (unsafePerformIO)
-|DBus.Wire.Unicode|
 :
 
 :f DBus/Address.hs

@@ -511,20 +511,6 @@ with their length as an unsigned 32-bit integer. Their alignment is that of
 their length. Object paths are marshaled just like strings, though additional
 checks are required when unmarshaling.
 
-Because the encoding functions from {\tt Data.Text} raise exceptions on
-error, checking their return value requires some ugly workarounds.
-
-:d DBus.Wire.Unicode
-excToMaybe :: a -> Maybe a
-excToMaybe x = unsafePerformIO (fmap Just (Exc.evaluate x) `Exc.catch` unicodeError)
-
-unicodeError :: UnicodeException -> IO (Maybe a)
-unicodeError _ = return Nothing
-
-maybeDecodeUtf8 :: ByteString -> Maybe Text
-maybeDecodeUtf8 = excToMaybe . decodeUtf8
-:
-
 :d DBus.Wire
 marshalText :: Text -> Marshal ()
 marshalText text = do
@@ -546,6 +532,11 @@ unmarshalText = do
 	bytes <- consume (fromIntegral byteCount)
 	skipTerminator
 	fromMaybeU "text" maybeDecodeUtf8 bytes
+
+maybeDecodeUtf8 :: ByteString -> Maybe Text
+maybeDecodeUtf8 bs = case Data.Text.Encoding.decodeUtf8' bs of
+	Right text -> Just text
+	_ -> Nothing
 :
 
 :d DBus.Wire
