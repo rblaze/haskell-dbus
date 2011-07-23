@@ -24,7 +24,7 @@ There's no real order to this section; it exists only because Haddock
 can't merge documentation from external files.
 
 :d apidoc DBus.Client.disconnect
--- | Stop a client's callback thread and close its underlying socket.
+-- | Stop a 'Client'#8217;s callback thread and close its underlying socket.
 :
 
 :d apidoc DBus.Client.throwError
@@ -37,12 +37,12 @@ can't merge documentation from external files.
 
 :d apidoc DBus.Client.Simple.AutoSignature
 -- | Used to automatically generate method signatures for introspection
--- documents. To support automatic signatures, a method's parameters and
+-- documents. To support automatic signatures, a method#8217;s parameters and
 -- return value must all be instances of 'IsValue'.
 --
--- This class maps Haskell idioms to D-Bus; it is therefore unable to
+-- This class maps Haskell idioms to D&#8208;Bus; it is therefore unable to
 -- generate some signatures. In particular, it does not support methods
--- which accept/return a single structure, or single-element structures.
+-- which accept/return a single structure, or single&#8208;element structures.
 -- It also cannot generate signatures for methods with parameters or return
 -- values which are only instances of 'IsVariant'. For these cases, please
 -- use 'DBus.Client.method'.
@@ -93,15 +93,15 @@ can't merge documentation from external files.
 
 :d apidoc DBus.Client.Simple.method
 -- | Prepare a Haskell function for export. This automatically detects the
--- function's type signature; see 'AutoSignature' and 'AutoReply'.
+-- function#8217;s type signature; see 'AutoSignature' and 'AutoReply'.
 --
 -- To manage the type signature and marshaling yourself, use
 -- 'DBus.Client.method' instead.
 :
 
 :d apidoc DBus.Connection.Connection
--- | A 'Connection' is an opaque handle to an open D-Bus channel, with an
--- internal state for maintaining the current message serial.
+-- | A 'Connection' is an opaque handle to an open D&#8208;Bus channel, with
+-- an internal state for maintaining the current message serial.
 :
 
 :d apidoc DBus.Connection.Transport
@@ -147,24 +147,24 @@ can't merge documentation from external files.
 
 :d apidoc DBus.Message.Serial
 -- | A value used to uniquely identify a particular message within a session.
--- 'Serial's are 32-bit unsigned integers, and eventually wrap.
+-- 'Serial's are 32&#8208;bit unsigned integers, and eventually wrap.
 :
 
 :d apidoc DBus.Types.Variant
--- | 'Variant's may contain any other built-in D-Bus value. Besides
--- representing native @VARIANT@ values, they allow type-safe storage and
+-- | 'Variant's may contain any other built&#8208;in D&#8208;Bus value. Besides
+-- representing native @VARIANT@ values, they allow type&#8208;safe storage and
 -- deconstruction of heterogeneous collections.
 :
 
 :d apidoc DBus.Types.variantType
--- | Every variant is strongly-typed; that is, the type of its contained
+-- | Every variant is strongly&#8208;typed; that is, the type of its contained
 -- value is known at all times. This function retrieves that type, so that
 -- the correct cast can be used to retrieve the value.
 :
 
 :d apidoc DBus.Wire.marshalMessage
 -- | Convert a 'Message' into a 'ByteString'. Although unusual, it is
--- possible for marshaling to fail &#8212; if this occurs, an error will be
+-- possible for marshaling to fail; if this occurs, an error will be
 -- returned instead.
 :
 
