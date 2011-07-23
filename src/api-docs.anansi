@@ -23,6 +23,10 @@ will be included in Haddock output for public functions.
 There's no real order to this section; it exists only because Haddock
 can't merge documentation from external files.
 
+:d apidoc DBus.Client.disconnect
+-- | Stop a client's callback thread and close its underlying socket.
+:
+
 :d apidoc DBus.Client.throwError
 -- | Normally, any exceptions raised while executing a method will be
 -- given the generic @\"org.freedesktop.DBus.Error.Failed\"@ name.

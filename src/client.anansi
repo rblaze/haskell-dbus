@@ -85,6 +85,7 @@ connect addr = do
 	connection <- DBus.Connection.connect [unix, tcp] [external] addr
 	attach connection
 
+|apidoc DBus.Client.disconnect|
 disconnect :: Client -> IO ()
 disconnect client = do
 	let connection = clientConnection client
