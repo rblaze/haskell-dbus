@@ -908,7 +908,7 @@ instance Arbitrary DBus.Introspection.Parameter where
 instance Arbitrary DBus.Introspection.Property where
 	arbitrary = DBus.Introspection.Property
 		<$> arbitrary
-		<*> singleType
+		<*> arbitrary
 		<*> elements
 			[ []
 			, [ DBus.Introspection.Read ]

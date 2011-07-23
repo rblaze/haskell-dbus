@@ -193,20 +193,16 @@ parseSignal e = do
 A parameter has a free-form name, and a single valid type.
 
 :d DBus.Introspection
+parseType :: X.Element -> Maybe T.Signature
+parseType e = X.attributeText "type" e >>= T.signature
+
 parseParameter :: X.Element -> Maybe Parameter
 parseParameter e = do
 	let name = getattr "name" e
 	sig <- parseType e
-	return $ Parameter name sig
-:
-
-:d DBus.Introspection
-parseType :: X.Element -> Maybe T.Signature
-parseType e = do
-	sig <- T.signature =<< X.attributeText "type" e
 	case T.signatureTypes sig of
-		[_] -> Just sig
-		_   -> Nothing
+		[_] -> Just (Parameter name sig)
+		_ -> Nothing
 :
 
 Properties are used by the {\tt org.freedesktop.DBus.Properties} interface.
