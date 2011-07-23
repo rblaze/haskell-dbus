@@ -21,7 +21,6 @@ import           Control.DeepSeq
 import           Criterion.Types
 import           Criterion.Config
 import qualified Criterion.Main
-import qualified Data.Binary.Get
 import qualified Data.Set
 import           Data.Word (Word32)
 import           Unsafe.Coerce (unsafeCoerce)
@@ -74,9 +73,7 @@ benchMarshal name msg = bench name (whnf marshal msg) where
 	marshal = marshalMessage LittleEndian (serial 0)
 
 benchUnmarshal :: Message msg => String -> msg -> Benchmark
-benchUnmarshal name msg = bench name (whnf unmarshal bytes) where
-	unmarshal = Data.Binary.Get.runGet (unmarshalMessage getBytes)
-	getBytes = Data.Binary.Get.getByteString . fromIntegral
+benchUnmarshal name msg = bench name (whnf unmarshalMessage bytes) where
 	Right bytes = marshalMessage LittleEndian (serial 0) msg
 
 benchmarks :: [Benchmark]

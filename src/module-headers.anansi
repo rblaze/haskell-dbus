@@ -272,8 +272,6 @@ module DBus.Connection
 	) where
 import           Control.Concurrent
 import           Control.Monad (when)
-import qualified Data.ByteString
-import qualified Data.ByteString.Lazy
 import           Data.IORef
 
 import           DBus.Address
@@ -282,6 +280,7 @@ import           DBus.Connection.Error
 import           DBus.Connection.Transport
 import           DBus.Message.Internal
 import           DBus.Wire
+import           DBus.Wire.Internal (unmarshalMessageM)
 
 |DBus.Connection|
 :

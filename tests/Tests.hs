@@ -28,7 +28,6 @@ import           Test.QuickCheck hiding ((.&.))
 import           Control.Applicative ((<$>), (<*>))
 import qualified Control.Exception
 import           Control.Monad (liftM, liftM2)
-import qualified Data.Binary.Get
 import qualified Data.Binary.Builder
 import           Data.Bits ((.&.))
 import           Data.ByteString (ByteString)
@@ -58,6 +57,7 @@ import           DBus.Message ()
 import           DBus.Message.Internal hiding (errorName)
 import           DBus.Types
 import           DBus.Types.Internal
+import           DBus.Wire (marshalMessage, unmarshalMessage)
 import qualified DBus.Wire
 import qualified DBus.Wire.Internal
 import qualified DBus.Introspection
@@ -494,19 +494,19 @@ test_Wire = testGroup "wire"
 	[ testProperty "value-passthrough" prop_ValuePassthrough
 	, testGroup "message-passthrough"
 	  [ testProperty "method-call" (forAll (arbitrary :: Gen MethodCall) (\msg e s ->
-	    	let Right bytes = marshalMessage e msg s in
+	    	let Right bytes = marshalMessage e s msg in
 	    	let Right received = unmarshalMessage bytes in
 	    	ReceivedMethodCall s Nothing msg == received))
 	  , testProperty "method-return" (forAll (arbitrary :: Gen MethodReturn) (\msg e s ->
-	    	let Right bytes = marshalMessage e msg s in
+	    	let Right bytes = marshalMessage e s msg in
 	    	let Right received = unmarshalMessage bytes in
 	    	ReceivedMethodReturn s Nothing msg == received))
 	  , testProperty "error" (forAll (arbitrary :: Gen Error) (\msg e s ->
-	    	let Right bytes = marshalMessage e msg s in
+	    	let Right bytes = marshalMessage e s msg in
 	    	let Right received = unmarshalMessage bytes in
 	    	ReceivedError s Nothing msg == received))
 	  , testProperty "signal" (forAll (arbitrary :: Gen Signal) (\msg e s ->
-	    	let Right bytes = marshalMessage e msg s in
+	    	let Right bytes = marshalMessage e s msg in
 	    	let Right received = unmarshalMessage bytes in
 	    	ReceivedSignal s Nothing msg == received))
 	  ]
@@ -534,14 +534,6 @@ unmarshal :: DBus.Wire.Endianness -> Type -> ByteString -> Either String Value
 unmarshal e t bytes = case DBus.Wire.Internal.unWire (DBus.Wire.Internal.unmarshal t) e (DBus.Wire.Internal.UnmarshalState bytes 0) of
 	DBus.Wire.Internal.WireRR v _ -> Right v
 	DBus.Wire.Internal.WireRL err -> Left err
-
-marshalMessage :: Message msg => DBus.Wire.Endianness -> msg -> Serial -> Either DBus.Wire.MarshalError ByteString
-marshalMessage e msg s = case DBus.Wire.marshalMessage e s msg of
-	Right lazy -> Right (Data.ByteString.concat (Data.ByteString.Lazy.toChunks lazy))
-	Left err -> Left err
-
-unmarshalMessage :: ByteString -> Either DBus.Wire.UnmarshalError ReceivedMessage
-unmarshalMessage bytes = Data.Binary.Get.runGet (DBus.Wire.unmarshalMessage (Data.Binary.Get.getBytes . fromIntegral)) (Data.ByteString.Lazy.fromChunks [bytes])
 
 genAddressText :: Gen Text
 genAddressText = gen where

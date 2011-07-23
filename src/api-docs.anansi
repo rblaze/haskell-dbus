@@ -159,11 +159,14 @@ can't merge documentation from external files.
 :
 
 :d apidoc DBus.Wire.marshalMessage
--- | Convert a 'Message' into a 'Data.ByteString.Lazy.ByteString'. Although
--- unusual, it is possible for marshaling to fail &#8212; if this occurs, an
--- appropriate error will be returned instead.
+-- | Convert a 'Message' into a 'ByteString'. Although unusual, it is
+-- possible for marshaling to fail &#8212; if this occurs, an error will be
+-- returned instead.
 :
 
 :d apidoc DBus.Wire.unmarshalMessage
--- | Read bytes from a monad until a complete message has been received.
+-- | Parse a 'ByteString' into a 'ReceivedMessage'. The result can be
+-- inspected to see what type of message was parsed. Unknown message types
+-- can still be parsed successfully, as long as they otherwise conform to
+-- the D&#8208;Bus standard.
 :
