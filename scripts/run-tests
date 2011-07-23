@@ -1,0 +1,23 @@
+#!/bin/bash
+if [ ! -f 'dbus-core.cabal' ]; then
+	echo -n "Can't find dbus-core .cabal; please run this script as"
+	echo -n " ./scripts/run-tests from within the dbus-core source"
+	echo " directory"
+	exit 1
+fi
+
+. scripts/common.bash
+
+require_anansi
+require_cabal_dev
+
+rm -rf hs dist
+$ANANSI -o hs src/dbus-core.anansi || exit 1
+cabal-dev install || exit 1
+
+pushd tests
+rm -rf dist
+$CABAL_DEV -s ../cabal-dev install || exit 1
+popd
+
+cabal-dev/bin/dbus-core_tests

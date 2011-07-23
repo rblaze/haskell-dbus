@@ -1,8 +1,8 @@
 name: dbus-core
-version: 0.8.5.3
+version: 0.9
 synopsis: Low-level D-Bus protocol implementation
 license: GPL-3
-license-file: License.txt
+license-file: license.txt
 author: John Millikin
 maintainer: jmillikin@gmail.com
 build-type: Simple
@@ -10,30 +10,55 @@ cabal-version: >=1.6
 category: Network, Desktop
 stability: experimental
 bug-reports: mailto:jmillikin@gmail.com
-homepage: http://john-millikin.com/software/haskell-dbus/
+homepage: https://john-millikin.com/software/dbus-core/
 tested-with: GHC==6.12.1
 
 extra-source-files:
-  src/*.anansi
-  Examples/*.hs
   readme.txt
+  --
+  examples/dbus-monitor.hs
+  examples/export.hs
+  examples/introspect.hs
+  examples/simple.hs
+  --
+  latex/figure_1.svg
+  latex/geometry.sty
+  latex/noweb.sty
+  --
+  scripts/common.bash
+  scripts/dist
+  scripts/haddock
+  scripts/latex
+  scripts/run-benchmarks
+  scripts/run-coverage
+  scripts/run-tests
+  --
+  src/api-docs.anansi
+  src/client.anansi
+  src/connections.anansi
+  src/constants.anansi
+  src/dbus-core.anansi
+  src/introduction.anansi
+  src/introspection.anansi
+  src/messages.anansi
+  src/module-headers.anansi
+  src/summary.anansi
+  src/types.anansi
+  src/utilities.anansi
+  src/wire.anansi
+  --
+  benchmarks/Benchmarks.hs
+  benchmarks/dbus-core-benchmarks.cabal
+  --
+  tests/Tests.hs
+  tests/dbus-core-tests.cabal
 
 source-repository head
   type: bazaar
-  location: http://john-millikin.com/software/haskell-dbus/
-
-flag test
-  default: False
-
-flag hpc
-  default: False
+  location: https://john-millikin.com/software/dbus-core/
 
 library
-  if true
-    ghc-options: -Wall
-
-  if impl(ghc >= 6.11)
-    ghc-options: -fno-warn-unused-do-bind
+  ghc-options: -Wall
 
   hs-source-dirs: hs
 
@@ -43,53 +68,32 @@ library
     , binary >= 0.4 && < 0.6
     , bytestring >= 0.9 && < 0.10
     , data-binary-ieee754 >= 0.3 && < 0.5
-    , text >= 0.8 && < 0.10
+    , text >= 0.11.1.5 && < 0.12
     , containers >= 0.1 && < 0.5
     , unix >= 2.2 && < 2.5
     , network >= 2.2 && < 2.4
-    , libxml-sax >= 0.6 && < 0.7
-    , xml-types >= 0.1 && < 0.2
+    , libxml-sax >= 0.7 && < 0.8
+    , xml-types >= 0.3 && < 0.4
+    , vector >= 0.7 && < 0.8
 
   exposed-modules:
     DBus.Address
-    DBus.Authentication
-    DBus.Bus
+    DBus.Client
+    DBus.Client.Simple
     DBus.Connection
     DBus.Constants
     DBus.Introspection
-    DBus.MatchRule
     DBus.Message
-    DBus.NameReservation
     DBus.Types
-    DBus.UUID
     DBus.Wire
 
   other-modules:
+    DBus.Client.Internal
+    DBus.Connection.Error
+    DBus.Connection.Authentication
+    DBus.Connection.Transport
     DBus.Message.Internal
     DBus.Types.Internal
-    DBus.Wire.Internal
-    DBus.Wire.Marshal
-    DBus.Wire.Unmarshal
-    DBus.Wire.Unicode
     DBus.Util
     DBus.Util.MonadError
-
-executable dbus-core-tests
-  main-is: Tests.hs
-  hs-source-dirs: hs
-
-  if flag(test)
-    build-depends:
-        QuickCheck >= 2.2 && < 2.3
-      , test-framework >= 0.2 && < 0.4
-      , test-framework-quickcheck2 >= 0.2 && < 0.3
-  else
-    buildable: False
-
-  if flag(hpc)
-    ghc-options: -fhpc
-
-  other-modules:
-    DBus.Types.Internal
-    DBus.Util
-
+    DBus.Wire.Internal

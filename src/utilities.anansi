@@ -1,0 +1,114 @@
+:# Copyright (C) 2009-2010 John Millikin <jmillikin@gmail.com>
+:# 
+:# This program is free software: you can redistribute it and/or modify
+:# it under the terms of the GNU General Public License as published by
+:# the Free Software Foundation, either version 3 of the License, or
+:# any later version.
+:# 
+:# This program is distributed in the hope that it will be useful,
+:# but WITHOUT ANY WARRANTY; without even the implied warranty of
+:# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+:# GNU General Public License for more details.
+:# 
+:# You should have received a copy of the GNU General Public License
+:# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+\section{Miscellaneous}
+
+:f DBus/Util.hs
+|copyright|
+module DBus.Util
+	( hexToInt
+	, maybeIndex
+	, readUntil
+	, dropEnd
+	, void
+	, untilM
+	) where
+import Data.Char (digitToInt)
+import Data.List (isPrefixOf)
+
+hexToInt :: String -> Int
+hexToInt = foldl ((+) . (16 *)) 0 . map digitToInt
+
+maybeIndex :: [a] -> Int -> Maybe a
+maybeIndex (x:_ ) 0         = Just x
+maybeIndex (_:xs) n | n > 0 = maybeIndex xs (n - 1)
+maybeIndex _ _ = Nothing
+
+-- | Read values from a monad until a guard value is read; return all
+-- values, including the guard.
+--
+readUntil :: (Monad m, Eq a) => [a] -> m a -> m [a]
+readUntil guard getx = readUntil' [] where
+	guard' = reverse guard
+	step xs | isPrefixOf guard' xs = return . reverse $ xs
+	        | otherwise            = readUntil' xs
+	readUntil' xs = do
+		x <- getx
+		step $ x:xs
+
+-- | Drop /n/ items from the end of a list
+dropEnd :: Int -> [a] -> [a]
+dropEnd n xs = take (length xs - n) xs
+
+void :: Monad m => m a -> m ()
+void m = m >> return ()
+:
+
+:f DBus/Util.hs
+untilM :: Monad m => m Bool -> m a -> m [a]
+untilM test comp = do
+	done <- test
+	if done
+		then return []
+		else do
+			x <- comp
+			xs <- untilM test comp
+			return (x:xs)
+:
+
+\subsection*{Bundled ErrorT variant}
+
+The default {\tt ErrorT} type in the {\tt transformers} package has an idiotic
+dependency on the {\tt Error} class, which is used to implement the obsolete
+{\tt fail} function. This module is a variant, which doesn't include this
+dependency.
+
+:f DBus/Util/MonadError.hs
+|copyright|
+module DBus.Util.MonadError
+	( ErrorM (..)
+	, ErrorT (..)
+	, throwErrorM
+	, throwErrorT
+	) where
+newtype ErrorM e a = ErrorM { runErrorM :: Either e a }
+
+instance Functor (ErrorM e) where
+	fmap f m = ErrorM $ case runErrorM m of
+		Left err -> Left err
+		Right x -> Right $ f x
+
+instance Monad (ErrorM e) where
+	return = ErrorM . Right
+	(>>=) m k = case runErrorM m of
+		Left err -> ErrorM $ Left err
+		Right x -> k x
+
+throwErrorM :: e -> ErrorM e a
+throwErrorM = ErrorM . Left
+
+newtype ErrorT e m a = ErrorT { runErrorT :: m (Either e a) }
+
+instance Monad m => Monad (ErrorT e m) where
+	return = ErrorT . return . Right
+	(>>=) m k = ErrorT $ do
+		x <- runErrorT m
+		case x of
+			Left l -> return $ Left l
+			Right r -> runErrorT $ k r
+
+throwErrorT :: Monad m => e -> ErrorT e m a
+throwErrorT = ErrorT . return . Left
+:

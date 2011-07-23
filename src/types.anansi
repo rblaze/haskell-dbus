@@ -1,4 +1,4 @@
-:# Copyright (C) 2009-2010 John Millikin <jmillikin@gmail.com>
+:# Copyright (C) 2009-2011 John Millikin <jmillikin@gmail.com>
 :# 
 :# This program is free software: you can redistribute it and/or modify
 :# it under the terms of the GNU General Public License as published by
@@ -13,657 +13,421 @@
 :# You should have received a copy of the GNU General Public License
 :# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-\section{Types}
+\section{Values and types}
 
-The {\tt DBus.Types module} defines interfaces for storing, building, and
-deconstructing D-Bus values. Everything is defined in an internal module, and
-then exported via the public interface.
-
-:f DBus/Types.hs
-|copyright|
-module DBus.Types (
-	|type exports|
-	) where
-import DBus.Types.Internal
-:
-
-:f DBus/Types/Internal.cpphs
-|copyright|
-|text extensions|
-|type extensions|
-module DBus.Types.Internal where
-|text imports|
-|type imports|
-import qualified Data.ByteString as B
-import qualified Data.ByteString.Char8 as B8
-import qualified Data.ByteString.Lazy as BL
-import qualified Data.ByteString.Char8 as BL8
-:
-
-D-Bus types are divided into two categories, ``atomic'' and ``container''
-types. Atoms are actual values -- strings, numbers, etc. Containers store
-atoms and other containers. The most interesting difference between the two
-is that atoms may be used as the keys in associative mappings
-(``dictionaries'').
-
-Internally, types are represented using an enumeration.
-
-:f DBus/Types/Internal.cpphs
-data Type
-	= DBusBoolean
-	| DBusByte
-	| DBusInt16
-	| DBusInt32
-	| DBusInt64
-	| DBusWord16
-	| DBusWord32
-	| DBusWord64
-	| DBusDouble
-	| DBusString
-	| DBusSignature
-	| DBusObjectPath
-	| DBusVariant
-	| DBusArray Type
-	| DBusDictionary Type Type
-	| DBusStructure [Type]
-	deriving (Show, Eq)
-:
-
-:f DBus/Types/Internal.cpphs
-|apidoc isAtomicType|
-isAtomicType :: Type -> Bool
-isAtomicType DBusBoolean    = True
-isAtomicType DBusByte       = True
-isAtomicType DBusInt16      = True
-isAtomicType DBusInt32      = True
-isAtomicType DBusInt64      = True
-isAtomicType DBusWord16     = True
-isAtomicType DBusWord32     = True
-isAtomicType DBusWord64     = True
-isAtomicType DBusDouble     = True
-isAtomicType DBusString     = True
-isAtomicType DBusSignature  = True
-isAtomicType DBusObjectPath = True
-isAtomicType _              = False
-:
-
-Each type can be converted to a textual representation, used in ``type
-signatures'' or for debugging.
-
-:f DBus/Types/Internal.cpphs
-|apidoc typeCode|
-typeCode :: Type -> Text
-|type codes|
-:
-
-:d type exports
-  -- * Available types
-  Type (..)
-, typeCode
-:
-
-:f Tests.hs
-instance Arbitrary Type where
-	arbitrary = oneof [atomicType, containerType]
-
-atomicType :: Gen Type
-atomicType = elements
-	[ DBusBoolean
-	, DBusByte
-	, DBusWord16
-	, DBusWord32
-	, DBusWord64
-	, DBusInt16
-	, DBusInt32
-	, DBusInt64
-	, DBusDouble
-	, DBusString
-	, DBusObjectPath
-	, DBusSignature
-	]
-
-containerType :: Gen Type
-containerType = do
-	c <- choose (0,3) :: Gen Int
-	case c of
-		0 -> fmap DBusArray arbitrary
-		1 -> do
-			kt <- atomicType
-			vt <- arbitrary
-			return $ DBusDictionary kt vt
-		2 -> fmap DBusStructure $ halfSized arbitrary
-		3 -> return DBusVariant
-:
-
-\subsection{Variants}
-
-A wrapper type is needed for safely storing generic D-Bus values in Haskell.
-The D-Bus ``variant'' type is perfect for this, because variants may store
-any D-Bus value.
-
-Any type which is an instance of {\tt Variable} is considered a valid
-D-Bus value, because it can be used to construct {\tt Variant}s. However,
-outside of this module, {\tt Variant}s can only be constructed from
-pre-defined types.
-
-:f DBus/Types/Internal.cpphs
-|apidoc Variant|
-data Variant
-	= VarBoxBool Bool
-	| VarBoxWord8 Word8
-	| VarBoxInt16 Int16
-	| VarBoxInt32 Int32
-	| VarBoxInt64 Int64
-	| VarBoxWord16 Word16
-	| VarBoxWord32 Word32
-	| VarBoxWord64 Word64
-	| VarBoxDouble Double
-	| VarBoxString Text
-	| VarBoxSignature Signature
-	| VarBoxObjectPath ObjectPath
-	| VarBoxVariant Variant
-	| VarBoxArray Array
-	| VarBoxDictionary Dictionary
-	| VarBoxStructure Structure
-	deriving (Eq)
-
-class Variable a where
-	toVariant :: a -> Variant
-	fromVariant :: Variant -> Maybe a
-:
-
-:d type exports
-  -- * Variants
-, Variant
-, Variable (..)
-:
-
-Variants can be printed, for debugging purposes -- this instance shouldn't
-be parsed or inspected or anything like that, since the output format might
-change drastically.
-
-:f DBus/Types/Internal.cpphs
-instance Show Variant where
-	showsPrec d var = showParen (d > 10) full where
-		full = s "Variant " . shows code . s " " . valueStr
-		code = typeCode $ variantType var
-		s = showString
-		valueStr = showsPrecVar 11 var
-
-showsPrecVar :: Int -> Variant -> ShowS
-showsPrecVar d var = case var of
-	(VarBoxBool x) -> showsPrec d x
-	(VarBoxWord8 x) -> showsPrec d x
-	(VarBoxInt16 x) -> showsPrec d x
-	(VarBoxInt32 x) -> showsPrec d x
-	(VarBoxInt64 x) -> showsPrec d x
-	(VarBoxWord16 x) -> showsPrec d x
-	(VarBoxWord32 x) -> showsPrec d x
-	(VarBoxWord64 x) -> showsPrec d x
-	(VarBoxDouble x) -> showsPrec d x
-	(VarBoxString x) -> showsPrec d x
-	(VarBoxSignature x) -> showsPrec d x
-	(VarBoxObjectPath x) -> showsPrec d x
-	(VarBoxVariant x) -> showsPrec d x
-	(VarBoxArray x) -> showsPrec d x
-	(VarBoxDictionary x) -> showsPrec d x
-	(VarBoxStructure x) -> showsPrec d x
-:
-
-Since many operations on D-Bus values depend on having the correct type,
-{\tt variantType} is used to retrieve which type is actually stored within
-a {\tt Variant}.
-
-:f DBus/Types/Internal.cpphs
-|apidoc variantType|
-variantType :: Variant -> Type
-variantType var = case var of
-	(VarBoxBool _) -> DBusBoolean
-	(VarBoxWord8 _) -> DBusByte
-	(VarBoxInt16 _) -> DBusInt16
-	(VarBoxInt32 _) -> DBusInt32
-	(VarBoxInt64 _) -> DBusInt64
-	(VarBoxWord16 _) -> DBusWord16
-	(VarBoxWord32 _) -> DBusWord32
-	(VarBoxWord64 _) -> DBusWord64
-	(VarBoxDouble _) -> DBusDouble
-	(VarBoxString _) -> DBusString
-	(VarBoxSignature _) -> DBusSignature
-	(VarBoxObjectPath _) -> DBusObjectPath
-	(VarBoxVariant _) -> DBusVariant
-	(VarBoxArray x) -> DBusArray (arrayType x)
-	(VarBoxDictionary x) -> let
-		keyT = dictionaryKeyType x
-		valueT = dictionaryValueType x
-		in DBusDictionary keyT valueT
-	(VarBoxStructure x) -> let
-		Structure items = x
-		in DBusStructure (map variantType items)
-
-variantSignature :: Variant -> Maybe Signature
-variantSignature = mkBytesSignature . typeCodeB . variantType
-:
-
-:d type exports
-, variantType
-:
-
-A macro is useful for reducing verbosity in simple {\tt Variable}
-instances.
-
-:f DBus/Types/Internal.cpphs
-#define INSTANCE_VARIABLE(TYPE) \
-	instance Variable TYPE where \
-		{ toVariant = VarBox/**/TYPE \
-		; fromVariant (VarBox/**/TYPE x) = Just x \
-		; fromVariant _ = Nothing \
-		}
-:
-
-Since {\tt Variant}s are D-Bus values themselves, they can be stored in variants.
-
-:f DBus/Types/Internal.cpphs
-INSTANCE_VARIABLE(Variant)
-:
-
-For testing, {\tt Variant}s are usually generated by type.
-
-:f Tests.hs
-instance Arbitrary Variant where
-	arbitrary = arbitrary >>= genVariant
-
-genVariant :: Type -> Gen Variant
-genVariant t = case t of
-	DBusBoolean          -> fmap toVariant (arbitrary :: Gen Bool)
-	DBusByte             -> fmap toVariant (arbitrary :: Gen Word8)
-	DBusWord16           -> fmap toVariant (arbitrary :: Gen Word16)
-	DBusWord32           -> fmap toVariant (arbitrary :: Gen Word32)
-	DBusWord64           -> fmap toVariant (arbitrary :: Gen Word64)
-	DBusInt16            -> fmap toVariant (arbitrary :: Gen Int16)
-	DBusInt32            -> fmap toVariant (arbitrary :: Gen Int32)
-	DBusInt64            -> fmap toVariant (arbitrary :: Gen Int64)
-	DBusDouble           -> fmap toVariant (arbitrary :: Gen Double)
-	DBusString           -> fmap toVariant (arbitrary :: Gen String)
-	DBusObjectPath       -> fmap toVariant (arbitrary :: Gen ObjectPath)
-	DBusSignature        -> fmap toVariant (arbitrary :: Gen Signature)
-	(DBusArray _)        -> fmap toVariant (arbitrary :: Gen Array)
-	(DBusDictionary _ _) -> fmap toVariant (arbitrary :: Gen Dictionary)
-	(DBusStructure _)    -> fmap toVariant (arbitrary :: Gen Structure)
-	DBusVariant          -> fmap toVariant (arbitrary :: Gen Variant)
-:
-
-\subsection{Numerics}
-
-D-Bus supports most common numeric types:
+\dbus{} values are divided into two categories, \emph{atoms} and
+\emph{containers}. Atoms are strings, numbers, and so on. Containers can
+store other values, including other containers. Generally, values act like
+their Haskell equivalents, with one important exception: \dbus{} dictionaries
+only support atomic keys. Every \dbus{} type has a \emph{type code}, a short
+string describing what sort of data the value stores.
 
 \begin{table}[h]
-\caption{D-Bus Numeric types}
+\label{tab:dbus-types}
+\caption{\dbus{} Types}
 \begin{center}
-\begin{tabular}{ll}
+\begin{tabular}{llll}
 \toprule
-Type        & Description \\
+\dbus{} Type  & Code    & Description & Haskell Type \\
 \midrule
-Boolean     & Either {\tt True} or {\tt False} \\
-Byte        & 8-bit unsigned integer \\
-Int16       & 16-bit signed integer \\
-Int32       & 32-bit signed integer \\
-Int64       & 64-bit signed integer \\
-Word16      & 16-bit unsigned integer \\
-Word32      & 32-bit unsigned integer \\
-Word64      & 64-bit unsigned integer \\
-Double      & 64-bit IEEE754 floating-point \\
+Boolean     & {\tt b} & {\tt True} or {\tt False} & {\tt Bool} \\
+Byte        & {\tt y} & 8-bit unsigned integer & {\tt Word8} \\
+Int16       & {\tt n} & 16-bit signed integer & {\tt Int16} \\
+UInt16      & {\tt q} & 16-bit unsigned integer & {\tt Word16} \\
+Int32       & {\tt i} & 32-bit signed integer & {\tt Int32} \\
+UInt32      & {\tt u} & 32-bit unsigned integer & {\tt Word32} \\
+Int64       & {\tt x} & 64-bit signed integer & {\tt Int64} \\
+UInt64      & {\tt t} & 64-bit unsigned integer & {\tt Word64} \\
+Double      & {\tt d} & 64-bit IEEE754 floating-point & {\tt Double} \\
+String      & {\tt s} & Unicode text & {\tt Text} \\
+Object Path & {\tt o} & \dbus{} remote object path & {\tt DBus.Types.ObjectPath} \\
+Signature   & {\tt g} & List of \dbus{} types & {\tt DBus.Types.Signature} \\
+Variant     & {\tt v} & Can contain any \dbus{} value & {\tt DBus.Types.Variant} \\
+Array       & {\tt a}\emph{t} & Homogenous list of \emph{t} & {\tt Vector} \\
+Dictionary  & {\tt a\{}\emph{k}\emph{t}{\tt \}} & Associative map of \emph{k} to \emph{t} & {\tt Map} \\
+Structure   & {\tt (}\emph{codes}{\tt )} & Heterogeneous list of \dbus{} values & Tuples \\
 \bottomrule
 \end{tabular}
 \end{center}
 \end{table}
 
-All D-Bus numeric types are fixed-length, so the {\tt Int} and {\tt Integer}
-types can't be used. Instead, instances for the fixed-length integer types
-are defined and any others will have to be converted.
+\clearpage
+\subsubsection*{Values and types (continued)}
 
-:d type imports
-import Data.Word (Word8, Word16, Word32, Word64)
-import Data.Int (Int16, Int32, Int64)
+\begin{multicols}{2}
+
+Since the set of types is fixed, they are internally stored as an enumeration,
+named {\tt Type}. The names mostly match the \dbus{} names, but a few have
+been slightly changed to conform with Haskell naming conventions.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+data Type
+	= TypeBoolean
+	| TypeWord8
+	| TypeWord16
+	| TypeWord32
+	| TypeWord64
+	| TypeInt16
+	| TypeInt32
+	| TypeInt64
+	| TypeDouble
+	| TypeString
+	| TypeSignature
+	| TypeObjectPath
+	| TypeVariant
+	| TypeArray Type
+	| TypeDictionary Type Type
+	| TypeStructure [Type]
+	deriving (Eq, Ord)
 :
 
-:f DBus/Types/Internal.cpphs
-INSTANCE_VARIABLE(Bool)
-INSTANCE_VARIABLE(Word8)
-INSTANCE_VARIABLE(Int16)
-INSTANCE_VARIABLE(Int32)
-INSTANCE_VARIABLE(Int64)
-INSTANCE_VARIABLE(Word16)
-INSTANCE_VARIABLE(Word32)
-INSTANCE_VARIABLE(Word64)
-INSTANCE_VARIABLE(Double)
+\end{multicols}
+
+\begin{multicols}{2}
+
+I have two choices when deciding how to show {\tt Type}s; either use type
+codes, as in signatures, or try to generate a more Haskell-ish format. I
+chose the second option because it's easier to read; for example, compare
+{\tt "a\{sas\}"} and {\tt Map String [String]}. This is particularly
+important when working with complex or deeply-nested structures, which are
+common in some APIs.
+
+\vfill
+\columnbreak
+
+:d DBus.Types
+instance Show Type where
+	showsPrec d = showString . showType (d > 10)
+
+showType :: Bool -> Type -> String
+showType paren t = case t of
+	TypeBoolean -> "Bool"
+	TypeWord8 -> "Word8"
+	TypeWord16 -> "Word16"
+	TypeWord32 -> "Word32"
+	TypeWord64 -> "Word64"
+	TypeInt16 -> "Int16"
+	TypeInt32 -> "Int32"
+	TypeInt64 -> "Int64"
+	TypeDouble -> "Double"
+	TypeString -> "String"
+	TypeSignature -> "Signature"
+	TypeObjectPath -> "ObjectPath"
+	TypeVariant -> "Variant"
+	TypeArray t' -> concat ["[", show t', "]"]
+	TypeDictionary kt vt -> showParen paren (
+	                        showString "Map " .
+	                        shows kt .
+	                        showString " " .
+	                        showsPrec 11 vt) ""
+	TypeStructure ts -> concat
+		["(", intercalate ", " (map show ts), ")"]
 :
 
-\subsection{Strings}
+\end{multicols}
 
-Strings are a weird case; the built-in type, {\tt String}, is horribly
-inefficent. To provide better performance for large strings, packed Unicode
-strings defined in {\tt Data.Text} are used internally.
+\clearpage
+\subsection{Type signatures}
 
-:f DBus/Types/Internal.cpphs
-instance Variable TL.Text where
-	toVariant = VarBoxString
-	fromVariant (VarBoxString x) = Just x
-	fromVariant _ = Nothing
-:
+\begin{multicols}{2}
 
-There's two different {\tt Text} types, strict and lazy. It'd be a pain
-to store both and have to convert later, so instead, all strict {\tt Text}
-values are converted to lazy values.
+A list of types is called a \emph{signature}. Signatures are traditionally
+represented as a string of type codes, such as {\tt "a\{sas\}"} for
+{\tt Map String [String]}. However, this library stores signatures as
+{\tt [Type]} to take advantage of Haskell's strong typing.
 
-:d type imports
-import qualified Data.Text as T
-:
+\vfill
 
-:f DBus/Types/Internal.cpphs
-instance Variable T.Text where
-	toVariant = toVariant . TL.fromChunks . (:[])
-	fromVariant = fmap (T.concat . TL.toChunks) . fromVariant
-:
+\columnbreak
 
-Built-in {\tt String}s can still be stored, of course, but it requires
-a language extension.
+:d DBus.Types
+newtype Signature = Signature [Type]
+	deriving (Eq, Ord)
 
-:d type extensions
-{-# LANGUAGE TypeSynonymInstances #-}
-:
-
-:f DBus/Types/Internal.cpphs
-instance Variable String where
-	toVariant = toVariant . TL.pack
-	fromVariant = fmap TL.unpack . fromVariant
-:
-
-All this is verified using some QuickCheck properties
-
-:d test cases
-, F.testGroup "String"
-	[ testProperty "String -> strict Text"
-		$ funEq (fromVariant . toVariant) (Just . T.pack)
-	, testProperty "String <- strict Text"
-		$ funEq (fromVariant . toVariant) (Just . T.unpack)
-	, testProperty "String -> lazy Text"
-		$ funEq (fromVariant . toVariant) (Just . TL.pack)
-	, testProperty "String <- lazy Text"
-		$ funEq (fromVariant . toVariant) (Just . TL.unpack)
-	, testProperty "Strict Text -> lazy Text"
-		$ funEq (fromVariant . toVariant) (Just . TL.pack . T.unpack)
-	, testProperty "Strict Text <- lazy Text"
-		$ funEq (fromVariant . toVariant) (Just . T.pack . TL.unpack)
-	]
-:
-
-\subsection{Signatures}
-
-Valid D-Bus types must obey certain rules, such as ``dict keys must be
-atomic'', which are difficult to express in the Haskell type system.  A
-{\tt Signature} is guaranteed to be valid according to these rules. Creating
-one requires using the {\tt mkSignature} function, which will convert a valid
-D-Bus signature string into a {\tt Signature}.
-
-:f DBus/Types/Internal.cpphs
-INSTANCE_VARIABLE(Signature)
-data Signature = Signature { signatureTypes :: [Type] }
-	deriving (Eq)
+signatureTypes :: Signature -> [Type]
+signatureTypes (Signature types) = types
 
 instance Show Signature where
-	showsPrec d x = showParen (d > 10) $
-		showString "Signature " . shows (strSignature x)
+	showsPrec d sig = showParen (d > 10) $
+		showString "Signature " .
+		shows (signatureText sig)
 :
 
-Signatures can also be converted back into text, by concatenating the
-type codes of their contained types.
+\end{multicols}
 
-:f DBus/Types/Internal.cpphs
-bytesSignature :: Signature -> B.ByteString
-bytesSignature (Signature ts) = B.concat $ map typeCodeB ts
+\begin{multicols}{2}
 
-strSignature :: Signature -> Text
-strSignature (Signature ts) = TL.concat $ map typeCode ts
+Although signatures are strongly-typed internally, they are exposed to the
+user as if they're special strings matching the \dbus{} signature format.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+signatureText :: Signature -> Text
+signatureText = Data.Text.Encoding.decodeUtf8
+              . Data.ByteString.Char8.pack
+              . concatMap typeCode
+              . signatureTypes
+
+typeCode :: Type -> String
+typeCode TypeBoolean    = "b"
+typeCode TypeWord8      = "y"
+typeCode TypeWord16     = "q"
+typeCode TypeWord32     = "u"
+typeCode TypeWord64     = "t"
+typeCode TypeInt16      = "n"
+typeCode TypeInt32      = "i"
+typeCode TypeInt64      = "x"
+typeCode TypeDouble     = "d"
+typeCode TypeString     = "s"
+typeCode TypeSignature  = "g"
+typeCode TypeObjectPath = "o"
+typeCode TypeVariant    = "v"
+typeCode (TypeArray t)  = 'a' : typeCode t
+typeCode (TypeDictionary kt vt) = concat
+	[ "a{", typeCode kt , typeCode vt, "}"]
+
+typeCode (TypeStructure ts) = concat
+	["(", concatMap typeCode ts, ")"]
 :
 
-It doesn't make much sense to sort signatures, but since they can be used
-as dictionary keys, it's useful to have them as an instance of {\tt Ord}.
+\end{multicols}
 
-:d type imports
-import Data.Ord (comparing)
-:
+\clearpage
+\subsubsection*{Parsing signatures}
 
-:f DBus/Types/Internal.cpphs
-instance Ord Signature where
-	compare = comparing strSignature
-:
-
-:d type exports
-  -- * Signatures
-, Signature
-, signatureTypes
-, strSignature
-:
-
-\subsubsection{Type codes}
-
-For atomic types, the type code is a single letter. Arrays, structures,
-and dictionary types are multiple characters.
-
-:d type imports
-import Data.Text.Encoding (decodeUtf8)
-:
-
-:d type codes
-typeCode t = TL.fromChunks [decodeUtf8 $ typeCodeB t]
-
-typeCodeB :: Type -> B.ByteString
-typeCodeB DBusBoolean    = "b"
-typeCodeB DBusByte       = "y"
-typeCodeB DBusInt16      = "n"
-typeCodeB DBusInt32      = "i"
-typeCodeB DBusInt64      = "x"
-typeCodeB DBusWord16     = "q"
-typeCodeB DBusWord32     = "u"
-typeCodeB DBusWord64     = "t"
-typeCodeB DBusDouble     = "d"
-typeCodeB DBusString     = "s"
-typeCodeB DBusSignature  = "g"
-typeCodeB DBusObjectPath = "o"
-typeCodeB DBusVariant    = "v"
-:
-
-An array's type code is ``a'' followed by the type it contains. For example,
-an array of booleans would have the type string ``ab''.
-
-:d type codes
-typeCodeB (DBusArray t) = B8.cons 'a' $ typeCodeB t
-:
-
-A dictionary's type code is ``a\{$key\_type$ $value\_type$\}''. For example,
-a dictionary of bytes to booleans would have the type string ``a\{yb\}''.
-
-:d type codes
-typeCodeB (DBusDictionary k v) = B.concat ["a{", typeCodeB k, typeCodeB v, "}"]
-:
-
-A structure's type code is the concatenation of its contained types,
-wrapped by ``('' and ``)''. Structures may be empty, in which case their
-type code is simply ``()''.
-
-:d type codes
-typeCodeB (DBusStructure ts) = B.concat $
-	["("] ++ map typeCodeB ts ++ [")"]
-:
-
-\subsubsection{Parsing}
-
-When parsing, additional restrictions apply which are not inherent to the
-D-Bus type system. The signature parsing functions guarantee that any
-{\tt Signature} is valid according to D-Bus rules.
+\begin{multicols}{2}
 
 Signature parsing is the most common operation when unmarshaling messages;
-therefore, an efficient parsing implementation is essential.
+therefore, an efficient parsing implementation is essential. However, I still
+want the library's users to see a text-based interface to signatures.
 
-Since all valid signatures as entirely ASCII, it's possible to parse them
-using byte-based parsers for better performance. These aren't exported from
-the public interface, but are still used within {\tt DBus.Wire} modules.
+Therefore, there are actually two signature parsing APIs -- one for other
+modules in this library (especially {\tt DBus.Wire}, and a small wrapper for
+users. The wrapper follows the pattern for other special strings, so users
+can use string literals and so on.
 
-:d type imports
-import qualified Data.ByteString.Unsafe as B
-import qualified Foreign as F
-import System.IO.Unsafe (unsafePerformIO)
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+instance Data.String.IsString Signature where
+	fromString = signature_ . Data.Text.pack
+
+signature :: Text -> Maybe Signature
+signature text = parseSignature bytes where
+	bytes = Data.Text.Encoding.encodeUtf8 text
+
+signature_ :: Text -> Signature
+signature_ = tryParse "signature" signature
 :
 
-There are three special cases which can be optimized:
+\end{multicols}
+
+\begin{multicols}{2}
+
+\noindent There are three special cases which can be optimized:
 
 \begin{enumerate}
 \item Empty signatures occur when messages have no body, and can use a constant
       result.
 \item Single-character signatures occur when parsing variants, and can use a
-      faster atom-only parser.
-\item Signatures larger than 255 characters are invalid.
+      faster non-recursive parser.
+\item All signatures larger than 255 characters are invalid, so they can be
+      failed immediately.
 \end{enumerate}
 
-:f DBus/Types/Internal.cpphs
-mkBytesSignature :: B.ByteString -> Maybe Signature
-mkBytesSignature = unsafePerformIO . flip B.unsafeUseAsCStringLen io where
-	|fast signature parser|
-	|slow signature parser|
-	
-	io (cstr, len) = case len of
-		0 -> return $ Just $ Signature []
-		1 -> fmap fast $ F.peek cstr
-		_ | len <= 255 -> slow (F.castPtr cstr) len
+\vfill
+\columnbreak
+
+:d DBus.Types
+parseSignature :: ByteString -> Maybe Signature
+parseSignature bytes =
+	case Data.ByteString.length bytes of
+		0 -> Just (Signature [])
+		1 -> parseSigFast bytes
+		len | len <= 255 -> parseSigFull bytes
+		_ -> Nothing
+:
+
+\end{multicols}
+
+\begin{multicols}{2}
+
+Additionally, the library might already has a list of {\tt Type}s available,
+and just wants to see if they're a valid signature. Rather than re-parsing
+them, we can assume the types are already nested correctly, and just check
+their string length.
+
+\vfill
+\columnbreak
+
+:d DBus.Types
+checkSignature :: [Type] -> Maybe Signature
+checkSignature = check where
+	check ts = if sumLen ts > 255
+		then Nothing
+		else Just (Signature ts)
+	sumLen :: [Type] -> Int
+	sumLen = sum . map len
+
+	len (TypeArray t) = 1 + len t
+	len (TypeDictionary kt vt) = 3 + len kt + len vt
+	len (TypeStructure ts) = 2 + sumLen ts
+	len _ = 1
+:
+
+\end{multicols}
+
+\clearpage
+\subsubsection*{Fast signature parser}
+
+\begin{multicols}{2}
+
+The fast parser relies on all atoms having single-character codes; if the
+input string has only one character, it must be either an atomic type or
+{\tt TypeVariant}.
+
+This optimization is important when parsing variants, as they very often
+contain signatures with only a single atomic type.
+
+\vfill
+\columnbreak
+
+:d DBus.Types
+parseSigFast :: ByteString -> Maybe Signature
+parseSigFast bytes =
+	let byte = Data.ByteString.head bytes in
+	parseAtom byte
+		(\t -> Just (Signature [t]))
+		(case byte of
+			0x76 -> Just (Signature [TypeVariant])
+			_ -> Nothing)
+
+parseAtom :: Word8 -> (Type -> a) -> a -> a
+parseAtom byte yes no = case byte of
+	0x62 -> yes TypeBoolean
+	0x6E -> yes TypeInt16
+	0x69 -> yes TypeInt32
+	0x78 -> yes TypeInt64
+	0x79 -> yes TypeWord8
+	0x71 -> yes TypeWord16
+	0x75 -> yes TypeWord32
+	0x74 -> yes TypeWord64
+	0x64 -> yes TypeDouble
+	0x73 -> yes TypeString
+	0x67 -> yes TypeSignature
+	0x6F -> yes TypeObjectPath
+	_ -> no
+:
+
+\end{multicols}
+
+\clearpage
+\subsubsection*{Full signature parser}
+
+This is horrible, gnarly, and almost completely undocumented. Someday I'll get
+around to cleaning it up, or at least hanging some curtains on it.
+
+:d DBus.Types
+parseSigFull :: ByteString -> Maybe Signature
+parseSigFull bytes = unsafePerformIO io where
+	io = Data.ByteString.Unsafe.unsafeUseAsCStringLen bytes castBuf
+	castBuf (ptr, len) = parseSigBuf (Foreign.castPtr ptr, len)
+	parseSigBuf (buf, len) = mainLoop [] 0 where
+		|full signature parser|
+:
+
+:d full signature parser
+mainLoop acc ii | ii >= len = return (Just (Signature (reverse acc)))
+mainLoop acc ii = do
+	c <- Foreign.peekElemOff buf ii
+	let next t = mainLoop (t : acc) (ii + 1)
+	parseAtom c next $ case c of
+		0x76 -> next TypeVariant
+		0x28 -> do -- '('
+			mt <- structure (ii + 1)
+			case mt of
+				Just (ii', t) -> mainLoop (t : acc) ii'
+				Nothing -> return Nothing
+		0x61 -> do -- 'a'
+			mt <- array (ii + 1)
+			case mt of
+				Just (ii', t) -> mainLoop (t : acc) ii'
+				Nothing -> return Nothing
 		_ -> return Nothing
 :
 
-:d fast signature parser
-parseAtom c yes no = case c of
-	0x62 -> yes DBusBoolean
-	0x79 -> yes DBusByte
-	0x6E -> yes DBusInt16
-	0x69 -> yes DBusInt32
-	0x78 -> yes DBusInt64
-	0x71 -> yes DBusWord16
-	0x75 -> yes DBusWord32
-	0x74 -> yes DBusWord64
-	0x64 -> yes DBusDouble
-	0x73 -> yes DBusString
-	0x67 -> yes DBusSignature
-	0x6F -> yes DBusObjectPath
-	_ -> no
-
-fast c = parseAtom c (\t -> Just (Signature [t])) $ case c of
-	0x76 -> Just (Signature [DBusVariant])
-	_ -> Nothing
-:
-
-:d slow signature parser
-slow :: F.Ptr Word8 -> Int -> IO (Maybe Signature)
-slow buf len = loop [] 0 where
-	loop acc ii | ii >= len = return . Just . Signature $ reverse acc
-	loop acc ii = do
-		c <- F.peekElemOff buf ii
-		let next t = loop (t : acc) (ii + 1)
-		parseAtom c next $ case c of
-			0x76 -> next DBusVariant
-			
-			-- '('
-			0x28 -> do
-				mt <- structure buf len (ii + 1)
-				case mt of
-					Just (ii', t) -> loop (t : acc) ii'
-					Nothing -> return Nothing
-			
-			-- 'a'
-			0x61 -> do
-				mt <- array buf len (ii + 1)
-				case mt of
-					Just (ii', t) -> loop (t : acc) ii'
-					Nothing -> return Nothing
-			
-			_ -> return Nothing
-:
-
-:d slow signature parser
-structure :: F.Ptr Word8 -> Int -> Int -> IO (Maybe (Int, Type))
-structure buf len = loop [] where
+:d full signature parser
+structure :: Int -> IO (Maybe (Int, Type))
+structure = loop [] where
 	loop _ ii | ii >= len = return Nothing
 	loop acc ii = do
-		c <- F.peekElemOff buf ii
+		c <- Foreign.peekElemOff buf ii
 		let next t = loop (t : acc) (ii + 1)
 		parseAtom c next $ case c of
-			0x76 -> next DBusVariant
-			
-			-- '('
-			0x28 -> do
-				mt <- structure buf len (ii + 1)
+			0x76 -> next TypeVariant
+			0x28 -> do -- '('
+				mt <- structure (ii + 1)
 				case mt of
 					Just (ii', t) -> loop (t : acc) ii'
 					Nothing -> return Nothing
-			
+			0x61 -> do -- 'a'
+				mt <- array (ii + 1)
+				case mt of
+					Just (ii', t) -> loop (t : acc) ii'
+					Nothing -> return Nothing
 			-- ')'
-			0x29 -> return $ Just $ (ii + 1, DBusStructure (reverse acc))
-			
-			-- 'a'
-			0x61 -> do
-				mt <- array buf len (ii + 1)
-				case mt of
-					Just (ii', t) -> loop (t : acc) ii'
-					Nothing -> return Nothing
-			
+			0x29 -> return $ case acc of
+				[] -> Nothing
+				_ -> Just $ (ii + 1, TypeStructure (reverse acc))
 			_ -> return Nothing
 :
 
-:d slow signature parser
-array :: F.Ptr Word8 -> Int -> Int -> IO (Maybe (Int, Type))
-array _   len ii | ii >= len = return Nothing
-array buf len ii = do
-	c <- F.peekElemOff buf ii
-	let next t = return $ Just (ii + 1, DBusArray t)
+\clearpage
+\subsubsection*{Full signature parser (continued)}
+
+:d full signature parser
+array :: Int -> IO (Maybe (Int, Type))
+array ii | ii >= len = return Nothing
+array ii = do
+	c <- Foreign.peekElemOff buf ii
+	let next t = return $ Just (ii + 1, TypeArray t)
 	parseAtom c next $ case c of
-		0x76 -> next DBusVariant
-		
-		-- '('
-		0x28 -> do
-			mt <- structure buf len (ii + 1)
+		0x76 -> next TypeVariant
+		0x7B -> dict (ii + 1) -- '{'
+		0x28 -> do -- '('
+			mt <- structure (ii + 1)
 			case mt of
-				Just (ii', t) -> return $ Just (ii', DBusArray t)
+				Just (ii', t) -> return $ Just (ii', TypeArray t)
 				Nothing -> return Nothing
-		
-		-- '{'
-		0x7B -> dict buf len (ii + 1)
-		
-		-- 'a'
-		0x61 -> do
-			mt <- array buf len (ii + 1)
+		0x61 -> do -- 'a'
+			mt <- array (ii + 1)
 			case mt of
-				Just (ii', t) -> return $ Just (ii', DBusArray t)
+				Just (ii', t) -> return $ Just (ii', TypeArray t)
 				Nothing -> return Nothing
-		
 		_ -> return Nothing
 :
 
-:d slow signature parser
-dict :: F.Ptr Word8 -> Int -> Int -> IO (Maybe (Int, Type))
-dict _   len ii | ii + 1 >= len = return Nothing
-dict buf len ii = do
-	c1 <- F.peekElemOff buf ii
-	c2 <- F.peekElemOff buf (ii + 1)
+:d full signature parser
+dict :: Int -> IO (Maybe (Int, Type))
+dict ii | ii + 1 >= len = return Nothing
+dict ii = do
+	c1 <- Foreign.peekElemOff buf ii
+	c2 <- Foreign.peekElemOff buf (ii + 1)
 	
-	let mt1 = parseAtom c1 Just Nothing
-	
-	let next t = return $ Just (ii + 2, t)
+	let next t = return (Just (ii + 2, t))
 	mt2 <- parseAtom c2 next $ case c2 of
-		0x76 -> next DBusVariant
-		
-		-- '('
-		0x28 -> structure buf len (ii + 2)
-		
-		-- 'a'
-		0x61 -> array buf len (ii + 2)
-		
+		0x76 -> next TypeVariant
+		0x28 -> structure (ii + 2) -- '('
+		0x61 -> array (ii + 2) -- 'a'
 		_ -> return Nothing
 	
 	case mt2 of
@@ -671,512 +435,785 @@ dict buf len ii = do
 		Just (ii', t2) -> if ii' >= len
 			then return Nothing
 			else do
-				c3 <- F.peekElemOff buf ii'
+				c3 <- Foreign.peekElemOff buf ii'
 				return $ do
 					if c3 == 0x7D then Just () else Nothing
-					t1 <- mt1
-					Just (ii' + 1, DBusDictionary t1 t2)
+					t1 <- parseAtom c1 Just Nothing
+					Just (ii' + 1, TypeDictionary t1 t2)
 :
 
-The public interface for building signatures is {\tt Text}-based.
+\clearpage
+\subsection{Generic value boxing}
 
-:d type imports
-import Data.Text.Lazy.Encoding (encodeUtf8)
+\begin{multicols}{2}
+
+The \dbus{} type system is similar to Haskell's, but has some minor
+differences. Most notably, {\em variants} can store any \dbus{} type, and
+dictionaries must have atomic keys. To provide a clean interface for
+converting between \dbus{} and Haskell types, the interface is encoded with
+three classes:
+
+\begin{enumerate}
+\item {\tt IsVariant} is the most general, and the only class that users may
+      add instances for. Any type that can be converted to primitive \dbus{}
+      values can be stored in a {\tt Variant}, and converted safely back to
+      its original form.
+\item {\tt IsValue} is slightly stricter, and is used for constraining
+      container values. If containers were constrained to {\tt IsVariant},
+      users could define an instance for {\tt Either} and create heterogenous
+      containers.
+\item {\tt IsAtom} is the strictest, and is used for constraining dictionary
+      key types. Only atomic values can be converted with this class, and
+      users cannot define their own instances.
+\end{enumerate}
+
+It is possible to make this slightly less verbose by using existential
+types, but the additional indirection causes slower message parsing.
+
+As a special optimization, arrays of bytes can be stored directly in a
+{\tt Value} in three common formats. This allows the marshaling system to
+avoid copying data unless needed.
+
+{\tt ValueVector} and {\tt ValueMap} require special handling. \dbus{} needs
+to know their full type even if they're empty, but {\tt ([] :: [Value])}
+contains no information about its contents. As a workaround, the full type
+of the container is stored in the box itself at construction.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+class IsVariant a where
+	toVariant :: a -> Variant
+	fromVariant :: Variant -> Maybe a
+
+class IsVariant a => IsValue a where
+	typeOf :: a -> Type
+	toValue :: a -> Value
+	fromValue :: Value -> Maybe a
+
+class IsValue a => IsAtom a where
+	toAtom :: a -> Atom
+	fromAtom :: Atom -> Maybe a
+
+|apidoc DBus.Types.Variant|
+newtype Variant = Variant Value
+	deriving (Eq)
+
+data Value
+	= ValueAtom Atom
+	| ValueVariant Variant
+	| ValueBytes ByteString
+	| ValueVector Type (Vector Value)
+	| ValueMap Type Type (Map Atom Value)
+	| ValueStructure [Value]
+	deriving (Show)
+
+data Atom
+	= AtomBool Bool
+	| AtomWord8 Word8
+	| AtomWord16 Word16
+	| AtomWord32 Word32
+	| AtomWord64 Word64
+	| AtomInt16 Int16
+	| AtomInt32 Int32
+	| AtomInt64 Int64
+	| AtomDouble Double
+	| AtomText Text
+	| AtomSignature Signature
+	| AtomObjectPath ObjectPath
+	deriving (Show, Eq, Ord)
 :
 
-:f DBus/Types/Internal.cpphs
-mkSignature :: Text -> Maybe Signature
-mkSignature = mkBytesSignature . B.concat . BL.toChunks . encodeUtf8
+\end{multicols}
+
+\clearpage
+\subsubsection*{Generic value boxing (continued)}
+
+The byte-handling optimization comes at a cost, however; it's no longer
+possible to derive {\tt Eq}, and the instance is quite ugly.
+
+:d DBus.Types
+instance Eq Value where
+	(==) (ValueBytes x) y = case y of
+		ValueBytes y' -> x == y'
+		ValueVector TypeWord8 y' -> x == vectorToBytes y'
+		_ -> False
+	
+	(==) (ValueVector TypeWord8 x) y = case y of
+		ValueBytes y' -> vectorToBytes x == y'
+		ValueVector TypeWord8 y' -> x == y'
+		_ -> False
+	
+	(==) (ValueAtom x) (ValueAtom y) = x == y
+	(==) (ValueVariant x) (ValueVariant y) = x == y
+	(==) (ValueVector tx x) (ValueVector ty y) = tx == ty && x == y
+	(==) (ValueMap ktx vtx x) (ValueMap kty vty y) = ktx == kty && vtx == vty && x == y
+	(==) (ValueStructure x) (ValueStructure y) = x == y
+	(==) _ _ = False
 :
 
-Since many signatures are defined as string literals, it's useful to
-have a helper function to construct a signature directly from a string.
-If the input string is invalid, {\tt error} will be called.
+\clearpage
+\subsubsection*{Generic value boxing (continued)}
 
-:d type imports
-import DBus.Util (mkUnsafe)
-import qualified Data.String as String
+If a user is interacting with the library through an REPL (e.g. GHCI), they
+might want to print the content of a variant -- for example, to print messages
+received from the bus. Due to the various wrappers between {\tt Variant} and
+the actual data, this is somewhat complex.
+
+:d DBus.Types
+showAtom :: Bool -> Atom -> String
+showAtom _ (AtomBool x) = show x
+showAtom _ (AtomWord8 x) = show x
+showAtom _ (AtomWord16 x) = show x
+showAtom _ (AtomWord32 x) = show x
+showAtom _ (AtomWord64 x) = show x
+showAtom _ (AtomInt16 x) = show x
+showAtom _ (AtomInt32 x) = show x
+showAtom _ (AtomInt64 x) = show x
+showAtom _ (AtomDouble x) = show x
+showAtom _ (AtomText x) = show x
+showAtom p (AtomSignature x) = showsPrec (if p then 11 else 0) x ""
+showAtom p (AtomObjectPath x) = showsPrec (if p then 11 else 0) x ""
+
+showValue :: Bool -> Value -> String
+showValue p (ValueAtom x) = showAtom p x
+showValue p (ValueVariant x) = showsPrec (if p then 11 else 0) x ""
+showValue _ (ValueBytes xs) = 'b' : show xs
+showValue _ (ValueVector TypeWord8 xs) = 'b' : show (vectorToBytes xs)
+showValue _ (ValueVector _ xs) = showThings "[" (showValue False) "]" (Data.Vector.toList xs)
+showValue _ (ValueMap _ _ xs) = showThings "{" showPair "}" (Data.Map.toList xs) where
+	showPair (k, v) = showAtom False k ++ ": " ++ showValue False v
+showValue _ (ValueStructure xs) = showThings "(" (showValue False) ")" xs
+
+showThings :: String -> (a -> String) -> String -> [a] -> String
+showThings a s z xs = a ++ intercalate ", " (map s xs) ++ z
+
+vectorToBytes :: Vector Value -> ByteString
+vectorToBytes = Data.ByteString.pack
+              . Data.Vector.toList
+              . Data.Vector.map (\(ValueAtom (AtomWord8 x)) -> x)
 :
 
-:f DBus/Types/Internal.cpphs
-mkSignature_ :: Text -> Signature
-mkSignature_ = mkUnsafe "signature" mkSignature
+To preserve the variant-based public interface, {\tt showAtom} and
+{\tt showValue} are not exported to the user. This preserves the
+appearance that {\tt Variant} is a simple wrapping box.
 
-instance String.IsString Signature where
-	fromString = mkUnsafe "signature" mkBytesSignature . BL8.pack
+\begin{quote}
+:d DBus.Types
+instance Show Variant where
+	showsPrec d (Variant x) = showParen (d > 10) $
+		showString "Variant " .  showString (showValue True x)
+:
+\end{quote}
+
+\clearpage
+\subsubsection*{Generic value boxing (continued)}
+
+Printing a {\tt Variant} lets the user see what value it contains, but
+sometimes they need to know exactly what type \dbus{} thinks it is. This
+is particularly important when working with integers, as some APIs will
+only accept integers of a particular size.
+
+:d DBus.Types
+|apidoc DBus.Types.variantType|
+variantType :: Variant -> Type
+variantType (Variant val) = valueType val
+
+valueType :: Value -> Type
+valueType (ValueAtom x) = atomType x
+valueType (ValueVariant _) = TypeVariant
+valueType (ValueVector t _) = TypeArray t
+valueType (ValueBytes _) = TypeArray TypeWord8
+valueType (ValueMap kt vt _) = TypeDictionary kt vt
+valueType (ValueStructure vs) = TypeStructure (map valueType vs)
+
+atomType :: Atom -> Type
+atomType (AtomBool _) = TypeBoolean
+atomType (AtomWord8 _) = TypeWord8
+atomType (AtomWord16 _) = TypeWord16
+atomType (AtomWord32 _) = TypeWord32
+atomType (AtomWord64 _) = TypeWord64
+atomType (AtomInt16 _) = TypeInt16
+atomType (AtomInt32 _) = TypeInt32
+atomType (AtomInt64 _) = TypeInt64
+atomType (AtomDouble _) = TypeDouble
+atomType (AtomText _) = TypeString
+atomType (AtomSignature _) = TypeSignature
+atomType (AtomObjectPath _) = TypeObjectPath
 :
 
-Most signature-related functions are exposed to clients, except the
-{\tt Signature} value constructor. If that were exposed, clients could
-construct invalid signatures.
+\clearpage
+\subsubsection*{Generic value boxing (continued)}
 
-:d type exports
-, mkSignature
-, mkSignature_
-:
+\begin{multicols}{2}
 
-Checking if a type is valid according to signature rules is common, and if
-performed through the signature parser, slow. Since such types are already
-guaranteed to be structurally valid, the only test needed is whether their
-size is within bounds.
+Since atoms are stored directly in the {\tt Atom} box, there is no fancy
+logic required in their class instances. They're still pretty verbose, so
+I used a small macro to keep things reasonable.
 
-:f DBus/Types/Internal.cpphs
-maybeValidType :: Type -> Maybe ()
-maybeValidType t = if B.length (typeCodeB t) > 255
-	then Nothing
-	else Just ()
-:
+\vfill
+\columnbreak
 
-:f Tests.hs
-instance Arbitrary Signature where
-	arbitrary = sizedText 255 $ fmap (TL.concat . map typeCode) arbitrary
-:
-
-:d test cases
-, F.testGroup "Signature"
-	[ testProperty "Signature identity"
-		$ funEq (mkSignature . strSignature) Just
-	]
-:
-
-\subsection{Object paths}
-
-:f DBus/Types/Internal.cpphs
-INSTANCE_VARIABLE(ObjectPath)
-newtype ObjectPath = ObjectPath
-	{ strObjectPath :: Text
+:d DBus.Types
+#define IS_ATOM(HsType, AtomCons, TypeCons) \
+	instance IsAtom HsType where \
+	{ toAtom = AtomCons \
+	; fromAtom (AtomCons x) = Just x \
+	; fromAtom _ = Nothing \
+	}; \
+	instance IsValue HsType where \
+	{ typeOf _ = TypeCons \
+	; toValue = ValueAtom . toAtom \
+	; fromValue (ValueAtom x) = fromAtom x \
+	; fromValue _ = Nothing \
+	}; \
+	instance IsVariant HsType where \
+	{ toVariant = Variant . toValue \
+	; fromVariant (Variant val) = fromValue val \
 	}
-	deriving (Eq, Ord)
 
-instance Show ObjectPath where
-	showsPrec d (ObjectPath x) = showParen (d > 10) $
-		showString "ObjectPath " . shows x
-
-instance String.IsString ObjectPath where
-	fromString = mkObjectPath_ . TL.pack
+IS_ATOM(Bool,       AtomBool,       TypeBoolean)
+IS_ATOM(Word8,      AtomWord8,      TypeWord8)
+IS_ATOM(Word16,     AtomWord16,     TypeWord16)
+IS_ATOM(Word32,     AtomWord32,     TypeWord32)
+IS_ATOM(Word64,     AtomWord64,     TypeWord64)
+IS_ATOM(Int16,      AtomInt16,      TypeInt16)
+IS_ATOM(Int32,      AtomInt32,      TypeInt32)
+IS_ATOM(Int64,      AtomInt64,      TypeInt64)
+IS_ATOM(Double,     AtomDouble,     TypeDouble)
+IS_ATOM(Text,       AtomText,       TypeString)
+IS_ATOM(Signature,  AtomSignature,  TypeSignature)
+IS_ATOM(ObjectPath, AtomObjectPath, TypeObjectPath)
 :
+
+\end{multicols}
+
+\begin{multicols}{2}
+
+~
+
+\vfill
+\columnbreak
+
+:d DBus.Types
+instance IsValue Variant where
+	typeOf _ = TypeVariant
+	toValue = ValueVariant
+	fromValue (ValueVariant x) = Just x
+	fromValue _ = Nothing
+
+instance IsVariant Variant where
+	toVariant = Variant . toValue
+	fromVariant (Variant val) = fromValue val
+:
+
+\end{multicols}
+
+\clearpage
+\subsubsection*{Generic value boxing (continued)}
+
+:d DBus.Types
+instance IsAtom Data.Text.Lazy.Text where
+	toAtom = toAtom . Data.Text.Lazy.toStrict
+	fromAtom = fmap Data.Text.Lazy.fromStrict . fromAtom
+
+instance IsValue Data.Text.Lazy.Text where
+	typeOf _ = TypeString
+	toValue = ValueAtom . toAtom
+	fromValue (ValueAtom x) = fromAtom x
+	fromValue _ = Nothing
+
+instance IsVariant Data.Text.Lazy.Text where
+	toVariant = Variant . toValue
+	fromVariant (Variant val) = fromValue val
+:
+
+:d DBus.Types
+instance IsAtom String where
+	toAtom = toAtom . Data.Text.pack
+	fromAtom = fmap Data.Text.unpack . fromAtom
+
+instance IsValue String where
+	typeOf _ = TypeString
+	toValue = ValueAtom . toAtom
+	fromValue (ValueAtom x) = fromAtom x
+	fromValue _ = Nothing
+
+instance IsVariant String where
+	toVariant = Variant . toValue
+	fromVariant (Variant val) = fromValue val
+:
+
+\clearpage
+\subsubsection*{Generic value boxing (continued)}
+
+Arrays are stored as a {\tt Vector Value}; this is somewhat inefficient,
+but allows type-safe casting between different array representations.
+
+:d DBus.Types
+instance IsValue a => IsValue (Vector a) where
+	typeOf v = TypeArray (vectorItemType v)
+	toValue v = ValueVector (vectorItemType v) (Data.Vector.map toValue v)
+	fromValue (ValueVector _ v) = Data.Vector.mapM fromValue v
+	fromValue _ = Nothing
+
+vectorItemType :: IsValue a => Vector a -> Type
+vectorItemType v = typeOf (undefined `asTypeOf` Data.Vector.head v)
+
+instance IsValue a => IsVariant (Vector a) where
+	toVariant = Variant . toValue
+	fromVariant (Variant val) = fromValue val
+:
+
+:d DBus.Types
+instance IsValue a => IsValue [a] where
+	typeOf v = TypeArray (typeOf (undefined `asTypeOf` head v))
+	toValue = toValue . Data.Vector.fromList
+	fromValue = fmap Data.Vector.toList . fromValue
+
+instance IsValue a => IsVariant [a] where
+	toVariant = toVariant . Data.Vector.fromList
+	fromVariant = fmap Data.Vector.toList . fromVariant
+:
+
+As an optimization, arrays of bytes are treated specially -- they can be
+converted to/from packed bytestrings.
+
+:d DBus.Types
+instance IsValue ByteString where
+	typeOf _ = TypeArray TypeWord8
+	toValue = ValueBytes
+	fromValue (ValueBytes bs) = Just bs
+	fromValue (ValueVector TypeWord8 v) = Just (vectorToBytes v)
+	fromValue _ = Nothing
+
+instance IsVariant ByteString where
+	toVariant = Variant . toValue
+	fromVariant (Variant val) = fromValue val
+:
+
+:d DBus.Types
+instance IsValue Data.ByteString.Lazy.ByteString where
+	typeOf _ = TypeArray TypeWord8
+	toValue = toValue
+	        . Data.ByteString.concat 
+	        . Data.ByteString.Lazy.toChunks
+	fromValue = fmap (\bs -> Data.ByteString.Lazy.fromChunks [bs])
+	          . fromValue
+
+instance IsVariant Data.ByteString.Lazy.ByteString where
+	toVariant = Variant . toValue
+	fromVariant (Variant val) = fromValue val
+:
+
+\clearpage
+\subsubsection*{Generic value boxing (continued)}
+
+:d DBus.Types
+instance (Ord k, IsAtom k, IsValue v) => IsValue (Map k v) where
+	typeOf m = TypeDictionary kt vt where
+		(kt, vt) = mapItemType m
+	
+	toValue m = ValueMap kt vt (bimap box m) where
+		(kt, vt) = mapItemType m
+		box k v = (toAtom k, toValue v)
+	
+	fromValue (ValueMap _ _ m) = bimapM unbox m where
+		unbox k v = do
+			k' <- fromAtom k
+			v' <- fromValue v
+			return (k', v')
+	fromValue _ = Nothing
+
+bimap :: Ord k' => (k -> v -> (k', v')) -> Map k v -> Map k' v'
+bimap f = Data.Map.fromList . map (\(k, v) -> f k v) . Data.Map.toList
+
+bimapM :: (Monad m, Ord k') => (k -> v -> m (k', v')) -> Map k v -> m (Map k' v')
+bimapM f = liftM Data.Map.fromList . mapM (\(k, v) -> f k v) . Data.Map.toList
+
+mapItemType :: (IsValue k, IsValue v) => Map k v -> (Type, Type)
+mapItemType m = (typeOf k, typeOf v) where
+	mapItem :: Map k v -> (k, v)
+	mapItem _ = (undefined, undefined)
+	(k, v) = mapItem m
+
+instance (Ord k, IsAtom k, IsValue v) => IsVariant (Map k v) where
+	toVariant = Variant . toValue
+	fromVariant (Variant val) = fromValue val
+:
+
+\clearpage
+\subsubsection*{Generic value boxing (continued)}
+
+\dbus{}'s structures are essentially the same as Haskell's tuples, except they
+can contain up to 255 items. There's no way I'm going to define 255 instances
+for {\tt IsValue} and {\tt IsVariant}; other classes (such as {\tt Show}) only
+go up to 15 or so, so that's how far {\tt dbus-core} goes too.
+
+I'm also not going to include all the instance declarations inline in this
+document, since they're all essentially the same. Here's the instances for
+two-element tuples, as a template.
+
+:d DBus.Types
+instance (IsValue a1, IsValue a2) => IsValue (a1, a2) where
+	typeOf ~(a1, a2) = TypeStructure [typeOf a1, typeOf a2]
+	toValue (a1, a2) = ValueStructure [toValue a1, toValue a2]
+	fromValue (ValueStructure [a1, a2]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		return (a1', a2')
+	fromValue _ = Nothing
+
+instance (IsVariant a1, IsVariant a2) => IsVariant (a1, a2) where
+	toVariant (a1, a2) = Variant (ValueStructure [varToVal a1, varToVal a2])
+	fromVariant (Variant (ValueStructure [a1, a2])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		return (a1', a2')
+	fromVariant _ = Nothing
+
+varToVal :: IsVariant a => a -> Value
+varToVal a = case toVariant a of
+	Variant val -> val
+:
+
+\clearpage
+\subsection{Special string types}
+
+Various aspects of \dbus{} require the use of specially-formatted strings. Every
+special string type gets its own Haskell type and construction function; this
+allows the library to assume all such strings are correctly formatted. The
+constructors will evaluate to {\tt Nothing} if their input is invalid. In
+addition, partial versions (suffixed with {\tt \_}) are available for users
+who don't care about validation; these will throw an exception if the input
+is invalid. Finally, {\tt IsString} instances are available for all special
+strings, so users can just enable {\tt OverloadedStrings} and use string
+literals directly.
+
+Validation is performed using Parsec. Unfortunately, Parsec does not work
+with packed strings; I'll define a few utility functions first, so the
+validation logic is more obvious. Note that these discard the Parsec error
+message; if some input doesn't match, the exact error is unlikely to be
+interesting.
+
+:d text validation imports
+import qualified Text.ParserCombinators.Parsec as Parsec
+import           Text.ParserCombinators.Parsec ((<|>), oneOf)
+:
+
+:d text validation
+skipSepBy1 :: Parsec.Parser a -> Parsec.Parser b -> Parsec.Parser ()
+skipSepBy1 p sep = do
+	void p
+	Parsec.skipMany (sep >> p)
+
+runParser :: Parsec.Parser a -> Text -> Maybe a
+runParser parser text = case Parsec.parse parser "" (Data.Text.unpack text) of
+	Left _ -> Nothing
+	Right a -> Just a
+
+tryParse :: String -> (Text -> Maybe a) -> Text -> a
+tryParse label parse text = case parse text of
+	Just x -> x
+	Nothing -> error ("Invalid " ++ label ++ ": " ++ show text)
+:
+
+\clearpage
+\subsubsection{Object paths}
+
+\begin{multicols}{2}
+
+\dbus{} is an object-oriented protocol; most \dbus{} sessions consist of method
+calls sent to \emph{objects} exported by other applications. An objects is
+identified by a \emph{object path}, such as {\tt /org/freedesktop/DBus}, which
+is unique within each application.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+newtype ObjectPath = ObjectPath Text
+	deriving (Eq, Ord, Show)
+
+objectPathText :: ObjectPath -> Text
+objectPathText (ObjectPath text) = text
+
+objectPath :: Text -> Maybe ObjectPath
+objectPath text = do
+	runParser parseObjectPath text
+	return (ObjectPath text)
+
+objectPath_ :: Text -> ObjectPath
+objectPath_ = tryParse "object path" objectPath
+
+instance Data.String.IsString ObjectPath where
+	fromString = objectPath_ . Data.Text.pack
+:
+
+\end{multicols}
+
+\begin{multicols}{2}
 
 An object path may be one of
 
 \begin{itemize}
 \item The root path, {\tt "/"}.
-\item {\tt '/'}, followed by one or more element names. Each element name
-      contains characters in the set {\tt [a-zA-Z0-9\_]}, and must have at
-      least one character.
+\item {\tt '/'}, followed by one or more elements, separated by {\tt '/'}.
+      Each element contains characters in the set {\tt [a-zA-Z0-9\_]}, and
+      must have at least one character.
 \end{itemize}
 
 Element names are separated by {\tt '/'}, and the path may not end in
 {\tt '/'} unless it is the root path.
 
-:d type imports
-import Text.ParserCombinators.Parsec ((<|>))
-import qualified Text.ParserCombinators.Parsec as P
-import DBus.Util (checkLength, parseMaybe)
-:
+\vfill
 
-:f DBus/Types/Internal.cpphs
-mkObjectPath :: Text -> Maybe ObjectPath
-mkObjectPath s = parseMaybe path' (TL.unpack s) where
-	c = P.oneOf $ ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_"
-	path = P.char '/' >>= P.optional . P.sepBy (P.many1 c) . P.char
-	path' = path >> P.eof >> return (ObjectPath s)
+\columnbreak
 
-mkObjectPath_ :: Text -> ObjectPath
-mkObjectPath_ = mkUnsafe "object path" mkObjectPath
-:
-
-:d type exports
-  -- * Object paths
-, ObjectPath
-, strObjectPath
-, mkObjectPath
-, mkObjectPath_
-:
-
-:f Tests.hs
-instance Arbitrary ObjectPath where
-	arbitrary = fmap (mkObjectPath_ . TL.pack) path' where
-		c = ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_"
-		path = fmap (intercalate "/" . ([] :)) genElements
-		path' = frequency [(1, return "/"), (9, path)]
-		genElements = atLeast 1 (atLeast 1 (elements c))
-:
-
-:d test cases
-, F.testGroup "ObjectPath"
-	[ testProperty "ObjectPath identity"
-		$ funEq (mkObjectPath . strObjectPath) Just
-	]
-:
-
-\subsection{Arrays}
-
-Arrays are homogenous sequences of any valid D-Bus type. Arrays might be
-empty, so the type they contain is stored instead of being calculated from
-their contents (as in {\tt variantType}).
-
-Many D-Bus APIs represent binary data using an array of bytes; therefore,
-there is a special constructor for {\tt ByteString}-based arrays.
-
-:f DBus/Types/Internal.cpphs
-INSTANCE_VARIABLE(Array)
-data Array
-	= VariantArray Type [Variant]
-	| ByteArray BL.ByteString
-	deriving (Eq)
-
-|apidoc arrayType|
-arrayType :: Array -> Type
-arrayType (VariantArray t _) = t
-arrayType (ByteArray _) = DBusByte
-
-arrayItems :: Array -> [Variant]
-arrayItems (VariantArray _ xs) = xs
-arrayItems (ByteArray xs) = map toVariant $ BL.unpack xs
-:
-
-:d type exports
-  -- * Arrays
-, Array
-, arrayType
-, arrayItems
-:
-
-Like {\tt Variant}, deriving {\tt Show} for {\tt Array} is mostly
-just useful for debugging.
-
-:f DBus/Types/Internal.cpphs
-instance Show Array where
-	showsPrec d array = showParen (d > 10) $
-		s "Array " . showSig . s " [" . s valueString . s "]" where
-			s = showString
-			showSig = shows . typeCode . arrayType $ array
-			showVar var = showsPrecVar 0 var ""
-			valueString = intercalate ", " $ map showVar $ arrayItems array
-:
-
-Clients constructing an array must provide the expected item type, which
-will be checked for validity. Every item in the array will be checked against
-the item type, to ensure the array is homogenous.
-
-:f DBus/Types/Internal.cpphs
-arrayFromItems :: Type -> [Variant] -> Maybe Array
-arrayFromItems DBusByte vs = fmap (ByteArray . BL.pack) (mapM fromVariant vs)
-
-arrayFromItems t vs = do
-	maybeValidType t
-	if all (\x -> variantType x == t) vs
-		then Just $ VariantArray t vs
-		else Nothing
-:
-
-Additionally, for ease of use, an {\tt Array} can be converted directly
-to/from lists of {\tt Variable} values.
-
-:f DBus/Types/Internal.cpphs
-toArray :: Variable a => Type -> [a] -> Maybe Array
-toArray t = arrayFromItems t . map toVariant
-
-fromArray :: Variable a => Array -> Maybe [a]
-fromArray = mapM fromVariant . arrayItems
-:
-
-:d type exports
-, toArray
-, fromArray
-, arrayFromItems
-:
-
-To provide a more efficient interface for byte array literals, these
-functions bypass the conversions in {\tt toArray} and {\tt fromArray}
-
-:f DBus/Types/Internal.cpphs
-arrayToBytes :: Array -> Maybe BL.ByteString
-arrayToBytes (ByteArray x) = Just x
-arrayToBytes _             = Nothing
-
-arrayFromBytes :: BL.ByteString -> Array
-arrayFromBytes = ByteArray
-:
-
-:d type exports
-, arrayToBytes
-, arrayFromBytes
-:
-
-And to simplify inclusion of {\tt ByteString}s in message, instances of
-{\tt Variable} exist for both strict and lazy {\tt ByteString}.
-
-:f DBus/Types/Internal.cpphs
-instance Variable BL.ByteString where
-	toVariant = toVariant . arrayFromBytes
-	fromVariant x = fromVariant x >>= arrayToBytes
-:
-
-:f DBus/Types/Internal.cpphs
-instance Variable B.ByteString where
-	toVariant x = toVariant . arrayFromBytes $ BL.fromChunks [x]
-	fromVariant = fmap (B.concat . BL.toChunks) . fromVariant
-:
-
-When generating random arrays for testing, only atomic values are used.
-Random containers are almost never homogenous.
-
-:f Tests.hs
-instance Arbitrary Array where
-	arbitrary = do
-		t <- atomicType
-		xs <- listOf $ genVariant t
-		return . fromJust $ arrayFromItems t xs
-
-prop_ArrayHomogeneous vs = isJust array == homogeneousTypes where
-	array = arrayFromItems firstType vs
-	homogeneousTypes = all (== firstType) types
-	types = map variantType vs
-	firstType = if null types
-		then DBusByte
-		else head types
-:
-
-:d test cases
-, F.testGroup "Array"
-	[ testProperty "Array identity"
-		$ \x -> Just x == arrayFromItems (arrayType x) (arrayItems x)
-	, testProperty "Array homogeneity" prop_ArrayHomogeneous
-	]
-:
-
-\subsection{Dictionaries}
-
-Dictionaries are a homogenous (key $\rightarrow$ value) mapping, where the
-key type must be atomic. Values may be of any valid D-Bus type. Like
-{\tt Array}, {\tt Dictionary} stores its contained types.
-
-:f DBus/Types/Internal.cpphs
-INSTANCE_VARIABLE(Dictionary)
-
-data Dictionary = Dictionary
-	{ dictionaryKeyType   :: Type
-	, dictionaryValueType :: Type
-	, dictionaryItems     :: [(Variant, Variant)]
-	}
-	deriving (Eq)
-:
-
-:d type exports
-  -- * Dictionaries
-, Dictionary
-, dictionaryItems
-, dictionaryKeyType
-, dictionaryValueType
-:
-
-{\tt show}ing a {\tt Dictionary} displays the mapping in a more readable
-format than a list of pairs.
-
-:d type imports
-import Data.List (intercalate)
-:
-
-:f DBus/Types/Internal.cpphs
-instance Show Dictionary where
-	showsPrec d (Dictionary kt vt pairs) = showParen (d > 10) $
-		s "Dictionary " . showSig . s " {" . s valueString . s "}" where
-			s = showString
-			showSig = shows $ TL.append (typeCode kt) (typeCode vt)
-			valueString = intercalate ", " $ map showPair pairs
-			showPair (k, v) = (showsPrecVar 0 k . showString " -> " . showsPrecVar 0 v) ""
-:
-
-Constructing a {\tt Dictionary} works like constructing an {\tt Array},
-except that there are two types to check, and the key type must be atomic.
-
-:d type imports
-import Control.Monad (unless)
-:
-
-:f DBus/Types/Internal.cpphs
-dictionaryFromItems :: Type -> Type -> [(Variant, Variant)] -> Maybe Dictionary
-dictionaryFromItems kt vt pairs = do
-	unless (isAtomicType kt) Nothing
-	maybeValidType kt
-	maybeValidType vt
+:d DBus.Types
+parseObjectPath :: Parsec.Parser ()
+parseObjectPath = root <|> object where
+	root = Parsec.try $ do
+		slash
+		Parsec.eof
 	
-	let sameType (k, v) = variantType k == kt &&
-	                      variantType v == vt
-	if all sameType pairs
-		then Just $ Dictionary kt vt pairs
-		else Nothing
+	object = do
+		slash
+		skipSepBy1 element slash
+		Parsec.eof
+	
+	element = Parsec.skipMany1 (oneOf chars)
+	
+	slash = void (Parsec.char '/')
+	chars = concat [ ['a'..'z']
+	               , ['A'..'Z']
+	               , ['0'..'9']
+	               , "_"]
 :
 
-The closest match for dictionary semantics in Haskell is the
-{\tt Data.Map.Map} type. Therefore, the utility conversion functions work
-with {\tt Map}s instead of pair lists.
+\end{multicols}
 
-:d type imports
-import Control.Arrow ((***))
-import qualified Data.Map as Map
+\clearpage
+\subsubsection{Interface names}
+
+\begin{multicols}{2}
+
+Each object may have several \emph{interfaces}, each identified by an
+\emph{interface name}. Interfaces are the basic units of \dbus{} APIs, and
+even simple objects are expected to contain several (such as
+{\tt org.freedesktop.DBus.Introspectable} or
+{\tt org.freedesktop.DBus.Properties}). They correspond generally to Haskell
+classes, or Python protocols.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+newtype InterfaceName = InterfaceName Text
+	deriving (Eq, Ord, Show)
+
+interfaceNameText :: InterfaceName -> Text
+interfaceNameText (InterfaceName text) = text
+
+interfaceName :: Text -> Maybe InterfaceName
+interfaceName text = do
+	when (Data.Text.length text > 255) Nothing
+	runParser parseInterfaceName text
+	return (InterfaceName text)
+
+interfaceName_ :: Text -> InterfaceName
+interfaceName_ = tryParse "interface name" interfaceName
+
+instance Data.String.IsString InterfaceName where
+	fromString = interfaceName_ . Data.Text.pack
+
+instance IsVariant InterfaceName where
+	toVariant = toVariant . interfaceNameText
+	fromVariant = fromVariant >=> interfaceName
 :
 
-:f DBus/Types/Internal.cpphs
-toDictionary :: (Variable a, Variable b) => Type -> Type -> Map.Map a b
-             -> Maybe Dictionary
-toDictionary kt vt = dictionaryFromItems kt vt . pairs where
-	pairs = map (toVariant *** toVariant) . Map.toList
+\end{multicols}
+
+\begin{multicols}{2}
+
+An interface name consists of two or more {\tt '.'}-separated elements. Each
+element constists of characters from the set {\tt [a-zA-Z0-9\_]}, may not
+start with a digit, and must have at least one character.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+parseInterfaceName :: Parsec.Parser ()
+parseInterfaceName = name >> Parsec.eof where
+	alpha = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
+	alphanum = alpha ++ ['0'..'9']
+	element = do
+		void (oneOf alpha)
+		Parsec.skipMany (oneOf alphanum)
+	name = do
+		element
+		void (Parsec.char '.')
+		skipSepBy1 element (Parsec.char '.')
 :
 
-:d type imports
-import Control.Monad (forM)
+\end{multicols}
+
+\clearpage
+\subsubsection{Member names}
+
+\begin{multicols}{2}
+
+An interface, in turn, contains several \emph{members}, each identified by a
+\emph{member name} such as {\tt Introspect}. A member might be either a
+\emph{method}, which clients can call, or a \emph{signal}, which clients can
+wait for.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+newtype MemberName = MemberName Text
+	deriving (Eq, Ord, Show)
+
+memberNameText :: MemberName -> Text
+memberNameText (MemberName text) = text
+
+memberName :: Text -> Maybe MemberName
+memberName text = do
+	when (Data.Text.length text > 255) Nothing
+	runParser parseMemberName text
+	return (MemberName text)
+
+memberName_ :: Text -> MemberName
+memberName_ = tryParse "member name" memberName
+
+instance Data.String.IsString MemberName where
+	fromString = memberName_ . Data.Text.pack
+
+instance IsVariant MemberName where
+	toVariant = toVariant . memberNameText
+	fromVariant = fromVariant >=> memberName
 :
 
-:f DBus/Types/Internal.cpphs
-fromDictionary :: (Variable a, Ord a, Variable b) => Dictionary
-               -> Maybe (Map.Map a b)
-fromDictionary (Dictionary _ _ vs) = do
-	pairs <- forM vs $ \(k, v) -> do
-		k' <- fromVariant k
-		v' <- fromVariant v
-		return (k', v')
-	return $ Map.fromList pairs
+\end{multicols}
+
+\begin{multicols}{2}
+
+Member names must contain only characters from the set {\tt [a-zA-Z0-9\_]},
+may not begin with a digit, and must be at least one character long.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+parseMemberName :: Parsec.Parser ()
+parseMemberName = name >> Parsec.eof where
+	alpha = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
+	alphanum = alpha ++ ['0'..'9']
+	name = do
+		void (oneOf alpha)
+		Parsec.skipMany (oneOf alphanum)
 :
 
-:d type exports
-, toDictionary
-, fromDictionary
-, dictionaryFromItems
+\end{multicols}
+
+\clearpage
+\subsubsection{Error names}
+
+\begin{multicols}{2}
+
+Every error returned from a method call has an \emph{error name}, so
+clients can know (generally) what went wrong without having to parse the
+error message. Applications may define their own error names, or use one
+of the standardized names listed in section~\ref{sec:standard-error-names}.
+
+Error names have the same format as interface names, so the parser logic
+can be reused.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+newtype ErrorName = ErrorName Text
+	deriving (Eq, Ord, Show)
+
+errorNameText :: ErrorName -> Text
+errorNameText (ErrorName text) = text
+
+errorName :: Text -> Maybe ErrorName
+errorName text = do
+	when (Data.Text.length text > 255) Nothing
+	runParser parseInterfaceName text
+	return (ErrorName text)
+
+errorName_ :: Text -> ErrorName
+errorName_ = tryParse "error name" errorName
+
+instance Data.String.IsString ErrorName where
+	fromString = errorName_ . Data.Text.pack
+
+instance IsVariant ErrorName where
+	toVariant = toVariant . errorNameText
+	fromVariant = fromVariant >=> errorName
 :
 
-When generating random dictionaries for testing, only atomic values are used.
-Random containers are almost never homogenous.
+\end{multicols}
 
-:f Tests.hs
-instance Arbitrary Dictionary where
-	arbitrary = do
-		kt <- atomicType
-		vt <- atomicType
-		ks <- listOf $ genVariant kt
-		vs <- vectorOf (length ks) $ genVariant vt
-		
-		return . fromJust $ dictionaryFromItems kt vt $ zip ks vs
-
-prop_DictionaryHomogeneous x = all correctType pairs where
-	pairs = dictionaryItems x
-	kType = dictionaryKeyType x
-	vType = dictionaryValueType x
-	correctType (k, v) = variantType k == kType &&
-	                     variantType v == vType
-:
-
-:d test cases
-, F.testGroup "Dictionary"
-	[ testProperty "Dictionary identity"
-		$ \x -> Just x == dictionaryFromItems
-			(dictionaryKeyType x)
-			(dictionaryValueType x)
-			(dictionaryItems x)
-	, testProperty "Dictionary homogeneity" prop_DictionaryHomogeneous
-	, testProperty "Dictionary must have atomic keys" 
-		$ \vt -> forAll containerType $ \kt ->
-			isNothing (dictionaryFromItems kt vt [])
-	, testProperty "Dictionary <-> Array conversion"
-		$ funEq (arrayToDictionary . dictionaryToArray) Just
-	]
-:
-
-\subsubsection{Converting between {\tt Array} and {\tt Dictionary}}
-
-Converting between {\tt Array} and {\tt Dictionary} is useful when
-(un)marshaling -- dictionaries can be thought of as arrays of two-element
-structures, much as a {\tt Map} is a list of pairs.
-
-:f DBus/Types/Internal.cpphs
-dictionaryToArray :: Dictionary -> Array
-dictionaryToArray (Dictionary kt vt items) = array where
-	Just array = toArray itemType structs
-	itemType = DBusStructure [kt, vt]
-	structs = [Structure [k, v] | (k, v) <- items]
-:
-
-:f DBus/Types/Internal.cpphs
-arrayToDictionary :: Array -> Maybe Dictionary
-arrayToDictionary array = do
-	let toPair x = do
-		struct <- fromVariant x
-		case struct of
-			Structure [k, v] -> Just (k, v)
-			_                -> Nothing
-	(kt, vt) <- case arrayType array of
-		DBusStructure [kt, vt] -> Just (kt, vt)
-		_                      -> Nothing
-	pairs <- mapM toPair $ arrayItems array
-	dictionaryFromItems kt vt pairs
-:
-
-:d type exports
-, dictionaryToArray
-, arrayToDictionary
-:
-
-\subsection{Structures}
-
-A heterogeneous, fixed-length container; equivalent in purpose to a Haskell
-tuple.
-
-:f DBus/Types/Internal.cpphs
-INSTANCE_VARIABLE(Structure)
-
-data Structure = Structure [Variant]
-	deriving (Show, Eq)
-:
-
-:d type exports
-  -- * Structures
-, Structure (..)
-:
-
-:f Tests.hs
-instance Arbitrary Structure where
-	arbitrary = fmap Structure $ halfSized arbitrary
-:
-
-\subsection{Names}
-
-Various aspects of D-Bus require the use of specially-formatted strings,
-called ``names''. All names are limited to 255 characters, and use subsets
-of ASCII.
-
-Since all names have basically the same structure (a {\tt newtype}
-declaration and some helper functions), I define a macro to automate
-the definitions.
-
-:f DBus/Types/Internal.cpphs
-#define NAME_TYPE(TYPE, NAME) \
-	newtype TYPE = TYPE {str/**/TYPE :: Text} \
-		deriving (Eq, Ord); \
-		\
-	instance Show TYPE where \
-		{ showsPrec d (TYPE x) = showParen (d > 10) $ \
-			showString "TYPE " . shows x \
-		}; \
-		\
-	instance String.IsString TYPE where \
-		{ fromString = mk/**/TYPE/**/_ . TL.pack }; \
-		\
-	instance Variable TYPE where \
-		{ toVariant = toVariant . str/**/TYPE \
-		; fromVariant = (mk/**/TYPE =<<) . fromVariant }; \
-		                                                \
-	mk/**/TYPE/**/_ :: Text -> TYPE; \
-	mk/**/TYPE/**/_ = mkUnsafe NAME mk/**/TYPE
-:
-
-:d type exports
--- * Names
-:
-
+\clearpage
 \subsubsection{Bus names}
 
-There are two forms of bus names, ``unique'' and ``well-known''.
+\begin{multicols}{2}
+
+Bus names are used when connecting to a central message dispatch bus. Every
+connection is assigned a \emph{unique name}, such as {\tt :103.1}. This name
+is usually used by the bus to send signals and method returns to client
+applications.
+
+Additionally, applications may request a \emph{well-known} name such as
+{\tt org.freedesktop.DBus}. These are similar to internet hostnames; client
+applications are written to send messages to this address, where they can be
+served by whatever server happens to be running at the time.
+
+\vfill
+
+\columnbreak
+
+:d DBus.Types
+newtype BusName = BusName Text
+	deriving (Eq, Ord, Show)
+
+busNameText :: BusName -> Text
+busNameText (BusName text) = text
+
+busName :: Text -> Maybe BusName
+busName text = do
+	when (Data.Text.length text > 255) Nothing
+	runParser parseBusName text
+	return (BusName text)
+
+busName_ :: Text -> BusName
+busName_ = tryParse "bus name" busName
+
+instance Data.String.IsString BusName where
+	fromString = busName_ . Data.Text.pack
+
+instance IsVariant BusName where
+	toVariant = toVariant . busNameText
+	fromVariant = fromVariant >=> busName
+:
+
+\end{multicols}
+
+\begin{multicols}{2}
 
 Unique names begin with {\tt `:'} and contain two or more elements, separated
 by {\tt `.'}. Each element consists of characters from the set
@@ -1186,173 +1223,509 @@ Well-known names contain two or more elements, separated by {\tt `.'}. Each
 element consists of characters from the set {\tt [a-zA-Z0-9\_-]}, and must
 not start with a digit.
 
-:f DBus/Types/Internal.cpphs
-NAME_TYPE(BusName, "bus name")
+\vfill
 
-mkBusName :: Text -> Maybe BusName
-mkBusName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
-	c = ['a'..'z'] ++ ['A'..'Z'] ++ "_-"
-	c' = c ++ ['0'..'9']
-	parser = (unique <|> wellKnown) >> P.eof >> return (BusName s)
-	unique = P.char ':' >> elems c'
-	wellKnown = elems c
-	elems start = elem' start >> P.many1 (P.char '.' >> elem' start)
-	elem' start = P.oneOf start >> P.many (P.oneOf c')
+\columnbreak
+
+:d DBus.Types
+parseBusName :: Parsec.Parser ()
+parseBusName = name >> Parsec.eof where
+	alpha = ['a'..'z'] ++ ['A'..'Z'] ++ "_-"
+	alphanum = alpha ++ ['0'..'9']
+	
+	name = unique <|> wellKnown
+	unique = do
+		void (Parsec.char ':')
+		elements alphanum
+	
+	wellKnown = elements alpha
+	
+	elements start = do
+		element start
+		Parsec.skipMany1 $ do
+			void (Parsec.char '.')
+			element start
+	
+	element start = do
+		void (oneOf start)
+		Parsec.skipMany (oneOf alphanum)
 :
 
-:d type exports
-  -- ** Bus names
-, BusName
-, strBusName
-, mkBusName
-, mkBusName_
+\end{multicols}
+
+\clearpage
+\subsection{Container boxes}
+
+:d DBus.Types
+newtype Structure = Structure [Value]
+	deriving (Eq)
+
+instance Show Structure where
+	show (Structure xs) = showValue True (ValueStructure xs)
+
+instance IsVariant Structure where
+	toVariant (Structure xs) = Variant (ValueStructure xs)
+	fromVariant (Variant (ValueStructure xs)) = Just (Structure xs)
+	fromVariant _ = Nothing
+
+structureItems :: Structure -> [Variant]
+structureItems (Structure xs) = map Variant xs
 :
 
-:f Tests.hs
-instance Arbitrary BusName where
-	arbitrary = sizedText 255 (oneof [unique, wellKnown]) where
-		c = ['a'..'z'] ++ ['A'..'Z'] ++ "_-"
-		c' = c ++ ['0'..'9']
-		
-		unique = do
-			elems' <- atLeast 2 $ elems c'
-			return . TL.pack $ ':' : intercalate "." elems'
-		
-		wellKnown = do
-			elems' <- atLeast 2 $ elems c
-			return . TL.pack $ intercalate "." elems'
-		
-		elems start = do
-			x <- elements start
-			xs <- atLeast 0 (elements c')
-			return (x:xs)
+:d DBus.Types
+data Array
+	= Array Type (Vector Value)
+	| ArrayBytes ByteString
+
+instance Show Array where
+	show (Array t xs) = showValue True (ValueVector t xs)
+	show (ArrayBytes xs) = showValue True (ValueBytes xs)
+
+instance Eq Array where
+	x == y = norm x == norm y where
+		norm (Array TypeWord8 xs) = Left (vectorToBytes xs)
+		norm (Array t xs) = Right (t, xs)
+		norm (ArrayBytes xs) = Left xs
+
+instance IsVariant Array where
+	toVariant (Array t xs) = Variant (ValueVector t xs)
+	toVariant (ArrayBytes bs) = Variant (ValueBytes bs)
+	fromVariant (Variant (ValueVector t xs)) = Just (Array t xs)
+	fromVariant (Variant (ValueBytes bs)) = Just (ArrayBytes bs)
+	fromVariant _ = Nothing
+
+arrayItems :: Array -> [Variant]
+arrayItems (Array _ xs) = map Variant (Data.Vector.toList xs)
+arrayItems (ArrayBytes bs) = map toVariant (Data.ByteString.unpack bs)
 :
 
-:d test cases
-, F.testGroup "BusName"
-	[ testProperty "BusName identity"
-		$ funEq (mkBusName . strBusName) Just
-	]
+:d DBus.Types
+data Dictionary = Dictionary Type Type (Map Atom Value)
+	deriving (Eq)
+
+instance Show Dictionary where
+	show (Dictionary kt vt xs) = showValue True (ValueMap kt vt xs)
+
+instance IsVariant Dictionary where
+	toVariant (Dictionary kt vt xs) = Variant (ValueMap kt vt xs)
+	fromVariant (Variant (ValueMap kt vt xs)) = Just (Dictionary kt vt xs)
+	fromVariant _ = Nothing
+
+dictionaryItems :: Dictionary -> [(Variant, Variant)]
+dictionaryItems (Dictionary _ _ xs) = do
+	(k, v) <- Data.Map.toList xs
+	return (Variant (ValueAtom k), Variant v)
 :
 
-\subsubsection{Interface names}
+\begin{comment}
+\clearpage
+\subsection{Boring type instances}
 
-An interface name consists of two or more {\tt '.'}-separated elements. Each
-element constists of characters from the set {\tt [a-zA-Z0-9\_]}, may not
-start with a digit, and must have at least one character.
+:d DBus.Types
+instance (IsValue a1, IsValue a2, IsValue a3) => IsValue (a1, a2, a3) where
+	typeOf ~(a1, a2, a3) = TypeStructure [typeOf a1, typeOf a2, typeOf a3]
+	toValue (a1, a2, a3) = ValueStructure [toValue a1, toValue a2, toValue a3]
+	fromValue (ValueStructure [a1, a2, a3]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		return (a1', a2', a3')
+	fromValue _ = Nothing
 
-:f DBus/Types/Internal.cpphs
-NAME_TYPE(InterfaceName, "interface name")
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4) => IsValue (a1, a2, a3, a4) where
+	typeOf ~(a1, a2, a3, a4) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4]
+	toValue (a1, a2, a3, a4) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4]
+	fromValue (ValueStructure [a1, a2, a3, a4]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		return (a1', a2', a3', a4')
+	fromValue _ = Nothing
 
-mkInterfaceName :: Text -> Maybe InterfaceName
-mkInterfaceName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
-	c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
-	c' = c ++ ['0'..'9']
-	element = P.oneOf c >> P.many (P.oneOf c')
-	name = element >> P.many1 (P.char '.' >> element)
-	parser = name >> P.eof >> return (InterfaceName s)
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5) => IsValue (a1, a2, a3, a4, a5) where
+	typeOf ~(a1, a2, a3, a4, a5) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4, typeOf a5]
+	toValue (a1, a2, a3, a4, a5) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5]
+	fromValue (ValueStructure [a1, a2, a3, a4, a5]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		a5' <- fromValue a5
+		return (a1', a2', a3', a4', a5')
+	fromValue _ = Nothing
+
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6) => IsValue (a1, a2, a3, a4, a5, a6) where
+	typeOf ~(a1, a2, a3, a4, a5, a6) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4, typeOf a5, typeOf a6]
+	toValue (a1, a2, a3, a4, a5, a6) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6]
+	fromValue (ValueStructure [a1, a2, a3, a4, a5, a6]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		a5' <- fromValue a5
+		a6' <- fromValue a6
+		return (a1', a2', a3', a4', a5', a6')
+	fromValue _ = Nothing
+
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7) => IsValue (a1, a2, a3, a4, a5, a6, a7) where
+	typeOf ~(a1, a2, a3, a4, a5, a6, a7) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4, typeOf a5, typeOf a6, typeOf a7]
+	toValue (a1, a2, a3, a4, a5, a6, a7) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7]
+	fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		a5' <- fromValue a5
+		a6' <- fromValue a6
+		a7' <- fromValue a7
+		return (a1', a2', a3', a4', a5', a6', a7')
+	fromValue _ = Nothing
+
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8) where
+	typeOf ~(a1, a2, a3, a4, a5, a6, a7, a8) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4, typeOf a5, typeOf a6, typeOf a7, typeOf a8]
+	toValue (a1, a2, a3, a4, a5, a6, a7, a8) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8]
+	fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		a5' <- fromValue a5
+		a6' <- fromValue a6
+		a7' <- fromValue a7
+		a8' <- fromValue a8
+		return (a1', a2', a3', a4', a5', a6', a7', a8')
+	fromValue _ = Nothing
+
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8, IsValue a9) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8, a9) where
+	typeOf ~(a1, a2, a3, a4, a5, a6, a7, a8, a9) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4, typeOf a5, typeOf a6, typeOf a7, typeOf a8, typeOf a9]
+	toValue (a1, a2, a3, a4, a5, a6, a7, a8, a9) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8, toValue a9]
+	fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		a5' <- fromValue a5
+		a6' <- fromValue a6
+		a7' <- fromValue a7
+		a8' <- fromValue a8
+		a9' <- fromValue a9
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9')
+	fromValue _ = Nothing
+
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8, IsValue a9, IsValue a10) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) where
+	typeOf ~(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4, typeOf a5, typeOf a6, typeOf a7, typeOf a8, typeOf a9, typeOf a10]
+	toValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8, toValue a9, toValue a10]
+	fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		a5' <- fromValue a5
+		a6' <- fromValue a6
+		a7' <- fromValue a7
+		a8' <- fromValue a8
+		a9' <- fromValue a9
+		a10' <- fromValue a10
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10')
+	fromValue _ = Nothing
+
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8, IsValue a9, IsValue a10, IsValue a11) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) where
+	typeOf ~(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4, typeOf a5, typeOf a6, typeOf a7, typeOf a8, typeOf a9, typeOf a10, typeOf a11]
+	toValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8, toValue a9, toValue a10, toValue a11]
+	fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		a5' <- fromValue a5
+		a6' <- fromValue a6
+		a7' <- fromValue a7
+		a8' <- fromValue a8
+		a9' <- fromValue a9
+		a10' <- fromValue a10
+		a11' <- fromValue a11
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10', a11')
+	fromValue _ = Nothing
+
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8, IsValue a9, IsValue a10, IsValue a11, IsValue a12) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) where
+	typeOf ~(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4, typeOf a5, typeOf a6, typeOf a7, typeOf a8, typeOf a9, typeOf a10, typeOf a11, typeOf a12]
+	toValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8, toValue a9, toValue a10, toValue a11, toValue a12]
+	fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		a5' <- fromValue a5
+		a6' <- fromValue a6
+		a7' <- fromValue a7
+		a8' <- fromValue a8
+		a9' <- fromValue a9
+		a10' <- fromValue a10
+		a11' <- fromValue a11
+		a12' <- fromValue a12
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10', a11', a12')
+	fromValue _ = Nothing
+
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8, IsValue a9, IsValue a10, IsValue a11, IsValue a12, IsValue a13) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) where
+	typeOf ~(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4, typeOf a5, typeOf a6, typeOf a7, typeOf a8, typeOf a9, typeOf a10, typeOf a11, typeOf a12, typeOf a13]
+	toValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8, toValue a9, toValue a10, toValue a11, toValue a12, toValue a13]
+	fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		a5' <- fromValue a5
+		a6' <- fromValue a6
+		a7' <- fromValue a7
+		a8' <- fromValue a8
+		a9' <- fromValue a9
+		a10' <- fromValue a10
+		a11' <- fromValue a11
+		a12' <- fromValue a12
+		a13' <- fromValue a13
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10', a11', a12', a13')
+	fromValue _ = Nothing
+
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8, IsValue a9, IsValue a10, IsValue a11, IsValue a12, IsValue a13, IsValue a14) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14) where
+	typeOf ~(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4, typeOf a5, typeOf a6, typeOf a7, typeOf a8, typeOf a9, typeOf a10, typeOf a11, typeOf a12, typeOf a13, typeOf a14]
+	toValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8, toValue a9, toValue a10, toValue a11, toValue a12, toValue a13, toValue a14]
+	fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		a5' <- fromValue a5
+		a6' <- fromValue a6
+		a7' <- fromValue a7
+		a8' <- fromValue a8
+		a9' <- fromValue a9
+		a10' <- fromValue a10
+		a11' <- fromValue a11
+		a12' <- fromValue a12
+		a13' <- fromValue a13
+		a14' <- fromValue a14
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10', a11', a12', a13', a14')
+	fromValue _ = Nothing
+
+instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8, IsValue a9, IsValue a10, IsValue a11, IsValue a12, IsValue a13, IsValue a14, IsValue a15) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15) where
+	typeOf ~(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15) = TypeStructure [typeOf a1, typeOf a2, typeOf a3, typeOf a4, typeOf a5, typeOf a6, typeOf a7, typeOf a8, typeOf a9, typeOf a10, typeOf a11, typeOf a12, typeOf a13, typeOf a14, typeOf a15]
+	toValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8, toValue a9, toValue a10, toValue a11, toValue a12, toValue a13, toValue a14, toValue a15]
+	fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15]) = do
+		a1' <- fromValue a1
+		a2' <- fromValue a2
+		a3' <- fromValue a3
+		a4' <- fromValue a4
+		a5' <- fromValue a5
+		a6' <- fromValue a6
+		a7' <- fromValue a7
+		a8' <- fromValue a8
+		a9' <- fromValue a9
+		a10' <- fromValue a10
+		a11' <- fromValue a11
+		a12' <- fromValue a12
+		a13' <- fromValue a13
+		a14' <- fromValue a14
+		a15' <- fromValue a15
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10', a11', a12', a13', a14', a15')
+	fromValue _ = Nothing
 :
 
-:d type exports
-  -- ** Interface names
-, InterfaceName
-, strInterfaceName
-, mkInterfaceName
-, mkInterfaceName_
+:d DBus.Types
+instance (IsVariant a1, IsVariant a2, IsVariant a3) => IsVariant (a1, a2, a3) where
+	toVariant (a1, a2, a3) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3])
+	fromVariant (Variant (ValueStructure [a1, a2, a3])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		return (a1', a2', a3')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4) => IsVariant (a1, a2, a3, a4) where
+	toVariant (a1, a2, a3, a4) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		return (a1', a2', a3', a4')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5) => IsVariant (a1, a2, a3, a4, a5) where
+	toVariant (a1, a2, a3, a4, a5) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4, varToVal a5])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4, a5])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		a5' <- (fromVariant . Variant) a5
+		return (a1', a2', a3', a4', a5')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, IsVariant a6) => IsVariant (a1, a2, a3, a4, a5, a6) where
+	toVariant (a1, a2, a3, a4, a5, a6) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4, varToVal a5, varToVal a6])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4, a5, a6])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		a5' <- (fromVariant . Variant) a5
+		a6' <- (fromVariant . Variant) a6
+		return (a1', a2', a3', a4', a5', a6')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, IsVariant a6, IsVariant a7) => IsVariant (a1, a2, a3, a4, a5, a6, a7) where
+	toVariant (a1, a2, a3, a4, a5, a6, a7) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4, varToVal a5, varToVal a6, varToVal a7])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4, a5, a6, a7])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		a5' <- (fromVariant . Variant) a5
+		a6' <- (fromVariant . Variant) a6
+		a7' <- (fromVariant . Variant) a7
+		return (a1', a2', a3', a4', a5', a6', a7')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, IsVariant a6, IsVariant a7, IsVariant a8) => IsVariant (a1, a2, a3, a4, a5, a6, a7, a8) where
+	toVariant (a1, a2, a3, a4, a5, a6, a7, a8) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4, varToVal a5, varToVal a6, varToVal a7, varToVal a8])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		a5' <- (fromVariant . Variant) a5
+		a6' <- (fromVariant . Variant) a6
+		a7' <- (fromVariant . Variant) a7
+		a8' <- (fromVariant . Variant) a8
+		return (a1', a2', a3', a4', a5', a6', a7', a8')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, IsVariant a6, IsVariant a7, IsVariant a8, IsVariant a9) => IsVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9) where
+	toVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4, varToVal a5, varToVal a6, varToVal a7, varToVal a8, varToVal a9])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		a5' <- (fromVariant . Variant) a5
+		a6' <- (fromVariant . Variant) a6
+		a7' <- (fromVariant . Variant) a7
+		a8' <- (fromVariant . Variant) a8
+		a9' <- (fromVariant . Variant) a9
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, IsVariant a6, IsVariant a7, IsVariant a8, IsVariant a9, IsVariant a10) => IsVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) where
+	toVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4, varToVal a5, varToVal a6, varToVal a7, varToVal a8, varToVal a9, varToVal a10])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		a5' <- (fromVariant . Variant) a5
+		a6' <- (fromVariant . Variant) a6
+		a7' <- (fromVariant . Variant) a7
+		a8' <- (fromVariant . Variant) a8
+		a9' <- (fromVariant . Variant) a9
+		a10' <- (fromVariant . Variant) a10
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, IsVariant a6, IsVariant a7, IsVariant a8, IsVariant a9, IsVariant a10, IsVariant a11) => IsVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) where
+	toVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4, varToVal a5, varToVal a6, varToVal a7, varToVal a8, varToVal a9, varToVal a10, varToVal a11])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		a5' <- (fromVariant . Variant) a5
+		a6' <- (fromVariant . Variant) a6
+		a7' <- (fromVariant . Variant) a7
+		a8' <- (fromVariant . Variant) a8
+		a9' <- (fromVariant . Variant) a9
+		a10' <- (fromVariant . Variant) a10
+		a11' <- (fromVariant . Variant) a11
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10', a11')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, IsVariant a6, IsVariant a7, IsVariant a8, IsVariant a9, IsVariant a10, IsVariant a11, IsVariant a12) => IsVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) where
+	toVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4, varToVal a5, varToVal a6, varToVal a7, varToVal a8, varToVal a9, varToVal a10, varToVal a11, varToVal a12])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		a5' <- (fromVariant . Variant) a5
+		a6' <- (fromVariant . Variant) a6
+		a7' <- (fromVariant . Variant) a7
+		a8' <- (fromVariant . Variant) a8
+		a9' <- (fromVariant . Variant) a9
+		a10' <- (fromVariant . Variant) a10
+		a11' <- (fromVariant . Variant) a11
+		a12' <- (fromVariant . Variant) a12
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10', a11', a12')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, IsVariant a6, IsVariant a7, IsVariant a8, IsVariant a9, IsVariant a10, IsVariant a11, IsVariant a12, IsVariant a13) => IsVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) where
+	toVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4, varToVal a5, varToVal a6, varToVal a7, varToVal a8, varToVal a9, varToVal a10, varToVal a11, varToVal a12, varToVal a13])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		a5' <- (fromVariant . Variant) a5
+		a6' <- (fromVariant . Variant) a6
+		a7' <- (fromVariant . Variant) a7
+		a8' <- (fromVariant . Variant) a8
+		a9' <- (fromVariant . Variant) a9
+		a10' <- (fromVariant . Variant) a10
+		a11' <- (fromVariant . Variant) a11
+		a12' <- (fromVariant . Variant) a12
+		a13' <- (fromVariant . Variant) a13
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10', a11', a12', a13')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, IsVariant a6, IsVariant a7, IsVariant a8, IsVariant a9, IsVariant a10, IsVariant a11, IsVariant a12, IsVariant a13, IsVariant a14) => IsVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14) where
+	toVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4, varToVal a5, varToVal a6, varToVal a7, varToVal a8, varToVal a9, varToVal a10, varToVal a11, varToVal a12, varToVal a13, varToVal a14])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		a5' <- (fromVariant . Variant) a5
+		a6' <- (fromVariant . Variant) a6
+		a7' <- (fromVariant . Variant) a7
+		a8' <- (fromVariant . Variant) a8
+		a9' <- (fromVariant . Variant) a9
+		a10' <- (fromVariant . Variant) a10
+		a11' <- (fromVariant . Variant) a11
+		a12' <- (fromVariant . Variant) a12
+		a13' <- (fromVariant . Variant) a13
+		a14' <- (fromVariant . Variant) a14
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10', a11', a12', a13', a14')
+	fromVariant _ = Nothing
+
+instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, IsVariant a6, IsVariant a7, IsVariant a8, IsVariant a9, IsVariant a10, IsVariant a11, IsVariant a12, IsVariant a13, IsVariant a14, IsVariant a15) => IsVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15) where
+	toVariant (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15) = Variant (ValueStructure [varToVal a1, varToVal a2, varToVal a3, varToVal a4, varToVal a5, varToVal a6, varToVal a7, varToVal a8, varToVal a9, varToVal a10, varToVal a11, varToVal a12, varToVal a13, varToVal a14, varToVal a15])
+	fromVariant (Variant (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15])) = do
+		a1' <- (fromVariant . Variant) a1
+		a2' <- (fromVariant . Variant) a2
+		a3' <- (fromVariant . Variant) a3
+		a4' <- (fromVariant . Variant) a4
+		a5' <- (fromVariant . Variant) a5
+		a6' <- (fromVariant . Variant) a6
+		a7' <- (fromVariant . Variant) a7
+		a8' <- (fromVariant . Variant) a8
+		a9' <- (fromVariant . Variant) a9
+		a10' <- (fromVariant . Variant) a10
+		a11' <- (fromVariant . Variant) a11
+		a12' <- (fromVariant . Variant) a12
+		a13' <- (fromVariant . Variant) a13
+		a14' <- (fromVariant . Variant) a14
+		a15' <- (fromVariant . Variant) a15
+		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10', a11', a12', a13', a14', a15')
+	fromVariant _ = Nothing
 :
 
-:f Tests.hs
-instance Arbitrary InterfaceName where
-	arbitrary = sizedText 255 genName where
-		c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
-		c' = c ++ ['0'..'9']
-		
-		genName = fmap (TL.pack . intercalate ".") genElements
-		genElements = atLeast 2 genElement
-		genElement = do
-			x <- elements c
-			xs <- atLeast 0 (elements c')
-			return (x:xs)
-:
-
-:d test cases
-, F.testGroup "InterfaceName"
-	[ testProperty "InterfaceName identity"
-		$ funEq (mkInterfaceName . strInterfaceName) Just
-	]
-:
-
-\subsubsection{Error names}
-
-Error names have the same format as interface names, so the parser logic
-can just be re-purposed.
-
-:f DBus/Types/Internal.cpphs
-NAME_TYPE(ErrorName, "error name")
-
-mkErrorName :: Text -> Maybe ErrorName
-mkErrorName = fmap (ErrorName . strInterfaceName) . mkInterfaceName
-:
-
-:d type exports
-  -- ** Error names
-, ErrorName
-, strErrorName
-, mkErrorName
-, mkErrorName_
-:
-
-:f Tests.hs
-instance Arbitrary ErrorName where
-	arbitrary = fmap (mkErrorName_ . strInterfaceName) arbitrary
-:
-
-:d test cases
-, F.testGroup "ErrorName"
-	[ testProperty "ErrorName identity"
-		$ funEq (mkErrorName . strErrorName) Just
-	]
-:
-
-\subsubsection{Member names}
-
-Member names must contain only characters from the set {\tt [a-zA-Z0-9\_]},
-may not begin with a digit, and must be at least one character long.
-
-:f DBus/Types/Internal.cpphs
-NAME_TYPE(MemberName, "member name")
-
-mkMemberName :: Text -> Maybe MemberName
-mkMemberName s = checkLength 255 (TL.unpack s) >>= parseMaybe parser where
-	c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
-	c' = c ++ ['0'..'9']
-	name = P.oneOf c >> P.many (P.oneOf c')
-	parser = name >> P.eof >> return (MemberName s)
-:
-
-:d type exports
-  -- ** Member names
-, MemberName
-, strMemberName
-, mkMemberName
-, mkMemberName_
-:
-
-:f Tests.hs
-instance Arbitrary MemberName where
-	arbitrary = sizedText 255 genName where
-		c = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
-		c' = c ++ ['0'..'9']
-		
-		genName = do
-			x <- elements c
-			xs <- atLeast 0 (elements c')
-			return . TL.pack $ (x:xs)
-:
-
-:d test cases
-, F.testGroup "MemberName"
-	[ testProperty "MemberName identity"
-		$ funEq (mkMemberName . strMemberName) Just
-	]
-:
+\end{comment}

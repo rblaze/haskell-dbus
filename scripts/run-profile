@@ -1,0 +1,27 @@
+#!/bin/bash
+if [ ! -f 'dbus-core.cabal' ]; then
+	echo -n "Can't find dbus-core.cabal; please run this script as"
+	echo -n " ./scripts/run-benchmarks from within the dbus-core source"
+	echo " directory"
+	exit 1
+fi
+
+. scripts/common.bash
+
+require_anansi
+require_cabal_dev
+
+$CABAL_DEV install-deps --enable-library-profiling --ghc-option=-no-auto-all || exit 1
+
+rm -rf hs dist
+$ANANSI -o hs src/dbus-core.anansi || exit 1
+$CABAL_DEV install --enable-library-profiling --ghc-option=-auto-all
+
+pushd benchmarks
+rm -rf dist
+$CABAL_DEV -s ../cabal-dev install criterion --enable-library-profiling --ghc-option=-no-auto-all || exit 1
+$CABAL_DEV -s ../cabal-dev install --enable-executable-profiling || exit 1
+popd
+
+rm -f dbus-core_benchmarks.prof
+cabal-dev/bin/dbus-core_benchmarks +RTS -p -RTS $@

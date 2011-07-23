@@ -1,0 +1,35 @@
+name: dbus-core-tests
+version: 0
+build-type: Simple
+cabal-version: >= 1.6
+
+flag coverage
+  default: False
+  manual: True
+
+executable dbus-core_tests
+  main-is: Tests.hs
+  ghc-options: -Wall -fno-warn-orphans
+  hs-source-dirs: ../hs,.
+
+  if flag(coverage)
+    ghc-options: -fhpc
+
+  build-depends:
+      base > 3 && < 5
+    , binary >= 0.4 && < 0.6
+    , bytestring >= 0.9 && < 0.10
+    , containers >= 0.1 && < 0.5
+    , data-binary-ieee754 >= 0.3 && < 0.5
+    , libxml-sax >= 0.7 && < 0.8
+    , network >= 2.2 && < 2.4
+    , parsec >= 2.0 && < 3.2
+    , text >= 0.8 && < 0.12
+    , unix >= 2.2 && < 2.5
+    , vector >= 0.7 && < 0.8
+    , xml-types >= 0.3 && < 0.4
+    , QuickCheck == 2.4.*
+    , HUnit == 1.2.*
+    , test-framework >= 0.2 && < 0.4
+    , test-framework-quickcheck2 == 0.2.9
+    , test-framework-hunit == 0.2.6

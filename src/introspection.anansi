@@ -40,28 +40,9 @@ An XML introspection document looks like this:
 </node>
 \end{verbatim}
 
-:f DBus/Introspection.hs
-|copyright|
-|text extensions|
-module DBus.Introspection
-	( Object (..)
-	, Interface (..)
-	, Method (..)
-	, Signal (..)
-	, Parameter (..)
-	, Property (..)
-	, PropertyAccess (..)
-	, toXML
-	, fromXML
-	) where
-|text imports|
-|introspection imports|
-import qualified DBus.Types as T
-:
+\subsection*{Data types}
 
-\subsection{Data types}
-
-:f DBus/Introspection.hs
+:d DBus.Introspection
 data Object = Object T.ObjectPath [Interface] [Object]
 	deriving (Show, Eq)
 
@@ -84,13 +65,13 @@ data PropertyAccess = Read | Write
 	deriving (Show, Eq)
 :
 
-\subsection{Parsing XML}
+\subsection*{Parsing XML}
 
 If parsing fails, {\tt fromXML} will return {\tt Nothing}. Aside from the
 elements directly accessed by the parser, no effort is made to check the
 document's validity because there is no DTD as of yet.
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 fromXML :: T.ObjectPath -> Text -> Maybe Object
 fromXML path text = do
 	root <- parseElement text
@@ -101,18 +82,13 @@ LibXML's event-based parsing is used to convert the input into a list of
 events. DBus's introspection format doesn't use any character data, so only
 the element attributes and nesting are preserved.
 
-:d introspection imports
-import qualified Data.XML.Types as X
-import qualified Text.XML.LibXML.SAX as SAX
-import Control.Monad.ST (runST)
-import qualified Data.STRef as ST
-:
-
-:f DBus/Introspection.hs
+:d DBus.Introspection
 parseElement :: Text -> Maybe X.Element
 parseElement text = runST $ do
 	stackRef <- ST.newSTRef [([], [])]
-	let onError _ = ST.writeSTRef stackRef []
+	let onError _ = do
+		ST.writeSTRef stackRef []
+		return False
 	let onBegin _ attrs = do
 		ST.modifySTRef stackRef ((attrs, []):)
 		return True
@@ -125,10 +101,11 @@ parseElement text = runST $ do
 		ST.writeSTRef stackRef (parent:stack'')
 		return True
 	
-	p <- SAX.newParserST onError Nothing
+	p <- SAX.newParserST Nothing
 	SAX.setCallback p SAX.parsedBeginElement onBegin
 	SAX.setCallback p SAX.parsedEndElement onEnd
-	SAX.parseLazyText p text
+	SAX.setCallback p SAX.reportError onError
+	SAX.parseBytes p (Data.Text.Encoding.encodeUtf8 text)
 	SAX.parseComplete p
 	stack <- ST.readSTRef stackRef
 	return $ case stack of
@@ -143,12 +120,12 @@ its path will default to the path of the introspected object.
 Even though the root object's {\tt name} is optional, if present, it must
 still be a valid object path.
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 parseRoot :: T.ObjectPath -> X.Element -> Maybe Object
 parseRoot defaultPath e = do
-	path <- case getattrM "name" e of
+	path <- case X.attributeText "name" e of
 		Nothing -> Just defaultPath
-		Just x  -> T.mkObjectPath x
+		Just x  -> T.objectPath x
 	parseObject path e
 :
 
@@ -156,48 +133,48 @@ Child {\tt nodes} have ``relative'' paths -- that is, their {\tt name}
 attribute is not a valid object path, but should be valid when appended to
 the root object's path.
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 parseChild :: T.ObjectPath -> X.Element -> Maybe Object
 parseChild parentPath e = do
-	let parentPath' = case T.strObjectPath parentPath of
+	let parentPath' = case T.objectPathText parentPath of
 		"/" -> "/"
-		x   -> TL.append x "/"
-	pathSegment <- getattrM "name" e
-	path <- T.mkObjectPath $ TL.append parentPath' pathSegment
+		x   -> Data.Text.append x "/"
+	pathSegment <- X.attributeText "name" e
+	path <- T.objectPath $ Data.Text.append parentPath' pathSegment
 	parseObject path e
 :
 
 Other than the name, both root and non-root {\tt nodes} have identical
 contents.  They may contain interface definitions, and child {\tt node}s.
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 parseObject :: T.ObjectPath -> X.Element -> Maybe Object
-parseObject path e | X.elementName e == toName "node" = do
-	interfaces <- children parseInterface (named "interface") e
-	children' <- children (parseChild path) (named "node") e
+parseObject path e | X.elementName e == "node" = do
+	interfaces <- children parseInterface (X.isNamed "interface") e
+	children' <- children (parseChild path) (X.isNamed "node") e
 	return $ Object path interfaces children'
 parseObject _ _ = Nothing
 :
 
 Interfaces may contain methods, signals, and properties.
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 parseInterface :: X.Element -> Maybe Interface
 parseInterface e = do
-	name <- T.mkInterfaceName =<< getattrM "name" e
-	methods <- children parseMethod (named "method") e
-	signals <- children parseSignal (named "signal") e
-	properties <- children parseProperty (named "property") e
+	name <- T.interfaceName =<< X.attributeText "name" e
+	methods <- children parseMethod (X.isNamed "method") e
+	signals <- children parseSignal (X.isNamed "signal") e
+	properties <- children parseProperty (X.isNamed "property") e
 	return $ Interface name methods signals properties
 :
 
 Methods contain a list of parameters, which default to ``in'' parameters
 if no direction is specified.
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 parseMethod :: X.Element -> Maybe Method
 parseMethod e = do
-	name <- T.mkMemberName =<< getattrM "name" e
+	name <- T.memberName =<< X.attributeText "name" e
 	paramsIn <- children parseParameter (isParam ["in", ""]) e
 	paramsOut <- children parseParameter (isParam ["out"]) e
 	return $ Method name paramsIn paramsOut
@@ -205,37 +182,33 @@ parseMethod e = do
 
 Signals are similar to methods, except they have no ``in'' parameters.
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 parseSignal :: X.Element -> Maybe Signal
 parseSignal e = do
-	name <- T.mkMemberName =<< getattrM "name" e
+	name <- T.memberName =<< X.attributeText "name" e
 	params <- children parseParameter (isParam ["out", ""]) e
 	return $ Signal name params
 :
 
 A parameter has a free-form name, and a single valid type.
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
+parseType :: X.Element -> Maybe T.Signature
+parseType e = X.attributeText "type" e >>= T.signature
+
 parseParameter :: X.Element -> Maybe Parameter
 parseParameter e = do
 	let name = getattr "name" e
 	sig <- parseType e
-	return $ Parameter name sig
-:
-
-:f DBus/Introspection.hs
-parseType :: X.Element -> Maybe T.Signature
-parseType e = do
-	sig <- T.mkSignature =<< getattrM "type" e
 	case T.signatureTypes sig of
-		[_] -> Just sig
-		_   -> Nothing
+		[_] -> Just (Parameter name sig)
+		_ -> Nothing
 :
 
 Properties are used by the {\tt org.freedesktop.DBus.Properties} interface.
 Each property may be read, written, or both, and has an associated type.
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 parseProperty :: X.Element -> Maybe Property
 parseProperty e = do
 	let name = getattr "name" e
@@ -249,36 +222,19 @@ parseProperty e = do
 	return $ Property name sig access
 :
 
-:d introspection imports
-import Control.Monad ((>=>))
-import Data.Maybe (fromMaybe, listToMaybe)
-:
-
-:f DBus/Introspection.hs
-getattrM :: Text -> X.Element -> Maybe Text
-getattrM name = fmap attrText . listToMaybe . attrs where
-	attrText = textContent . X.attributeContent
-	attrs = X.elementAttributes >=> X.isNamed (toName name)
-	textContent cs = TL.concat [t | X.ContentText t <- cs]
-
-getattr :: Text -> X.Element -> Text
-getattr = (fromMaybe "" .) . getattrM
+:d DBus.Introspection
+getattr :: X.Name -> X.Element -> Text
+getattr = (fromMaybe "" .) . X.attributeText
 
 isParam :: [Text] -> X.Element -> [X.Element]
-isParam dirs = named "arg" >=> checkDir where
+isParam dirs = X.isNamed "arg" >=> checkDir where
 	checkDir e = [e | getattr "direction" e `elem` dirs]
 
 children :: Monad m => (X.Element -> m b) -> (X.Element -> [X.Element]) -> X.Element -> m [b]
 children f p = mapM f . concatMap p . X.elementChildren
-
-named :: X.Named a => Text -> a -> [a]
-named = X.isNamed . toName
-
-toName :: Text -> X.Name
-toName t = X.Name t Nothing Nothing
 :
 
-\subsection{Generating XML}
+\subsection*{Generating XML}
 
 Generating XML can fail; if a child object's path is not a sub-path of the
 parent, {\tt toXML} will return {\tt Nothing}.
@@ -288,46 +244,46 @@ text fragments with optional failure. This would be {\tt WriterT Text Maybe},
 except I didn't want to drag in a dependency on {\tt transformers} for such
 a little thing.
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 newtype XmlWriter a = XmlWriter { runXmlWriter :: Maybe (a, Text) }
 
 instance Monad XmlWriter where
-	return a = XmlWriter $ Just (a, TL.empty)
+	return a = XmlWriter $ Just (a, Data.Text.empty)
 	m >>= f = XmlWriter $ do
 		(a, w) <- runXmlWriter m
 		(b, w') <- runXmlWriter (f a)
-		return (b, TL.append w w')
+		return (b, Data.Text.append w w')
 :
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 tell :: Text -> XmlWriter ()
 tell t = XmlWriter $ Just ((), t)
 :
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 toXML :: Object -> Maybe Text
 toXML obj = do
 	(_, text) <- runXmlWriter (writeRoot obj)
 	return text
 :
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 writeRoot :: Object -> XmlWriter ()
 writeRoot obj@(Object path _ _) = do
 	tell "<!DOCTYPE node PUBLIC '-//freedesktop//DTD D-BUS Object Introspection 1.0//EN'"
 	tell " 'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>\n"
-	writeObject (T.strObjectPath path) obj
+	writeObject (T.objectPathText path) obj
 :
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 writeChild :: T.ObjectPath -> Object -> XmlWriter ()
 writeChild parentPath obj@(Object path _ _) = write where
-	path' = T.strObjectPath path
-	parent' = T.strObjectPath parentPath
-	relpathM = if TL.isPrefixOf parent' path'
+	path' = T.objectPathText path
+	parent' = T.objectPathText parentPath
+	relpathM = if Data.Text.isPrefixOf parent' path'
 		then Just $ if parent' == "/"
-			then TL.drop 1 path'
-			else TL.drop (TL.length parent' + 1) path'
+			then Data.Text.drop 1 path'
+			else Data.Text.drop (Data.Text.length parent' + 1) path'
 		else Nothing
 	
 	write = case relpathM of
@@ -335,7 +291,7 @@ writeChild parentPath obj@(Object path _ _) = write where
 		Nothing -> XmlWriter Nothing
 :
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 writeObject :: Text -> Object -> XmlWriter ()
 writeObject path (Object fullPath interfaces children') = writeElement "node"
 	[("name", path)] $ do
@@ -343,56 +299,56 @@ writeObject path (Object fullPath interfaces children') = writeElement "node"
 		mapM_ (writeChild fullPath) children'
 :
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 writeInterface :: Interface -> XmlWriter ()
 writeInterface (Interface name methods signals properties) = writeElement "interface"
-	[("name", T.strInterfaceName name)] $ do
+	[("name", T.interfaceNameText name)] $ do
 		mapM_ writeMethod methods
 		mapM_ writeSignal signals
 		mapM_ writeProperty properties
 :
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 writeMethod :: Method -> XmlWriter ()
 writeMethod (Method name inParams outParams) = writeElement "method"
-	[("name", T.strMemberName name)] $ do
+	[("name", T.memberNameText name)] $ do
 		mapM_ (writeParameter "in") inParams
 		mapM_ (writeParameter "out") outParams
 :
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 writeSignal :: Signal -> XmlWriter ()
 writeSignal (Signal name params) = writeElement "signal"
-	[("name", T.strMemberName name)] $ do
+	[("name", T.memberNameText name)] $ do
 		mapM_ (writeParameter "out") params
 :
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 writeParameter :: Text -> Parameter -> XmlWriter ()
 writeParameter direction (Parameter name sig) = writeEmptyElement "arg"
 	[ ("name", name)
-	, ("type", T.strSignature sig)
+	, ("type", T.signatureText sig)
 	, ("direction", direction)
 	]
 :
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 writeProperty :: Property -> XmlWriter ()
 writeProperty (Property name sig access) = writeEmptyElement "property"
 	[ ("name", name)
-	, ("type", T.strSignature sig)
+	, ("type", T.signatureText sig)
 	, ("access", strAccess access)
 	]
 :
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 strAccess :: [PropertyAccess] -> Text
-strAccess access = TL.append readS writeS where
+strAccess access = Data.Text.append readS writeS where
 	readS = if elem Read access then "read" else ""
 	writeS = if elem Write access then "write" else ""
 :
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 writeElement :: Text -> [(Text, Text)] -> XmlWriter () -> XmlWriter ()
 writeElement name attrs content = do
 	tell "<"
@@ -405,7 +361,7 @@ writeElement name attrs content = do
 	tell ">"
 :
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 writeEmptyElement :: Text -> [(Text, Text)] -> XmlWriter ()
 writeEmptyElement name attrs = do
 	tell "<"
@@ -414,7 +370,7 @@ writeEmptyElement name attrs = do
 	tell "/>"
 :
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 writeAttribute :: (Text, Text) -> XmlWriter ()
 writeAttribute (name, content) = do
 	tell " "
@@ -424,92 +380,14 @@ writeAttribute (name, content) = do
 	tell "'"
 :
 
-:f DBus/Introspection.hs
+:d DBus.Introspection
 escape :: Text -> Text
-escape = TL.concatMap escapeChar where
+escape = Data.Text.concatMap escapeChar where
 	escapeChar c = case c of
 		'&' -> "&amp;"
 		'<' -> "&lt;"
 		'>' -> "&gt;"
 		'"' -> "&quot;"
 		'\'' -> "&apos;"
-		_ -> TL.singleton c
-:
-
-\subsection{Test support}
-
-:f Tests.hs
-subObject :: ObjectPath -> Gen I.Object
-subObject parentPath = sized $ \n -> resize (min n 4) $ do
-	let nonRoot = do
-		x <- arbitrary
-		case strObjectPath x of
-			"/" -> nonRoot
-			x'  -> return x'
-	
-	thisPath <- nonRoot
-	let path' = case strObjectPath parentPath of
-		"/" -> thisPath
-		x   -> TL.append x thisPath
-	let path = mkObjectPath_ path'
-	ifaces <- arbitrary
-	children <- halfSized . listOf . subObject $ path
-	return $ I.Object path ifaces children
-
-instance Arbitrary I.Object where
-	arbitrary = arbitrary >>= subObject
-
-instance Arbitrary I.Interface where
-	arbitrary = do
-		name <- arbitrary
-		methods <- arbitrary
-		signals <- arbitrary
-		properties <- arbitrary
-		return $ I.Interface name methods signals properties
-
-instance Arbitrary I.Method where
-	arbitrary = do
-		name <- arbitrary
-		inParams <- arbitrary
-		outParams <- arbitrary
-		return $ I.Method name inParams outParams
-
-instance Arbitrary I.Signal where
-	arbitrary = do
-		name <- arbitrary
-		params <- arbitrary
-		return $ I.Signal name params
-
-singleType :: Gen Signature
-singleType = do
-	t <- arbitrary
-	case mkSignature $ typeCode t of
-		Just x -> return x
-		Nothing -> singleType
-
-instance Arbitrary I.Parameter where
-	arbitrary = do
-		name <- listOf $ arbitrary `suchThat` isPrint
-		sig <- singleType
-		return $ I.Parameter (TL.pack name) sig
-
-instance Arbitrary I.Property where
-	arbitrary = do
-		name <- listOf $ arbitrary `suchThat` isPrint
-		sig <- singleType
-		access <- elements
-			[[], [I.Read], [I.Write],
-			 [I.Read, I.Write]]
-		return $ I.Property (TL.pack name) sig access
-:
-
-:d test cases
-, F.testGroup "Introspection"
-	[ testProperty "Generate -> Parse"
-		$ \x@(I.Object path _ _) -> let
-		xml = I.toXML x
-		Just xml' = xml
-		parsed = I.fromXML path xml'
-		in isJust xml ==> I.fromXML path xml' == Just x
-	]
+		_ -> Data.Text.singleton c
 :

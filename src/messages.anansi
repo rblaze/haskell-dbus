@@ -15,140 +15,143 @@
 
 \section{Messages}
 
-To prevent internal details of messages from leaking out to clients,
-declarations are contained in an internal module and then re-exported
-in the public module.
-
-:f DBus/Message.hs
-|copyright|
-module DBus.Message (
-	|message exports|
-	) where
-import DBus.Message.Internal
-:
-
-:f DBus/Message/Internal.hs
-|copyright|
-|text extensions|
-module DBus.Message.Internal where
-|text imports|
-import qualified Data.Set as S
-import Data.Word (Word8, Word32)
-import Data.Maybe (fromMaybe)
-import qualified DBus.Types as T
-import DBus.Util (maybeIndex)
-:
-
-:f DBus/Message/Internal.hs
+:d DBus.Message
 class Message a where
 	messageTypeCode     :: a -> Word8
 	messageHeaderFields :: a -> [HeaderField]
-	messageFlags        :: a -> S.Set Flag
-	messageBody         :: a -> [T.Variant]
+	messageFlags        :: a -> Set Flag
+	messageBody         :: a -> [Variant]
 :
 
-:d message exports
-Message ( messageFlags
-        , messageBody
-        )
+:d DBus.Message
+maybe' :: (a -> b) -> Maybe a -> [b]
+maybe' f = maybe [] (\x' -> [f x'])
 :
 
-\subsection{Flags}
+\subsection{Unknown messages}
+
+Unknown messages are used for storing information about messages without
+a recognised type code. They are not instances of {\tt Message}, because
+if they were, then clients could accidentally send invalid messages over
+the bus.
+
+:d DBus.Message
+data Unknown = Unknown
+	{ unknownType    :: Word8
+	, unknownFlags   :: Set Flag
+	, unknownBody    :: [Variant]
+	}
+	deriving (Show, Eq)
+:
+
+\clearpage
+\subsection{Header fields}
+
+\begin{multicols}{2}
+
+TODO
+
+\vfill
+
+\columnbreak
+
+:d DBus.Message
+data HeaderField
+	= HeaderPath        ObjectPath
+	| HeaderInterface   InterfaceName
+	| HeaderMember      MemberName
+	| HeaderErrorName   ErrorName
+	| HeaderReplySerial Serial
+	| HeaderDestination BusName
+	| HeaderSender      BusName
+	| HeaderSignature   Signature
+	deriving (Show, Eq)
+:
+
+\end{multicols}
+
+\subsubsection{Flags}
+
+\begin{multicols}{2}
 
 The instance of {\tt Ord} only exists for storing flags in a set. Flags have
 no inherent ordering.
 
-:f DBus/Message/Internal.hs
+\vfill
+
+\columnbreak
+
+:d DBus.Message
 data Flag
 	= NoReplyExpected
 	| NoAutoStart
 	deriving (Show, Eq, Ord)
 :
 
-:d message exports
-, Flag (..)
-:
+\end{multicols}
 
-:f Tests.hs
-instance Arbitrary Flag where
-	arbitrary = elements [NoReplyExpected, NoAutoStart]
-:
+\subsubsection{Serials}
 
-\subsection{Header fields}
-
-:f DBus/Message/Internal.hs
-data HeaderField
-	= Path        T.ObjectPath
-	| Interface   T.InterfaceName
-	| Member      T.MemberName
-	| ErrorName   T.ErrorName
-	| ReplySerial Serial
-	| Destination T.BusName
-	| Sender      T.BusName
-	| Signature   T.Signature
-	deriving (Show, Eq)
-:
-
-\subsection{Serials}
+\begin{multicols}{2}
 
 {\tt Serial} is just a wrapper around {\tt Word32}, to provide a bit of
 added type-safety.
 
-:f DBus/Message/Internal.hs
-|apidoc Serial|
-newtype Serial = Serial { serialValue :: Word32 }
-	deriving (Eq, Ord)
+\vfill
 
-instance Show Serial where
-	show (Serial x) = show x
+\columnbreak
 
-instance T.Variable Serial where
-	toVariant (Serial x) = T.toVariant x
-	fromVariant = fmap Serial . T.fromVariant
+:d DBus.Message
+|apidoc DBus.Message.Serial|
+newtype Serial = Serial Word32
+	deriving (Eq, Ord, Show)
+
+instance IsVariant Serial where
+	toVariant (Serial x) = toVariant x
+	fromVariant = fmap Serial . fromVariant
 :
+
+\end{multicols}
+
+\begin{multicols}{2}
 
 Additionally, some useful functions exist for incrementing serials.
 
-:f DBus/Message/Internal.hs
-firstSerial :: Serial
-firstSerial = Serial 1
+\vfill
 
-nextSerial :: Serial -> Serial
-nextSerial (Serial x) = Serial (x + 1)
+\columnbreak
+
+:d DBus.Message
+serialValue :: Serial -> Word32
+serialValue (Serial x) = x
 :
+
+\end{multicols}
+
+\begin{multicols}{2}
 
 The {\tt Serial} constructor isn't useful to clients, because building
 arbitrary serials doesn't make any sense.
 
-:d message exports
-, Serial
-, serialValue
-, firstSerial
-, nextSerial
-:
+\vfill
 
-:f Tests.hs
-instance Arbitrary Serial where
-	arbitrary = fmap Serial arbitrary
-:
+\columnbreak
 
+\end{multicols}
+
+\clearpage
 \subsection{Message types}
-
-:f DBus/Message/Internal.hs
-maybe' :: (a -> b) -> Maybe a -> [b]
-maybe' f = maybe [] (\x' -> [f x'])
-:
 
 \subsubsection{Method calls}
 
-:f DBus/Message/Internal.hs
+:d DBus.Message
 data MethodCall = MethodCall
-	{ methodCallPath        :: T.ObjectPath
-	, methodCallMember      :: T.MemberName
-	, methodCallInterface   :: Maybe T.InterfaceName
-	, methodCallDestination :: Maybe T.BusName
-	, methodCallFlags       :: S.Set Flag
-	, methodCallBody        :: [T.Variant]
+	{ methodCallPath        :: ObjectPath
+	, methodCallMember      :: MemberName
+	, methodCallInterface   :: Maybe InterfaceName
+	, methodCallDestination :: Maybe BusName
+	, methodCallFlags       :: Set Flag
+	, methodCallBody        :: [Variant]
 	}
 	deriving (Show, Eq)
 
@@ -157,84 +160,57 @@ instance Message MethodCall where
 	messageFlags      = methodCallFlags
 	messageBody       = methodCallBody
 	messageHeaderFields m = concat
-		[ [ Path    $ methodCallPath m
-		  ,  Member $ methodCallMember m
+		[ [ HeaderPath (methodCallPath m)
+		  , HeaderMember (methodCallMember m)
 		  ]
-		, maybe' Interface . methodCallInterface $ m
-		, maybe' Destination . methodCallDestination $ m
+		, maybe' HeaderInterface (methodCallInterface m)
+		, maybe' HeaderDestination (methodCallDestination m)
 		]
 :
 
-:d message exports
-, MethodCall (..)
-:
-
-:f Tests.hs
-instance Arbitrary MethodCall where
-	arbitrary = do
-		path   <- arbitrary
-		member <- arbitrary
-		iface  <- arbitrary
-		dest   <- arbitrary
-		flags  <- fmap Set.fromList arbitrary
-		Structure body <- arbitrary
-		return $ MethodCall path member iface dest flags body
-:
-
+\clearpage
 \subsubsection{Method returns}
 
-:f DBus/Message/Internal.hs
+:d DBus.Message
 data MethodReturn = MethodReturn
 	{ methodReturnSerial      :: Serial
-	, methodReturnDestination :: Maybe T.BusName
-	, methodReturnBody        :: [T.Variant]
+	, methodReturnDestination :: Maybe BusName
+	, methodReturnBody        :: [Variant]
 	}
 	deriving (Show, Eq)
 
 instance Message MethodReturn where
 	messageTypeCode _ = 2
-	messageFlags    _ = S.fromList [NoReplyExpected, NoAutoStart]
+	messageFlags    _ = Data.Set.fromList [NoReplyExpected, NoAutoStart]
 	messageBody       = methodReturnBody
 	messageHeaderFields m = concat
-		[ [ ReplySerial $ methodReturnSerial m
+		[ [ HeaderReplySerial (methodReturnSerial m)
 		  ]
-		, maybe' Destination . methodReturnDestination $ m
+		, maybe' HeaderDestination (methodReturnDestination m)
 		]
 :
 
-:d message exports
-, MethodReturn (..)
-:
-
-:f Tests.hs
-instance Arbitrary MethodReturn where
-	arbitrary = do
-		serial <- arbitrary
-		dest   <- arbitrary
-		Structure body <- arbitrary
-		return $ MethodReturn serial dest body
-:
-
+\clearpage
 \subsubsection{Errors}
 
-:f DBus/Message/Internal.hs
+:d DBus.Message
 data Error = Error
-	{ errorName        :: T.ErrorName
+	{ errorName        :: ErrorName
 	, errorSerial      :: Serial
-	, errorDestination :: Maybe T.BusName
-	, errorBody        :: [T.Variant]
+	, errorDestination :: Maybe BusName
+	, errorBody        :: [Variant]
 	}
 	deriving (Show, Eq)
 
 instance Message Error where
 	messageTypeCode _ = 3
-	messageFlags    _ = S.fromList [NoReplyExpected, NoAutoStart]
+	messageFlags    _ = Data.Set.fromList [NoReplyExpected, NoAutoStart]
 	messageBody       = errorBody
 	messageHeaderFields m = concat
-		[ [ ErrorName   $ errorName m
-		  , ReplySerial $ errorSerial m
+		[ [ HeaderErrorName (errorName m)
+		  , HeaderReplySerial (errorSerial m)
 		  ]
-		, maybe' Destination . errorDestination $ m
+		, maybe' HeaderDestination (errorDestination m)
 		]
 :
 
@@ -242,91 +218,43 @@ Errors usually contain a human-readable message in their first body field.
 This function lets it be retrieved easily, with a fallback if no valid
 message was found.
 
-:f DBus/Message/Internal.hs
+:d DBus.Message
 errorMessage :: Error -> Text
 errorMessage msg = fromMaybe "(no error message)" $ do
 	field <- maybeIndex (errorBody msg) 0
-	text <- T.fromVariant field
-	if TL.null text
+	text <- fromVariant field
+	if Data.Text.null text
 		then Nothing
 		else return text
 :
 
-:d message exports
-, Error (..)
-, errorMessage
-:
-
-:f Tests.hs
-instance Arbitrary Error where
-	arbitrary = do
-		name   <- arbitrary
-		serial <- arbitrary
-		dest   <- arbitrary
-		Structure body <- arbitrary
-		return $ Error name serial dest body
-:
-
+\clearpage
 \subsubsection{Signals}
 
-:f DBus/Message/Internal.hs
+:d DBus.Message
 data Signal = Signal
-	{ signalPath        :: T.ObjectPath
-	, signalMember      :: T.MemberName
-	, signalInterface   :: T.InterfaceName
-	, signalDestination :: Maybe T.BusName
-	, signalBody        :: [T.Variant]
+	{ signalDestination :: Maybe BusName
+	, signalPath        :: ObjectPath
+	, signalInterface   :: InterfaceName
+	, signalMember      :: MemberName
+	, signalBody        :: [Variant]
 	}
 	deriving (Show, Eq)
 
 instance Message Signal where
 	messageTypeCode _ = 4
-	messageFlags    _ = S.fromList [NoReplyExpected, NoAutoStart]
+	messageFlags    _ = Data.Set.fromList [NoReplyExpected, NoAutoStart]
 	messageBody       = signalBody
 	messageHeaderFields m = concat
-		[ [ Path      $ signalPath m
-		  , Member    $ signalMember m
-		  , Interface $ signalInterface m
+		[ [ HeaderPath (signalPath m)
+		  , HeaderMember (signalMember m)
+		  , HeaderInterface (signalInterface m)
 		  ]
-		, maybe' Destination . signalDestination $ m
+		, maybe' HeaderDestination (signalDestination m)
 		]
 :
 
-:d message exports
-, Signal (..)
-:
-
-:f Tests.hs
-instance Arbitrary Signal where
-	arbitrary = do
-		path   <- arbitrary
-		member <- arbitrary
-		iface  <- arbitrary
-		dest   <- arbitrary
-		Structure body <- arbitrary
-		return $ Signal path member iface dest body
-:
-
-\subsubsection{Unknown messages}
-
-Unknown messages are used for storing information about messages without
-a recognised type code. They are not instances of {\tt Message}, because
-if they were, then clients could accidentally send invalid messages over
-the bus.
-
-:f DBus/Message/Internal.hs
-data Unknown = Unknown
-	{ unknownType    :: Word8
-	, unknownFlags   :: S.Set Flag
-	, unknownBody    :: [T.Variant]
-	}
-	deriving (Show, Eq)
-:
-
-:d message exports
-, Unknown (..)
-:
-
+\clearpage
 \subsection{Received messages}
 
 Messages received from a bus have additional fields which do not make sense
@@ -335,18 +263,18 @@ when sending.
 If a message has an unknown type, its serial and origin are still useful
 for sending an error reply.
 
-:f DBus/Message/Internal.hs
-|apidoc ReceivedMessage|
+:d DBus.Message
+|apidoc DBus.Message.ReceivedMessage|
 data ReceivedMessage
-	= ReceivedMethodCall   Serial (Maybe T.BusName) MethodCall
-	| ReceivedMethodReturn Serial (Maybe T.BusName) MethodReturn
-	| ReceivedError        Serial (Maybe T.BusName) Error
-	| ReceivedSignal       Serial (Maybe T.BusName) Signal
-	| ReceivedUnknown      Serial (Maybe T.BusName) Unknown
+	= ReceivedMethodCall   Serial (Maybe BusName) MethodCall
+	| ReceivedMethodReturn Serial (Maybe BusName) MethodReturn
+	| ReceivedError        Serial (Maybe BusName) Error
+	| ReceivedSignal       Serial (Maybe BusName) Signal
+	| ReceivedUnknown      Serial (Maybe BusName) Unknown
 	deriving (Show, Eq)
 :
 
-:f DBus/Message/Internal.hs
+:d DBus.Message
 receivedSerial :: ReceivedMessage -> Serial
 receivedSerial (ReceivedMethodCall   s _ _) = s
 receivedSerial (ReceivedMethodReturn s _ _) = s
@@ -355,8 +283,8 @@ receivedSerial (ReceivedSignal       s _ _) = s
 receivedSerial (ReceivedUnknown      s _ _) = s
 :
 
-:f DBus/Message/Internal.hs
-receivedSender :: ReceivedMessage -> Maybe T.BusName
+:d DBus.Message
+receivedSender :: ReceivedMessage -> Maybe BusName
 receivedSender (ReceivedMethodCall   _ s _) = s
 receivedSender (ReceivedMethodReturn _ s _) = s
 receivedSender (ReceivedError        _ s _) = s
@@ -364,18 +292,11 @@ receivedSender (ReceivedSignal       _ s _) = s
 receivedSender (ReceivedUnknown      _ s _) = s
 :
 
-:f DBus/Message/Internal.hs
-receivedBody :: ReceivedMessage -> [T.Variant]
+:d DBus.Message
+receivedBody :: ReceivedMessage -> [Variant]
 receivedBody (ReceivedMethodCall   _ _ x) = messageBody x
 receivedBody (ReceivedMethodReturn _ _ x) = messageBody x
 receivedBody (ReceivedError        _ _ x) = messageBody x
 receivedBody (ReceivedSignal       _ _ x) = messageBody x
 receivedBody (ReceivedUnknown      _ _ x) = unknownBody x
-:
-
-:d message exports
-, ReceivedMessage (..)
-, receivedSerial
-, receivedSender
-, receivedBody
 :

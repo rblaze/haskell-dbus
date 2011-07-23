@@ -1,4 +1,4 @@
-:# Copyright (C) 2009-2010 John Millikin <jmillikin@gmail.com>
+:# Copyright (C) 2009-2011 John Millikin <jmillikin@gmail.com>
 :# 
 :# This program is free software: you can redistribute it and/or modify
 :# it under the terms of the GNU General Public License as published by
@@ -15,119 +15,378 @@
 
 \section{Connections}
 
-:f DBus/Connection.hs
-|copyright|
-|text extensions|
-{-# LANGUAGE DeriveDataTypeable #-}
-module DBus.Connection (
-	|connection exports|
-	) where
-|text imports|
-|connection imports|
-:
+\begin{multicols}{2}
 
-A {\tt Connection} is an opaque handle to an open D-Bus channel, with
-an internal state for maintaining the current message serial.
+A {\tt Connection} is an opaque handle to an open \dbus{} socket, with
+an internal state for maintaining the current message serial and enforcing
+thread-safe access to the socket. Every connection has an \emph{address},
+which is where the remote server is listening, and a \emph{transport}, which
+manages actually sending bytes between the two applications.
 
-The second {\tt MVar} doesn't really store a value, it's just used to
-prevent two separate threads from reading from the transport at once.
+\vfill
+\columnbreak
 
-:d connection imports
-import qualified Control.Concurrent as C
-import qualified DBus.Address as A
-import qualified DBus.Message as M
-import qualified DBus.UUID as UUID
-:
-
-:f DBus/Connection.hs
+:d DBus.Connection
+|apidoc DBus.Connection.Connection|
 data Connection = Connection
-	{ connectionAddress    :: A.Address
-	, connectionTransport  :: Transport
-	, connectionSerialMVar :: C.MVar M.Serial
-	, connectionReadMVar   :: C.MVar ()
-	, connectionUUID       :: UUID.UUID
+	{ connectionAddress :: Address
+	, connectionSocket :: Socket
+	, connectionSerial :: IORef Serial
+	, connectionReadLock :: MVar ()
+	, connectionWriteLock :: MVar ()
 	}
 :
 
-:d connection exports
-  Connection
-, connectionAddress
-, connectionUUID
+\end{multicols}
+
+\begin{multicols}{2}
+
+TODO
+
+\vfill
+\columnbreak
+
+:d DBus.Connection.Error
+newtype ConnectionError = ConnectionError String
+	deriving (Show, Eq, Typeable)
+
+instance Exception ConnectionError
+
+connectionError :: String -> IO a
+connectionError = throwIO . ConnectionError
 :
 
-While not particularly useful for other functions, being able to
-{\tt show} a {\tt Connection} is useful when debugging.
+\end{multicols}
 
-:f DBus/Connection.hs
+\begin{multicols}{2}
+
+TODO
+
+\vfill
+\columnbreak
+
+:d DBus.Connection
+|apidoc DBus.Connection.connect|
+connect :: [Transport] -> [Mechanism] -> Address -> IO Connection
+connect transports mechanisms addr = do
+	msock <- connectTransport transports addr
+	sock <- case msock of
+		Just s -> return s
+		Nothing -> connectionError (concat
+			[ "Unknown address method: "
+			, show (addressMethod addr)
+			])
+	authed <- authenticate sock mechanisms
+	when (not authed)
+		(connectionError "Authentication failed")
+	
+	serial <- newIORef (Serial 1)
+	readLock <- newMVar ()
+	writeLock <- newMVar ()
+	return (Connection addr sock serial
+	                   readLock writeLock)
+
+|apidoc DBus.Connection.disconnect|
+disconnect :: Connection -> IO ()
+disconnect = socketClose . connectionSocket
+:
+
+\end{multicols}
+
+\clearpage
+\subsection{Addresses}
+
+\begin{multicols}{2}
+
+An address has two components, the \emph{method} and the \emph{parameters}.
+The method (such as {\tt "unix"} or {\tt "tcp"}) describes how the socket
+should be opened. The parameters include additional information, such as
+hostnames, required by the method.
+
+\vfill
+\columnbreak
+
+:d DBus.Address
+data Address = Address Text (Map Text Text)
+	deriving (Eq)
+
+addressMethod :: Address -> Text
+addressMethod (Address x _ ) = x
+
+addressParameters :: Address -> Map Text Text
+addressParameters (Address _ x) = x
+:
+
+\end{multicols}
+
+\begin{multicols}{2}
+
+A bus address is in the format {\tt $method$:$key$=$value$,...}
+where the method may be empty and parameters are optional. An address's
+parameter list, if present, may end with a comma. Multiple parameters may
+have the same key; in this case, only the first parameter for each key will
+be stored.
+
+In parameter values, any byte may be encoded by prepending the \% character
+to its value in hexadecimal. \% is not allowed to appear unless it is
+followed by two hexadecimal digits. Every other allowed byte is termed
+an ``optionally encoded'' byte, and may appear unescaped in parameter
+values.
+
+\vfill
+\columnbreak
+
+:d DBus.Address
+address :: Text -> Maybe Address
+address = runParser $ do
+	addr <- parseAddress
+	eof
+	return addr
+
+parseAddress :: Parser Address
+parseAddress = parser where
+	parser = do
+		method <- many (noneOf ":;")
+		void (char ':')
+		params <- sepEndBy param (char ',')
+		return (Address
+			(Data.Text.pack method)
+			(Data.Map.fromList params))
+	
+	param = do
+		key <- many1 (noneOf "=;,")
+		void (char '=')
+		value <- many1 valueChar
+		let pack = Data.Text.pack
+		return (pack key, pack value)
+	
+	valueChar = encoded <|> unencoded
+	encoded = do
+		void (char '%')
+		hex <- count 2 hexDigit
+		return (chr (hexToInt hex))
+	unencoded = oneOf optionallyEncoded
+
+optionallyEncoded :: [Char]
+optionallyEncoded = concat
+	[ ['0'..'9']
+	, ['a'..'z']
+	, ['A'..'Z']
+	, "-_/\\*."
+	]
+:
+
+\end{multicols}
+
+\begin{multicols}{2}
+
+Addresses in environment variables are separated by semicolons, and the full
+address list may end in a semicolon.
+
+\vfill
+\columnbreak
+
+:d DBus.Address
+addresses :: Text -> Maybe [Address]
+addresses = runParser $ do
+	xs <- sepEndBy1 parseAddress (char ';')
+	eof
+	return xs
+:
+
+\end{multicols}
+
+\clearpage
+\subsubsection{Printing addresses}
+
+\begin{multicols}{2}
+
+Users might want to print addresses and open connections when working in a
+{\sc repl}, so I'll define some simple {\tt Show} instances. {\tt Connection}
+is given a special format to mark it as {\sc io}-ish, while {\tt address} is
+formatted as if it's a string wrapper.
+
+\vfill
+\columnbreak
+
+:d DBus.Address
+instance Show Address where
+	showsPrec d x = showParen (d > 10) $
+		showString "Address " .
+		shows (addressText x)
+:
+
+:d DBus.Connection
 instance Show Connection where
-	showsPrec d con = showParen (d > 10) strCon where
-		addr = A.strAddress $ connectionAddress con
-		strCon = s "<Connection " . shows addr . s ">"
-		s = showString
+	showsPrec _ x =
+		showString "<Connection " .
+		shows (connectionAddress x) .
+		showString ">"
 :
 
+\end{multicols}
+
+\begin{multicols}{2}
+
+Formatting addresses is just the reverse of parsing them.
+
+\vfill
+\columnbreak
+
+:d DBus.Address
+addressText :: Address -> Text
+addressText addr = Data.Text.concat chunks where
+	chunks = [ addressMethod addr, ":"
+	         , paramsText]
+	
+	params = addressParameters addr
+	paramsText = Data.Text.intercalate "," $ do
+		(k, v) <- Data.Map.toList params
+		let k' = Data.Text.unpack k
+		let v' = Data.Text.unpack v
+		let encoded = concatMap encode v'
+		let str = concat [k', "=", encoded]
+		return (Data.Text.pack str)
+	
+	encode c = if elem c optionallyEncoded
+		then [c]
+		else printf "%%%02X" (ord c)
+:
+
+\end{multicols}
+
+\subsubsection{Environmental addresses}
+
+:d DBus.Address
+getenv :: String -> IO (Maybe Text)
+getenv name = Control.Exception.catch
+	(fmap (Just . Data.Text.pack) (System.Environment.getEnv name))
+	(\(Control.Exception.SomeException _) -> return Nothing)
+
+getSystem :: IO (Maybe [Address])
+getSystem = do
+	let system = "unix:path=/var/run/dbus/system_bus_socket"
+	env <- getenv "DBUS_SYSTEM_BUS_ADDRESS"
+	return (addresses (maybe system id env))
+
+getSession :: IO (Maybe [Address])
+getSession = do
+	env <- getenv "DBUS_SESSION_BUS_ADDRESS"
+	return (env >>= addresses)
+
+getStarter :: IO (Maybe [Address])
+getStarter = do
+	env <- getenv "DBUS_STARTER_BUS_ADDRESS"
+	return (env >>= addresses)
+:
+
+\clearpage
 \subsection{Transports}
 
-A transport is anything which can send and receive bytestrings, typically
-via a socket.
+\begin{multicols}{2}
 
-:d connection imports
-import qualified Data.ByteString.Lazy as L
-import Data.Word (Word32)
+The transport abstracts how the operating system connects to the server
+process; typically, this is based on {\sc unix} or {\sc tcp} sockets, but
+users might use alternative transports for special use cases. This library
+only requires the ability to read from, write to, and close an open socket,
+so those methods are bundled into {\tt Transport}.
+
+\vfill
+\columnbreak
+
+:d DBus.Connection.Transport
+|apidoc DBus.Connection.Transport|
+data Transport = Transport Text (Address -> IO Socket)
+
+data Socket = Socket
+	(ByteString -> IO ())
+	(Word32 -> IO ByteString)
+	(IO ())
+
+transport :: Text -> (Address -> IO Socket) -> Transport
+transport = Transport
+
+socket :: (ByteString -> IO ()) -> (Word32 -> IO ByteString) -> IO () -> Socket
+socket = Socket
+
+socketPut :: Socket -> ByteString -> IO ()
+socketPut (Socket x _ _) = x
+
+socketGet :: Socket -> Word32 -> IO ByteString
+socketGet (Socket _ x _) = x
+
+socketClose :: Socket -> IO ()
+socketClose (Socket _ _ x) = x
+
+connectTransport :: [Transport] -> Address -> IO (Maybe Socket)
+connectTransport transports addr = loop transports where
+	m = addressMethod addr
+	loop [] = return Nothing
+	loop ((Transport n io):ts) = if n == m
+		then fmap Just (io addr)
+		else loop ts
 :
 
-:f DBus/Connection.hs
-|apidoc Transport|
-data Transport = Transport
-	{ transportSend :: L.ByteString -> IO ()
-	, transportRecv :: Word32 -> IO L.ByteString
-	, transportClose :: IO ()
-	}
+\end{multicols}
+
+\subsubsection{Generic handle-based transport}
+
+\begin{multicols}{2}
+
+Both UNIX and TCP are backed by standard handles, and can therefore use
+a shared handle-based transport backend. This sets reasonable defaults
+(no buffering, no newline mangling) for the handle parameters.
+
+\vfill
+\columnbreak
+
+:d DBus.Connection.Transport
+connectHandle :: System.IO.Handle -> IO Socket
+connectHandle h = do
+	System.IO.hSetBuffering h System.IO.NoBuffering
+	System.IO.hSetBinaryMode h True
+	return (Socket
+		(Data.ByteString.hPut h)
+		(Data.ByteString.hGet h . fromIntegral)
+		(System.IO.hClose h))
 :
 
-If a method has no known transport, attempting to connect using it will
-just result in an exception.
+\end{multicols}
 
-:f DBus/Connection.hs
-connectTransport :: A.Address -> IO Transport
-connectTransport a = transport' (A.addressMethod a) a where
-	transport' "unix" = unix
-	transport' "tcp"  = tcp
-	transport' _      = E.throwIO . UnknownMethod
-:
-
-\subsubsection{UNIX}
+\clearpage
+\subsubsection{UNIX Transport}
 
 The {\sc unix} transport accepts two parameters: {\tt path}, which is a
 simple filesystem path, and {\tt abstract}, which is a path in the
 Linux-specific abstract domain. One, and only one, of these parameters must
 be specified.
 
-:d connection imports
-import qualified Network as N
-import qualified Data.Map as Map
-:
+:d DBus.Connection.Transport
+unix :: Transport
+unix = transport "unix" connectUNIX
 
-:f DBus/Connection.hs
-unix :: A.Address -> IO Transport
-unix a = port >>= N.connectTo "localhost" >>= handleTransport where
-	params = A.addressParameters a
-	path = Map.lookup "path" params
-	abstract = Map.lookup "abstract" params
+connectUNIX :: Address -> IO Socket
+connectUNIX a = getHandle >>= connectHandle where
+	params = addressParameters a
+	param key = Data.Map.lookup key params
 	
 	tooMany = "Only one of `path' or `abstract' may be specified for the\
 	          \ `unix' transport."
 	tooFew = "One of `path' or `abstract' must be specified for the\
 	         \ `unix' transport."
 	
-	port = fmap N.UnixSocket path'
-	path' = case (path, abstract) of
-		(Just _, Just _) -> E.throwIO $ BadParameters a tooMany
-		(Nothing, Nothing) -> E.throwIO $ BadParameters a tooFew
-		(Just x, Nothing) -> return $ TL.unpack x
-		(Nothing, Just x) -> return $ '\x00' : TL.unpack x
+	path = case (param "path", param "abstract") of
+		(Just _, Just _) -> connectionError tooMany
+		(Nothing, Nothing) -> connectionError tooFew
+		(Just x, Nothing) -> return (Data.Text.unpack x)
+		(Nothing, Just x) -> return ('\x00' : Data.Text.unpack x)
+	
+	getHandle = do
+		port <- fmap Network.UnixSocket path
+		Network.connectTo "localhost" port
 :
 
+\clearpage
 \subsubsection{TCP}
 
 The {\sc tcp} transport has three parameters:
@@ -139,49 +398,35 @@ The {\sc tcp} transport has three parameters:
       {\tt "ipv4"} or {\tt "ipv6"}
 \end{itemize}
 
-The high-level {\tt Network} module doesn't provide enough control over
-socket construction for this transport, so {\tt Network.Socket} must be
-imported.
+:d DBus.Connection.Transport
+tcp :: Transport
+tcp = Transport "tcp" connectTCP
 
-:d connection imports
-import qualified Network.Socket as NS
-:
-
-:f DBus/Connection.hs
-tcp :: A.Address -> IO Transport
-tcp a = openHandle >>= handleTransport where
-	params = A.addressParameters a
-	openHandle = do
+connectTCP :: Address -> IO Socket
+connectTCP a = getHandle >>= connectHandle where
+	params = addressParameters a
+	param key = Data.Map.lookup key params
+	
+	getHandle = do
 		port <- getPort
 		family <- getFamily
-		addresses <- getAddresses family
-		socket <- openSocket port addresses
-		NS.socketToHandle socket I.ReadWriteMode
-:
-
-Parameter parsing...
-
-:f DBus/Connection.hs
-	hostname = maybe "localhost" TL.unpack $ Map.lookup "host" params
-:
-
-:f DBus/Connection.hs
-	unknownFamily x = TL.concat ["Unknown socket family for TCP transport: ", x]
-	getFamily = case Map.lookup "family" params of
-		Just "ipv4" -> return NS.AF_INET
-		Just "ipv6" -> return NS.AF_INET6
-		Nothing     -> return NS.AF_UNSPEC
-		Just x      -> E.throwIO $ BadParameters a $ unknownFamily x
-:
-
-:f DBus/Connection.hs
-	missingPort = "TCP transport requires the ``port'' parameter."
-	badPort x = TL.concat ["Invalid socket port for TCP transport: ", x]
-	getPort = case Map.lookup "port" params of
-		Nothing -> E.throwIO $ BadParameters a missingPort
-		Just x -> case P.parse parseWord16 "" (TL.unpack x) of
-			Right x' -> return $ NS.PortNum x'
-			Left  _  -> E.throwIO $ BadParameters a $ badPort x
+		addrs <- getAddresses family
+		sock<- openSocket port addrs
+		Network.Socket.socketToHandle sock System.IO.ReadWriteMode
+	hostname = maybe "localhost" Data.Text.unpack (param "host")
+	unknownFamily x = concat ["Unknown socket family for TCP transport: ", show x]
+	getFamily = case param "family" of
+		Just "ipv4" -> return Network.Socket.AF_INET
+		Just "ipv6" -> return Network.Socket.AF_INET6
+		Nothing     -> return Network.Socket.AF_UNSPEC
+		Just x      -> connectionError (unknownFamily x)
+	missingPort = "TCP transport requires the `port' parameter."
+	badPort x = concat ["Invalid socket port for TCP transport: ", show x]
+	getPort = case param "port" of
+		Nothing -> connectionError missingPort
+		Just x -> case parse parseWord16 "" (Data.Text.unpack x) of
+			Right x' -> return (Network.Socket.PortNum x')
+			Left  _  -> connectionError (badPort x)
 :
 
 Parsing the port is a bit complicated; assuming every character is an ASCII
@@ -189,17 +434,10 @@ digit, the port is converted to an {\tt Integer} and confirmed valid.
 {\tt PortNumber} is expected to be in big-endian byte order, so the parsed
 value must be converted from host order using {\tt Data.Binary}.
 
-:d connection imports
-import qualified Text.ParserCombinators.Parsec as P
-import Control.Monad (unless)
-import Data.Binary.Get (runGet, getWord16host)
-import Data.Binary.Put (runPut, putWord16be)
-:
-
-:f DBus/Connection.hs
+:d DBus.Connection.Transport
 	parseWord16 = do
-		chars <- P.many1 P.digit
-		P.eof
+		chars <- many1 digit
+		eof
 		let value = read chars :: Integer
 		unless (value > 0 && value <= 65535) $
 			-- Calling 'fail' is acceptable here, because Parsec 2
@@ -207,26 +445,26 @@ import Data.Binary.Put (runPut, putWord16be)
 			-- implements 'fail'.
 			fail "bad port"
 		let word = fromIntegral value
-		return $ runGet getWord16host (runPut (putWord16be word))
+		return (Data.Binary.Get.runGet Data.Binary.Get.getWord16host (Data.Binary.Put.runPut (Data.Binary.Put.putWord16be word)))
 :
 
-:f DBus/Connection.hs
+:d DBus.Connection.Transport
 	getAddresses family = do
-		let hints = NS.defaultHints
-			{ NS.addrFlags = [NS.AI_ADDRCONFIG]
-			, NS.addrFamily = family
-			, NS.addrSocketType = NS.Stream
+		let hints = Network.Socket.defaultHints
+			{ Network.Socket.addrFlags = [Network.Socket.AI_ADDRCONFIG]
+			, Network.Socket.addrFamily = family
+			, Network.Socket.addrSocketType = Network.Socket.Stream
 			}
-		NS.getAddrInfo (Just hints) (Just hostname) Nothing
+		Network.Socket.getAddrInfo (Just hints) (Just hostname) Nothing
 :
 
 The {\tt SockAddr} values returned from {\tt getAddrInfo} don't have any
 port set, so it must be manually changed to whatever was in the {\tt port}
 option.
 
-:f DBus/Connection.hs
-	setPort port (NS.SockAddrInet  _ x)     = NS.SockAddrInet port x
-	setPort port (NS.SockAddrInet6 _ x y z) = NS.SockAddrInet6 port x y z
+:d DBus.Connection.Transport
+	setPort port (Network.Socket.SockAddrInet  _ x)     = Network.Socket.SockAddrInet port x
+	setPort port (Network.Socket.SockAddrInet6 _ x y z) = Network.Socket.SockAddrInet6 port x y z
 	setPort _    addr                       = addr
 :
 
@@ -234,114 +472,110 @@ option.
 until a valid address is found. If none are found, or are usable, an
 exception will be thrown.
 
-:f DBus/Connection.hs
-	openSocket _ [] = E.throwIO $ NoWorkingAddress [a]
-	openSocket port (addr:addrs) = E.catch (openSocket' port addr) $
-		\(E.SomeException _) -> openSocket port addrs
+:d DBus.Connection.Transport
+	openSocket _ [] = connectionError ("Failed to open socket to address " ++ show a)
+	openSocket port (addr:addrs) = Control.Exception.catch (openSocket' port addr) $
+		\(Control.Exception.SomeException _) -> openSocket port addrs
 	openSocket' port addr = do
-		sock <- NS.socket (NS.addrFamily addr)
-		                  (NS.addrSocketType addr)
-		                  (NS.addrProtocol addr)
-		NS.connect sock . setPort port . NS.addrAddress $ addr
+		sock <- Network.Socket.socket (Network.Socket.addrFamily addr)
+		                  (Network.Socket.addrSocketType addr)
+		                  (Network.Socket.addrProtocol addr)
+		Network.Socket.connect sock . setPort port . Network.Socket.addrAddress $ addr
 		return sock
 :
 
-\subsubsection{Generic handle-based transport}
+\clearpage
+\subsection{Authentication}
 
-Both UNIX and TCP are backed by standard handles, and can therefore use
-a shared handle-based transport backend.
+\begin{multicols}{2}
 
-:d connection imports
-import qualified System.IO as I
+TODO
+
+\vfill
+\columnbreak
+
+:d DBus.Connection.Authentication
+authenticate :: Socket
+             -> [Mechanism]
+             -> IO Bool
+authenticate s mechanisms = do
+	socketPut s (Data.ByteString.pack [0])
+	let loop [] = return False
+	    loop ((Mechanism m):next) = do
+	    	success <- m s
+	    	if success
+	    		then return True
+	    		else loop next
+	loop mechanisms
 :
 
-:f DBus/Connection.hs
-handleTransport :: I.Handle -> IO Transport
-handleTransport h = do
-	I.hSetBuffering h I.NoBuffering
-	I.hSetBinaryMode h True
-	return $ Transport (L.hPut h) (L.hGet h . fromIntegral) (I.hClose h)
+:d DBus.Connection.Authentication
+newtype Mechanism = Mechanism (Socket -> IO Bool)
+
+mechanism :: (Socket -> IO Bool) -> Mechanism
+mechanism = Mechanism
+
+data Auth a = Auth
+	{ unAuth :: Socket -> IO a
+	}
+
+instance Monad Auth where
+	return a = Auth (\_ -> return a)
+	m >>= k = Auth $ \s -> do
+		x <- unAuth m s
+		unAuth (k x) s
+
+liftIO :: IO a -> Auth a
+liftIO io = Auth (\_ -> io)
 :
 
-\subsection{Errors}
+\end{multicols}
 
-If connecting to D-Bus fails, a {\tt ConnectionError} will be thrown.
-The constructor describes which exception occurred.
+\begin{multicols}{2}
 
-:d connection imports
-import qualified Control.Exception as E
-import Data.Typeable (Typeable)
+The authentication protocol is based on {\sc ascii} text.
+
+\vfill
+\columnbreak
+
+:d DBus.Connection.Authentication
+putLine :: String -> Auth ()
+putLine line = Auth $ \s -> do
+	let pack = Data.ByteString.Char8.pack
+	socketPut s (pack (line ++ "\r\n"))
+
+getLine :: Auth String
+getLine = Auth $ \s -> do
+	let head = Data.ByteString.Char8.head
+	let getchr = liftM head (socketGet s 1)
+	raw <- readUntil "\r\n" getchr
+	return (dropEnd 2 raw)
 :
 
-:f DBus/Connection.hs
-data ConnectionError
-	= InvalidAddress Text
-	| BadParameters A.Address Text
-	| UnknownMethod A.Address
-	| NoWorkingAddress [A.Address]
-	deriving (Show, Typeable)
+\end{multicols}
 
-instance E.Exception ConnectionError
+\clearpage
+\subsubsection{EXTERNAL}
+
+Although the official spec describes only the {\tt DBUS\_COOKIE\_SHA1}
+mechanism, I have never seen it used in real life. Everything actually uses
+{\tt EXTERNAL}, so that's what this library implements.
+
+:d DBus.Connection.Authentication
+external :: Mechanism
+external = Mechanism $ unAuth $ do
+	uid <- liftIO System.Posix.User.getRealUserID
+	let token = concatMap (printf "%02X" . ord) (show uid)
+	putLine ("AUTH EXTERNAL " ++ token)
+	resp <- getLine
+	case takeWhile (/= ' ') resp of
+		"OK" -> do
+			putLine "BEGIN"
+			return True
+		_ -> return False
 :
 
-:d connection exports
-, ConnectionError (..)
-:
-
-\subsection{Establishing a connection}
-
-A connection can be opened to any valid address, though actually connecting
-might fail due to external factors.
-
-:d connection imports
-import qualified DBus.Authentication as Auth
-:
-
-:f DBus/Connection.hs
-|apidoc connect|
-connect :: Auth.Mechanism -> A.Address -> IO Connection
-connect mechanism a = do
-	t <- connectTransport a
-	let getByte = L.head `fmap` transportRecv t 1
-	uuid <- Auth.authenticate mechanism (transportSend t) getByte
-	readLock <- C.newMVar ()
-	serialMVar <- C.newMVar M.firstSerial
-	return $ Connection a t serialMVar readLock uuid
-:
-
-Since addresses usually come in a list, it's sensible to have a variant
-of {\tt connect} which tries multiple addresses. The first successfully
-opened {\tt Connection} is returned.
-
-:f DBus/Connection.hs
-|apidoc connectFirst|
-connectFirst :: [(Auth.Mechanism, A.Address)] -> IO Connection
-connectFirst orig = connectFirst' orig where
-	allAddrs = [a | (_, a) <- orig]
-	connectFirst'     [] = E.throwIO $ NoWorkingAddress allAddrs
-	connectFirst' ((mech, a):as) = E.catch (connect mech a) $
-		\(E.SomeException _) -> connectFirst' as
-:
-
-:d connection exports
-, connect
-, connectFirst
-:
-
-\subsection{Closing connections}
-
-:f DBus/Connection.hs
-|apidoc connectionClose|
-connectionClose :: Connection -> IO ()
-connectionClose = transportClose . connectionTransport
-:
-
-:d connection exports
-, connectionClose
-:
-
-:i authentication.anansi
-
+\clearpage
 \subsection{Sending and receiving messages}
 
 Sending a message will increment the connection's internal serial state.
@@ -349,47 +583,34 @@ The second parameter is present to allow registration of a callback before
 the message has actually been sent, which avoids race conditions in
 multi-threaded clients.
 
-:d connection imports
-import qualified DBus.Wire as W
-:
-
-:f DBus/Connection.hs
-|apidoc send|
-send :: M.Message a => Connection -> (M.Serial -> IO b) -> a
-     -> IO (Either W.MarshalError b)
-send (Connection _ t mvar _ _) io msg = withSerial mvar $ \serial ->
-	case W.marshalMessage W.LittleEndian serial msg of
+:d DBus.Connection
+|apidoc DBus.Connection.send|
+send :: Message msg => Connection -> msg -> (Serial -> IO a) -> IO (Either MarshalError a)
+send connection msg io = do
+	serial <- nextSerial connection
+	case marshalMessage LittleEndian serial msg of
 		Right bytes -> do
-			x <- io serial
-			transportSend t bytes
-			return $ Right x
-		Left  err   -> return $ Left err
-:
+			let sock = connectionSocket connection
+			let lock = connectionWriteLock connection
+			result <- io serial
+			withMVar lock (\_ -> socketPut sock bytes)
+			return (Right result)
+		Left err -> return (Left err)
 
-:d connection exports
-, send
-:
-
-:f DBus/Connection.hs
-withSerial :: C.MVar M.Serial -> (M.Serial -> IO a) -> IO a
-withSerial m io = E.block $ do
-	s <- C.takeMVar m
-	let s' = M.nextSerial s
-	x <- E.unblock (io s) `E.onException` C.putMVar m s'
-	C.putMVar m s'
-	return x
+nextSerial :: Connection -> IO Serial
+nextSerial connection = atomicModifyIORef
+	(connectionSerial connection)
+	(\serial@(Serial x) -> (Serial (x + 1), serial))
 :
 
 Messages are received wrapped in a {\tt ReceivedMessage} value. If an
 error is encountered while unmarshaling, an exception will be thrown.
 
-:f DBus/Connection.hs
-|apidoc receive|
-receive :: Connection -> IO (Either W.UnmarshalError M.ReceivedMessage)
-receive (Connection _ t _ lock _) = C.withMVar lock $ \_ ->
-	W.unmarshalMessage $ transportRecv t
-:
-
-:d connection exports
-, receive
+:d DBus.Connection
+|apidoc DBus.Connection.receive|
+receive :: Connection -> IO (Either UnmarshalError ReceivedMessage)
+receive connection = do
+	let sock = connectionSocket connection
+	let lock = connectionReadLock connection
+	withMVar lock (\_ -> unmarshalMessageM (socketGet sock))
 :

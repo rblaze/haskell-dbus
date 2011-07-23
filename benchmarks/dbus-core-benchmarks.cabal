@@ -1,0 +1,16 @@
+name: dbus-core-benchmarks
+version: 0
+build-type: Simple
+cabal-version: >= 1.6
+
+executable dbus-core_benchmarks
+  main-is: Benchmarks.hs
+  ghc-options: -Wall -O2 -fno-warn-orphans
+
+  build-depends:
+      base > 3 && < 5
+    , binary
+    , containers
+    , criterion
+    , deepseq
+    , dbus-core
