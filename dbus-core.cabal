@@ -47,7 +47,9 @@ extra-source-files:
   src/utilities.anansi
   src/wire.anansi
   --
-  tests/Benchmarks.hs
+  benchmarks/Benchmarks.hs
+  benchmarks/dbus-core-benchmarks.cabal
+  --
   tests/Tests.hs
   tests/dbus-core-tests.cabal
 
