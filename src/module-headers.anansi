@@ -350,6 +350,7 @@ module DBus.Client
 	, disconnect
 	, call
 	, call_
+	, emit
 	
 	-- * Listening for signals
 	, MatchRule(..)
@@ -419,6 +420,7 @@ module DBus.Client.Simple
 	, connectSession
 	, connectStarter
 	, disconnect
+	, emit
 	
 	-- * Proxies
 	, Proxy
@@ -452,7 +454,7 @@ import qualified Data.Set
 import           Data.Word (Word32)
 
 import           DBus.Address
-import           DBus.Client hiding (call, method, export)
+import           DBus.Client hiding (call, method, emit, export)
 import qualified DBus.Client
 import           DBus.Connection.Error
 import           DBus.Constants (errorInvalidParameters)
