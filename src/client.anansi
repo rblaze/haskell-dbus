@@ -187,6 +187,14 @@ call_ client msg = do
 :
 
 \clearpage
+\subsection{Emitting signals}
+
+:d DBus.Client
+emit :: Client -> Signal -> IO ()
+emit client msg = send_ client msg (\_ -> return ())
+:
+
+\clearpage
 \subsection{Receiving signals}
 
 :d DBus.Client
@@ -424,6 +432,17 @@ call (Proxy client dest path) iface member body = do
 		, methodCallBody = body
 		}
 	return (methodReturnBody reply)
+:
+
+:d DBus.Client.Simple
+emit :: Client -> ObjectPath -> InterfaceName -> MemberName -> [Variant] -> IO ()
+emit client path iface member body = DBus.Client.emit client $ Signal
+	{ signalDestination = Nothing
+	, signalPath = path
+	, signalInterface = iface
+	, signalMember = member
+	, signalBody = body
+	}
 :
 
 :d DBus.Client.Simple

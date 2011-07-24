@@ -47,10 +47,10 @@
 % No extra margins in code blocks
 \codemargin=0pt
 
-\title{dbus\_0.9}
+\title{dbus\_0.9.1}
 \author{John Millikin\\
         \href{mailto:"John Millikin" <jmillikin@gmail.com>}{\tt jmillikin@gmail.com}}
-\date{July 14, 2011}
+\date{July 24, 2011}
 
 \makeindex
 
