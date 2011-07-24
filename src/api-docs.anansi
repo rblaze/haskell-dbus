@@ -24,7 +24,7 @@ There's no real order to this section; it exists only because Haddock
 can't merge documentation from external files.
 
 :d apidoc DBus.Client.disconnect
--- | Stop a 'Client'#8217;s callback thread and close its underlying socket.
+-- | Stop a 'Client'&#8217;s callback thread and close its underlying socket.
 :
 
 :d apidoc DBus.Client.throwError
