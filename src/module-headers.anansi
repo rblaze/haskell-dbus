@@ -76,6 +76,7 @@ typeOf = DBus.Types.Internal.typeOf
 :f DBus/Types/Internal.hs
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE IncoherentInstances #-}
 |copyright|
 module DBus.Types.Internal where
