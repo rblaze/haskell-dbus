@@ -16,7 +16,7 @@ executable dbus-core_tests
     ghc-options: -fhpc
 
   build-depends:
-      base > 3 && < 5
+      base > 4.0 && < 5.0
     , binary >= 0.4 && < 0.6
     , bytestring >= 0.9 && < 0.10
     , chell >= 0.1.1 && < 0.2
@@ -26,9 +26,9 @@ executable dbus-core_tests
     , libxml-sax >= 0.7 && < 0.8
     , network >= 2.2 && < 2.4
     , parsec >= 2.0 && < 3.2
-    , text >= 0.8 && < 0.12
+    , QuickCheck == 2.4.*
+    , text >= 0.11.1.5 && < 0.12
     , transformers >= 0.2 && < 0.3
-    , unix >= 2.2 && < 2.5
+    , unix >= 2.2 && < 2.6
     , vector >= 0.7 && < 0.8
     , xml-types >= 0.3 && < 0.4
-    , QuickCheck == 2.4.*
