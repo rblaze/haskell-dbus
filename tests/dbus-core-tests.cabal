@@ -8,7 +8,7 @@ flag coverage
   manual: True
 
 executable dbus-core_tests
-  main-is: Tests.hs
+  main-is: Main.hs
   ghc-options: -Wall -fno-warn-orphans
   hs-source-dirs: ../hs,.
 

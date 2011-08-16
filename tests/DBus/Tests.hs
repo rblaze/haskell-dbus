@@ -1,6 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE RelaxedPolyRec #-}
 
 -- Copyright (C) 2010-2011 John Millikin <jmillikin@gmail.com>
 -- 
@@ -17,7 +16,7 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-module Main (tests, main) where
+module DBus.Tests (tests) where
 
 import           Prelude hiding (fail)
 
@@ -63,6 +62,8 @@ import qualified DBus.Wire
 import qualified DBus.Wire.Internal
 import qualified DBus.Introspection
 
+import           DBus.Tests.Util
+
 tests :: [Suite]
 tests = [ suite_Address
         , suite_Signature
@@ -77,9 +78,6 @@ tests = [ suite_Address
         , suite_Wire
         , suite_Introspection
         ]
-
-main :: IO ()
-main = Test.Chell.defaultMain tests
 
 suite_Address :: Suite
 suite_Address = suite "address"
@@ -654,28 +652,6 @@ halfSized gen = sized (\n -> if n > 0
 requireJust :: Maybe a -> Assertions a
 requireJust (Just a) = return a
 requireJust Nothing  = $fail "requireJust: got Nothing"
-
-assertAtom :: (Eq a, Show a, IsAtom a) => Type -> a -> Assertions ()
-assertAtom t a = do
-	$expect $ equal t (atomType (toAtom a))
-	$expect $ equal (fromAtom (toAtom a)) (Just a)
-	$expect $ equal (toAtom a) (toAtom a)
-	assertValue t a
-
-assertValue :: (Eq a, Show a, IsValue a) => Type -> a -> Assertions ()
-assertValue t a = do
-	$expect $ equal t (DBus.Types.typeOf a)
-	$expect $ equal t (DBus.Types.Internal.typeOf a)
-	$expect $ equal t (valueType (toValue a))
-	$expect $ equal (fromValue (toValue a)) (Just a)
-	$expect $ equal (toValue a) (toValue a)
-	assertVariant t a
-
-assertVariant :: (Eq a, Show a, IsVariant a) => Type -> a -> Assertions ()
-assertVariant t a = do
-	$expect $ equal t (variantType (toVariant a))
-	$expect $ equal (fromVariant (toVariant a)) (Just a)
-	$expect $ equal (toVariant a) (toVariant a)
 
 withEnv :: String -> Maybe String -> IO a -> IO a
 withEnv name value io = do
