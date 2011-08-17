@@ -182,7 +182,11 @@ call client msg = do
 	
 	tried <- Control.Exception.try (takeMVar mvar)
 	case tried of
+#if MIN_VERSION_base(4,2,0)
 		Left Control.Exception.BlockedIndefinitelyOnMVar ->
+#else
+		Left Control.Exception.BlockedOnDeadMVar ->
+#endif
 			connectionError "DBus.Client.call: connection closed during method call"
 		Right ret -> return ret
 

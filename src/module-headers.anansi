@@ -371,6 +371,7 @@ import           DBus.Client.Internal
 :
 
 :f DBus/Client/Internal.hs
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 |copyright|
