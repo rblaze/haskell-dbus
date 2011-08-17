@@ -88,8 +88,12 @@ connect addr = do
 |apidoc DBus.Client.disconnect|
 disconnect :: Client -> IO ()
 disconnect client = do
-	let connection = clientConnection client
 	killThread (clientThreadID client)
+	disconnect' client
+
+disconnect' :: Client -> IO ()
+disconnect' client = do
+	let connection = clientConnection client
 	modifyMVar_ (clientCallbacks client) (\_ -> return Data.Map.empty)
 	modifyMVar_ (clientSignalHandlers client) (\_ -> return [])
 	modifyMVar_ (clientObjects client) (\_ -> return Data.Map.empty)
@@ -114,7 +118,7 @@ mainLoop client = forever $ do
 	received <- DBus.Connection.receive connection
 	msg <- case received of
 		Left err -> do
-			disconnect client
+			disconnect' client
 			connectionError ("Received invalid message: " ++ show err)
 		Right msg -> return msg
 	
@@ -176,7 +180,11 @@ call client msg = do
 		modifyMVar_ (clientCallbacks client) (\callbacks ->
 			return (Data.Map.insert serial callback callbacks)))
 	
-	takeMVar mvar
+	tried <- Control.Exception.try (takeMVar mvar)
+	case tried of
+		Left Control.Exception.BlockedIndefinitelyOnMVar ->
+			connectionError "DBus.Client.call: connection closed during method call"
+		Right ret -> return ret
 
 call_ :: Client -> MethodCall -> IO MethodReturn
 call_ client msg = do
