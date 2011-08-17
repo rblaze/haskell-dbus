@@ -24,7 +24,8 @@ import           Data.Int
 import           Data.Word
 import           Data.Text (Text)
 import qualified Data.Text
-import           System
+import           System.Environment
+import           System.Exit
 import           System.IO
 import           System.Console.GetOpt
 

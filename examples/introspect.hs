@@ -19,7 +19,8 @@ module Main (main) where
 
 import           Data.String (fromString)
 import qualified Data.Text
-import           System (getArgs, getProgName, exitFailure)
+import           System.Environment (getArgs, getProgName)
+import           System.Exit (exitFailure)
 import           System.IO (hPutStrLn, stderr)
 
 import           DBus.Client.Simple
