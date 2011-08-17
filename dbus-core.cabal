@@ -50,8 +50,10 @@ extra-source-files:
   benchmarks/Benchmarks.hs
   benchmarks/dbus-core-benchmarks.cabal
   --
-  tests/Tests.hs
   tests/dbus-core-tests.cabal
+  tests/DBus/Tests.hs
+  tests/DBus/Tests/Util.hs
+  tests/Main.hs
 
 source-repository head
   type: bazaar
