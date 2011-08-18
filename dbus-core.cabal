@@ -60,7 +60,7 @@ source-repository head
   location: https://john-millikin.com/software/dbus-core/
 
 library
-  ghc-options: -Wall
+  ghc-options: -Wall -O2
 
   hs-source-dirs: hs
 
