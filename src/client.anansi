@@ -54,16 +54,20 @@ attach connection = do
 	objects <- newMVar Data.Map.empty
 	processor <- newIORef (\_ -> return False)
 	
-	client <- mfix $ \client -> do
-		threadID <- forkIO (mainLoop client)
-		return (Client
-			{ clientConnection = connection
-			, clientCallbacks = callbacks
-			, clientSignalHandlers = signalHandlers
-			, clientObjects = objects
-			, clientThreadID = threadID
-			, clientMessageProcessor = processor
-			})
+	clientMVar <- newEmptyMVar
+	threadID <- forkIO $ do
+		client <- readMVar clientMVar
+		mainLoop client
+	
+	let client = Client
+		{ clientConnection = connection
+		, clientCallbacks = callbacks
+		, clientSignalHandlers = signalHandlers
+		, clientObjects = objects
+		, clientThreadID = threadID
+		, clientMessageProcessor = processor
+		}
+	putMVar clientMVar client
 	
 	export client "/" [introspectRoot client]
 	
