@@ -380,7 +380,6 @@ import           Control.Concurrent
 import           Control.Exception (SomeException)
 import qualified Control.Exception
 import           Control.Monad (forever, unless)
-import           Control.Monad.Fix (mfix)
 import           Data.IORef
 import           Data.List (foldl')
 import qualified Data.Map
