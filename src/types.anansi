@@ -261,7 +261,7 @@ parseSignature bytes =
 
 \begin{multicols}{2}
 
-Additionally, the library might already has a list of {\tt Type}s available,
+Additionally, the library might already have a list of {\tt Type}s available,
 and just wants to see if they're a valid signature. Rather than re-parsing
 them, we can assume the types are already nested correctly, and just check
 their string length.
