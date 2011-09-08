@@ -17,9 +17,7 @@
 
 module Main (main) where
 
-import           Data.Text
 import           Data.List (sort)
-
 import           DBus.Client.Simple
 
 main :: IO ()
@@ -31,9 +29,9 @@ main = do
 	reply <- call bus "org.freedesktop.DBus" "ListNames" []
 	
 	-- org.freedesktop.DBus.ListNames returns a single value, which is
-	-- a list of names (here represented as [Text])
+	-- a list of names (here represented as [String])
 	let Just names = fromVariant (reply !! 0)
 	
 	-- Print each name on a line, sorted so reserved names are below
 	-- temporary names.
-	mapM_ (putStrLn . unpack) (sort names)
+	mapM_ putStrLn (sort names)
