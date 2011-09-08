@@ -3,15 +3,15 @@ version: 0.9.2.1
 synopsis: Low-level D-Bus protocol implementation
 license: GPL-3
 license-file: license.txt
-author: John Millikin
-maintainer: jmillikin@gmail.com
+author: John Millikin <jmillikin@gmail.com>
+maintainer: John Millikin <jmillikin@gmail.com>
+copyright: John Millikin 2010-2011
 build-type: Simple
-cabal-version: >=1.6
+cabal-version: >= 1.6
 category: Network, Desktop
 stability: experimental
-bug-reports: mailto:jmillikin@gmail.com
 homepage: https://john-millikin.com/software/dbus-core/
-tested-with: GHC==6.12.1
+bug-reports: mailto:jmillikin@gmail.com
 
 extra-source-files:
   readme.txt
@@ -59,9 +59,13 @@ source-repository head
   type: bazaar
   location: https://john-millikin.com/software/dbus-core/
 
+source-repository this
+  type: bazaar
+  location: https://john-millikin.com/branches/dbus-core/0.9/
+  tag: dbus-core_0.9.2.1
+
 library
   ghc-options: -Wall -O2
-
   hs-source-dirs: hs
 
   -- IMPORTANT: if you change these dependencies, also update them in
