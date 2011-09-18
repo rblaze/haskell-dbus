@@ -14,7 +14,7 @@ require_cabal_dev
 echo "Building dist for dbus-core_$VERSION using $CABAL_DEV"
 
 rm -rf hs dist
-$ANANSI --noline -o hs src/dbus-core.anansi || exit 1
+$ANANSI tangle --disable-line-pragmas -o hs src/dbus-core.anansi || exit 1
 $CABAL_DEV configure || exit 1
 $CABAL_DEV build || exit 1
 $CABAL_DEV sdist || exit 1

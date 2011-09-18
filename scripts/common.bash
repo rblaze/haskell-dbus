@@ -55,7 +55,7 @@ make_pdf()
 	require_inkscape
 	
 	rm -f *.{aux,tex,idx,log,out,toc,pdf}
-	$ANANSI -w -l latex-noweb -o dbus-core.tex src/dbus-core.anansi || exit 1
+	$ANANSI weave -o dbus-core.tex src/dbus-core.anansi || exit 1
 	$INKSCAPE --export-eps=latex/figure_1.eps latex/figure_1.svg
 	$XELATEX dbus-core.tex > /dev/null || exit 1
 	$XELATEX dbus-core.tex > /dev/null || exit 1
@@ -69,6 +69,6 @@ clean_dev_install()
 	require_cabal_dev
 	
 	rm -rf hs dist
-	$ANANSI -o hs src/dbus-core.anansi || exit 1
+	$ANANSI tangle -o hs src/dbus-core.anansi || exit 1
 	$CABAL_DEV install || exit 1
 }
