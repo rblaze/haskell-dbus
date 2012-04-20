@@ -1,16 +1,16 @@
-name: dbus-core
-version: 0.9.2.1
+name: dbus
+version: 0.10
 synopsis: Low-level D-Bus protocol implementation
 license: GPL-3
 license-file: license.txt
 author: John Millikin <jmillikin@gmail.com>
 maintainer: John Millikin <jmillikin@gmail.com>
-copyright: John Millikin 2010-2011
+copyright: John Millikin 2010-2012
 build-type: Simple
 cabal-version: >= 1.6
 category: Network, Desktop
 stability: experimental
-homepage: https://john-millikin.com/software/dbus-core/
+homepage: https://john-millikin.com/software/haskell-dbus/
 bug-reports: mailto:jmillikin@gmail.com
 
 extra-source-files:
@@ -57,12 +57,12 @@ extra-source-files:
 
 source-repository head
   type: bazaar
-  location: https://john-millikin.com/software/dbus-core/
+  location: https://john-millikin.com/branches/haskell-dbus/0.10/
 
 source-repository this
   type: bazaar
-  location: https://john-millikin.com/branches/dbus-core/0.9/
-  tag: dbus-core_0.9.2.1
+  location: https://john-millikin.com/branches/haskell-dbus/0.10/
+  tag: haskell-dbus_0.10
 
 library
   ghc-options: -Wall -O2
