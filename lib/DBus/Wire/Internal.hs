@@ -1,47 +1,54 @@
-:# Copyright (C) 2009-2011 John Millikin <jmillikin@gmail.com>
-:# 
-:# This program is free software: you can redistribute it and/or modify
-:# it under the terms of the GNU General Public License as published by
-:# the Free Software Foundation, either version 3 of the License, or
-:# any later version.
-:# 
-:# This program is distributed in the hope that it will be useful,
-:# but WITHOUT ANY WARRANTY; without even the implied warranty of
-:# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-:# GNU General Public License for more details.
-:# 
-:# You should have received a copy of the GNU General Public License
-:# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+{-# LANGUAGE OverloadedStrings #-}
 
-\section{Wire format}
+-- Copyright (C) 2009-2012 John Millikin <jmillikin@gmail.com>
+--
+-- This program is free software: you can redistribute it and/or modify
+-- it under the terms of the GNU General Public License as published by
+-- the Free Software Foundation, either version 3 of the License, or
+-- any later version.
+--
+-- This program is distributed in the hope that it will be useful,
+-- but WITHOUT ANY WARRANTY; without even the implied warranty of
+-- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+-- GNU General Public License for more details.
+--
+-- You should have received a copy of the GNU General Public License
+-- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-\begin{multicols}{2}
+module DBus.Wire.Internal where
 
-\dbus{} uses a simple binary format to serialize messages. Because the format
-is binary, the \emph{endianness} of serialized values is important. \dbus{}
-supports both big- and little-endian serialization, so clients can choose
-whichever is more efficient on their hardware.
+import           Control.Monad (liftM, when, unless)
+import qualified Data.Binary.Builder
+import qualified Data.Binary.Get
+import           Data.Binary.Put (runPut)
+import           Data.Bits ((.&.), (.|.))
+import qualified Data.ByteString
+import           Data.ByteString (ByteString)
+import qualified Data.ByteString.Char8
+import qualified Data.ByteString.Lazy
+import           Data.Int (Int16, Int32, Int64)
+import qualified Data.Map
+import           Data.Map (Map)
+import           Data.Maybe (fromJust, listToMaybe, fromMaybe)
+import qualified Data.Set
+import           Data.Set (Set)
+import qualified Data.Text
+import           Data.Text (Text)
+import qualified Data.Text.Encoding
+import qualified Data.Vector
+import           Data.Vector (Vector)
+import           Data.Word (Word8, Word16, Word32, Word64)
 
-\vfill
-\columnbreak
+import qualified Data.Binary.IEEE754
 
-:d DBus.Wire
+import           DBus.Message.Internal
+import           DBus.Types.Internal
+import           DBus.Util (void, untilM)
+import qualified DBus.Util.MonadError as E
+
 data Endianness = LittleEndian | BigEndian
 	deriving (Show, Eq)
-:
 
-\end{multicols}
-
-\begin{multicols}{2}
-
-When written over the wire, message endianness is represented as a single
-byte: {\tt 0x6C} for little-endian, {\tt 0x42} for big-endian. These magic
-numbers are the {\sc ascii} values for {\tt 'l'} and {\tt 'B'}, respectively.
-
-\vfill
-\columnbreak
-
-:d DBus.Wire
 encodeEndianness :: Endianness -> Word8
 encodeEndianness LittleEndian = 0x6C
 encodeEndianness BigEndian    = 0x42
@@ -50,24 +57,7 @@ decodeEndianness :: Word8 -> Maybe Endianness
 decodeEndianness 0x6C = Just LittleEndian
 decodeEndianness 0x42 = Just BigEndian
 decodeEndianness _    = Nothing
-:
 
-\end{multicols}
-
-\begin{multicols}{2}
-
-Each built-in type has an associated alignment. When serialized, padding is
-inserted between values to ensure they always start at their preferred
-alignment.
-
-Numeric values are fixed-length, and aligned ``naturally''; eg, a 4-byte
-integer will have a 4-byte alignment. Types with a length prefix, such as
-strings and arrays, use their length's alignment.
-
-\vfill
-\columnbreak
-
-:d DBus.Wire
 alignment :: Type -> Word8
 alignment TypeBoolean = 4
 alignment TypeWord8 = 1
@@ -85,9 +75,7 @@ alignment (TypeArray _) = 4
 alignment (TypeDictionary _ _) = 4
 alignment (TypeStructure _) = 8
 alignment TypeVariant = 1
-:
 
-:d DBus.Wire
 padding :: Word64 -> Word8 -> Word64
 padding current count = required where
 	count' = fromIntegral count
@@ -95,25 +83,7 @@ padding current count = required where
 	required = if missing > 0
 		then count' - missing
 		else 0
-:
 
-\end{multicols}
-
-\clearpage
-\subsection{Serialization support}
-
-\begin{multicols}{2}
-
-Messages can be quite large, so it's important that both the serializer and
-parser be efficient. The standard {\tt Get} and {\tt Put} monads are too slow,
-so I define my own type for building and parsing binary data. This is
-equivalent to an {\tt ErrorT . ReaderT . StateT} stack, but inlined and
-strict.
-
-\vfill
-\columnbreak
-
-:d DBus.Wire
 data WireR s a
 	= WireRL String
 	| WireRR a {-# UNPACK #-} !s
@@ -152,24 +122,7 @@ chooseEndian :: a -> a -> Wire s a
 chooseEndian big little = Wire (\e s -> case e of
 	BigEndian -> WireRR big s
 	LittleEndian -> WireRR little s)
-:
 
-\end{multicols}
-
-\clearpage
-\subsubsection{Marshaling}
-
-\begin{multicols}{2}
-
-Marshaling is the process of converting a sequence of values into a
-{\tt ByteString}. The {\tt Builder} type is used for efficient construction
-of lazy byte strings, but it doesn't provide any way to retrieve the length
-of its internal buffer, so the byte count is tracked separately.
-
-\vfill
-\columnbreak
-
-:d DBus.Wire
 type Marshal = Wire MarshalState
 
 newtype MarshalError = MarshalError Text
@@ -178,18 +131,7 @@ newtype MarshalError = MarshalError Text
 data MarshalState = MarshalState
 	{-# UNPACK #-} !Data.Binary.Builder.Builder
 	{-# UNPACK #-} !Word64
-:
 
-\end{multicols}
-
-\begin{multicols}{2}
-
-TODO
-
-\vfill
-\columnbreak
-
-:d DBus.Wire
 marshal :: Value -> Marshal ()
 marshal (ValueAtom x) = marshalAtom x
 marshal (ValueBytes xs) = marshalStrictBytes xs
@@ -197,9 +139,7 @@ marshal (ValueVector t xs) = marshalVector t xs
 marshal (ValueMap kt vt xs) = marshalMap kt vt xs
 marshal (ValueStructure xs) = marshalStructure xs
 marshal (ValueVariant x) = marshalVariant x
-:
 
-:d DBus.Wire
 marshalAtom :: Atom -> Marshal ()
 marshalAtom (AtomWord8 x) = marshalWord8 x
 marshalAtom (AtomWord16 x) = marshalWord16 x
@@ -213,48 +153,29 @@ marshalAtom (AtomBool x) = marshalBool x
 marshalAtom (AtomText x) = marshalText x
 marshalAtom (AtomObjectPath x) = marshalObjectPath x
 marshalAtom (AtomSignature x) = marshalSignature x
-:
 
-\end{multicols}
-
-\clearpage
-
-TODO: describe these functions
-
-:d DBus.Wire
 appendB :: Word64 -> Data.Binary.Builder.Builder -> Marshal ()
 appendB size bytes = Wire (\_ (MarshalState builder count) -> let
 	builder' = Data.Binary.Builder.append builder bytes
 	count' = count + size
 	in WireRR () (MarshalState builder' count'))
-:
 
-:d DBus.Wire
 appendS :: ByteString -> Marshal ()
 appendS bytes = appendB
 	(fromIntegral (Data.ByteString.length bytes))
 	(Data.Binary.Builder.fromByteString bytes)
-:
 
-:d DBus.Wire
 appendL :: Data.ByteString.Lazy.ByteString -> Marshal ()
 appendL bytes = appendB
 	(fromIntegral (Data.ByteString.Lazy.length bytes))
 	(Data.Binary.Builder.fromLazyByteString bytes)
-:
 
-:d DBus.Wire
 pad :: Word8 -> Marshal ()
 pad count = do
 	(MarshalState _ existing) <- getState
 	let padding' = fromIntegral (padding existing count)
 	appendS (Data.ByteString.replicate padding' 0)
-:
 
-Most numeric values already have marshalers implemented in the
-{\tt Data.Binary.Builder} module; this function lets them be re-used easily.
-
-:d DBus.Wire
 marshalBuilder :: Word8
                -> (a -> Data.Binary.Builder.Builder)
                -> (a -> Data.Binary.Builder.Builder)
@@ -263,20 +184,7 @@ marshalBuilder size be le x = do
 	builder <- chooseEndian (be x) (le x)
 	pad size
 	appendB (fromIntegral size) builder
-:
 
-
-\clearpage
-\subsubsection{Unmarshaling}
-
-\begin{multicols}{2}
-
-TODO
-
-\vfill
-\columnbreak
-
-:d DBus.Wire
 type Unmarshal = Wire UnmarshalState
 
 newtype UnmarshalError = UnmarshalError Text
@@ -285,18 +193,7 @@ newtype UnmarshalError = UnmarshalError Text
 data UnmarshalState = UnmarshalState
 	{-# UNPACK #-} !ByteString
 	{-# UNPACK #-} !Word64
-:
 
-\end{multicols}
-
-\begin{multicols}{2}
-
-TODO
-
-\vfill
-\columnbreak
-
-:d DBus.Wire
 unmarshal :: Type -> Unmarshal Value
 unmarshal TypeWord8 = liftM toValue unmarshalWord8
 unmarshal TypeWord16 = liftM toValue unmarshalWord16
@@ -315,15 +212,7 @@ unmarshal (TypeArray t) = liftM (ValueVector t) (unmarshalArray t)
 unmarshal (TypeDictionary kt vt) = unmarshalDictionary kt vt
 unmarshal (TypeStructure ts) = unmarshalStructure ts
 unmarshal TypeVariant = unmarshalVariant
-:
 
-\end{multicols}
-
-\clearpage
-
-TODO: describe these functions
-
-:d DBus.Wire
 {-# INLINE consume #-}
 consume :: Word64 -> Unmarshal ByteString
 consume count = do
@@ -339,9 +228,7 @@ consume count = do
 			[ "Unexpected EOF at offset "
 			, show (offset + fromIntegral lenConsumed)
 			])
-:
 
-:d DBus.Wire
 skipPadding :: Word8 -> Unmarshal ()
 skipPadding count = do
 	(UnmarshalState _ offset) <- getState
@@ -350,23 +237,17 @@ skipPadding count = do
 		[ "Value padding ", show bytes
 		, " contains invalid bytes."
 		]))
-:
 
-:d DBus.Wire
 skipTerminator :: Unmarshal ()
 skipTerminator = do
 	byte <- unmarshalWord8
 	when (byte /= 0) (throwError "Textual value is not NUL-terminated.")
-:
 
-:d DBus.Wire
 fromMaybeU :: Show a => String -> (a -> Maybe b) -> a -> Unmarshal b
 fromMaybeU label f x = case f x of
 	Just x' -> return x'
 	Nothing -> throwError (concat ["Invalid ", label, ": ", show x])
-:
 
-:d DBus.Wire
 unmarshalGet :: Word8 -> Data.Binary.Get.Get a -> Data.Binary.Get.Get a -> Unmarshal a
 unmarshalGet count be le = do
 	skipPadding count
@@ -374,24 +255,13 @@ unmarshalGet count be le = do
 	get <- chooseEndian be le
 	let lazy = Data.ByteString.Lazy.fromChunks [bytes]
 	return (Data.Binary.Get.runGet get lazy)
-:
 
-
-\clearpage
-\subsection{Atoms}
-\subsubsection{Integers}
-
-:d DBus.Wire
 marshalWord8 :: Word8 -> Marshal ()
 marshalWord8 x = appendB 1 (Data.Binary.Builder.singleton x)
 
 unmarshalWord8 :: Unmarshal Word8
 unmarshalWord8 = liftM Data.ByteString.head (consume 1)
-:
 
-\begin{multicols}{2}
-
-:d DBus.Wire
 marshalWord16 :: Word16 -> Marshal ()
 marshalWord16 = marshalBuilder 2
 	Data.Binary.Builder.putWord16be
@@ -415,11 +285,7 @@ marshalInt32 = marshalWord32 . fromIntegral
 
 marshalInt64 :: Int64 -> Marshal ()
 marshalInt64 = marshalWord64 . fromIntegral
-:
 
-\columnbreak
-
-:d DBus.Wire
 unmarshalWord16 :: Unmarshal Word16
 unmarshalWord16 = unmarshalGet 2
 	Data.Binary.Get.getWord16be
@@ -443,21 +309,7 @@ unmarshalInt32 = liftM fromIntegral unmarshalWord32
 
 unmarshalInt64 :: Unmarshal Int64
 unmarshalInt64 = liftM fromIntegral unmarshalWord64
-:
 
-\end{multicols}
-
-\clearpage
-\subsubsection{Doubles}
-
-\begin{multicols}{2}
-
-{\tt Double}s are marshaled in 64-bit IEEE-754 floating-point format.
-
-\vfill
-\columnbreak
-
-:d DBus.Wire
 marshalDouble :: Double -> Marshal ()
 marshalDouble x = do
 	put <- chooseEndian
@@ -470,21 +322,7 @@ unmarshalDouble :: Unmarshal Double
 unmarshalDouble = unmarshalGet 8
 	Data.Binary.IEEE754.getFloat64be
 	Data.Binary.IEEE754.getFloat64le
-:
 
-\end{multicols}
-
-\subsubsection{Booleans}
-
-\begin{multicols}{2}
-
-Booleans are marshaled as 4-byte unsigned integers containing either of
-the values 0 or 1. Yes, really.
-
-\vfill
-\columnbreak
-
-:d DBus.Wire
 marshalBool :: Bool -> Marshal ()
 marshalBool False = marshalWord32 0
 marshalBool True  = marshalWord32 1
@@ -499,19 +337,7 @@ unmarshalBool = do
 			[ "Invalid boolean: "
 			, show word
 			])
-:
 
-\end{multicols}
-
-\clearpage
-\subsubsection{Strings and object paths}
-
-Strings are encoded in {\sc utf-8}, terminated with {\tt NUL}, and prefixed
-with their length as an unsigned 32-bit integer. Their alignment is that of
-their length. Object paths are marshaled just like strings, though additional
-checks are required when unmarshaling.
-
-:d DBus.Wire
 marshalText :: Text -> Marshal ()
 marshalText text = do
 	let bytes = Data.Text.Encoding.encodeUtf8 text
@@ -523,9 +349,7 @@ marshalText text = do
 	marshalWord32 (fromIntegral (Data.ByteString.length bytes))
 	appendS bytes
 	marshalWord8 0
-:
 
-:d DBus.Wire
 unmarshalText :: Unmarshal Text
 unmarshalText = do
 	byteCount <- unmarshalWord32
@@ -537,27 +361,15 @@ maybeDecodeUtf8 :: ByteString -> Maybe Text
 maybeDecodeUtf8 bs = case Data.Text.Encoding.decodeUtf8' bs of
 	Right text -> Just text
 	_ -> Nothing
-:
 
-:d DBus.Wire
 marshalObjectPath :: ObjectPath -> Marshal ()
 marshalObjectPath = marshalText . objectPathText
-:
 
-:d DBus.Wire
 unmarshalObjectPath :: Unmarshal ObjectPath
 unmarshalObjectPath = do
 	text <- unmarshalText
 	fromMaybeU "object path" objectPath text
-:
 
-\clearpage
-\subsubsection{Signatures}
-
-Signatures are similar to strings, except their length is limited to 255
-characters and is therefore stored as a single byte.
-
-:d DBus.Wire
 signatureBytes :: Signature -> ByteString
 signatureBytes (Signature ts) = Data.ByteString.Char8.pack (concatMap typeCode ts)
 
@@ -567,31 +379,17 @@ marshalSignature x = do
 	marshalWord8 (fromIntegral (Data.ByteString.length bytes))
 	appendS bytes
 	marshalWord8 0
-:
 
-:d DBus.Wire
 unmarshalSignature :: Unmarshal Signature
 unmarshalSignature = do
 	byteCount <- unmarshalWord8
 	bytes <- consume (fromIntegral byteCount)
 	skipTerminator
 	fromMaybeU "signature" parseSignature bytes
-:
 
-\clearpage
-\subsection{Containers}
-\subsubsection{Arrays}
-
-Marshaling arrays is complicated, because the array body must be marshaled
-\emph{first} to calculate the array length. This requires building a
-temporary marshaler, to get the padding right.
-
-:d DBus.Wire
 arrayMaximumLength :: Int64
 arrayMaximumLength = 67108864
-:
 
-:d DBus.Wire
 marshalVector :: Type -> Vector Value -> Marshal ()
 marshalVector t x = do
 	(arrayPadding, arrayBytes) <- getArrayBytes t x
@@ -619,9 +417,7 @@ marshalStrictBytes bytes = do
 		]))
 	marshalWord32 (fromIntegral arrayLen)
 	appendS bytes
-:
 
-:d DBus.Wire
 getArrayBytes :: Type -> Vector Value -> Marshal (Int64, Data.ByteString.Lazy.ByteString)
 getArrayBytes itemType vs = do
 	s <- getState
@@ -636,11 +432,7 @@ getArrayBytes itemType vs = do
 	
 	putState s
 	return (paddingSize, itemBytes)
-:
 
-Unmarshaling is much easier, especially if it's a byte array.
-
-:d DBus.Wire
 unmarshalByteArray :: Unmarshal ByteString
 unmarshalByteArray = do
 	byteCount <- unmarshalWord32
@@ -662,60 +454,38 @@ unmarshalArray itemType = do
 		, show end
 		]))
 	return (Data.Vector.fromList vs)
-:
 
-\clearpage
-\subsubsection{Dictionaries}
-
-:d DBus.Wire
 dictionaryToArray :: Map Atom Value -> Vector Value
 dictionaryToArray = Data.Vector.fromList . map step . Data.Map.toList where
 	step (k, v) = ValueStructure [ValueAtom k, v]
-:
 
-:d DBus.Wire
 arrayToDictionary :: Vector Value -> Map Atom Value
 arrayToDictionary = Data.Map.fromList . map step . Data.Vector.toList where
 	step (ValueStructure [ValueAtom k, v]) = (k, v)
 	step _ = error "arrayToDictionary: internal error"
-:
 
-:d DBus.Wire
 marshalMap :: Type -> Type -> Map Atom Value -> Marshal ()
 marshalMap kt vt x = let
 	structType = TypeStructure [kt, vt]
 	array = dictionaryToArray x
 	in marshalVector structType array
-:
 
-:d DBus.Wire
 unmarshalDictionary :: Type -> Type -> Unmarshal Value
 unmarshalDictionary kt vt = do
 	let pairType = TypeStructure [kt, vt]
 	array <- unmarshalArray pairType
 	return (ValueMap kt vt (arrayToDictionary array))
-:
 
-\clearpage
-\subsubsection{Structures}
-
-:d DBus.Wire
 marshalStructure :: [Value] -> Marshal ()
 marshalStructure vs = do
 	pad 8
 	mapM_ marshal vs
-:
 
-:d DBus.Wire
 unmarshalStructure :: [Type] -> Unmarshal Value
 unmarshalStructure ts = do
 	skipPadding 8
 	liftM ValueStructure (mapM unmarshal ts)
-:
 
-\subsubsection{Variants}
-
-:d DBus.Wire
 marshalVariant :: Variant -> Marshal ()
 marshalVariant var@(Variant val) = do
 	sig <- case checkSignature [valueType val] of
@@ -729,9 +499,7 @@ marshalVariant var@(Variant val) = do
 			])
 	marshalSignature sig
 	marshal val
-:
 
-:d DBus.Wire
 unmarshalVariant :: Unmarshal Value
 unmarshalVariant = do
 	let getType sig = case signatureTypes sig of
@@ -740,41 +508,25 @@ unmarshalVariant = do
 	
 	t <- fromMaybeU "variant signature" getType =<< unmarshalSignature
 	(toValue . Variant) `liftM` unmarshal t
-:
 
-\clearpage
-\subsection{Messages}
-
-:d DBus.Wire
 protocolVersion :: Word8
 protocolVersion = 1
 
 messageMaximumLength :: Word64
 messageMaximumLength = 134217728
-:
 
-\subsubsection{Flags}
-
-:d DBus.Wire
 encodeFlags :: Set Flag -> Word8
 encodeFlags flags = foldr (.|.) 0 (map flagValue (Data.Set.toList flags)) where
 	flagValue NoReplyExpected = 0x1
 	flagValue NoAutoStart     = 0x2
-:
 
-:d DBus.Wire
 decodeFlags :: Word8 -> Set Flag
 decodeFlags word = Data.Set.fromList flags where
 	flagSet = [ (0x1, NoReplyExpected)
 	          , (0x2, NoAutoStart)
 	          ]
 	flags = flagSet >>= \(x, y) -> [y | word .&. x > 0]
-:
 
-\clearpage
-\subsubsection{Header fields}
-
-:d DBus.Wire
 encodeField :: HeaderField -> Value
 encodeField (HeaderPath x)        = encodeField' 1 x
 encodeField (HeaderInterface x)   = encodeField' 2 x
@@ -787,9 +539,7 @@ encodeField (HeaderSignature x)   = encodeField' 8 x
 
 encodeField' :: IsVariant a => Word8 -> a -> Value
 encodeField' code x = toValue (code, toVariant x)
-:
 
-:d DBus.Wire
 decodeField :: (Word8, Variant)
             -> E.ErrorM UnmarshalError [HeaderField]
 decodeField struct = case struct of
@@ -813,13 +563,10 @@ decodeField' x f label = case fromVariant x of
 		, " contains invalid value "
 		, show x
 		])))
-:
 
-\clearpage
-\subsubsection{Marshaling}
-
-:d DBus.Wire
-|apidoc DBus.Wire.marshalMessage|
+-- | Convert a 'Message' into a 'ByteString'. Although unusual, it is
+-- possible for marshaling to fail; if this occurs, an error will be
+-- returned instead.
 marshalMessage :: Message a => Endianness -> Serial -> a
                -> Either MarshalError Data.ByteString.ByteString
 marshalMessage e serial msg = runMarshal where
@@ -872,146 +619,72 @@ checkMaximumSize = do
 		, " bytes) exeeds maximum limit of ("
 		, show messageMaximumLength, " bytes)."
 		]))
-:
 
-\clearpage
-\subsubsection{Unmarshaling}
-
-:d DBus.Wire
 unmarshalMessageM :: Monad m => (Word32 -> m ByteString)
                   -> m (Either UnmarshalError ReceivedMessage)
 unmarshalMessageM getBytes' = E.runErrorT $ do
 	let getBytes = E.ErrorT . liftM Right . getBytes'
 	
-	|read fixed-length header|
-	|read full header|
-	|read body|
-	|build message|
-:
 
-The first part of the header has a fixed size of 16 bytes, so it can be
-retrieved without any size calculations.
+	let fixedSig = "yyyyuuu"
+	fixedBytes <- getBytes 16
 
-:d read fixed-length header
-let fixedSig = "yyyyuuu"
-fixedBytes <- getBytes 16
-:
+	let messageVersion = Data.ByteString.index fixedBytes 3
+	when (messageVersion /= protocolVersion) (E.throwErrorT (UnmarshalError (Data.Text.pack (concat
+		[ "Unsupported protocol version: "
+		, show messageVersion
+		]))))
 
-The first field of interest is the protocol version; if the incoming
-message's version is different from this library, the message cannot be
-parsed.
+	let eByte = Data.ByteString.index fixedBytes 0
+	endianness <- case decodeEndianness eByte of
+		Just x' -> return x'
+		Nothing -> E.throwErrorT (UnmarshalError (Data.Text.pack (concat
+			[ "Invalid endianness: "
+			, show eByte
+			])))
 
-:d read fixed-length header
-let messageVersion = Data.ByteString.index fixedBytes 3
-when (messageVersion /= protocolVersion) (E.throwErrorT (UnmarshalError (Data.Text.pack (concat
-	[ "Unsupported protocol version: "
-	, show messageVersion
-	]))))
-:
+	let unmarshalSig = mapM unmarshal . signatureTypes
+	let unmarshal' x bytes = case unWire (unmarshalSig x) endianness (UnmarshalState bytes 0) of
+		WireRR x' _ -> return x'
+		WireRL err  -> E.throwErrorT (UnmarshalError (Data.Text.pack err))
+	fixed <- unmarshal' fixedSig fixedBytes
+	let messageType = fromJust (fromValue (fixed !! 1))
+	let flags = decodeFlags (fromJust (fromValue (fixed !! 2)))
+	let bodyLength = fromJust (fromValue (fixed !! 4))
+	let serial = fromJust (fromVariant (Variant (fixed !! 5)))
 
-Next is the endianness, used for parsing pretty much every other field.
+	let fieldByteCount = fromJust (fromValue (fixed !! 6))
 
-:d read fixed-length header
-let eByte = Data.ByteString.index fixedBytes 0
-endianness <- case decodeEndianness eByte of
-	Just x' -> return x'
-	Nothing -> E.throwErrorT (UnmarshalError (Data.Text.pack (concat
-		[ "Invalid endianness: "
-		, show eByte
-		])))
-:
 
-With the endianness out of the way, the rest of the fixed header
-can be decoded
+	let headerSig  = "yyyyuua(yv)"
+	fieldBytes <- getBytes fieldByteCount
+	let headerBytes = Data.ByteString.append fixedBytes fieldBytes
+	header <- unmarshal' headerSig headerBytes
 
-:d read fixed-length header
-let unmarshalSig = mapM unmarshal . signatureTypes
-let unmarshal' x bytes = case unWire (unmarshalSig x) endianness (UnmarshalState bytes 0) of
-	WireRR x' _ -> return x'
-	WireRL err  -> E.throwErrorT (UnmarshalError (Data.Text.pack err))
-fixed <- unmarshal' fixedSig fixedBytes
-let messageType = fromJust (fromValue (fixed !! 1))
-let flags = decodeFlags (fromJust (fromValue (fixed !! 2)))
-let bodyLength = fromJust (fromValue (fixed !! 4))
-let serial = fromJust (fromVariant (Variant (fixed !! 5)))
-:
+	let fieldArray = Data.Vector.toList (fromJust (fromValue (header !! 6)))
+	fields <- case E.runErrorM $ concat `liftM` mapM decodeField fieldArray of
+		Left err -> E.throwErrorT err
+		Right x -> return x
+	let bodyPadding = padding (fromIntegral fieldByteCount + 16) 8
+	void (getBytes (fromIntegral bodyPadding))
+	let bodySig = findBodySignature fields
+	bodyBytes <- getBytes bodyLength
+	body <- unmarshal' bodySig bodyBytes
+	y <- case E.runErrorM (buildReceivedMessage messageType fields) of
+		Right x -> return x
+		Left err -> E.throwErrorT (UnmarshalError (Data.Text.pack (concat
+			[ "Header field "
+			, show err
+			, " is required, but missing"
+			])))
+	return (y serial flags (map Variant body))
 
-The last field of the fixed header is actually part of the field array,
-but is treated as a single {\tt Word32} so it'll be known how many bytes
-to retrieve.
-
-:d read fixed-length header
-let fieldByteCount = fromJust (fromValue (fixed !! 6))
-:
-
-With the field byte count, the remainder of the header bytes can be
-pulled out of the monad.
-
-:d read full header
-let headerSig  = "yyyyuua(yv)"
-fieldBytes <- getBytes fieldByteCount
-let headerBytes = Data.ByteString.append fixedBytes fieldBytes
-header <- unmarshal' headerSig headerBytes
-:
-
-And the header fields can be parsed.
-
-:d read full header
-let fieldArray = Data.Vector.toList (fromJust (fromValue (header !! 6)))
-fields <- case E.runErrorM $ concat `liftM` mapM decodeField fieldArray of
-	Left err -> E.throwErrorT err
-	Right x -> return x
-:
-
-The body is always aligned to 8 bytes, so pull out the padding before
-unmarshaling it.
-
-:d read body
-let bodyPadding = padding (fromIntegral fieldByteCount + 16) 8
-void (getBytes (fromIntegral bodyPadding))
-:
-
-:d DBus.Wire
 findBodySignature :: [HeaderField] -> Signature
 findBodySignature fields = fromMaybe "" (listToMaybe [x | HeaderSignature x <- fields])
-:
 
-:d read body
-let bodySig = findBodySignature fields
-:
-
-Then pull the body bytes, and unmarshal it.
-
-:d read body
-bodyBytes <- getBytes bodyLength
-body <- unmarshal' bodySig bodyBytes
-:
-
-Even if the received message was structurally valid, building the
-{\tt ReceivedMessage} can still fail due to missing header fields.
-
-:d build message
-y <- case E.runErrorM (buildReceivedMessage messageType fields) of
-	Right x -> return x
-	Left err -> E.throwErrorT (UnmarshalError (Data.Text.pack (concat
-		[ "Header field "
-		, show err
-		, " is required, but missing"
-		])))
-return (y serial flags (map Variant body))
-:
-
-This really belongs in the Message section...
-
-:d DBus.Wire
 buildReceivedMessage :: Word8 -> [HeaderField] -> E.ErrorM Text
                         (Serial -> (Set Flag) -> [Variant]
                          -> ReceivedMessage)
-:
-
-Method calls
-
-:d DBus.Wire
 buildReceivedMessage 1 fields = do
 	path <- require "path" [x | HeaderPath x <- fields]
 	member <- require "member name" [x | HeaderMember x <- fields]
@@ -1021,11 +694,7 @@ buildReceivedMessage 1 fields = do
 		sender = listToMaybe [x | HeaderSender x <- fields]
 		msg = MethodCall path member iface dest flags body
 		in ReceivedMethodCall serial sender msg
-:
 
-Method returns
-
-:d DBus.Wire
 buildReceivedMessage 2 fields = do
 	replySerial <- require "reply serial" [x | HeaderReplySerial x <- fields]
 	return $ \serial _ body -> let
@@ -1033,11 +702,7 @@ buildReceivedMessage 2 fields = do
 		sender = listToMaybe [x | HeaderSender x <- fields]
 		msg = MethodReturn replySerial dest body
 		in ReceivedMethodReturn serial sender msg
-:
 
-Errors
-
-:d DBus.Wire
 buildReceivedMessage 3 fields = do
 	name <- require "error name" [x | HeaderErrorName x <- fields]
 	replySerial <- require "reply serial" [x | HeaderReplySerial x <- fields]
@@ -1046,11 +711,7 @@ buildReceivedMessage 3 fields = do
 		sender = listToMaybe [x | HeaderSender x <- fields]
 		msg = Error name replySerial dest body
 		in ReceivedError serial sender msg
-:
 
-Signals
-
-:d DBus.Wire
 buildReceivedMessage 4 fields = do
 	path <- require "path" [x | HeaderPath x <- fields]
 	member <- require "member name" [x | HeaderMember x <- fields]
@@ -1060,33 +721,22 @@ buildReceivedMessage 4 fields = do
 		sender = listToMaybe [x | HeaderSender x <- fields]
 		msg = Signal dest path iface member body
 		in ReceivedSignal serial sender msg
-:
 
-Unknown
-
-:d DBus.Wire
 buildReceivedMessage messageType fields = return $ \serial flags body -> let
 	sender = listToMaybe [x | HeaderSender x <- fields]
 	msg = Unknown messageType flags body
 	in ReceivedUnknown serial sender msg
-:
 
-:d DBus.Wire
 require :: Text -> [a] -> E.ErrorM Text a
 require _     (x:_) = return x
 require label _     = E.throwErrorM label
-:
 
-To simplify the public interface, the incremental interface to message
-unmarshaling is hidden. Clients just need to pass in a single bytestring.
-This is OK, because clients do not need to read full messages off a socket
-(they typically use this for parsing stored messages).
-
-:d DBus.Wire
-|apidoc DBus.Wire.unmarshalMessage|
+-- | Parse a 'ByteString' into a 'ReceivedMessage'. The result can be
+-- inspected to see what type of message was parsed. Unknown message types
+-- can still be parsed successfully, as long as they otherwise conform to
+-- the D&#8208;Bus standard.
 unmarshalMessage :: ByteString -> Either UnmarshalError ReceivedMessage
 unmarshalMessage = Data.Binary.Get.runGet get . toLazy where
 	get = unmarshalMessageM getBytes
 	getBytes = Data.Binary.Get.getByteString . fromIntegral
 	toLazy bs = Data.ByteString.Lazy.fromChunks [bs]
-:

@@ -1,24 +1,53 @@
-:# Copyright (C) 2009-2011 John Millikin <jmillikin@gmail.com>
-:# 
-:# This program is free software: you can redistribute it and/or modify
-:# it under the terms of the GNU General Public License as published by
-:# the Free Software Foundation, either version 3 of the License, or
-:# any later version.
-:# 
-:# This program is distributed in the hope that it will be useful,
-:# but WITHOUT ANY WARRANTY; without even the implied warranty of
-:# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-:# GNU General Public License for more details.
-:# 
-:# You should have received a copy of the GNU General Public License
-:# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 
-\clearpage
-\section{D-Bus clients}
+-- Copyright (C) 2009-2012 John Millikin <jmillikin@gmail.com>
+--
+-- This program is free software: you can redistribute it and/or modify
+-- it under the terms of the GNU General Public License as published by
+-- the Free Software Foundation, either version 3 of the License, or
+-- any later version.
+--
+-- This program is distributed in the hope that it will be useful,
+-- but WITHOUT ANY WARRANTY; without even the implied warranty of
+-- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+-- GNU General Public License for more details.
+--
+-- You should have received a copy of the GNU General Public License
+-- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-\subsection{Client types}
+module DBus.Client.Internal where
 
-:d DBus.Client
+import           Control.Concurrent
+import           Control.Exception (SomeException)
+import qualified Control.Exception
+import           Control.Monad (forever, unless)
+import           Data.IORef
+import           Data.List (foldl')
+import qualified Data.Map
+import           Data.Map (Map)
+import           Data.Maybe (isJust, catMaybes)
+import           Data.Text (Text)
+import qualified Data.Text
+import           Data.Typeable (Typeable)
+import qualified Data.Set
+
+import           DBus.Address
+import qualified DBus.Connection
+import           DBus.Connection (Connection)
+import           DBus.Connection.Authentication (external)
+import           DBus.Connection.Transport (unix, tcp)
+import           DBus.Connection.Error
+import qualified DBus.Constants
+import           DBus.Constants ( errorFailed, errorUnknownMethod
+                                , errorInvalidParameters)
+import           DBus.Message
+import qualified DBus.Introspection
+import           DBus.Types
+import           DBus.Types.Internal (Signature(..))
+import           DBus.Util (void)
+
 data Client = Client
 	{ clientConnection :: Connection
 	, clientCallbacks :: MVar (Map Serial Callback)
@@ -41,12 +70,7 @@ type InterfaceInfo = Map MemberName MemberInfo
 data MemberInfo
 	= MemberMethod Signature Signature Callback
 	| MemberSignal Signature
-:
 
-\clearpage
-\subsection{Connecting and disconnecting clients}
-
-:d DBus.Client
 attach :: Connection -> IO Client
 attach connection = do
 	callbacks <- newMVar Data.Map.empty
@@ -81,15 +105,13 @@ attach connection = do
 		}))
 	
 	return client
-:
 
-:d DBus.Client
 connect :: Address -> IO Client
 connect addr = do
 	connection <- DBus.Connection.connect [unix, tcp] [external] addr
 	attach connection
 
-|apidoc DBus.Client.disconnect|
+-- | Stop a 'Client'&#8217;s callback thread and close its underlying socket.
 disconnect :: Client -> IO ()
 disconnect client = do
 	killThread (clientThreadID client)
@@ -102,19 +124,12 @@ disconnect' client = do
 	modifyMVar_ (clientSignalHandlers client) (\_ -> return [])
 	modifyMVar_ (clientObjects client) (\_ -> return Data.Map.empty)
 	DBus.Connection.disconnect connection
-:
 
-\clearpage
-\subsection{Main message dispatch loop}
-
-:d DBus.Client
 setMessageProcessor :: Client -> (ReceivedMessage -> IO Bool) -> IO ()
 setMessageProcessor client io = atomicModifyIORef
 	(clientMessageProcessor client)
 	(\_ -> (io, ()))
-:
 
-:d DBus.Client
 mainLoop :: Client -> IO ()
 mainLoop client = forever $ do
 	let connection = clientConnection client
@@ -159,12 +174,7 @@ dispatch client received = void . forkIO $ do
 					(Error errorUnknownMethod serial sender [])
 					(\_ -> return ())
 		_ -> return ()
-:
 
-\clearpage
-\subsection{Making method calls}
-
-:d DBus.Client
 send_ :: Message msg => Client -> msg -> (Serial -> IO a) -> IO a
 send_ client msg io = do
 	result <- DBus.Connection.send (clientConnection client) msg io
@@ -200,20 +210,10 @@ call_ client msg = do
 	case result of
 		Left err -> connectionError ("Call failed: " ++ Data.Text.unpack (errorMessage err))
 		Right ret -> return ret
-:
 
-\clearpage
-\subsection{Emitting signals}
-
-:d DBus.Client
 emit :: Client -> Signal -> IO ()
 emit client msg = send_ client msg (\_ -> return ())
-:
 
-\clearpage
-\subsection{Receiving signals}
-
-:d DBus.Client
 data MatchRule = MatchRule
 	{ matchSender      :: Maybe BusName
 	, matchDestination :: Maybe BusName
@@ -262,23 +262,20 @@ checkMatchRule rule sender msg = and
 	, maybe True (== signalInterface msg) (matchInterface rule)
 	, maybe True (== signalMember msg) (matchMember rule)
 	]
-:
 
-\clearpage
-\subsection{Exporting objects and methods}
-
-:d DBus.Client
 data MethodError = MethodError ErrorName [Variant]
 	deriving (Show, Eq, Typeable)
 
 instance Control.Exception.Exception MethodError
 
-|apidoc DBus.Client.throwError|
+-- | Normally, any exceptions raised while executing a method will be
+-- given the generic @\"org.freedesktop.DBus.Error.Failed\"@ name.
+-- 'throwError' allows the programmer to specify an error name, and provide
+-- additional information to the remote application. You may use this instead
+-- of 'Control.Exception.throwIO' to abort a method call.
 throwError :: ErrorName -> Text -> [Variant] -> IO a
 throwError name message extra = Control.Exception.throwIO (MethodError name (toVariant message : extra))
-:
 
-:d DBus.Client
 method :: InterfaceName -> MemberName -> Signature -> Signature -> ([Variant] -> IO Reply) -> Method
 method iface name inSig outSig io = Method iface name inSig outSig
 	(\vs -> Control.Exception.catch
@@ -308,9 +305,7 @@ export client path methods = modifyMVar_ (clientObjects client) addObject where
 		objects <- readMVar (clientObjects client)
 		let Just obj = Data.Map.lookup path objects
 		return (introspect path obj)
-:
 
-:d DBus.Client
 findMethod :: Map ObjectPath ObjectInfo -> MethodCall -> Maybe Callback
 findMethod objects msg = do
 	ifaceName <- methodCallInterface msg
@@ -320,12 +315,7 @@ findMethod objects msg = do
 	case member of
 		MemberMethod _ _ io -> return io
 		_ -> Nothing
-:
 
-\clearpage
-\subsubsection{Automatic introspection}
-
-:d DBus.Client
 introspectRoot :: Client -> Method
 introspectRoot client = methodIntrospect $ do
 	objects <- readMVar (clientObjects client)
@@ -339,9 +329,7 @@ introspectRoot client = methodIntrospect $ do
 				[DBus.Introspection.Parameter "" "s"]]
 			[] []]
 		[DBus.Introspection.Object p [] [] | p <- paths])
-:
 
-:d DBus.Client
 methodIntrospect :: IO DBus.Introspection.Object -> Method
 methodIntrospect get = method iface name "" "s" impl where
 	iface = "org.freedesktop.DBus.Introspectable"
@@ -374,242 +362,3 @@ introspect path obj = DBus.Introspection.Object path interfaces [] where
 	introspectSignal _ = []
 	
 	introspectParam t = DBus.Introspection.Parameter "" (Signature [t])
-:
-
-\clearpage
-\subsection{Simple clients}
-
-:d DBus.Client.Simple
-connectFirst :: [Address] -> IO Client
-connectFirst addrs = loop addrs where
-	loop [] = connectionError (concat
-		[ "connectFirst: no usable"
-		, " addresses in "
-		, show addrs])
-	loop (a:as) = Control.Exception.catch
-		(DBus.Client.connect a)
-		(\(ConnectionError _) -> loop as)
-
-|apidoc DBus.Client.Simple.connectSession|
-connectSession :: IO Client
-connectSession = do
-	env <- DBus.Address.getSession
-	case env of
-		Nothing -> connectionError (concat
-			[ "connectSession: DBUS_SESSION_BUS_ADDRESS is"
-			, " missing or invalid."
-			])
-		Just addrs -> connectFirst addrs
-
-|apidoc DBus.Client.Simple.connectSystem|
-connectSystem :: IO Client
-connectSystem = do
-	env <- DBus.Address.getSystem
-	case env of
-		Nothing -> connectionError (concat
-			[ "connectSession: DBUS_SYSTEM_BUS_ADDRESS is"
-			, " invalid."
-			])
-		Just addrs -> connectFirst addrs
-
-|apidoc DBus.Client.Simple.connectStarter|
-connectStarter :: IO Client
-connectStarter = do
-	env <- DBus.Address.getStarter
-	case env of
-		Nothing -> connectionError (concat
-			[ "connectSession: DBUS_STARTER_BUS_ADDRESS is"
-			, " missing or invalid."
-			])
-		Just addrs -> connectFirst addrs
-:
-
-\clearpage
-\subsubsection{Remote object proxies}
-
-:d DBus.Client.Simple
-data Proxy = Proxy Client BusName ObjectPath
-:
-
-:d DBus.Client.Simple
-proxy :: Client -> BusName -> ObjectPath -> IO Proxy
-proxy client dest path = return (Proxy client dest path)
-:
-
-:d DBus.Client.Simple
-call :: Proxy -> InterfaceName -> MemberName -> [Variant] -> IO [Variant]
-call (Proxy client dest path) iface member body = do
-	reply <- DBus.Client.call_ client $ MethodCall
-		{ methodCallDestination = Just dest
-		, methodCallMember = member
-		, methodCallInterface = Just iface
-		, methodCallPath = path
-		, methodCallFlags = Data.Set.empty
-		, methodCallBody = body
-		}
-	return (methodReturnBody reply)
-:
-
-:d DBus.Client.Simple
-emit :: Client -> ObjectPath -> InterfaceName -> MemberName -> [Variant] -> IO ()
-emit client path iface member body = DBus.Client.emit client $ Signal
-	{ signalDestination = Nothing
-	, signalPath = path
-	, signalInterface = iface
-	, signalMember = member
-	, signalBody = body
-	}
-:
-
-:d DBus.Client.Simple
-listen :: Proxy -> InterfaceName -> MemberName -> (BusName -> Signal -> IO ()) -> IO ()
-listen (Proxy client dest path) iface member = DBus.Client.listen client (MatchRule
-	{ matchSender = Just dest
-	, matchInterface = Just iface
-	, matchMember = Just member
-	, matchPath = Just path
-	, matchDestination = Nothing
-	})
-:
-
-\clearpage
-\subsubsection{Name reservation}
-
-:d DBus.Client.Simple
-data RequestNameFlag
-	= AllowReplacement
-	| ReplaceExisting
-	| DoNotQueue
-	deriving (Show)
-
-data RequestNameReply
-	= PrimaryOwner
-	| InQueue
-	| Exists
-	| AlreadyOwner
-	deriving (Show)
-
-data ReleaseNameReply
-	= Released
-	| NonExistent
-	| NotOwner
-	deriving (Show)
-:
-
-:d DBus.Client.Simple
-encodeFlags :: [RequestNameFlag] -> Word32
-encodeFlags = foldr (.|.) 0 . map flagValue where
-	flagValue AllowReplacement = 0x1
-	flagValue ReplaceExisting  = 0x2
-	flagValue DoNotQueue       = 0x4
-:
-
-:d DBus.Client.Simple
-requestName :: Client -> BusName -> [RequestNameFlag] -> IO RequestNameReply
-requestName client name flags = do
-	bus <- proxy client "org.freedesktop.DBus" "/org/freedesktop/DBus"
-	reply <- call bus "org.freedesktop.DBus" "RequestName"
-		[ toVariant name
-		, toVariant (encodeFlags flags)
-		]
-	case (maybeIndex reply 0 >>= fromVariant :: Maybe Word32) of
-		Just 1 -> return PrimaryOwner
-		Just 2 -> return InQueue
-		Just 3 -> return Exists
-		Just 4 -> return AlreadyOwner
-		_ -> connectionError "Call failed: received invalid reply"
-
-releaseName :: Client -> BusName -> IO ReleaseNameReply
-releaseName client name = do
-	bus <- proxy client "org.freedesktop.DBus" "/org/freedesktop/DBus"
-	reply <- call bus "org.freedesktop.DBus" "ReleaseName"
-		[ toVariant name
-		]
-	case (maybeIndex reply 0 >>= fromVariant :: Maybe Word32) of
-		Just 1 -> return Released
-		Just 2 -> return NonExistent
-		Just 3 -> return NotOwner
-		_ -> connectionError "Call failed: received invalid reply"
-:
-
-\clearpage
-\subsubsection{Simplified exports}
-
-:d DBus.Client.Simple
-|apidoc DBus.Client.Simple.AutoSignature|
-class AutoSignature a where
-	funTypes :: a -> ([Type], [Type])
-
-instance AutoSignature (IO ()) where
-	funTypes _ = ([], [])
-
-instance IsValue a => AutoSignature (IO a) where
-	funTypes io = ([], case ioT io undefined of
-		(_, t) -> case t of
-			TypeStructure ts -> ts
-			_ -> [t])
-
-ioT :: IsValue a => IO a -> a -> (a, Type)
-ioT _ a = (a, typeOf a)
-
-instance (IsValue a, AutoSignature fun) => AutoSignature (a -> fun) where
-	funTypes fn = case valueT undefined of
-		(a, t) -> case funTypes (fn a) of
-			(ts, ts') -> (t : ts, ts')
-
-valueT :: IsValue a => a -> (a, Type)
-valueT a = (a, typeOf a)
-:
-
-:d DBus.Client.Simple
-|apidoc DBus.Client.Simple.AutoReply|
-class AutoReply fun where
-	apply :: fun -> [Variant] -> Maybe (IO [Variant])
-
-instance AutoReply (IO ()) where
-	apply io [] = Just (io >> return [])
-	apply _ _ = Nothing
-
-instance IsVariant a => AutoReply (IO a) where
-	apply io [] = Just (do
-		var <- fmap toVariant io
-		case fromVariant var of
-			Just struct -> return (structureItems struct)
-			Nothing -> return [var])
-	apply _ _ = Nothing
-
-instance (IsVariant a, AutoReply fun) => AutoReply (a -> fun) where
-	apply _ [] = Nothing
-	apply fn (v:vs) = case fromVariant v of
-		Just v' -> apply (fn v') vs
-		Nothing -> Nothing
-:
-
-:d DBus.Client.Simple
-|apidoc DBus.Client.Simple.method|
-method :: (AutoSignature fun, AutoReply fun) => InterfaceName -> MemberName -> fun -> Method
-method iface name fun = DBus.Client.method iface name inSig outSig io where
-	(typesIn, typesOut) = funTypes fun
-	inSig = case checkSignature typesIn of
-		Just sig -> sig
-		Nothing -> invalid "input"
-	outSig = case checkSignature typesOut of
-		Just sig -> sig
-		Nothing -> invalid "output"
-	io vs = case apply fun vs of
-		Nothing -> return (ReplyError errorInvalidParameters [])
-		Just io' -> fmap ReplyReturn io'
-	
-	invalid label = error (concat
-		[ "Method "
-		, Data.Text.unpack (interfaceNameText iface)
-		, "."
-		, Data.Text.unpack (memberNameText name)
-		, " has an invalid "
-		, label
-		, " signature."])
-
-|apidoc DBus.Client.Simple.export|
-export :: Client -> ObjectPath -> [Method] -> IO ()
-export = DBus.Client.export
-:

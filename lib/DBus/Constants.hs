@@ -1,24 +1,24 @@
-:# Copyright (C) 2009-2010 John Millikin <jmillikin@gmail.com>
-:# 
-:# This program is free software: you can redistribute it and/or modify
-:# it under the terms of the GNU General Public License as published by
-:# the Free Software Foundation, either version 3 of the License, or
-:# any later version.
-:# 
-:# This program is distributed in the hope that it will be useful,
-:# but WITHOUT ANY WARRANTY; without even the implied warranty of
-:# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-:# GNU General Public License for more details.
-:# 
-:# You should have received a copy of the GNU General Public License
-:# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+{-# LANGUAGE OverloadedStrings #-}
 
-\clearpage
-\subsection{Named constants}
+-- Copyright (C) 2009-2012 John Millikin <jmillikin@gmail.com>
+--
+-- This program is free software: you can redistribute it and/or modify
+-- it under the terms of the GNU General Public License as published by
+-- the Free Software Foundation, either version 3 of the License, or
+-- any later version.
+--
+-- This program is distributed in the hope that it will be useful,
+-- but WITHOUT ANY WARRANTY; without even the implied warranty of
+-- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+-- GNU General Public License for more details.
+--
+-- You should have received a copy of the GNU General Public License
+-- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-\subsubsection*{The central bus}
+module DBus.Constants where
 
-:d DBus.Constants
+import           DBus.Types
+
 dbusName :: BusName
 dbusName = "org.freedesktop.DBus"
 
@@ -27,11 +27,7 @@ dbusPath = "/org/freedesktop/DBus"
 
 dbusInterface :: InterfaceName
 dbusInterface = "org.freedesktop.DBus"
-:
 
-\subsubsection*{Standard interfaces}
-
-:d DBus.Constants
 interfaceIntrospectable :: InterfaceName
 interfaceIntrospectable = "org.freedesktop.DBus.Introspectable"
 
@@ -40,12 +36,7 @@ interfacePeer = "org.freedesktop.DBus.Peer"
 
 interfaceProperties :: InterfaceName
 interfaceProperties = "org.freedesktop.DBus.Properties"
-:
 
-\subsubsection*{Standard errors}
-\label{sec:standard-error-names}
-
-:d DBus.Constants
 errorAccessDenied :: ErrorName
 errorAccessDenied = "org.freedesktop.DBus.Error.AccessDenied"
 
@@ -69,11 +60,7 @@ errorTimedOut = "org.freedesktop.DBus.Error.TimedOut"
 
 errorTimeout :: ErrorName
 errorTimeout = "org.freedesktop.DBus.Error.Timeout"
-:
 
-\subsubsection*{Errors calling methods}
-
-:d DBus.Constants
 errorServiceUnknown :: ErrorName
 errorServiceUnknown = "org.freedesktop.DBus.Error.ServiceUnknown"
 
@@ -88,11 +75,7 @@ errorUnknownMethod = "org.freedesktop.DBus.Error.UnknownMethod"
 
 errorInvalidParameters :: ErrorName
 errorInvalidParameters = "org.freedesktop.DBus.Error.InvalidParameters"
-:
 
-\subsubsection*{Error starting services}
-
-:d DBus.Constants
 errorSpawnChildExited :: ErrorName
 errorSpawnChildExited = "org.freedesktop.DBus.Error.Spawn.ChildExited"
 
@@ -128,11 +111,7 @@ errorSpawnServiceNotFound = "org.freedesktop.DBus.Error.Spawn.ServiceNotFound"
 
 errorSpawnServiceNotValid :: ErrorName
 errorSpawnServiceNotValid = "org.freedesktop.DBus.Error.Spawn.ServiceNotValid"
-:
 
-\subsubsection*{Other well-known error names}
-
-:d DBus.Constants
 errorAddressInUse :: ErrorName
 errorAddressInUse = "org.freedesktop.DBus.Error.AddressInUse"
 
@@ -186,4 +165,3 @@ errorSELinuxSecurityContextUnknown = "org.freedesktop.DBus.Error.SELinuxSecurity
 
 errorUnixProcessIdUnknown :: ErrorName
 errorUnixProcessIdUnknown = "org.freedesktop.DBus.Error.UnixProcessIdUnknown"
-:

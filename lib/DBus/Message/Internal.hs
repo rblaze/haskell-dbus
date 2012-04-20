@@ -1,61 +1,48 @@
-:# Copyright (C) 2009-2010 John Millikin <jmillikin@gmail.com>
-:# 
-:# This program is free software: you can redistribute it and/or modify
-:# it under the terms of the GNU General Public License as published by
-:# the Free Software Foundation, either version 3 of the License, or
-:# any later version.
-:# 
-:# This program is distributed in the hope that it will be useful,
-:# but WITHOUT ANY WARRANTY; without even the implied warranty of
-:# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-:# GNU General Public License for more details.
-:# 
-:# You should have received a copy of the GNU General Public License
-:# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+{-# LANGUAGE OverloadedStrings #-}
 
-\section{Messages}
+-- Copyright (C) 2009-2012 John Millikin <jmillikin@gmail.com>
+--
+-- This program is free software: you can redistribute it and/or modify
+-- it under the terms of the GNU General Public License as published by
+-- the Free Software Foundation, either version 3 of the License, or
+-- any later version.
+--
+-- This program is distributed in the hope that it will be useful,
+-- but WITHOUT ANY WARRANTY; without even the implied warranty of
+-- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+-- GNU General Public License for more details.
+--
+-- You should have received a copy of the GNU General Public License
+-- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-:d DBus.Message
+module DBus.Message.Internal where
+
+import           Data.Maybe (fromMaybe)
+import qualified Data.Set
+import           Data.Set (Set)
+import qualified Data.Text
+import           Data.Text (Text)
+import           Data.Word (Word8, Word32)
+
+import           DBus.Types hiding (errorName)
+import           DBus.Util (maybeIndex)
+
 class Message a where
 	messageTypeCode     :: a -> Word8
 	messageHeaderFields :: a -> [HeaderField]
 	messageFlags        :: a -> Set Flag
 	messageBody         :: a -> [Variant]
-:
 
-:d DBus.Message
 maybe' :: (a -> b) -> Maybe a -> [b]
 maybe' f = maybe [] (\x' -> [f x'])
-:
 
-\subsection{Unknown messages}
-
-Unknown messages are used for storing information about messages without
-a recognised type code. They are not instances of {\tt Message}, because
-if they were, then clients could accidentally send invalid messages over
-the bus.
-
-:d DBus.Message
 data Unknown = Unknown
 	{ unknownType    :: Word8
 	, unknownFlags   :: Set Flag
 	, unknownBody    :: [Variant]
 	}
 	deriving (Show, Eq)
-:
 
-\clearpage
-\subsection{Header fields}
-
-\begin{multicols}{2}
-
-TODO
-
-\vfill
-
-\columnbreak
-
-:d DBus.Message
 data HeaderField
 	= HeaderPath        ObjectPath
 	| HeaderInterface   InterfaceName
@@ -66,85 +53,25 @@ data HeaderField
 	| HeaderSender      BusName
 	| HeaderSignature   Signature
 	deriving (Show, Eq)
-:
 
-\end{multicols}
-
-\subsubsection{Flags}
-
-\begin{multicols}{2}
-
-The instance of {\tt Ord} only exists for storing flags in a set. Flags have
-no inherent ordering.
-
-\vfill
-
-\columnbreak
-
-:d DBus.Message
 data Flag
 	= NoReplyExpected
 	| NoAutoStart
 	deriving (Show, Eq, Ord)
-:
 
-\end{multicols}
+-- | A value used to uniquely identify a particular message within a session.
+-- 'Serial's are 32&#8208;bit unsigned integers, and eventually wrap.
 
-\subsubsection{Serials}
-
-\begin{multicols}{2}
-
-{\tt Serial} is just a wrapper around {\tt Word32}, to provide a bit of
-added type-safety.
-
-\vfill
-
-\columnbreak
-
-:d DBus.Message
-|apidoc DBus.Message.Serial|
 newtype Serial = Serial Word32
 	deriving (Eq, Ord, Show)
 
 instance IsVariant Serial where
 	toVariant (Serial x) = toVariant x
 	fromVariant = fmap Serial . fromVariant
-:
 
-\end{multicols}
-
-\begin{multicols}{2}
-
-Additionally, some useful functions exist for incrementing serials.
-
-\vfill
-
-\columnbreak
-
-:d DBus.Message
 serialValue :: Serial -> Word32
 serialValue (Serial x) = x
-:
 
-\end{multicols}
-
-\begin{multicols}{2}
-
-The {\tt Serial} constructor isn't useful to clients, because building
-arbitrary serials doesn't make any sense.
-
-\vfill
-
-\columnbreak
-
-\end{multicols}
-
-\clearpage
-\subsection{Message types}
-
-\subsubsection{Method calls}
-
-:d DBus.Message
 data MethodCall = MethodCall
 	{ methodCallPath        :: ObjectPath
 	, methodCallMember      :: MemberName
@@ -166,12 +93,7 @@ instance Message MethodCall where
 		, maybe' HeaderInterface (methodCallInterface m)
 		, maybe' HeaderDestination (methodCallDestination m)
 		]
-:
 
-\clearpage
-\subsubsection{Method returns}
-
-:d DBus.Message
 data MethodReturn = MethodReturn
 	{ methodReturnSerial      :: Serial
 	, methodReturnDestination :: Maybe BusName
@@ -188,12 +110,7 @@ instance Message MethodReturn where
 		  ]
 		, maybe' HeaderDestination (methodReturnDestination m)
 		]
-:
 
-\clearpage
-\subsubsection{Errors}
-
-:d DBus.Message
 data Error = Error
 	{ errorName        :: ErrorName
 	, errorSerial      :: Serial
@@ -212,13 +129,7 @@ instance Message Error where
 		  ]
 		, maybe' HeaderDestination (errorDestination m)
 		]
-:
 
-Errors usually contain a human-readable message in their first body field.
-This function lets it be retrieved easily, with a fallback if no valid
-message was found.
-
-:d DBus.Message
 errorMessage :: Error -> Text
 errorMessage msg = fromMaybe "(no error message)" $ do
 	field <- maybeIndex (errorBody msg) 0
@@ -226,12 +137,7 @@ errorMessage msg = fromMaybe "(no error message)" $ do
 	if Data.Text.null text
 		then Nothing
 		else return text
-:
 
-\clearpage
-\subsubsection{Signals}
-
-:d DBus.Message
 data Signal = Signal
 	{ signalDestination :: Maybe BusName
 	, signalPath        :: ObjectPath
@@ -252,19 +158,10 @@ instance Message Signal where
 		  ]
 		, maybe' HeaderDestination (signalDestination m)
 		]
-:
 
-\clearpage
-\subsection{Received messages}
-
-Messages received from a bus have additional fields which do not make sense
-when sending.
-
-If a message has an unknown type, its serial and origin are still useful
-for sending an error reply.
-
-:d DBus.Message
-|apidoc DBus.Message.ReceivedMessage|
+-- | Not an actual message type, but a wrapper around messages received from
+-- the bus. Each value contains the message&#8217;s 'Serial' and possibly the
+-- origin&#8217;s 'BusName'
 data ReceivedMessage
 	= ReceivedMethodCall   Serial (Maybe BusName) MethodCall
 	| ReceivedMethodReturn Serial (Maybe BusName) MethodReturn
@@ -272,31 +169,24 @@ data ReceivedMessage
 	| ReceivedSignal       Serial (Maybe BusName) Signal
 	| ReceivedUnknown      Serial (Maybe BusName) Unknown
 	deriving (Show, Eq)
-:
 
-:d DBus.Message
 receivedSerial :: ReceivedMessage -> Serial
 receivedSerial (ReceivedMethodCall   s _ _) = s
 receivedSerial (ReceivedMethodReturn s _ _) = s
 receivedSerial (ReceivedError        s _ _) = s
 receivedSerial (ReceivedSignal       s _ _) = s
 receivedSerial (ReceivedUnknown      s _ _) = s
-:
 
-:d DBus.Message
 receivedSender :: ReceivedMessage -> Maybe BusName
 receivedSender (ReceivedMethodCall   _ s _) = s
 receivedSender (ReceivedMethodReturn _ s _) = s
 receivedSender (ReceivedError        _ s _) = s
 receivedSender (ReceivedSignal       _ s _) = s
 receivedSender (ReceivedUnknown      _ s _) = s
-:
 
-:d DBus.Message
 receivedBody :: ReceivedMessage -> [Variant]
 receivedBody (ReceivedMethodCall   _ _ x) = messageBody x
 receivedBody (ReceivedMethodReturn _ _ x) = messageBody x
 receivedBody (ReceivedError        _ _ x) = messageBody x
 receivedBody (ReceivedSignal       _ _ x) = messageBody x
 receivedBody (ReceivedUnknown      _ _ x) = unknownBody x
-:
