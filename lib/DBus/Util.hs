@@ -20,10 +20,14 @@ module DBus.Util
 	, dropEnd
 	, void
 	, untilM
+	, parseBytes
 	) where
 
+import qualified Data.ByteString.Char8 as Char8
 import           Data.Char (digitToInt)
 import           Data.List (isPrefixOf)
+
+import           Text.ParserCombinators.Parsec (Parser, runParser)
 
 hexToInt :: String -> Int
 hexToInt = foldl ((+) . (16 *)) 0 . map digitToInt
@@ -61,3 +65,8 @@ untilM test comp = do
 			x <- comp
 			xs <- untilM test comp
 			return (x:xs)
+
+parseBytes :: Parser a -> Char8.ByteString -> Maybe a
+parseBytes p bytes = case runParser p () "" (Char8.unpack bytes) of
+	Left _ -> Nothing
+	Right a -> Just a

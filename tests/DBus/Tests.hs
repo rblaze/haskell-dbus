@@ -32,6 +32,7 @@ import qualified Data.Binary.Builder
 import           Data.Bits ((.&.))
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString
+import qualified Data.ByteString.Char8 as Char8
 import qualified Data.ByteString.Lazy
 import           Data.Char (chr)
 import           Data.List (intercalate)
@@ -83,31 +84,31 @@ suite_Address :: Suite
 suite_Address = suite "address"
 	[ suite "valid"
 		[ test $ assertions "colon" $ do
-			let m_addr = address ":"
+			let m_addr = parseAddress ":"
 			$assert $ just m_addr
 			let Just addr = m_addr
 			$expect $ equal (addressMethod addr) ""
 			$expect $ equal (addressParameters addr) (Data.Map.fromList [])
 		
 		, test $ assertions "just-scheme" $ do
-			addr <- requireJust (address "a:")
+			addr <- requireJust (parseAddress "a:")
 			$expect $ equal (addressMethod addr) "a"
 			$expect $ equal (addressParameters addr) (Data.Map.fromList [])
 		
 		, test $ assertions "param" $ do
-			addr <- requireJust (address "a:b=c")
+			addr <- requireJust (parseAddress "a:b=c")
 			$expect $ equal (addressMethod addr) "a"
 			$expect $ equal (addressParameters addr) (Data.Map.fromList [("b", "c")])
 		
 		, test $ assertions "trailing-semicolon" $ do
-			addrs <- requireJust (addresses "a:;")
+			addrs <- requireJust (parseAddresses "a:;")
 			$assert $ equal (length addrs) 1
 			let [addr1] = addrs
 			$expect $ equal (addressMethod addr1) "a"
 			$expect $ equal (addressParameters addr1) (Data.Map.fromList [])
 		
 		, test $ assertions "two-schemes" $ do
-			addrs <- requireJust (addresses "a:;b:")
+			addrs <- requireJust (parseAddresses "a:;b:")
 			$assert $ equal (length addrs) 2
 			let [addr1, addr2] = addrs
 			$expect $ equal (addressMethod addr1) "a"
@@ -116,75 +117,75 @@ suite_Address = suite "address"
 			$expect $ equal (addressParameters addr2) (Data.Map.fromList [])
 		
 		, test $ assertions "trailing-comma" $ do
-			addr <- requireJust (address "a:b=c,")
+			addr <- requireJust (parseAddress "a:b=c,")
 			$expect $ equal (addressMethod addr) "a"
 			$expect $ equal (addressParameters addr) (Data.Map.fromList [("b", "c")])
 		
 		, test $ assertions "encoded" $ do
-			addr <- requireJust (address "a:b=%678")
+			addr <- requireJust (parseAddress "a:b=%678")
 			$expect $ equal (addressMethod addr) "a"
 			$expect $ equal (addressParameters addr) (Data.Map.fromList [("b", "g8")])
 		]
 	
 	, suite "invalid"
 		[ test $ assertions "empty" $ do
-			$expect $ nothing (address "")
+			$expect $ nothing (parseAddress "")
 		
 		, test $ assertions "no-colon" $ do
-			$expect $ nothing (address "a")
+			$expect $ nothing (parseAddress "a")
 		
 		, test $ assertions "no-equals" $ do
-			$expect $ nothing (address "a:b")
+			$expect $ nothing (parseAddress "a:b")
 		
 		, test $ assertions "no-param" $ do
-			$expect $ nothing (address "a:,")
+			$expect $ nothing (parseAddress "a:,")
 		
 		, test $ assertions "no-param-value" $ do
-			$expect $ nothing (address "a:b=")
+			$expect $ nothing (parseAddress "a:b=")
 		]
 	
 	, suite "passthrough"
 		[ test $ assertions "plain" $ do
-			$assert $ equal (Just "a:b=c") (addressText `fmap` address "a:b=c")
+			$assert $ equal (Just "a:b=c") (formatAddress `fmap` parseAddress "a:b=c")
 		, test $ assertions "encoded" $ do
-			$assert $ equal (Just "a:b=Z%5B") (addressText `fmap` address "a:b=%5a%5b")
+			$assert $ equal (Just "a:b=Z%5B") (formatAddress `fmap` parseAddress "a:b=%5a%5b")
 		, test $ assertions "optionally-encoded" $ do
-			$assert $ equal (Just "a:b=-_/\\*.") (addressText `fmap` address "a:b=-_/\\*.")
+			$assert $ equal (Just "a:b=-_/\\*.") (formatAddress `fmap` parseAddress "a:b=-_/\\*.")
 		, test $ assertions "multiple-params" $ do
-			$assert $ equal (Just "a:b=c,d=e") (addressText `fmap` address "a:b=c,d=e")
+			$assert $ equal (Just "a:b=c,d=e") (formatAddress `fmap` parseAddress "a:b=c,d=e")
 		]
 	
 	, suite "instances"
 		[ test $ assertions "eq" $ do
-			$assert $ equal (address "a:b=c") (address "a:b=c")
+			$assert $ equal (parseAddress "a:b=c") (parseAddress "a:b=c")
 		, test $ assertions "show" $ do
-			$assert $ equal "(Address \"a:b=c\")" (showsPrec 11 (fromJust (address "a:b=c")) "")
+			$assert $ equal "(Address \"a:b=c\")" (showsPrec 11 (fromJust (parseAddress "a:b=c")) "")
 		]
 	
 	, suite "well-known"
 		[ test $ assertions "system" $ do
-			liftIO $ System.Posix.Env.setEnv "DBUS_SYSTEM_BUS_ADDRESS" "a:b=c;d:" True
-			addrs <- liftIO getSystem
-			$assert $ equal addrs (Just ["a:b=c", "d:"])
+			liftIO $ System.Posix.Env.setEnv "DBUS_SYSTEM_BUS_ADDRESS" "a:b=c" True
+			addr <- liftIO getSystemAddress
+			$assert $ equal addr (Just "a:b=c")
 		
 		, test $ assertions "default-system" $ do
 			liftIO $ System.Posix.Env.unsetEnv "DBUS_SYSTEM_BUS_ADDRESS"
-			addrs <- liftIO getSystem
-			$assert $ equal addrs (Just ["unix:path=/var/run/dbus/system_bus_socket"])
+			addr <- liftIO getSystemAddress
+			$assert $ equal addr (Just "unix:path=/var/run/dbus/system_bus_socket")
 		
 		, test $ assertions "session" $ do
-			liftIO $ System.Posix.Env.setEnv "DBUS_SESSION_BUS_ADDRESS" "a:b=c;d:" True
-			addrs <- liftIO getSession
-			$assert $ equal addrs (Just ["a:b=c", "d:"])
+			liftIO $ System.Posix.Env.setEnv "DBUS_SESSION_BUS_ADDRESS" "a:b=c" True
+			addr <- liftIO getSessionAddress
+			$assert $ equal addr (Just "a:b=c")
 		
 		, test $ assertions "starter" $ do
-			liftIO $ System.Posix.Env.setEnv "DBUS_STARTER_BUS_ADDRESS" "a:b=c;d:" True
-			addrs <- liftIO getStarter
-			$assert $ equal addrs (Just ["a:b=c", "d:"])
+			liftIO $ System.Posix.Env.setEnv "DBUS_STARTER_ADDRESS" "a:b=c" True
+			addr <- liftIO getStarterAddress
+			$assert $ equal addr (Just "a:b=c")
 		]
 	
 	, suite "properties"
-		[ property "address-parsing" (forAll genAddressText (isJust . address))
+		[ property "address-parsing" (forAll genAddressBytes (isJust . parseAddress))
 		]
 	]
 
@@ -591,8 +592,8 @@ unmarshal e t bytes = case DBus.Wire.Internal.unWire (DBus.Wire.Internal.unmarsh
 	DBus.Wire.Internal.WireRR v _ -> Right v
 	DBus.Wire.Internal.WireRL err -> Left err
 
-genAddressText :: Gen Text
-genAddressText = gen where
+genAddressBytes :: Gen ByteString
+genAddressBytes = gen where
 	methodChars = filter (`notElem` ":;") ['!'..'~']
 	keyChars = filter (`notElem` "=;,") ['!'..'~']
 	optionallyEncoded = map (:[]) (concat
@@ -616,7 +617,7 @@ genAddressText = gen where
 	gen = do
 		method <- listOf (elements methodChars)
 		params <- listOf param
-		return (T.pack (method ++ ":" ++ (intercalate "," params)))
+		return (Char8.pack (method ++ ":" ++ (intercalate "," params)))
 
 genHex :: Gen Char
 genHex = elements (['0'..'9'] ++ ['a'..'f'] ++ ['A'..'F'])
@@ -662,7 +663,7 @@ withEnv name value io = do
 	Control.Exception.bracket_ (set value) (set old) io
 
 instance IsString Address where
-	fromString s = case address (T.pack s) of
+	fromString s = case parseAddress (Char8.pack s) of
 		Just addr -> addr
 		Nothing -> error ("Invalid address: " ++ show s)
 

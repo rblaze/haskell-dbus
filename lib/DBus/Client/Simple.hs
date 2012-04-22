@@ -52,7 +52,6 @@ module DBus.Client.Simple
 	, module DBus.Types
 	) where
 
-import qualified Control.Exception
 import           Data.Bits ((.|.))
 import qualified Data.Text -- for haddock
 import qualified Data.Set
@@ -68,27 +67,17 @@ import           DBus.Types
 import           DBus.Types.Internal (checkSignature)
 import           DBus.Util (maybeIndex)
 
-connectFirst :: [Address] -> IO Client
-connectFirst addrs = loop addrs where
-	loop [] = connectionError (concat
-		[ "connectFirst: no usable"
-		, " addresses in "
-		, show addrs])
-	loop (a:as) = Control.Exception.catch
-		(DBus.Client.connect a)
-		(\(ConnectionError _) -> loop as)
-
 -- | Connect to the bus specified in the environment variable
 -- @DBUS_SESSION_BUS_ADDRESS@, which must be set.
 connectSession :: IO Client
 connectSession = do
-	env <- DBus.Address.getSession
+	env <- DBus.Address.getSessionAddress
 	case env of
 		Nothing -> connectionError (concat
 			[ "connectSession: DBUS_SESSION_BUS_ADDRESS is"
 			, " missing or invalid."
 			])
-		Just addrs -> connectFirst addrs
+		Just addr -> DBus.Client.connect addr
 
 -- | Connect to the bus specified in the environment variable
 -- @DBUS_SYSTEM_BUS_ADDRESS@, or to
@@ -96,25 +85,25 @@ connectSession = do
 -- is not set.
 connectSystem :: IO Client
 connectSystem = do
-	env <- DBus.Address.getSystem
+	env <- DBus.Address.getSystemAddress
 	case env of
 		Nothing -> connectionError (concat
 			[ "connectSession: DBUS_SYSTEM_BUS_ADDRESS is"
 			, " invalid."
 			])
-		Just addrs -> connectFirst addrs
+		Just addr -> DBus.Client.connect addr
 
 -- | Connect to the bus specified in the environment variable
 -- @DBUS_STARTER_ADDRESS@, which must be set.
 connectStarter :: IO Client
 connectStarter = do
-	env <- DBus.Address.getStarter
+	env <- DBus.Address.getStarterAddress
 	case env of
 		Nothing -> connectionError (concat
 			[ "connectSession: DBUS_STARTER_BUS_ADDRESS is"
 			, " missing or invalid."
 			])
-		Just addrs -> connectFirst addrs
+		Just addr -> DBus.Client.connect addr
 
 data Proxy = Proxy Client BusName ObjectPath
 

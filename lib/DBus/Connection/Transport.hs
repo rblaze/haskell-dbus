@@ -34,9 +34,8 @@ import qualified Data.Binary.Get
 import qualified Data.Binary.Put
 import qualified Data.ByteString
 import           Data.ByteString (ByteString)
+import qualified Data.ByteString.Char8 as Char8
 import qualified Data.Map
-import qualified Data.Text
-import           Data.Text (Text)
 import           Data.Word (Word32)
 import qualified Network
 import qualified Network.Socket
@@ -48,15 +47,14 @@ import           DBus.Connection.Error
 
 -- | A 'Transport' is anything which can send and receive bytestrings,
 -- typically via a socket.
-
-data Transport = Transport Text (Address -> IO Socket)
+data Transport = Transport ByteString (Address -> IO Socket)
 
 data Socket = Socket
 	(ByteString -> IO ())
 	(Word32 -> IO ByteString)
 	(IO ())
 
-transport :: Text -> (Address -> IO Socket) -> Transport
+transport :: ByteString -> (Address -> IO Socket) -> Transport
 transport = Transport
 
 socket :: (ByteString -> IO ()) -> (Word32 -> IO ByteString) -> IO () -> Socket
@@ -104,8 +102,8 @@ connectUNIX a = getHandle >>= connectHandle where
 	path = case (param "path", param "abstract") of
 		(Just _, Just _) -> connectionError tooMany
 		(Nothing, Nothing) -> connectionError tooFew
-		(Just x, Nothing) -> return (Data.Text.unpack x)
-		(Nothing, Just x) -> return ('\x00' : Data.Text.unpack x)
+		(Just x, Nothing) -> return (Char8.unpack x)
+		(Nothing, Just x) -> return ('\x00' : Char8.unpack x)
 	
 	getHandle = do
 		port <- fmap Network.UnixSocket path
@@ -125,7 +123,7 @@ connectTCP a = getHandle >>= connectHandle where
 		addrs <- getAddresses family
 		sock<- openSocket port addrs
 		Network.Socket.socketToHandle sock System.IO.ReadWriteMode
-	hostname = maybe "localhost" Data.Text.unpack (param "host")
+	hostname = maybe "localhost" Char8.unpack (param "host")
 	unknownFamily x = concat ["Unknown socket family for TCP transport: ", show x]
 	getFamily = case param "family" of
 		Just "ipv4" -> return Network.Socket.AF_INET
@@ -136,7 +134,7 @@ connectTCP a = getHandle >>= connectHandle where
 	badPort x = concat ["Invalid socket port for TCP transport: ", show x]
 	getPort = case param "port" of
 		Nothing -> connectionError missingPort
-		Just x -> case parse parseWord16 "" (Data.Text.unpack x) of
+		Just x -> case parse parseWord16 "" (Char8.unpack x) of
 			Right x' -> return (Network.Socket.PortNum x')
 			Left  _  -> connectionError (badPort x)
 
