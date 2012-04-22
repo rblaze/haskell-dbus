@@ -1,9 +1,9 @@
-name: dbus-core-benchmarks
+name: haskell-dbus-benchmarks
 version: 0
 build-type: Simple
 cabal-version: >= 1.6
 
-executable dbus-core_benchmarks
+executable haskell-dbus-benchmarks
   main-is: Benchmarks.hs
   ghc-options: -Wall -O2 -fno-warn-orphans
 
@@ -13,4 +13,4 @@ executable dbus-core_benchmarks
     , containers
     , criterion
     , deepseq
-    , dbus-core
+    , dbus

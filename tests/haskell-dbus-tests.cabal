@@ -1,4 +1,4 @@
-name: dbus-core-tests
+name: haskell-dbus-tests
 version: 0
 build-type: Simple
 cabal-version: >= 1.6
@@ -7,10 +7,10 @@ flag coverage
   default: False
   manual: True
 
-executable dbus-core_tests
+executable haskell-dbus-tests
   main-is: Main.hs
   ghc-options: -Wall -fno-warn-orphans
-  hs-source-dirs: ../hs,.
+  hs-source-dirs: ../lib,.
 
   if flag(coverage)
     ghc-options: -fhpc
