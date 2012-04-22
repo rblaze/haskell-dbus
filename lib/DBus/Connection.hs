@@ -48,9 +48,8 @@ import           DBus.Address
 import           DBus.Connection.Authentication
 import           DBus.Connection.Error
 import           DBus.Connection.Transport
-import           DBus.Message.Internal
+import           DBus.Message
 import           DBus.Wire
-import           DBus.Wire.Internal (unmarshalMessageM)
 
 -- | A 'Connection' is an opaque handle to an open D&#8208;Bus channel, with
 -- an internal state for maintaining the current message serial.

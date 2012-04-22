@@ -45,7 +45,6 @@ import           DBus.Constants ( errorFailed, errorUnknownMethod
 import           DBus.Message
 import qualified DBus.Introspection
 import           DBus.Types
-import           DBus.Types.Internal (Signature(..))
 import           DBus.Util (void)
 
 data Client = Client

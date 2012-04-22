@@ -50,7 +50,7 @@ import           Data.String (IsString, fromString)
 import qualified Data.Vector
 import qualified System.Posix.Env
 
-import           DBus.Address
+import           DBus
 import           DBus.Client ()
 import           DBus.Client.Simple ()
 import           DBus.Connection ()
@@ -58,9 +58,7 @@ import           DBus.Message ()
 import           DBus.Message.Internal hiding (errorName)
 import           DBus.Types
 import           DBus.Types.Internal
-import           DBus.Wire (marshalMessage, unmarshalMessage)
 import qualified DBus.Wire
-import qualified DBus.Wire.Internal
 import qualified DBus.Introspection
 
 import           DBus.Tests.Util
@@ -583,14 +581,14 @@ suite_Introspection = suite "introspection"
 	]
 
 marshal :: DBus.Wire.Endianness -> Value -> Either String ByteString
-marshal e v = case DBus.Wire.Internal.unWire (DBus.Wire.Internal.marshal v) e (DBus.Wire.Internal.MarshalState Data.Binary.Builder.empty 0) of
-	DBus.Wire.Internal.WireRR _ (DBus.Wire.Internal.MarshalState builder _) -> Right (Data.ByteString.concat (Data.ByteString.Lazy.toChunks (Data.Binary.Builder.toLazyByteString builder)))
-	DBus.Wire.Internal.WireRL err -> Left err
+marshal e v = case DBus.Wire.unWire (DBus.Wire.marshal v) e (DBus.Wire.MarshalState Data.Binary.Builder.empty 0) of
+	DBus.Wire.WireRR _ (DBus.Wire.MarshalState builder _) -> Right (Data.ByteString.concat (Data.ByteString.Lazy.toChunks (Data.Binary.Builder.toLazyByteString builder)))
+	DBus.Wire.WireRL err -> Left err
 
 unmarshal :: DBus.Wire.Endianness -> Type -> ByteString -> Either String Value
-unmarshal e t bytes = case DBus.Wire.Internal.unWire (DBus.Wire.Internal.unmarshal t) e (DBus.Wire.Internal.UnmarshalState bytes 0) of
-	DBus.Wire.Internal.WireRR v _ -> Right v
-	DBus.Wire.Internal.WireRL err -> Left err
+unmarshal e t bytes = case DBus.Wire.unWire (DBus.Wire.unmarshal t) e (DBus.Wire.UnmarshalState bytes 0) of
+	DBus.Wire.WireRR v _ -> Right v
+	DBus.Wire.WireRL err -> Left err
 
 genAddressBytes :: Gen ByteString
 genAddressBytes = gen where

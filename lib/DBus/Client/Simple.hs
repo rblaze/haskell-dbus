@@ -64,7 +64,6 @@ import           DBus.Connection.Error
 import           DBus.Constants (errorInvalidParameters)
 import           DBus.Message hiding (errorName)
 import           DBus.Types
-import           DBus.Types.Internal (checkSignature)
 import           DBus.Util (maybeIndex)
 
 -- | Connect to the bus specified in the environment variable

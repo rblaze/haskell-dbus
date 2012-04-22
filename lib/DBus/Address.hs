@@ -15,19 +15,7 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-module DBus.Address
-	( Address
-	, addressMethod
-	, addressParameters
-	, address
-	, formatAddress
-	, formatAddresses
-	, parseAddress
-	, parseAddresses
-	, getSystemAddress
-	, getSessionAddress
-	, getStarterAddress
-	) where
+module DBus.Address where
 
 import qualified Control.Exception
 import qualified Data.ByteString as ByteString
@@ -44,8 +32,8 @@ import           DBus.Util (hexToInt, void, parseBytes)
 
 -- | When a D-Bus server must listen for connections, or a client must connect
 -- to a server, the listening socket's configuration is specified with an
--- /address/. An address contains the /method/ , which determines the
--- protocol and transport mechanism, and parameters , which provide
+-- /address/. An address contains the /method/, which determines the
+-- protocol and transport mechanism, and /parameters/, which provide
 -- additional method-specific information about the address.
 data Address = Address ByteString (Map ByteString ByteString)
 	deriving (Eq)

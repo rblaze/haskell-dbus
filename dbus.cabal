@@ -59,23 +59,21 @@ library
     , xml-types >= 0.3 && < 0.4
 
   exposed-modules:
-    DBus.Address
+    DBus
     DBus.Client
     DBus.Client.Simple
     DBus.Connection
     DBus.Constants
     DBus.Introspection
-    DBus.Message
-    DBus.Types
-    DBus.Wire
 
   other-modules:
+    DBus.Address
     DBus.Client.Internal
     DBus.Connection.Error
     DBus.Connection.Authentication
     DBus.Connection.Transport
-    DBus.Message.Internal
-    DBus.Types.Internal
+    DBus.Message
+    DBus.Types
     DBus.Util
     DBus.Util.MonadError
-    DBus.Wire.Internal
+    DBus.Wire
