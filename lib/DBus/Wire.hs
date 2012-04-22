@@ -709,8 +709,8 @@ buildReceivedMessage 3 fields = do
 	return $ \serial _ body -> let
 		dest = listToMaybe [x | HeaderDestination x <- fields]
 		sender = listToMaybe [x | HeaderSender x <- fields]
-		msg = Error name replySerial dest body
-		in ReceivedError serial sender msg
+		msg = MethodError name replySerial dest body
+		in ReceivedMethodError serial sender msg
 
 buildReceivedMessage 4 fields = do
 	path <- require "path" [x | HeaderPath x <- fields]

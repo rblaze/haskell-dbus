@@ -25,8 +25,8 @@ module DBus
 	, Unknown (..)
 	, MethodCall (..)
 	, MethodReturn (..)
-	, Error (..)
-	, errorMessage
+	, MethodError (..)
+	, methodErrorMessage
 	, Signal (..)
 	, ReceivedMessage (..)
 	, receivedSerial
@@ -67,7 +67,7 @@ module DBus
 	
 	, ErrorName
 	-- temporarily commented out
-	-- , errorName
+	, errorName
 	, errorName_
 	, errorNameText
 	

@@ -62,7 +62,7 @@ import           DBus.Client hiding (call, method, emit, export)
 import qualified DBus.Client
 import           DBus.Connection.Error
 import           DBus.Constants (errorInvalidParameters)
-import           DBus.Message hiding (errorName)
+import           DBus.Message
 import           DBus.Types
 import           DBus.Util (maybeIndex)
 

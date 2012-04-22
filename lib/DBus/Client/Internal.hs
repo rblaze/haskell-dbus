@@ -161,7 +161,7 @@ dispatch client received = void . forkIO $ do
 	
 	unless handled $ case received of
 		(ReceivedMethodReturn _ _ msg) -> onReply (methodReturnSerial msg)
-		(ReceivedError _ _ msg) -> onReply (errorSerial msg)
+		(ReceivedMethodError _ _ msg) -> onReply (methodErrorSerial msg)
 		(ReceivedSignal _ _ _) -> do
 			handlers <- readMVar (clientSignalHandlers client)
 			mapM_ ($ received) handlers
@@ -170,7 +170,7 @@ dispatch client received = void . forkIO $ do
 			case findMethod objects msg of
 				Just io -> io received
 				Nothing -> send_ client
-					(Error errorUnknownMethod serial sender [])
+					(MethodError errorUnknownMethod serial sender [])
 					(\_ -> return ())
 		_ -> return ()
 
@@ -181,11 +181,11 @@ send_ client msg io = do
 		Right serial -> return serial
 		Left err -> connectionError ("Error sending message: " ++ show err)
 
-call :: Client -> MethodCall -> IO (Either Error MethodReturn)
+call :: Client -> MethodCall -> IO (Either MethodError MethodReturn)
 call client msg = do
 	mvar <- newEmptyMVar
 	
-	let callback (ReceivedError _ _ err) = putMVar mvar (Left err)
+	let callback (ReceivedMethodError _ _ err) = putMVar mvar (Left err)
 	    callback (ReceivedMethodReturn _ _ reply) = putMVar mvar (Right reply)
 	    callback _ = return ()
 	
@@ -207,7 +207,7 @@ call_ :: Client -> MethodCall -> IO MethodReturn
 call_ client msg = do
 	result <- call client msg
 	case result of
-		Left err -> connectionError ("Call failed: " ++ Data.Text.unpack (errorMessage err))
+		Left err -> connectionError ("Call failed: " ++ Data.Text.unpack (methodErrorMessage err))
 		Right ret -> return ret
 
 emit :: Client -> Signal -> IO ()
@@ -262,10 +262,10 @@ checkMatchRule rule sender msg = and
 	, maybe True (== signalMember msg) (matchMember rule)
 	]
 
-data MethodError = MethodError ErrorName [Variant]
+data MethodExc = MethodExc ErrorName [Variant]
 	deriving (Show, Eq, Typeable)
 
-instance Control.Exception.Exception MethodError
+instance Control.Exception.Exception MethodExc
 
 -- | Normally, any exceptions raised while executing a method will be
 -- given the generic @\"org.freedesktop.DBus.Error.Failed\"@ name.
@@ -273,14 +273,14 @@ instance Control.Exception.Exception MethodError
 -- additional information to the remote application. You may use this instead
 -- of 'Control.Exception.throwIO' to abort a method call.
 throwError :: ErrorName -> Text -> [Variant] -> IO a
-throwError name message extra = Control.Exception.throwIO (MethodError name (toVariant message : extra))
+throwError name message extra = Control.Exception.throwIO (MethodExc name (toVariant message : extra))
 
 method :: InterfaceName -> MemberName -> Signature -> Signature -> ([Variant] -> IO Reply) -> Method
 method iface name inSig outSig io = Method iface name inSig outSig
 	(\vs -> Control.Exception.catch
 		(Control.Exception.catch
 			(io vs)
-			(\(MethodError name' vs') -> return (ReplyError name' vs')))
+			(\(MethodExc name' vs') -> return (ReplyError name' vs')))
 		(\exc -> return (ReplyError errorFailed
 			[toVariant (Data.Text.pack (show (exc :: SomeException)))])))
 
@@ -297,7 +297,7 @@ export client path methods = modifyMVar_ (clientObjects client) addObject where
 		reply <- cb (methodCallBody msg)
 		case reply of
 			ReplyReturn vs -> send_ client (MethodReturn serial sender vs) (\_ -> return ())
-			ReplyError name vs -> send_ client (Error name serial sender vs) (\_ -> return ())
+			ReplyError name vs -> send_ client (MethodError name serial sender vs) (\_ -> return ())
 	wrapCB _ _ = return ()
 	
 	defaultIntrospect = methodIntrospect $ do
