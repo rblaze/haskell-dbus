@@ -66,7 +66,6 @@ module DBus
 	, memberNameText
 	
 	, ErrorName
-	-- temporarily commented out
 	, errorName
 	, errorName_
 	, errorNameText
