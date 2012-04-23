@@ -62,13 +62,12 @@ library
     DBus
     DBus.Client
     DBus.Client.Simple
-    DBus.Connection
     DBus.Constants
     DBus.Introspection
 
   other-modules:
     DBus.Address
-    DBus.Client.Internal
+    DBus.Connection
     DBus.Connection.Error
     DBus.Connection.Authentication
     DBus.Connection.Transport

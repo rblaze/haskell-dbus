@@ -107,9 +107,16 @@ data Proxy = Proxy Client BusName ObjectPath
 proxy :: Client -> BusName -> ObjectPath -> IO Proxy
 proxy client dest path = return (Proxy client dest path)
 
+call_ :: Client -> MethodCall -> IO MethodReturn
+call_ client msg = do
+	result <- DBus.Client.call client msg
+	case result of
+		Left err -> connectionError ("Call failed: " ++ Data.Text.unpack (methodErrorMessage err))
+		Right ret -> return ret
+
 call :: Proxy -> InterfaceName -> MemberName -> [Variant] -> IO [Variant]
 call (Proxy client dest path) iface member body = do
-	reply <- DBus.Client.call_ client $ MethodCall
+	reply <- call_ client $ MethodCall
 		{ methodCallDestination = Just dest
 		, methodCallMember = member
 		, methodCallInterface = Just iface
