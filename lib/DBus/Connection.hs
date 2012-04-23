@@ -61,26 +61,23 @@ data Connection = Connection
 	, connectionWriteLock :: MVar ()
 	}
 
--- | Open a connection to some address, using a given authentication
--- mechanism. If the connection fails, a 'ConnectionError' will be thrown.
-connect :: [Transport] -> [Mechanism] -> Address -> IO Connection
+connect :: [Transport] -> [Mechanism] -> Address -> IO (Either ConnectionError Connection)
 connect transports mechanisms addr = do
 	msock <- connectTransport transports addr
-	sock <- case msock of
-		Just s -> return s
-		Nothing -> connectionError (concat
+	case msock of
+		Nothing -> return (Left (ConnectionError (concat
 			[ "Unknown address method: "
 			, show (addressMethod addr)
-			])
-	authed <- authenticate sock mechanisms
-	when (not authed)
-		(connectionError "Authentication failed")
-	
-	serial <- newIORef (Serial 1)
-	readLock <- newMVar ()
-	writeLock <- newMVar ()
-	return (Connection addr sock serial
-	                   readLock writeLock)
+			])))
+		Just sock -> do
+			authed <- authenticate sock mechanisms
+			if authed
+				then do
+					serial <- newIORef (Serial 1)
+					readLock <- newMVar ()
+					writeLock <- newMVar ()
+					return (Right (Connection addr sock serial readLock writeLock))
+				else return (Left (ConnectionError "Authentication failed"))
 
 -- | Close an open connection. Once closed, the 'Connection' is no longer
 -- valid and must not be used.

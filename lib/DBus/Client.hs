@@ -21,7 +21,11 @@ module DBus.Client
 	(
 	-- * Clients
 	  Client
+	, ConnectionError
+	, ClientOptions
+	, defaultClientOptions
 	, connect
+	, connectWith
 	, disconnect
 	, call
 	, emit
@@ -55,8 +59,8 @@ import qualified Data.Set
 import           DBus.Address
 import qualified DBus.Connection
 import           DBus.Connection (Connection)
-import           DBus.Connection.Authentication (external)
-import           DBus.Connection.Transport (unix, tcp)
+import           DBus.Connection.Authentication (Mechanism, external)
+import           DBus.Connection.Transport (Transport, unix, tcp)
 import           DBus.Connection.Error
 import qualified DBus.Constants
 import           DBus.Constants ( errorFailed, errorUnknownMethod
@@ -73,6 +77,20 @@ data Client = Client
 	, clientObjects :: MVar (Map ObjectPath ObjectInfo)
 	, clientThreadID :: ThreadId
 	, clientMessageProcessor :: IORef (ReceivedMessage -> IO Bool)
+	}
+
+data ClientOptions = ClientOptions
+	{ clientTransports :: [Transport]
+	, clientAuthMechanisms :: [Mechanism]
+	
+	-- if specified, forces connection attempts to abort after the given
+	-- number of milliseconds.
+	, clientTimeout :: Maybe Integer
+	
+	-- whether the client should attempt to reconnect, if it loses its
+	-- connection to the server. any pending method calls will fail with
+	-- an error saying the connection was lost.
+	, clientReconnect :: Bool
 	}
 
 type Callback = (ReceivedMessage -> IO ())
@@ -124,12 +142,23 @@ attach connection = do
 	
 	return client
 
-connect :: Address -> IO Client
-connect addr = do
-	connection <- DBus.Connection.connect [unix, tcp] [external] addr
-	attach connection
+connect :: Address -> IO (Either ConnectionError Client)
+connect = connectWith defaultClientOptions
 
--- | Stop a 'Client'&#8217;s callback thread and close its underlying socket.
+connectWith :: ClientOptions -> Address -> IO (Either ConnectionError Client)
+connectWith opts addr = do
+	ret <- DBus.Connection.connect
+		(clientTransports opts)
+		(clientAuthMechanisms opts)
+		addr
+	case ret of
+		Left err -> return (Left err)
+		Right conn -> Right `fmap` attach conn
+
+defaultClientOptions :: ClientOptions
+defaultClientOptions = undefined
+
+-- | Stop a 'Client''s callback thread and close its underlying socket.
 disconnect :: Client -> IO ()
 disconnect client = do
 	killThread (clientThreadID client)

@@ -52,6 +52,7 @@ module DBus.Client.Simple
 	, throwError
 	) where
 
+import           Control.Exception (throwIO)
 import           Data.Bits ((.|.))
 import qualified Data.Text -- for haddock
 import qualified Data.Set
@@ -74,7 +75,11 @@ connectSession = do
 			[ "connectSession: DBUS_SESSION_BUS_ADDRESS is"
 			, " missing or invalid."
 			])
-		Just addr -> DBus.Client.connect addr
+		Just addr -> do
+			ret <- DBus.Client.connect addr
+			case ret of
+				Left err -> throwIO err
+				Right client -> return client
 
 -- | Connect to the bus specified in the environment variable
 -- @DBUS_SYSTEM_BUS_ADDRESS@, or to
@@ -88,7 +93,11 @@ connectSystem = do
 			[ "connectSession: DBUS_SYSTEM_BUS_ADDRESS is"
 			, " invalid."
 			])
-		Just addr -> DBus.Client.connect addr
+		Just addr -> do
+			ret <- DBus.Client.connect addr
+			case ret of
+				Left err -> throwIO err
+				Right client -> return client
 
 -- | Connect to the bus specified in the environment variable
 -- @DBUS_STARTER_ADDRESS@, which must be set.
@@ -100,7 +109,11 @@ connectStarter = do
 			[ "connectSession: DBUS_STARTER_BUS_ADDRESS is"
 			, " missing or invalid."
 			])
-		Just addr -> DBus.Client.connect addr
+		Just addr -> do
+			ret <- DBus.Client.connect addr
+			case ret of
+				Left err -> throwIO err
+				Right client -> return client
 
 data Proxy = Proxy Client BusName ObjectPath
 
