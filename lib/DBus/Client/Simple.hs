@@ -106,7 +106,7 @@ connectStarter = do
 	env <- getStarterAddress
 	case env of
 		Nothing -> connectionError (concat
-			[ "connectSession: DBUS_STARTER_BUS_ADDRESS is"
+			[ "connectSession: DBUS_STARTER_ADDRESS is"
 			, " missing or invalid."
 			])
 		Just addr -> do
