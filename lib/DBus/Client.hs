@@ -56,7 +56,7 @@ import qualified Data.Text
 import           Data.Typeable (Typeable)
 import qualified Data.Set
 
-import           DBus.Address
+import           DBus
 import qualified DBus.Connection
 import           DBus.Connection (Connection)
 import           DBus.Connection.Authentication (Mechanism, external)
@@ -65,9 +65,7 @@ import           DBus.Connection.Error
 import qualified DBus.Constants
 import           DBus.Constants ( errorFailed, errorUnknownMethod
                                 , errorInvalidParameters)
-import           DBus.Message
 import qualified DBus.Introspection
-import           DBus.Types
 import           DBus.Util (void)
 
 data Client = Client
