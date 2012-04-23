@@ -15,15 +15,15 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-module DBus.Connection.Error where
+module DBus.Client.Error where
 
-import           Control.Exception (Exception, throwIO)
+import           Control.Exception
 import           Data.Typeable (Typeable)
 
-newtype ConnectionError = ConnectionError String
-	deriving (Show, Eq, Typeable)
+data ClientError = ClientError String
+	deriving (Eq, Ord, Show, Typeable)
 
-instance Exception ConnectionError
+instance Exception ClientError
 
-connectionError :: String -> IO a
-connectionError = throwIO . ConnectionError
+clientError :: String -> IO a
+clientError = throwIO . ClientError

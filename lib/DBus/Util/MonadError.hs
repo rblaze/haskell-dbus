@@ -20,6 +20,9 @@ module DBus.Util.MonadError
 	, throwErrorT
 	) where
 
+import           Control.Monad (liftM)
+import           Control.Monad.IO.Class
+
 newtype ErrorM e a = ErrorM { runErrorM :: Either e a }
 
 instance Functor (ErrorM e) where
@@ -38,6 +41,9 @@ throwErrorM = ErrorM . Left
 
 newtype ErrorT e m a = ErrorT { runErrorT :: m (Either e a) }
 
+instance Monad m => Functor (ErrorT e m) where
+	fmap = liftM
+
 instance Monad m => Monad (ErrorT e m) where
 	return = ErrorT . return . Right
 	(>>=) m k = ErrorT $ do
@@ -45,6 +51,9 @@ instance Monad m => Monad (ErrorT e m) where
 		case x of
 			Left l -> return $ Left l
 			Right r -> runErrorT $ k r
+
+instance MonadIO m => MonadIO (ErrorT e m) where
+	liftIO io = ErrorT (liftM Right (liftIO io))
 
 throwErrorT :: Monad m => e -> ErrorT e m a
 throwErrorT = ErrorT . return . Left

@@ -21,8 +21,10 @@ module DBus.Client
 	(
 	-- * Clients
 	  Client
-	, ConnectionError
+	, ClientError
 	, ClientOptions
+	, clientTransports
+	, clientAuthenticators
 	, defaultClientOptions
 	, connect
 	, connectWith
@@ -57,19 +59,16 @@ import           Data.Typeable (Typeable)
 import qualified Data.Set
 
 import           DBus
-import qualified DBus.Connection
-import           DBus.Connection (Connection)
-import           DBus.Connection.Authentication (Mechanism, external)
-import           DBus.Connection.Transport (Transport, unix, tcp)
-import           DBus.Connection.Error
+import           DBus.Client.Error
 import qualified DBus.Constants
 import           DBus.Constants ( errorFailed, errorUnknownMethod
                                 , errorInvalidParameters)
 import qualified DBus.Introspection
+import qualified DBus.Socket
 import           DBus.Util (void)
 
 data Client = Client
-	{ clientConnection :: Connection
+	{ clientSocket :: DBus.Socket.Socket
 	, clientCallbacks :: MVar (Map Serial Callback)
 	, clientSignalHandlers :: MVar [Callback]
 	, clientObjects :: MVar (Map ObjectPath ObjectInfo)
@@ -78,8 +77,8 @@ data Client = Client
 	}
 
 data ClientOptions = ClientOptions
-	{ clientTransports :: [Transport]
-	, clientAuthMechanisms :: [Mechanism]
+	{ clientTransports :: [DBus.Socket.Transport]
+	, clientAuthenticators :: [DBus.Socket.Authenticator]
 	
 	-- if specified, forces connection attempts to abort after the given
 	-- number of milliseconds.
@@ -105,8 +104,8 @@ data MemberInfo
 	= MemberMethod Signature Signature Callback
 	| MemberSignal Signature
 
-attach :: Connection -> IO Client
-attach connection = do
+attach :: DBus.Socket.Socket -> IO Client
+attach sock = do
 	callbacks <- newMVar Data.Map.empty
 	signalHandlers <- newMVar []
 	objects <- newMVar Data.Map.empty
@@ -118,7 +117,7 @@ attach connection = do
 		mainLoop client
 	
 	let client = Client
-		{ clientConnection = connection
+		{ clientSocket = sock
 		, clientCallbacks = callbacks
 		, clientSignalHandlers = signalHandlers
 		, clientObjects = objects
@@ -140,17 +139,17 @@ attach connection = do
 	
 	return client
 
-connect :: Address -> IO (Either ConnectionError Client)
+connect :: Address -> IO (Either ClientError Client)
 connect = connectWith defaultClientOptions
 
-connectWith :: ClientOptions -> Address -> IO (Either ConnectionError Client)
+connectWith :: ClientOptions -> Address -> IO (Either ClientError Client)
 connectWith opts addr = do
-	ret <- DBus.Connection.connect
-		(clientTransports opts)
-		(clientAuthMechanisms opts)
-		addr
+	ret <- DBus.Socket.connectWith (DBus.Socket.defaultSocketOptions
+		{ DBus.Socket.socketTransports = clientTransports opts
+		, DBus.Socket.socketAuthenticators = clientAuthenticators opts
+		}) addr
 	case ret of
-		Left err -> return (Left err)
+		Left err -> return (Left (ClientError (show err)))
 		Right conn -> Right `fmap` attach conn
 
 defaultClientOptions :: ClientOptions
@@ -164,21 +163,21 @@ disconnect client = do
 
 disconnect' :: Client -> IO ()
 disconnect' client = do
-	let connection = clientConnection client
+	let sock = clientSocket client
 	modifyMVar_ (clientCallbacks client) (\_ -> return Data.Map.empty)
 	modifyMVar_ (clientSignalHandlers client) (\_ -> return [])
 	modifyMVar_ (clientObjects client) (\_ -> return Data.Map.empty)
-	DBus.Connection.disconnect connection
+	DBus.Socket.close sock
 
 mainLoop :: Client -> IO ()
 mainLoop client = forever $ do
-	let connection = clientConnection client
+	let sock = clientSocket client
 	
-	received <- DBus.Connection.receive connection
+	received <- DBus.Socket.receive sock
 	msg <- case received of
 		Left err -> do
 			disconnect' client
-			connectionError ("Received invalid message: " ++ show err)
+			clientError ("Received invalid message: " ++ show err)
 		Right msg -> return msg
 	
 	dispatch client msg
@@ -217,10 +216,10 @@ dispatch client received = void . forkIO $ do
 
 send_ :: Message msg => Client -> msg -> (Serial -> IO a) -> IO a
 send_ client msg io = do
-	result <- DBus.Connection.send (clientConnection client) msg io
+	result <- DBus.Socket.send (clientSocket client) msg io
 	case result of
 		Right serial -> return serial
-		Left err -> connectionError ("Error sending message: " ++ show err)
+		Left err -> clientError ("Error sending message: " ++ show err)
 
 call :: Client -> MethodCall -> IO (Either MethodError MethodReturn)
 call client msg = do
@@ -241,14 +240,14 @@ call client msg = do
 #else
 		Left Control.Exception.BlockedOnDeadMVar ->
 #endif
-			connectionError "DBus.Client.call: connection closed during method call"
+			clientError "connection closed during method call"
 		Right ret -> return ret
 
 call_ :: Client -> MethodCall -> IO MethodReturn
 call_ client msg = do
 	result <- call client msg
 	case result of
-		Left err -> connectionError ("Call failed: " ++ Data.Text.unpack (methodErrorMessage err))
+		Left err -> clientError ("Call failed: " ++ Data.Text.unpack (methodErrorMessage err))
 		Right ret -> return ret
 
 emit :: Client -> Signal -> IO ()

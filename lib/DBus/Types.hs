@@ -1190,6 +1190,18 @@ instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, 
 		return (a1', a2', a3', a4', a5', a6', a7', a8', a9', a10', a11', a12', a13', a14', a15')
 	fromVariant _ = Nothing
 
+-- | A value used to uniquely identify a particular message within a session.
+-- 'Serial's are 32&#8208;bit unsigned integers, and eventually wrap.
+newtype Serial = Serial Word32
+	deriving (Eq, Ord, Show)
+
+instance IsVariant Serial where
+	toVariant (Serial x) = toVariant x
+	fromVariant = fmap Serial . fromVariant
+
+serialValue :: Serial -> Word32
+serialValue (Serial x) = x
+
 skipSepBy1 :: Parsec.Parser a -> Parsec.Parser b -> Parsec.Parser ()
 skipSepBy1 p sep = do
 	void p

@@ -59,19 +59,6 @@ data Flag
 	| NoAutoStart
 	deriving (Show, Eq, Ord)
 
--- | A value used to uniquely identify a particular message within a session.
--- 'Serial's are 32&#8208;bit unsigned integers, and eventually wrap.
-
-newtype Serial = Serial Word32
-	deriving (Eq, Ord, Show)
-
-instance IsVariant Serial where
-	toVariant (Serial x) = toVariant x
-	fromVariant = fmap Serial . fromVariant
-
-serialValue :: Serial -> Word32
-serialValue (Serial x) = x
-
 data MethodCall = MethodCall
 	{ methodCallPath        :: ObjectPath
 	, methodCallMember      :: MemberName

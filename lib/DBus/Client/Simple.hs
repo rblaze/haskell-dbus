@@ -61,7 +61,7 @@ import           Data.Word (Word32)
 import           DBus
 import           DBus.Client hiding (call, method, emit, export)
 import qualified DBus.Client
-import           DBus.Connection.Error
+import           DBus.Client.Error
 import           DBus.Constants (errorInvalidParameters)
 import           DBus.Util (maybeIndex)
 
@@ -71,7 +71,7 @@ connectSession :: IO Client
 connectSession = do
 	env <- getSessionAddress
 	case env of
-		Nothing -> connectionError (concat
+		Nothing -> clientError (concat
 			[ "connectSession: DBUS_SESSION_BUS_ADDRESS is"
 			, " missing or invalid."
 			])
@@ -89,7 +89,7 @@ connectSystem :: IO Client
 connectSystem = do
 	env <- getSystemAddress
 	case env of
-		Nothing -> connectionError (concat
+		Nothing -> clientError (concat
 			[ "connectSession: DBUS_SYSTEM_BUS_ADDRESS is"
 			, " invalid."
 			])
@@ -105,7 +105,7 @@ connectStarter :: IO Client
 connectStarter = do
 	env <- getStarterAddress
 	case env of
-		Nothing -> connectionError (concat
+		Nothing -> clientError (concat
 			[ "connectSession: DBUS_STARTER_ADDRESS is"
 			, " missing or invalid."
 			])
@@ -124,7 +124,7 @@ call_ :: Client -> MethodCall -> IO MethodReturn
 call_ client msg = do
 	result <- DBus.Client.call client msg
 	case result of
-		Left err -> connectionError ("Call failed: " ++ Data.Text.unpack (methodErrorMessage err))
+		Left err -> clientError ("Call failed: " ++ Data.Text.unpack (methodErrorMessage err))
 		Right ret -> return ret
 
 call :: Proxy -> InterfaceName -> MemberName -> [Variant] -> IO [Variant]
@@ -194,7 +194,7 @@ requestName client name flags = do
 		Just 2 -> return InQueue
 		Just 3 -> return Exists
 		Just 4 -> return AlreadyOwner
-		_ -> connectionError "Call failed: received invalid reply"
+		_ -> clientError "Call failed: received invalid reply"
 
 releaseName :: Client -> BusName -> IO ReleaseNameReply
 releaseName client name = do
@@ -206,7 +206,7 @@ releaseName client name = do
 		Just 1 -> return Released
 		Just 2 -> return NonExistent
 		Just 3 -> return NotOwner
-		_ -> connectionError "Call failed: received invalid reply"
+		_ -> clientError "Call failed: received invalid reply"
 
 -- | Used to automatically generate method signatures for introspection
 -- documents. To support automatic signatures, a method#8217;s parameters and
