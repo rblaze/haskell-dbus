@@ -19,8 +19,11 @@
 
 module DBus.Client.Simple
 	(
+	-- * Main module
+	  module DBus
+	
 	-- * Clients
-	  Client
+	, Client
 	, connectSystem
 	, connectSession
 	, connectStarter
@@ -47,55 +50,6 @@ module DBus.Client.Simple
 	, method
 	, export
 	, throwError
-	
-	-- * Re-exported modules
-	, Type(..)
-	
-	, Signature
-	, signature
-	, signature_
-	, signatureText
-	, signatureTypes
-	
-	, IsValue
-	, IsAtom
-	, typeOf
-	
-	, Variant
-	, IsVariant(..)
-	, variantType
-	
-	, ObjectPath
-	, objectPath
-	, objectPath_
-	, objectPathText
-	
-	, InterfaceName
-	, interfaceName
-	, interfaceName_
-	, interfaceNameText
-	
-	, MemberName
-	, memberName
-	, memberName_
-	, memberNameText
-	
-	, ErrorName
-	, errorName
-	, errorName_
-	, errorNameText
-	
-	, BusName
-	, busName
-	, busName_
-	, busNameText
-	
-	, Structure
-	, Array
-	, Dictionary
-	, structureItems
-	, arrayItems
-	, dictionaryItems
 	) where
 
 import           Data.Bits ((.|.))
