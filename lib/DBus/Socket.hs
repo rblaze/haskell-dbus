@@ -46,8 +46,8 @@ module DBus.Socket
 import           Prelude hiding (getLine)
 
 import           Control.Concurrent
-import qualified Control.Exception
-import           Control.Monad (when, unless)
+import           Control.Exception
+import           Control.Monad (unless)
 import           Control.Monad.IO.Class (liftIO)
 import           Control.Monad.Trans.Class (lift)
 import           Control.Monad.Trans.Reader
@@ -59,10 +59,9 @@ import qualified Data.ByteString.Char8 as Char8
 import           Data.Char (ord)
 import           Data.IORef
 import qualified Data.Map
-import           Data.Word (Word32)
 import qualified Network
 import qualified Network.Socket
-import qualified System.IO
+import           System.IO hiding (getLine)
 import qualified System.Posix.User
 import           Text.Printf (printf)
 
@@ -83,23 +82,23 @@ type SocketM = ErrorT SocketError IO
 socketError :: String -> SocketM a
 socketError = throwErrorT . SocketError
 
--- | TODO
-data Transport = Transport ByteString (Address -> SocketM Impl)
+socketIO :: IO a -> SocketM a
+socketIO io = do
+	tried <- liftIO (Control.Exception.try io)
+	case tried of
+		Left err -> socketError (show (err :: IOException))
+		Right a -> return a
 
 -- | TODO
-newtype Authenticator = Authenticator (Impl -> SocketM Bool)
+data Transport = Transport ByteString (Address -> SocketM Handle)
 
-data Impl = Impl
-	(Word32 -> SocketM ByteString)
-	(ByteString -> SocketM ())
-	(IO ())
+-- | TODO
+newtype Authenticator = Authenticator (Handle -> SocketM Bool)
 
 -- | TODO
 data Socket = Socket
 	{ socketAddress :: Address
-	, socketRead :: Word32 -> SocketM ByteString
-	, socketWrite :: ByteString -> SocketM ()
-	, socketClose :: IO ()
+	, socketHandle :: Handle
 	, socketSerial :: IORef Serial
 	, socketReadLock :: MVar ()
 	, socketWriteLock :: MVar ()
@@ -112,7 +111,10 @@ data SocketOptions = SocketOptions
 	}
 
 defaultSocketOptions :: SocketOptions
-defaultSocketOptions = undefined
+defaultSocketOptions = SocketOptions
+	{ socketTransports = [transportUnix, transportTCP]
+	, socketAuthenticators = [authExternal]
+	}
 
 connect :: Address -> IO (Either SocketError Socket)
 connect = connectWith defaultSocketOptions
@@ -122,25 +124,25 @@ connectWith opts addr = do
 	connected <- runErrorT (connectTransport (socketTransports opts) addr)
 	case connected of
 		Left err -> return (Left err)
-		Right impl@(Impl sRead sWrite sClose) -> do
-			authed <- runErrorT (authenticate impl (socketAuthenticators opts))
+		Right h -> do
+			authed <- runErrorT (authenticate h (socketAuthenticators opts))
 			case authed of
 				Left err -> do
-					sClose
+					hClose h
 					return (Left err)
 				Right False -> do
-					sClose
+					hClose h
 					return (Left (SocketError "Authentication failed"))
 				Right True -> do
 					serial <- newIORef (Serial 1)
 					readLock <- newMVar ()
 					writeLock <- newMVar ()
-					return (Right (Socket addr sRead sWrite sClose serial readLock writeLock))
+					return (Right (Socket addr h serial readLock writeLock))
 
 -- | Close an open 'Socket'. Once closed, the 'Socket' is no longer valid and
 -- must not be used.
 close :: Socket -> IO ()
-close = socketClose
+close = hClose . socketHandle
 
 -- | Send a single message, with a generated 'Serial'. The second parameter
 -- exists to prevent race conditions when registering a reply handler; it
@@ -156,12 +158,11 @@ send sock msg io = do
 	case marshalMessage LittleEndian serial msg of
 		Right bytes -> do
 			a <- io serial
-			-- TODO: catch IO errors and report via return value
-			ret <- withMVar
+			tried <- Control.Exception.try (withMVar
 				(socketWriteLock sock)
-				(\_ -> runErrorT (socketWrite sock bytes))
-			case ret of
-				Left err -> undefined -- TODO: return (Left err)
+				(\_ -> Data.ByteString.hPut (socketHandle sock) bytes))
+			case tried of
+				Left err -> error ("TODO: report socket error " ++ show (err :: IOException))
 				Right _ -> return (Right a)
 		Left err -> return (Left err)
 
@@ -177,14 +178,15 @@ nextSerial sock = atomicModifyIORef
 -- finished.
 receive :: Socket -> IO (Either UnmarshalError ReceivedMessage)
 receive sock = do
-	ret <- withMVar
+	tried <- Control.Exception.try (withMVar
 		(socketReadLock sock)
-		(\_ -> runErrorT (unmarshalMessageM (socketRead sock)))
-	case ret of
-		Left err -> undefined -- TODO: return (Left err)
-		Right unmarshaled -> return unmarshaled
+		-- TODO: instead of fromIntegral, unify types
+		(\_ -> unmarshalMessageM (Data.ByteString.hGet (socketHandle sock) . fromIntegral)))
+	case tried of
+		Left err -> error ("TODO: report socket error " ++ show (err :: IOException))
+		Right a -> return a
 
-connectTransport :: [Transport] -> Address -> SocketM Impl
+connectTransport :: [Transport] -> Address -> SocketM Handle
 connectTransport transports addr = loop transports where
 	method = addressMethod addr
 	loop [] = socketError ("Unknown address method: " ++ show method)
@@ -211,7 +213,7 @@ transportUnix = Transport "unix" $ \a -> let
 	
 	getHandle = do
 		port <- fmap Network.UnixSocket path
-		liftIO (Network.connectTo "localhost" port)
+		socketIO (Network.connectTo "localhost" port)
 	
 	in getHandle >>= connectHandle
 
@@ -224,9 +226,9 @@ transportTCP = Transport "tcp" $ \a -> let
 	getHandle = do
 		port <- getPort
 		family <- getFamily
-		addrs <- liftIO (getAddresses family)
+		addrs <- socketIO (getAddresses family)
 		sock <- openSocket port addrs
-		liftIO (Network.Socket.socketToHandle sock System.IO.ReadWriteMode)
+		socketIO (Network.Socket.socketToHandle sock System.IO.ReadWriteMode)
 	hostname = maybe "localhost" Char8.unpack (param "host")
 	unknownFamily x = "Unknown socket family for TCP transport: " ++ show x
 	getFamily = case param "family" of
@@ -269,12 +271,11 @@ transportTCP = Transport "tcp" $ \a -> let
 
 	openSocket _ [] = socketError ("Failed to open socket to address " ++ show a)
 	openSocket port (addr:addrs) = do
-		mSock <- liftIO $ Control.Exception.catch
-			(Just `fmap` openSocket' port addr)
-			(\(Control.Exception.SomeException _) -> return Nothing)
-		case mSock of
-			Just sock -> return sock
-			Nothing -> openSocket port addrs
+		tried <- liftIO (Control.Exception.try (openSocket' port addr))
+		case tried :: Either IOException Network.Socket.Socket of
+			Left err -> case err :: IOException of
+				_ -> openSocket port addrs 
+			Right sock -> return sock
 	openSocket' port addr = do
 		sock <- Network.Socket.socket (Network.Socket.addrFamily addr)
 		                  (Network.Socket.addrSocketType addr)
@@ -284,48 +285,44 @@ transportTCP = Transport "tcp" $ \a -> let
 	
 	in getHandle >>= connectHandle
 
-connectHandle :: System.IO.Handle -> SocketM Impl
-connectHandle h = liftIO $ do
+connectHandle :: System.IO.Handle -> SocketM Handle
+connectHandle h = socketIO $ do
 	System.IO.hSetBuffering h System.IO.NoBuffering
 	System.IO.hSetBinaryMode h True
-	return (Impl
-		(liftIO . Data.ByteString.hGet h . fromIntegral)
-		(liftIO . Data.ByteString.hPut h)
-		(System.IO.hClose h))
+	return h
 
-authenticate :: Impl
+authenticate :: Handle
              -> [Authenticator]
              -> SocketM Bool
-authenticate impl authenticators = go where
+authenticate h authenticators = go where
 	go = do
-		let Impl _ put _ = impl
-		put (Data.ByteString.pack [0])
+		socketIO (Data.ByteString.hPut h (Data.ByteString.pack [0]))
 		loop authenticators
 	loop [] = return False
 	loop ((Authenticator auth):next) = do
-		success <- auth impl
+		success <- auth h
 		if success
 			then return True
 			else loop next
 
-type AuthM = ReaderT Impl SocketM
+type AuthM = ReaderT Handle SocketM
 
 putLine :: String -> AuthM ()
 putLine line = do
-	Impl _ put _ <- ask
-	lift (put (Char8.pack (line ++ "\r\n")))
+	h <- ask
+	lift (socketIO (Data.ByteString.hPut h (Char8.pack (line ++ "\r\n"))))
 
 getLine :: AuthM String
 getLine = do
-	Impl get _ _ <- ask
-	let getchr = Char8.head `fmap` get 1
-	lift $ do
+	h <- ask
+	let getchr = Char8.head `fmap` Data.ByteString.hGet h 1
+	lift (socketIO (do
 		raw <- readUntil "\r\n" getchr
-		return (dropEnd 2 raw)
+		return (dropEnd 2 raw)))
 
 authExternal :: Authenticator
 authExternal = Authenticator $ runReaderT $ do
-	uid <- liftIO System.Posix.User.getRealUserID
+	uid <- lift (socketIO System.Posix.User.getRealUserID)
 	let token = concatMap (printf "%02X" . ord) (show uid)
 	putLine ("AUTH EXTERNAL " ++ token)
 	resp <- getLine
