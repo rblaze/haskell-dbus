@@ -488,7 +488,7 @@ unmarshalStructure ts = do
 
 marshalVariant :: Variant -> Marshal ()
 marshalVariant var@(Variant val) = do
-	sig <- case checkSignature [valueType val] of
+	sig <- case signature [valueType val] of
 		Just x' -> return x'
 		Nothing -> throwError (concat
 			[ "Signature "
@@ -592,7 +592,7 @@ marshalMessage e serial msg = runMarshal where
 	         . Data.Binary.Builder.toLazyByteString
 
 checkBodySig :: [Variant] -> Marshal Signature
-checkBodySig vs = case checkSignature (map variantType vs) of
+checkBodySig vs = case signature (map variantType vs) of
 	Just x -> return x
 	Nothing -> throwError (concat
 		[ "Message body ", show vs

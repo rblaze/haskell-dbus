@@ -108,7 +108,6 @@ import           DBus.Client hiding (call, method, emit, export)
 import qualified DBus.Client
 import           DBus.Connection.Error
 import           DBus.Constants (errorInvalidParameters)
-import           DBus.Types (checkSignature)
 import           DBus.Util (maybeIndex)
 
 -- | Connect to the bus specified in the environment variable
@@ -305,10 +304,10 @@ instance (IsVariant a, AutoReply fun) => AutoReply (a -> fun) where
 method :: (AutoSignature fun, AutoReply fun) => InterfaceName -> MemberName -> fun -> Method
 method iface name fun = DBus.Client.method iface name inSig outSig io where
 	(typesIn, typesOut) = funTypes fun
-	inSig = case checkSignature typesIn of
+	inSig = case signature typesIn of
 		Just sig -> sig
 		Nothing -> invalid "input"
-	outSig = case checkSignature typesOut of
+	outSig = case signature typesOut of
 		Just sig -> sig
 		Nothing -> invalid "output"
 	io vs = case apply fun vs of

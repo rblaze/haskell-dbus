@@ -41,6 +41,7 @@ module DBus
 	, signature_
 	, signatureText
 	, signatureTypes
+	, parseSignature
 	
 	, IsValue
 	, IsAtom

@@ -131,25 +131,12 @@ typeCode (TypeStructure ts) = concat
 	["(", concatMap typeCode ts, ")"]
 
 instance Data.String.IsString Signature where
-	fromString = signature_ . Data.Text.pack
+	fromString s = case parseSignature (Data.ByteString.Char8.pack s) of
+		Nothing -> undefined
+		Just sig -> sig
 
-signature :: Text -> Maybe Signature
-signature text = parseSignature bytes where
-	bytes = Data.Text.Encoding.encodeUtf8 text
-
-signature_ :: Text -> Signature
-signature_ = tryParse "signature" signature
-
-parseSignature :: ByteString -> Maybe Signature
-parseSignature bytes =
-	case Data.ByteString.length bytes of
-		0 -> Just (Signature [])
-		1 -> parseSigFast bytes
-		len | len <= 255 -> parseSigFull bytes
-		_ -> Nothing
-
-checkSignature :: [Type] -> Maybe Signature
-checkSignature = check where
+signature :: [Type] -> Maybe Signature
+signature = check where
 	check ts = if sumLen ts > 255
 		then Nothing
 		else Just (Signature ts)
@@ -160,6 +147,17 @@ checkSignature = check where
 	len (TypeDictionary kt vt) = 3 + len kt + len vt
 	len (TypeStructure ts) = 2 + sumLen ts
 	len _ = 1
+
+signature_ :: [Type] -> Signature
+signature_ = undefined
+
+parseSignature :: ByteString -> Maybe Signature
+parseSignature bytes =
+	case Data.ByteString.length bytes of
+		0 -> Just (Signature [])
+		1 -> parseSigFast bytes
+		len | len <= 255 -> parseSigFull bytes
+		_ -> Nothing
 
 parseSigFast :: ByteString -> Maybe Signature
 parseSigFast bytes =

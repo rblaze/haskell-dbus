@@ -325,7 +325,7 @@ introspectRoot client = methodIntrospect $ do
 		[DBus.Introspection.Interface iface
 			[DBus.Introspection.Method name
 				[]
-				[DBus.Introspection.Parameter "" "s"]]
+				[DBus.Introspection.Parameter "" TypeString]]
 			[] []]
 		[DBus.Introspection.Object p [] [] | p <- paths])
 
@@ -360,4 +360,4 @@ introspect path obj = DBus.Introspection.Object path interfaces [] where
 			(map introspectParam (signatureTypes sig))]
 	introspectSignal _ = []
 	
-	introspectParam t = DBus.Introspection.Parameter "" (Signature [t])
+	introspectParam = DBus.Introspection.Parameter ""

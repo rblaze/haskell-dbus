@@ -37,7 +37,7 @@ import qualified Data.Text.Encoding
 import qualified Data.XML.Types as X
 import qualified Text.XML.LibXML.SAX as SAX
 
-import qualified DBus.Types as T
+import qualified DBus as T
 
 data Object = Object T.ObjectPath [Interface] [Object]
 	deriving (Show, Eq)
@@ -51,7 +51,7 @@ data Method = Method T.MemberName [Parameter] [Parameter]
 data Signal = Signal T.MemberName [Parameter]
 	deriving (Show, Eq)
 
-data Parameter = Parameter Text T.Signature
+data Parameter = Parameter Text T.Type
 	deriving (Show, Eq)
 
 data Property = Property Text T.Signature [PropertyAccess]
@@ -139,14 +139,17 @@ parseSignal e = do
 	return $ Signal name params
 
 parseType :: X.Element -> Maybe T.Signature
-parseType e = X.attributeText "type" e >>= T.signature
+parseType e = do
+	txt <- X.attributeText "type" e
+	let bytes = Data.Text.Encoding.encodeUtf8 txt
+	T.parseSignature bytes
 
 parseParameter :: X.Element -> Maybe Parameter
 parseParameter e = do
 	let name = getattr "name" e
 	sig <- parseType e
 	case T.signatureTypes sig of
-		[_] -> Just (Parameter name sig)
+		[t] -> Just (Parameter name t)
 		_ -> Nothing
 
 parseProperty :: X.Element -> Maybe Property
@@ -233,9 +236,9 @@ writeSignal (Signal name params) = writeElement "signal"
 		mapM_ (writeParameter "out") params
 
 writeParameter :: Text -> Parameter -> XmlWriter ()
-writeParameter direction (Parameter name sig) = writeEmptyElement "arg"
+writeParameter direction (Parameter name t) = writeEmptyElement "arg"
 	[ ("name", name)
-	, ("type", T.signatureText sig)
+	, ("type", T.signatureText (T.signature_ [t]))
 	, ("direction", direction)
 	]
 
