@@ -49,7 +49,53 @@ module DBus.Client.Simple
 	, throwError
 	
 	-- * Re-exported modules
-	, module DBus.Types
+	, Type(..)
+	
+	, Signature
+	, signature
+	, signature_
+	, signatureText
+	, signatureTypes
+	
+	, IsValue
+	, IsAtom
+	, typeOf
+	
+	, Variant
+	, IsVariant(..)
+	, variantType
+	
+	, ObjectPath
+	, objectPath
+	, objectPath_
+	, objectPathText
+	
+	, InterfaceName
+	, interfaceName
+	, interfaceName_
+	, interfaceNameText
+	
+	, MemberName
+	, memberName
+	, memberName_
+	, memberNameText
+	
+	, ErrorName
+	, errorName
+	, errorName_
+	, errorNameText
+	
+	, BusName
+	, busName
+	, busName_
+	, busNameText
+	
+	, Structure
+	, Array
+	, Dictionary
+	, structureItems
+	, arrayItems
+	, dictionaryItems
 	) where
 
 import           Data.Bits ((.|.))
@@ -57,20 +103,19 @@ import qualified Data.Text -- for haddock
 import qualified Data.Set
 import           Data.Word (Word32)
 
-import           DBus.Address
+import           DBus
 import           DBus.Client hiding (call, method, emit, export)
 import qualified DBus.Client
 import           DBus.Connection.Error
 import           DBus.Constants (errorInvalidParameters)
-import           DBus.Message
-import           DBus.Types
+import           DBus.Types (checkSignature)
 import           DBus.Util (maybeIndex)
 
 -- | Connect to the bus specified in the environment variable
 -- @DBUS_SESSION_BUS_ADDRESS@, which must be set.
 connectSession :: IO Client
 connectSession = do
-	env <- DBus.Address.getSessionAddress
+	env <- getSessionAddress
 	case env of
 		Nothing -> connectionError (concat
 			[ "connectSession: DBUS_SESSION_BUS_ADDRESS is"
@@ -84,7 +129,7 @@ connectSession = do
 -- is not set.
 connectSystem :: IO Client
 connectSystem = do
-	env <- DBus.Address.getSystemAddress
+	env <- getSystemAddress
 	case env of
 		Nothing -> connectionError (concat
 			[ "connectSession: DBUS_SYSTEM_BUS_ADDRESS is"
@@ -96,7 +141,7 @@ connectSystem = do
 -- @DBUS_STARTER_ADDRESS@, which must be set.
 connectStarter :: IO Client
 connectStarter = do
-	env <- DBus.Address.getStarterAddress
+	env <- getStarterAddress
 	case env of
 		Nothing -> connectionError (concat
 			[ "connectSession: DBUS_STARTER_BUS_ADDRESS is"
