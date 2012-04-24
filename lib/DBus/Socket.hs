@@ -21,6 +21,7 @@ module DBus.Socket
 	-- * DBus sockets
 	  Socket
 	, SocketError
+	, socketAddress
 	, connect
 	, close
 	, send
@@ -92,12 +93,16 @@ newtype Authenticator = Authenticator (Handle -> SocketM Bool)
 
 -- | TODO
 data Socket = Socket
-	{ socketAddress :: Address
+	{ socketAddress_ :: Address
 	, socketHandle :: Handle
 	, socketSerial :: IORef Serial
 	, socketReadLock :: MVar ()
 	, socketWriteLock :: MVar ()
 	}
+
+-- | TODO
+socketAddress :: Socket -> Address
+socketAddress = socketAddress_
 
 -- | TODO
 data SocketOptions = SocketOptions
