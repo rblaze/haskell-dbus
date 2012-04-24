@@ -152,8 +152,14 @@ connectWith opts addr = do
 		Left err -> return (Left (ClientError (show err)))
 		Right conn -> Right `fmap` attach conn
 
+-- | TODO
 defaultClientOptions :: ClientOptions
-defaultClientOptions = undefined
+defaultClientOptions = ClientOptions
+	{ clientTransports = DBus.Socket.socketTransports DBus.Socket.defaultSocketOptions
+	, clientAuthenticators = DBus.Socket.socketAuthenticators DBus.Socket.defaultSocketOptions
+	, clientTimeout = Nothing
+	, clientReconnect = True
+	}
 
 -- | Stop a 'Client''s callback thread and close its underlying socket.
 disconnect :: Client -> IO ()
