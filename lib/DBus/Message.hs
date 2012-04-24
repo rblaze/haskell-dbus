@@ -22,7 +22,7 @@ import qualified Data.Set
 import           Data.Set (Set)
 import qualified Data.Text
 import           Data.Text (Text)
-import           Data.Word (Word8, Word32)
+import           Data.Word (Word8)
 
 import           DBus.Types hiding (errorName)
 import           DBus.Util (maybeIndex)
