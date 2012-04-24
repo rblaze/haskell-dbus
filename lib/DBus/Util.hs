@@ -21,11 +21,13 @@ module DBus.Util
 	, void
 	, untilM
 	, parseBytes
+	, readPortNumber
 	) where
 
 import qualified Data.ByteString.Char8 as Char8
 import           Data.Char (digitToInt)
 import           Data.List (isPrefixOf)
+import           Network.Socket (PortNumber)
 
 import           Text.ParserCombinators.Parsec (Parser, runParser)
 
@@ -70,3 +72,13 @@ parseBytes :: Parser a -> Char8.ByteString -> Maybe a
 parseBytes p bytes = case runParser p () "" (Char8.unpack bytes) of
 	Left _ -> Nothing
 	Right a -> Just a
+
+readPortNumber :: String -> Maybe PortNumber
+readPortNumber s = do
+	case dropWhile (\c -> c >= '0' && c <= '9') s of
+		[] -> return ()
+		_ -> Nothing
+	let word = read s :: Integer
+	if word > 0 && word <= 65535
+		then Just (fromInteger word)
+		else Nothing

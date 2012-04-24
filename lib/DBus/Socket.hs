@@ -47,12 +47,9 @@ import           Prelude hiding (getLine)
 
 import           Control.Concurrent
 import           Control.Exception
-import           Control.Monad (unless)
 import           Control.Monad.IO.Class (liftIO)
 import           Control.Monad.Trans.Class (lift)
 import           Control.Monad.Trans.Reader
-import           Data.Binary.Get (runGet, getWord16host)
-import           Data.Binary.Put (runPut, putWord16be)
 import qualified Data.ByteString
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as Char8
@@ -65,12 +62,10 @@ import           System.IO hiding (getLine)
 import qualified System.Posix.User
 import           Text.Printf (printf)
 
-import           Text.ParserCombinators.Parsec
-
 import           DBus
 import           DBus.Types (Serial(..))
 import           DBus.Wire (unmarshalMessageM)
-import           DBus.Util (readUntil, dropEnd)
+import           DBus.Util (readUntil, dropEnd, readPortNumber)
 import           DBus.Util.MonadError
 
 -- | TODO
@@ -240,21 +235,9 @@ transportTCP = Transport "tcp" $ \a -> let
 	badPort x = "Invalid socket port for TCP transport: " ++ show x
 	getPort = case param "port" of
 		Nothing -> socketError missingPort
-		Just x -> case parse parseWord16 "" (Char8.unpack x) of
-			Right x' -> return (Network.Socket.PortNum x')
-			Left  _  -> socketError (badPort x)
-
-	parseWord16 = do
-		chars <- many1 digit
-		eof
-		let value = read chars :: Integer
-		unless (value > 0 && value <= 65535) $
-			-- Calling 'fail' is acceptable here, because Parsec 2
-			-- offers no other error reporting mechanism, and
-			-- implements 'fail'.
-			fail "bad port"
-		let word = fromIntegral value
-		return (runGet getWord16host (runPut (putWord16be word)))
+		Just x -> case readPortNumber (Char8.unpack x) of
+			Just port -> return port
+			Nothing -> socketError (badPort x)
 
 	getAddresses family = do
 		let hints = Network.Socket.defaultHints
