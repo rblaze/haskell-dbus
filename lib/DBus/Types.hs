@@ -132,7 +132,7 @@ typeCode (TypeStructure ts) = concat
 
 instance Data.String.IsString Signature where
 	fromString s = case parseSignature (Data.ByteString.Char8.pack s) of
-		Nothing -> undefined
+		Nothing -> error ("invalid signature: " ++ show s)
 		Just sig -> sig
 
 signature :: [Type] -> Maybe Signature
@@ -149,7 +149,9 @@ signature = check where
 	len _ = 1
 
 signature_ :: [Type] -> Signature
-signature_ = undefined
+signature_ ts = case signature ts of
+	Just sig -> sig
+	Nothing -> error ("invalid signature: " ++ show ts)
 
 parseSignature :: ByteString -> Maybe Signature
 parseSignature bytes =

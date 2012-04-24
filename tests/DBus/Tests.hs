@@ -53,11 +53,8 @@ import qualified System.Posix.Env
 import           DBus
 import           DBus.Client ()
 import           DBus.Client.Simple ()
-import           DBus.Connection ()
-import           DBus.Message ()
-import           DBus.Message.Internal hiding (errorName)
+import           DBus.Socket ()
 import           DBus.Types
-import           DBus.Types.Internal
 import qualified DBus.Wire
 import qualified DBus.Introspection
 
@@ -188,93 +185,93 @@ suite_Address = suite "address"
 	]
 
 suite_Signature :: Suite
-suite_Signature = suite "signature"
+suite_Signature = suite "parseSignature"
 	[ suite "valid"
 		[ suite "atom"
 			[ test $ assertions "bool" $ do
-				sig <- requireJust (signature "b")
+				sig <- requireJust (parseSignature "b")
 				$assert $ equal (signatureTypes sig) [TypeBoolean]
 			, test $ assertions "word8" $ do
-				sig <- requireJust (signature "y")
+				sig <- requireJust (parseSignature "y")
 				$assert $ equal (signatureTypes sig) [TypeWord8]
 			, test $ assertions "word16" $ do
-				sig <- requireJust (signature "q")
+				sig <- requireJust (parseSignature "q")
 				$assert $ equal (signatureTypes sig) [TypeWord16]
 			, test $ assertions "word32" $ do
-				sig <- requireJust (signature "u")
+				sig <- requireJust (parseSignature "u")
 				$assert $ equal (signatureTypes sig) [TypeWord32]
 			, test $ assertions "word64" $ do
-				sig <- requireJust (signature "t")
+				sig <- requireJust (parseSignature "t")
 				$assert $ equal (signatureTypes sig) [TypeWord64]
 			, test $ assertions "int16" $ do
-				sig <- requireJust (signature "n")
+				sig <- requireJust (parseSignature "n")
 				$assert $ equal (signatureTypes sig) [TypeInt16]
 			, test $ assertions "int32" $ do
-				sig <- requireJust (signature "i")
+				sig <- requireJust (parseSignature "i")
 				$assert $ equal (signatureTypes sig) [TypeInt32]
 			, test $ assertions "int64" $ do
-				sig <- requireJust (signature "x")
+				sig <- requireJust (parseSignature "x")
 				$assert $ equal (signatureTypes sig) [TypeInt64]
 			, test $ assertions "double" $ do
-				sig <- requireJust (signature "d")
+				sig <- requireJust (parseSignature "d")
 				$assert $ equal (signatureTypes sig) [TypeDouble]
 			, test $ assertions "string" $ do
-				sig <- requireJust (signature "s")
+				sig <- requireJust (parseSignature "s")
 				$assert $ equal (signatureTypes sig) [TypeString]
 			, test $ assertions "object-path" $ do
-				sig <- requireJust (signature "o")
+				sig <- requireJust (parseSignature "o")
 				$assert $ equal (signatureTypes sig) [TypeObjectPath]
-			, test $ assertions "signature" $ do
-				sig <- requireJust (signature "g")
+			, test $ assertions "parseSignature" $ do
+				sig <- requireJust (parseSignature "g")
 				$assert $ equal (signatureTypes sig) [TypeSignature]
 			]
 		
 		, suite "container"
 			[ test $ assertions "variant" $ do
-				sig <- requireJust (signature "v")
+				sig <- requireJust (parseSignature "v")
 				$assert $ equal (signatureTypes sig) [TypeVariant]
 			, test $ assertions "array" $ do
-				sig <- requireJust (signature "ay")
+				sig <- requireJust (parseSignature "ay")
 				$assert $ equal (signatureTypes sig) [TypeArray TypeWord8]
 			, test $ assertions "struct" $ do
-				sig <- requireJust (signature "(yy)")
+				sig <- requireJust (parseSignature "(yy)")
 				$assert $ equal (signatureTypes sig) [TypeStructure [TypeWord8, TypeWord8]]
 			, test $ assertions "dictionary" $ do
-				sig <- requireJust (signature "a{yy}")
+				sig <- requireJust (parseSignature "a{yy}")
 				$assert $ equal (signatureTypes sig) [TypeDictionary TypeWord8 TypeWord8]
 			]
 		
 		, test $ assertions "empty" $ do
-			sig <- requireJust (signature "")
+			sig <- requireJust (parseSignature "")
 			$assert $ equal (signatureTypes sig) []
 		]
 	
 	, suite "invalid"
-		[ test $ assertions "struct-code" ($assert $ nothing (signature "r"))
-		, test $ assertions "struct-empty" ($assert $ nothing (signature "()"))
-		, test $ assertions "dict-code" ($assert $ nothing (signature "e"))
-		, test $ assertions "dict-container-key" ($assert $ nothing (signature "a{vy}"))
-		, test $ assertions "unix-fd" ($assert $ nothing (signature "h"))
+		[ test $ assertions "struct-code" ($assert $ nothing (parseSignature "r"))
+		, test $ assertions "struct-empty" ($assert $ nothing (parseSignature "()"))
+		, test $ assertions "dict-code" ($assert $ nothing (parseSignature "e"))
+		, test $ assertions "dict-container-key" ($assert $ nothing (parseSignature "a{vy}"))
+		, test $ assertions "unix-fd" ($assert $ nothing (parseSignature "h"))
 		]
 	
 	, suite "length"
 		[ test $ assertions "length-254" $ do
-				sig <- requireJust (signature (T.replicate 254 "y"))
+				sig <- requireJust (parseSignature (Char8.replicate 254 'y'))
 				$assert $ equal (signatureTypes sig) (replicate 254 TypeWord8)
 		, test $ assertions "length-255" $ do
-				sig <- requireJust (signature (T.replicate 255 "y"))
+				sig <- requireJust (parseSignature (Char8.replicate 255 'y'))
 				$assert $ equal (signatureTypes sig) (replicate 255 TypeWord8)
-		, test $ assertions "length-256" ($assert $ nothing (signature (T.replicate 256 "y")))
+		, test $ assertions "length-256" ($assert $ nothing (parseSignature (Char8.replicate 256 'y')))
 		]
 	
 	, suite "instances"
-		[ test $ assertions "show" ($assert $ equal "(Signature \"y\")" (showsPrec 11 (fromJust (signature "y")) ""))
+		[ test $ assertions "show" ($assert $ equal "(Signature \"y\")" (showsPrec 11 (fromJust (parseSignature "y")) ""))
 		]
 	
 	, suite "properties"
-		[ property "signature-parsing" (forAll genSignatureText (isJust . signature))
+		[ property "signature-parsing" (forAll genSignatureBytes (isJust . parseSignature))
 		, property "check-signature" $ do
-			let prop types = checkSignature types == signature (T.pack (concatMap typeCode types))
+			let prop types = signature types == parseSignature (Char8.pack (concatMap typeCode types))
 			forAll (listOf1 arbitrary) prop
 		]
 	]
@@ -320,7 +317,7 @@ suite_Variant = suite "variant"
 		, test $ assertions "lazy-text" (assertAtom TypeString (Data.Text.Lazy.pack ""))
 		, test $ assertions "string" (assertAtom TypeString ("" :: String))
 		, test $ assertions "object-path" (assertAtom TypeObjectPath (objectPath_ "/"))
-		, test $ assertions "signature" (assertAtom TypeSignature (signature_ ""))
+		, test $ assertions "signature" (assertAtom TypeSignature (signature_ []))
 		]
 	
 	, suite "instances-of-IsValue"
@@ -358,7 +355,7 @@ suite_Variant = suite "variant"
 		, test $ assertions "double" ($assert $ equal "Variant 0.1" (show (toVariant (0.1 :: Double))))
 		, test $ assertions "string" ($assert $ equal "Variant \"\"" (show (toVariant (T.pack ""))))
 		, test $ assertions "object-path" ($assert $ equal "Variant (ObjectPath \"/\")" (show (toVariant (objectPath_ "/"))))
-		, test $ assertions "signature" ($assert $ equal "Variant (Signature \"\")" (show (toVariant (signature_ ""))))
+		, test $ assertions "signature" ($assert $ equal "Variant (Signature \"\")" (show (toVariant (signature_ []))))
 		, test $ assertions "variant" ($assert $ equal "Variant (Variant True)" (show (toVariant (toVariant True))))
 		, test $ assertions "array" ($assert $ equal "Variant [True, False]" (show (toVariant [True, False])))
 		, suite "array"
@@ -560,10 +557,10 @@ suite_Wire = suite "wire"
 			let Right received = unmarshalMessage bytes in
 			ReceivedMethodReturn s Nothing msg == received
 		
-		, property "error" $ forAll (arbitrary :: Gen Error) $ \msg e s ->
+		, property "error" $ forAll (arbitrary :: Gen MethodError) $ \msg e s ->
 			let Right bytes = marshalMessage e s msg in
 			let Right received = unmarshalMessage bytes in
-			ReceivedError s Nothing msg == received
+			ReceivedMethodError s Nothing msg == received
 		
 		, property "signal" $ forAll (arbitrary :: Gen Signal) $ \msg e s ->
 			let Right bytes = marshalMessage e s msg in
@@ -620,8 +617,8 @@ genAddressBytes = gen where
 genHex :: Gen Char
 genHex = elements (['0'..'9'] ++ ['a'..'f'] ++ ['A'..'F'])
 
-genSignatureText :: Gen Text
-genSignatureText = gen where
+genSignatureBytes :: Gen ByteString
+genSignatureBytes = gen where
 	anyType = oneof [atom, container]
 	atom = elements ["b", "y", "q", "u", "t", "n", "i", "x", "d", "s", "o", "g"]
 	container = oneof
@@ -641,7 +638,7 @@ genSignatureText = gen where
 		chars <- fmap concat (listOf anyType)
 		if length chars > 255
 			then halfSized gen
-			else return (T.pack chars)
+			else return (Char8.pack chars)
 
 halfSized :: Gen a -> Gen a
 halfSized gen = sized (\n -> if n > 0
@@ -732,7 +729,7 @@ instance Arbitrary Value where
 instance Arbitrary Variant where
 	arbitrary = do
 		val <- arbitrary
-		case checkSignature [valueType val] of
+		case signature [valueType val] of
 			Just _ -> return (Variant val)
 			Nothing -> halfSized arbitrary
 
@@ -834,7 +831,10 @@ instance (Arbitrary a, Ord a) => Arbitrary (Data.Set.Set a) where
 	arbitrary = liftM Data.Set.fromList arbitrary
 
 instance Arbitrary Signature where
-	arbitrary = liftM signature_ genSignatureText
+	arbitrary = liftM parse_ genSignatureBytes where
+		parse_ b = case parseSignature b of
+			Just sig -> sig
+			Nothing -> error ("invalid signature: " ++ show b)
 
 instance Arbitrary DBus.Wire.Endianness where
 	arbitrary = elements [DBus.Wire.BigEndian, DBus.Wire.LittleEndian]
@@ -860,8 +860,8 @@ instance Arbitrary MethodReturn where
 		<*> arbitrary
 		<*> genMessageBody
 
-instance Arbitrary Error where
-	arbitrary = Error
+instance Arbitrary MethodError where
+	arbitrary = MethodError
 		<$> arbitrary
 		<*> arbitrary
 		<*> arbitrary
@@ -878,7 +878,7 @@ instance Arbitrary Signal where
 genMessageBody :: Gen [Variant]
 genMessageBody = do
 	vars <- arbitrary
-	case checkSignature (map variantType vars) of
+	case signature (map variantType vars) of
 		Just _ -> return vars
 		Nothing -> halfSized genMessageBody
 
@@ -923,7 +923,7 @@ instance Arbitrary DBus.Introspection.Signal where
 instance Arbitrary DBus.Introspection.Parameter where
 	arbitrary = DBus.Introspection.Parameter
 		<$> arbitrary
-		<*> singleType
+		<*> arbitrary
 
 instance Arbitrary DBus.Introspection.Property where
 	arbitrary = DBus.Introspection.Property
@@ -940,6 +940,6 @@ instance Arbitrary DBus.Introspection.Property where
 singleType :: Gen Signature
 singleType = do
 	t <- arbitrary
-	case checkSignature [t] of
+	case signature [t] of
 		Just s -> return s
 		Nothing -> halfSized singleType
