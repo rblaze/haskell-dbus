@@ -46,7 +46,9 @@ addressParameters (Address _ x) = x
 
 address :: ByteString -> Map ByteString ByteString -> Maybe Address
 address method params = if validMethod method && validParams params
-	then Just (Address method params)
+	then if ByteString.null method && Data.Map.null params
+		then Nothing
+		else Just (Address method params)
 	else Nothing
 
 validMethod :: ByteString -> Bool
@@ -54,9 +56,13 @@ validMethod = Char8.all validChar where
 	validChar c = c /= ';' && c /= ':'
 
 validParams :: Map ByteString ByteString -> Bool
-validParams = all validKey . Data.Map.keys where
+validParams = all validItem . Data.Map.toList where
+	validItem (k, v) = notNull k && notNull v && validKey k
 	validKey = Char8.all validChar
 	validChar c = c /= ';' && c /= ',' && c /= '='
+
+notNull :: ByteString -> Bool
+notNull = not . ByteString.null
 
 optionallyEncoded :: [Char]
 optionallyEncoded = concat
