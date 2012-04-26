@@ -8,7 +8,7 @@ flag coverage
   manual: True
 
 executable haskell-dbus-tests
-  main-is: Main.hs
+  main-is: DBusTests.hs
   ghc-options: -Wall -fno-warn-orphans
   hs-source-dirs: ../lib,.
 
@@ -19,7 +19,7 @@ executable haskell-dbus-tests
       base > 4.0 && < 5.0
     , binary >= 0.4 && < 0.6
     , bytestring >= 0.9 && < 0.10
-    , chell >= 0.1.1 && < 0.2
+    , chell >= 0.2 && < 0.3
     , chell-quickcheck >= 0.1 && < 0.2
     , containers >= 0.1 && < 0.5
     , data-binary-ieee754 >= 0.3 && < 0.5
