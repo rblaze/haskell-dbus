@@ -152,7 +152,7 @@ close = hClose . socketHandle
 -- Only one message may be sent at a time; if multiple threads attempt to
 -- send messages in parallel, one will block until after the other has
 -- finished.
-send :: Message msg => Socket -> msg -> (Serial -> IO a) -> IO (Either MarshalError a)
+send :: Message msg => Socket -> msg -> (Serial -> IO a) -> IO (Either SocketError a)
 send sock msg io = do
 	serial <- nextSerial sock
 	case marshalMessage LittleEndian serial msg of
@@ -162,9 +162,9 @@ send sock msg io = do
 				(socketWriteLock sock)
 				(\_ -> Data.ByteString.hPut (socketHandle sock) bytes))
 			case tried of
-				Left err -> error ("TODO: report socket error " ++ show (err :: IOException))
+				Left err -> return (Left (SocketError (show (err :: IOException))))
 				Right _ -> return (Right a)
-		Left err -> return (Left err)
+		Left err -> return (Left (SocketError ("Message cannot be written: " ++ show err)))
 
 nextSerial :: Socket -> IO Serial
 nextSerial sock = atomicModifyIORef
@@ -176,15 +176,17 @@ nextSerial sock = atomicModifyIORef
 -- Only one message may be received at a time; if multiple threads attempt
 -- to receive messages in parallel, one will block until after the other has
 -- finished.
-receive :: Socket -> IO (Either UnmarshalError ReceivedMessage)
+receive :: Socket -> IO (Either SocketError ReceivedMessage)
 receive sock = do
 	tried <- Control.Exception.try (withMVar
 		(socketReadLock sock)
 		-- TODO: instead of fromIntegral, unify types
 		(\_ -> unmarshalMessageM (Data.ByteString.hGet (socketHandle sock) . fromIntegral)))
 	case tried of
-		Left err -> error ("TODO: report socket error " ++ show (err :: IOException))
-		Right a -> return a
+		Left err -> return (Left (SocketError (show (err :: IOException))))
+		Right unmarshaled -> case unmarshaled of
+			Left err -> return (Left (SocketError ("Error reading message from socket: " ++ show err)))
+			Right msg -> return (Right msg)
 
 connectTransport :: [Transport] -> Address -> SocketM Handle
 connectTransport transports addr = loop transports where
