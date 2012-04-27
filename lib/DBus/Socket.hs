@@ -46,7 +46,7 @@ module DBus.Socket
 	-- * Transports
 	, Transport
 	, transportUnix
-	, transportTCP
+	, transportTcp
 	) where
 
 import           Prelude hiding (getLine)
@@ -131,7 +131,7 @@ data SocketOptions = SocketOptions
 -- built into @haskell-dbus@.
 defaultSocketOptions :: SocketOptions
 defaultSocketOptions = SocketOptions
-	{ socketTransports = [transportUnix, transportTCP]
+	{ socketTransports = [transportUnix, transportTcp]
 	, socketAuthenticators = [authExternal]
 	}
 
@@ -250,8 +250,8 @@ transportUnix = Transport "unix" $ \a -> let
 	in getHandle >>= connectHandle
 
 -- | TODO
-transportTCP :: Transport
-transportTCP = Transport "tcp" $ \a -> let
+transportTcp :: Transport
+transportTcp = Transport "tcp" $ \a -> let
 	params = addressParameters a
 	param key = Data.Map.lookup key params
 	
