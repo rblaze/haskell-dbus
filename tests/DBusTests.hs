@@ -28,6 +28,7 @@ import           DBusTests.Introspection
 import           DBusTests.MemberName
 import           DBusTests.ObjectPath
 import           DBusTests.Serialization
+import           DBusTests.Socket
 import           DBusTests.Signature
 import           DBusTests.Variant
 
@@ -57,6 +58,7 @@ tests =
 	, test_ObjectPath
 	, test_Serialization
 	, test_Signature
+	, test_Socket
 	, test_Variant
 	]
 
