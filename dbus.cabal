@@ -16,18 +16,17 @@ description:
   TODO: description
 
 extra-source-files:
+  benchmarks/Benchmarks.hs
+  benchmarks/haskell-dbus-benchmarks.cabal
+  --
   examples/dbus-monitor.hs
   examples/export.hs
   examples/introspect.hs
   examples/simple.hs
   --
-  benchmarks/Benchmarks.hs
-  benchmarks/dbus-core-benchmarks.cabal
-  --
-  tests/dbus-core-tests.cabal
-  tests/DBus/Tests.hs
-  tests/DBus/Tests/Util.hs
-  tests/Main.hs
+  tests/haskell-dbus-tests.cabal
+  tests/DBusTests.hs
+  tests/DBusTests/*.hs
 
 source-repository head
   type: bazaar
