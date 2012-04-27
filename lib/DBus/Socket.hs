@@ -21,6 +21,7 @@ module DBus.Socket
 	-- * DBus sockets
 	  Socket
 	, SocketError
+	, socketErrorMessage
 	, socketAddress
 	, connect
 	, close
@@ -72,6 +73,9 @@ import           DBus.Util.MonadError
 -- | TODO
 data SocketError = SocketError String
 	deriving (Eq, Ord, Show)
+
+socketErrorMessage :: SocketError -> String
+socketErrorMessage (SocketError msg) = msg
 
 type SocketM = ErrorT SocketError IO
 
