@@ -15,25 +15,29 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+-- | D-Bus sockets are used for communication between two peers. In this model,
+-- there is no \"bus\" or \"client\", simply two endpoints sending messages.
 module DBus.Socket
 	(
 	
-	-- * DBus sockets
+	-- * Types
 	  Socket
+	, socketAddress
 	, SocketError
 	, socketErrorMessage
-	, socketAddress
-	, connect
-	, close
-	, send
-	, receive
 	
-	-- ** Advanced connection
+	-- * Opening and closing sockets
+	, connect
 	, connectWith
+	, close
 	, SocketOptions
 	, socketTransports
 	, socketAuthenticators
 	, defaultSocketOptions
+	
+	-- * Sending and receiving messages
+	, send
+	, receive
 	
 	-- * Authentication
 	, Authenticator
@@ -70,10 +74,12 @@ import           DBus.Wire (unmarshalMessageM)
 import           DBus.Util (readUntil, dropEnd, readPortNumber)
 import           DBus.Util.MonadError
 
--- | TODO
+-- | Stores information about an error encountered while creating or using a
+-- 'Socket'.
 data SocketError = SocketError String
 	deriving (Eq, Ord, Show)
 
+-- | Get an error message describing a 'SocketError'.
 socketErrorMessage :: SocketError -> String
 socketErrorMessage (SocketError msg) = msg
 
@@ -95,7 +101,8 @@ data Transport = Transport ByteString (Address -> SocketM Handle)
 -- | TODO
 newtype Authenticator = Authenticator (Handle -> SocketM Bool)
 
--- | TODO
+-- | An open socket to another process. Messages can be sent to the remote
+-- peer using 'send', or received using 'receive'.
 data Socket = Socket
 	{ socketAddress_ :: Address
 	, socketHandle :: Handle
@@ -104,25 +111,41 @@ data Socket = Socket
 	, socketWriteLock :: MVar ()
 	}
 
--- | TODO
+-- | Get the address of the remote peer.
 socketAddress :: Socket -> Address
 socketAddress = socketAddress_
 
--- | TODO
+-- | Used with 'connectWith' to provide custom transports or authenticators.
 data SocketOptions = SocketOptions
-	{ socketTransports :: [Transport]
+	{
+	-- | A list of available transport mechanisms, which can be used when
+	-- connecting to a remote peer.
+	  socketTransports :: [Transport]
+	
+	-- | A list of available authentication mechanisms, whican can be used
+	-- to authenticate to a remote peer.
 	, socketAuthenticators :: [Authenticator]
 	}
 
+-- | Default 'SocketOptions', using the transports and authenticators
+-- built into @haskell-dbus@.
 defaultSocketOptions :: SocketOptions
 defaultSocketOptions = SocketOptions
 	{ socketTransports = [transportUnix, transportTCP]
 	, socketAuthenticators = [authExternal]
 	}
 
+-- | Connect to a remote peer listening at the given address.
+--
+-- @
+--connect = 'connectWith' 'defaultSocketOptions'
+-- @
 connect :: Address -> IO (Either SocketError Socket)
 connect = connectWith defaultSocketOptions
 
+-- | Connect to a remote peer listening at the given address.
+--
+-- This allows the user to define custom transports or authenticators.
 connectWith :: SocketOptions -> Address -> IO (Either SocketError Socket)
 connectWith opts addr = do
 	connected <- runErrorT (connectTransport (socketTransports opts) addr)
@@ -153,9 +176,9 @@ close = hClose . socketHandle
 -- receives the serial the message /will/ be sent with, before it&#8217;s
 -- actually sent.
 --
--- Only one message may be sent at a time; if multiple threads attempt to
--- send messages in parallel, one will block until after the other has
--- finished.
+-- Sockets are thread-safe. Only one message may be sent at a time; if
+-- multiple threads attempt to send messages concurrently, one will block
+-- until after the other has finished.
 send :: Message msg => Socket -> msg -> (Serial -> IO a) -> IO (Either SocketError a)
 send sock msg io = do
 	serial <- nextSerial sock
@@ -177,14 +200,17 @@ nextSerial sock = atomicModifyIORef
 
 -- | Receive the next message from the socket , blocking until one is available.
 --
--- Only one message may be received at a time; if multiple threads attempt
--- to receive messages in parallel, one will block until after the other has
--- finished.
+-- Sockets are thread-safe. Only one message may be received at a time; if
+-- multiple threads attempt to receive messages concurrently, one will block
+-- until after the other has finished.
 receive :: Socket -> IO (Either SocketError ReceivedMessage)
 receive sock = do
 	tried <- Control.Exception.try (withMVar
 		(socketReadLock sock)
 		-- TODO: instead of fromIntegral, unify types
+		-- TODO: after reading the length, read all bytes from the
+		--       handle, then return a closure to perform the parse
+		--       outside of the lock.
 		(\_ -> unmarshalMessageM (Data.ByteString.hGet (socketHandle sock) . fromIntegral)))
 	case tried of
 		Left err -> return (Left (SocketError (show (err :: IOException))))
@@ -314,6 +340,7 @@ getLine = do
 		raw <- readUntil "\r\n" getchr
 		return (dropEnd 2 raw)))
 
+-- | TODO
 authExternal :: Authenticator
 authExternal = Authenticator $ runReaderT $ do
 	uid <- lift (socketIO System.Posix.User.getRealUserID)

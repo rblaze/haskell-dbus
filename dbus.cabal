@@ -11,7 +11,7 @@ stability: experimental
 homepage: https://john-millikin.com/software/haskell-dbus/
 bug-reports: mailto:jmillikin@gmail.com
 
-synopsis: A client library for the DBus IPC system.
+synopsis: A client library for the D-Bus IPC system.
 description:
   TODO: description
 
