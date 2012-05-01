@@ -40,32 +40,32 @@ import           DBus.Util (readUntil)
 
 test_Socket :: Suite
 test_Socket = suite "Socket"
-	[ test_ConnectUnix
-	, test_ConnectTcp_IPv4
-	, skipWhen noIPv6 test_ConnectTcp_IPv6
+	[ test_OpenUnix
+	, test_OpenTcp_IPv4
+	, skipWhen noIPv6 test_OpenTcp_IPv6
 	]
 
-test_ConnectUnix :: Suite
-test_ConnectUnix = assertions "connect-unix" $ do
+test_OpenUnix :: Suite
+test_OpenUnix = assertions "open-unix" $ do
 	(addr, networkSocket) <- listenRandomUnix
-	connectResult <- withDummyServer networkSocket (DBus.Socket.connect addr)
-	case connectResult of
+	openResult <- withDummyServer networkSocket (DBus.Socket.open addr)
+	case openResult of
 		Left err -> $(Test.Chell.fail) (T.pack ("expected successful connection, got error: " ++ show err))
 		Right s -> $assert (equal (socketAddress s) addr)
 
-test_ConnectTcp_IPv4 :: Suite
-test_ConnectTcp_IPv4 = assertions "connect-tcp-ipv4" $ do
+test_OpenTcp_IPv4 :: Suite
+test_OpenTcp_IPv4 = assertions "open-tcp-ipv4" $ do
 	(addr, networkSocket) <- listenRandomIPv4
-	connectResult <- withDummyServer networkSocket (DBus.Socket.connect addr)
-	case connectResult of
+	openResult <- withDummyServer networkSocket (DBus.Socket.open addr)
+	case openResult of
 		Left err -> $(Test.Chell.fail) (T.pack ("expected successful connection, got error: " ++ show err))
 		Right s -> $assert (equal (socketAddress s) addr)
 
-test_ConnectTcp_IPv6 :: Suite
-test_ConnectTcp_IPv6 = assertions "connect-tcp-ipv6" $ do
+test_OpenTcp_IPv6 :: Suite
+test_OpenTcp_IPv6 = assertions "open-tcp-ipv6" $ do
 	(addr, networkSocket) <- listenRandomIPv6
-	connectResult <- withDummyServer networkSocket (DBus.Socket.connect addr)
-	case connectResult of
+	openResult <- withDummyServer networkSocket (DBus.Socket.open addr)
+	case openResult of
 		Left err -> $(Test.Chell.fail) (T.pack ("expected successful connection, got error: " ++ show err))
 		Right s -> $assert (equal (socketAddress s) addr)
 

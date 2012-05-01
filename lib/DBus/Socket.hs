@@ -27,8 +27,8 @@ module DBus.Socket
 	, socketErrorMessage
 	
 	-- * Opening and closing sockets
-	, connect
-	, connectWith
+	, open
+	, openWith
 	, close
 	, SocketOptions
 	, socketTransports
@@ -115,15 +115,15 @@ data Socket = Socket
 socketAddress :: Socket -> Address
 socketAddress = socketAddress_
 
--- | Used with 'connectWith' to provide custom transports or authenticators.
+-- | Used with 'openWith' to provide custom transports or authenticators.
 data SocketOptions = SocketOptions
 	{
 	-- | A list of available transport mechanisms, which can be used when
-	-- connecting to a remote peer.
+	-- opening a socket.
 	  socketTransports :: [Transport]
 	
 	-- | A list of available authentication mechanisms, whican can be used
-	-- to authenticate to a remote peer.
+	-- to authenticate a socket.
 	, socketAuthenticators :: [Authenticator]
 	}
 
@@ -135,19 +135,19 @@ defaultSocketOptions = SocketOptions
 	, socketAuthenticators = [authExternal]
 	}
 
--- | Connect to a remote peer listening at the given address.
+-- | Open a socket to a remote peer listening at the given address.
 --
 -- @
---connect = 'connectWith' 'defaultSocketOptions'
+--open = 'openWith' 'defaultSocketOptions'
 -- @
-connect :: Address -> IO (Either SocketError Socket)
-connect = connectWith defaultSocketOptions
+open :: Address -> IO (Either SocketError Socket)
+open = openWith defaultSocketOptions
 
--- | Connect to a remote peer listening at the given address.
+-- | Open a socket to a remote peer listening at the given address.
 --
 -- This allows the user to define custom transports or authenticators.
-connectWith :: SocketOptions -> Address -> IO (Either SocketError Socket)
-connectWith opts addr = do
+openWith :: SocketOptions -> Address -> IO (Either SocketError Socket)
+openWith opts addr = do
 	connected <- runErrorT (connectTransport (socketTransports opts) addr)
 	case connected of
 		Left err -> return (Left err)

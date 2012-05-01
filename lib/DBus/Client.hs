@@ -144,7 +144,7 @@ connect = connectWith defaultClientOptions
 
 connectWith :: ClientOptions -> Address -> IO (Either ClientError Client)
 connectWith opts addr = do
-	ret <- DBus.Socket.connectWith (DBus.Socket.defaultSocketOptions
+	ret <- DBus.Socket.openWith (DBus.Socket.defaultSocketOptions
 		{ DBus.Socket.socketTransports = clientTransports opts
 		, DBus.Socket.socketAuthenticators = clientAuthenticators opts
 		}) addr
