@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
@@ -47,12 +46,12 @@ module DBus.Client
 import           Control.Concurrent
 import           Control.Exception (SomeException)
 import qualified Control.Exception
-import           Control.Monad (forever, unless)
+import           Control.Monad (forever, forM_)
 import           Data.IORef
 import           Data.List (foldl')
 import qualified Data.Map
 import           Data.Map (Map)
-import           Data.Maybe (isJust, catMaybes)
+import           Data.Maybe (catMaybes)
 import           Data.Text (Text)
 import qualified Data.Text
 import           Data.Typeable (Typeable)
@@ -69,11 +68,10 @@ import           DBus.Util (void)
 
 data Client = Client
 	{ clientSocket :: DBus.Socket.Socket
-	, clientCallbacks :: MVar (Map Serial Callback)
+	, clientPendingCalls :: IORef (Map Serial (MVar (Either MethodError MethodReturn)))
 	, clientSignalHandlers :: MVar [Callback]
 	, clientObjects :: MVar (Map ObjectPath ObjectInfo)
 	, clientThreadID :: ThreadId
-	, clientMessageProcessor :: IORef (ReceivedMessage -> IO Bool)
 	}
 
 data ClientOptions = ClientOptions
@@ -106,10 +104,9 @@ data MemberInfo
 
 attach :: DBus.Socket.Socket -> IO Client
 attach sock = do
-	callbacks <- newMVar Data.Map.empty
+	pendingCalls <- newIORef Data.Map.empty
 	signalHandlers <- newMVar []
 	objects <- newMVar Data.Map.empty
-	processor <- newIORef (\_ -> return False)
 	
 	clientMVar <- newEmptyMVar
 	threadID <- forkIO $ do
@@ -118,11 +115,10 @@ attach sock = do
 	
 	let client = Client
 		{ clientSocket = sock
-		, clientCallbacks = callbacks
+		, clientPendingCalls = pendingCalls
 		, clientSignalHandlers = signalHandlers
 		, clientObjects = objects
 		, clientThreadID = threadID
-		, clientMessageProcessor = processor
 		}
 	putMVar clientMVar client
 	
@@ -170,10 +166,14 @@ disconnect client = do
 
 disconnect' :: Client -> IO ()
 disconnect' client = do
-	let sock = clientSocket client
-	modifyMVar_ (clientCallbacks client) (\_ -> return Data.Map.empty)
+	pendingCalls <- atomicModifyIORef (clientPendingCalls client) (\p -> (Data.Map.empty, p))
+	forM_ (Data.Map.toList pendingCalls) $ \(k, v) -> do
+		let err = MethodError "org.haskell.hackage.dbus.ClientError" k Nothing Nothing [toVariant ("connection closed during call" :: String)]
+		putMVar v (Left err)
+	
 	modifyMVar_ (clientSignalHandlers client) (\_ -> return [])
 	modifyMVar_ (clientObjects client) (\_ -> return Data.Map.empty)
+	let sock = clientSocket client
 	DBus.Socket.close sock
 
 mainLoop :: Client -> IO ()
@@ -191,24 +191,19 @@ mainLoop client = forever $ do
 
 dispatch :: Client -> ReceivedMessage -> IO ()
 dispatch client received = void . forkIO $ do
-	process <- readIORef (clientMessageProcessor client)
-	handled <- process received
-	
-	let onReply serial = do
-		let mvar = clientCallbacks client
-		maybeCB <- modifyMVar mvar $ \callbacks -> let
-			x = Data.Map.lookup serial callbacks
-			callbacks' = if isJust x
-				then Data.Map.delete serial callbacks
-				else callbacks
-			in return (callbacks', x)
-		case maybeCB of
-			Just cb -> void (cb received)
+	let onReply serial result = do
+		pending <- atomicModifyIORef
+			(clientPendingCalls client)
+			(\p -> case Data.Map.lookup serial p of
+				Nothing -> (p, Nothing)
+				Just mvar -> (Data.Map.delete serial p, Just mvar))
+		case pending of
+			Just mvar -> putMVar mvar result
 			Nothing -> return ()
 	
-	unless handled $ case received of
-		(ReceivedMethodReturn _ msg) -> onReply (methodReturnSerial msg)
-		(ReceivedMethodError _ msg) -> onReply (methodErrorSerial msg)
+	case received of
+		(ReceivedMethodReturn _ msg) -> onReply (methodReturnSerial msg) (Right msg)
+		(ReceivedMethodError _ msg) -> onReply (methodErrorSerial msg) (Left msg)
 		(ReceivedSignal _ _) -> do
 			handlers <- readMVar (clientSignalHandlers client)
 			mapM_ ($ received) handlers
@@ -232,24 +227,10 @@ send_ client msg io = do
 call :: Client -> MethodCall -> IO (Either MethodError MethodReturn)
 call client msg = do
 	mvar <- newEmptyMVar
-	
-	let callback (ReceivedMethodError _ err) = putMVar mvar (Left err)
-	    callback (ReceivedMethodReturn _ reply) = putMVar mvar (Right reply)
-	    callback _ = return ()
-	
-	send_ client msg (\serial ->
-		modifyMVar_ (clientCallbacks client) (\callbacks ->
-			return (Data.Map.insert serial callback callbacks)))
-	
-	tried <- Control.Exception.try (takeMVar mvar)
-	case tried of
-#if MIN_VERSION_base(4,2,0)
-		Left Control.Exception.BlockedIndefinitelyOnMVar ->
-#else
-		Left Control.Exception.BlockedOnDeadMVar ->
-#endif
-			clientError "connection closed during method call"
-		Right ret -> return ret
+	send_ client msg (\serial -> atomicModifyIORef
+		(clientPendingCalls client)
+		(\p -> (Data.Map.insert serial mvar p, ())))
+	takeMVar mvar
 
 call_ :: Client -> MethodCall -> IO MethodReturn
 call_ client msg = do
