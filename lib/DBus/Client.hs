@@ -340,13 +340,23 @@ export client path methods = atomicModifyIORef (clientObjects client) addObject 
 
 findMethod :: Map ObjectPath ObjectInfo -> MethodCall -> Maybe Callback
 findMethod objects msg = do
-	ifaceName <- methodCallInterface msg
 	obj <- Data.Map.lookup (methodCallPath msg) objects
-	iface <- Data.Map.lookup ifaceName obj
-	member <- Data.Map.lookup (methodCallMember msg) iface
-	case member of
-		MemberMethod _ _ io -> return io
-		_ -> Nothing
+	case methodCallInterface msg of
+		Nothing -> let
+			members = do
+				iface <- Data.Map.elems obj
+				case Data.Map.lookup (methodCallMember msg) iface of
+					Just member -> [member]
+					Nothing -> []
+			in case members of
+				[MemberMethod _ _ io] -> Just io
+				_ -> Nothing
+		Just ifaceName -> do
+			iface <- Data.Map.lookup ifaceName obj
+			member <- Data.Map.lookup (methodCallMember msg) iface
+			case member of
+				MemberMethod _ _ io -> Just io
+				_ -> Nothing
 
 introspectRoot :: Client -> Method
 introspectRoot client = methodIntrospect $ do
