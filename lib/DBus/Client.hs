@@ -69,7 +69,7 @@ import           DBus.Util (void)
 data Client = Client
 	{ clientSocket :: DBus.Socket.Socket
 	, clientPendingCalls :: IORef (Map Serial (MVar (Either MethodError MethodReturn)))
-	, clientSignalHandlers :: MVar [Callback]
+	, clientSignalHandlers :: IORef [Signal -> IO ()]
 	, clientObjects :: MVar (Map ObjectPath ObjectInfo)
 	, clientThreadID :: ThreadId
 	}
@@ -105,7 +105,7 @@ data MemberInfo
 attach :: DBus.Socket.Socket -> IO Client
 attach sock = do
 	pendingCalls <- newIORef Data.Map.empty
-	signalHandlers <- newMVar []
+	signalHandlers <- newIORef []
 	objects <- newMVar Data.Map.empty
 	
 	clientMVar <- newEmptyMVar
@@ -171,7 +171,7 @@ disconnect' client = do
 		let err = MethodError "org.haskell.hackage.dbus.ClientError" k Nothing Nothing [toVariant ("connection closed during call" :: String)]
 		putMVar v (Left err)
 	
-	modifyMVar_ (clientSignalHandlers client) (\_ -> return [])
+	atomicModifyIORef (clientSignalHandlers client) (\_ -> ([], ()))
 	modifyMVar_ (clientObjects client) (\_ -> return Data.Map.empty)
 	let sock = clientSocket client
 	DBus.Socket.close sock
@@ -204,9 +204,9 @@ dispatch client received = void . forkIO $ do
 	case received of
 		(ReceivedMethodReturn _ msg) -> onReply (methodReturnSerial msg) (Right msg)
 		(ReceivedMethodError _ msg) -> onReply (methodErrorSerial msg) (Left msg)
-		(ReceivedSignal _ _) -> do
-			handlers <- readMVar (clientSignalHandlers client)
-			mapM_ ($ received) handlers
+		(ReceivedSignal _ msg) -> do
+			handlers <- readIORef (clientSignalHandlers client)
+			mapM_ ($ msg) handlers
 		(ReceivedMethodCall serial msg) -> do
 			objects <- readMVar (clientObjects client)
 			let sender = methodCallSender msg
@@ -253,15 +253,13 @@ data MatchRule = MatchRule
 
 listen :: Client -> MatchRule -> (BusName -> Signal -> IO ()) -> IO ()
 listen client rule io = do
-	let handler received = case received of
-		(ReceivedSignal _ msg) -> case signalSender msg of
-			Just sender -> if checkMatchRule rule sender msg
-				then io sender msg
-				else return ()
-			Nothing -> return ()
-		_ -> return ()
+	let handler msg = case signalSender msg of
+		Just sender -> if checkMatchRule rule sender msg
+			then io sender msg
+			else return ()
+		Nothing -> return ()
 	
-	modifyMVar_ (clientSignalHandlers client) (\hs -> return (handler : hs))
+	atomicModifyIORef (clientSignalHandlers client) (\hs -> (handler : hs, ()))
 	void (call_ client (MethodCall
 		{ methodCallPath = DBus.Constants.dbusPath
 		, methodCallMember = "AddMatch"
