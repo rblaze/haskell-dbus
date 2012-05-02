@@ -22,7 +22,7 @@ module DBus
 	, Flag (..)
 	, Serial
 	, serialValue
-	, Unknown (..)
+	, UnknownMessage (..)
 	, MethodCall (..)
 	, MethodReturn (..)
 	, MethodError (..)

@@ -36,10 +36,10 @@ class Message a where
 maybe' :: (a -> b) -> Maybe a -> [b]
 maybe' f = maybe [] (\x' -> [f x'])
 
-data Unknown = Unknown
-	{ unknownType    :: Word8
-	, unknownFlags   :: Set Flag
-	, unknownBody    :: [Variant]
+data UnknownMessage = UnknownMessage
+	{ unknownMessageType :: Word8
+	, unknownMessageFlags :: Set Flag
+	, unknownMessageBody :: [Variant]
 	}
 	deriving (Show, Eq)
 
@@ -158,9 +158,9 @@ instance Message Signal where
 -- the bus. Each value contains the message&#8217;s 'Serial' and possibly the
 -- origin&#8217;s 'BusName'
 data ReceivedMessage
-	= ReceivedMethodCall   Serial MethodCall
+	= ReceivedMethodCall Serial MethodCall
 	| ReceivedMethodReturn Serial MethodReturn
-	| ReceivedMethodError  Serial MethodError
-	| ReceivedSignal       Serial Signal
-	| ReceivedUnknown      Serial Unknown
+	| ReceivedMethodError Serial MethodError
+	| ReceivedSignal Serial Signal
+	| ReceivedUnknown Serial UnknownMessage
 	deriving (Show, Eq)
