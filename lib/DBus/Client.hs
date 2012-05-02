@@ -70,7 +70,7 @@ data Client = Client
 	{ clientSocket :: DBus.Socket.Socket
 	, clientPendingCalls :: IORef (Map Serial (MVar (Either MethodError MethodReturn)))
 	, clientSignalHandlers :: IORef [Signal -> IO ()]
-	, clientObjects :: MVar (Map ObjectPath ObjectInfo)
+	, clientObjects :: IORef (Map ObjectPath ObjectInfo)
 	, clientThreadID :: ThreadId
 	}
 
@@ -106,7 +106,7 @@ attach :: DBus.Socket.Socket -> IO Client
 attach sock = do
 	pendingCalls <- newIORef Data.Map.empty
 	signalHandlers <- newIORef []
-	objects <- newMVar Data.Map.empty
+	objects <- newIORef Data.Map.empty
 	
 	clientMVar <- newEmptyMVar
 	threadID <- forkIO $ do
@@ -172,9 +172,9 @@ disconnect' client = do
 		putMVar v (Left err)
 	
 	atomicModifyIORef (clientSignalHandlers client) (\_ -> ([], ()))
-	modifyMVar_ (clientObjects client) (\_ -> return Data.Map.empty)
-	let sock = clientSocket client
-	DBus.Socket.close sock
+	atomicModifyIORef (clientObjects client) (\_ -> (Data.Map.empty, ()))
+	
+	DBus.Socket.close (clientSocket client)
 
 mainLoop :: Client -> IO ()
 mainLoop client = forever $ do
@@ -197,7 +197,7 @@ dispatch client = go where
 		handlers <- readIORef (clientSignalHandlers client)
 		forM_ handlers (\h -> void (forkIO (h msg)))
 	go received@(ReceivedMethodCall serial msg) = do
-		objects <- readMVar (clientObjects client)
+		objects <- readIORef (clientObjects client)
 		let sender = methodCallSender msg
 		_ <- forkIO $ case findMethod objects msg of
 			Just io -> io received
@@ -317,8 +317,8 @@ method iface name inSig outSig io = Method iface name inSig outSig
 			[toVariant (Data.Text.pack (show (exc :: SomeException)))])))
 
 export :: Client -> ObjectPath -> [Method] -> IO ()
-export client path methods = modifyMVar_ (clientObjects client) addObject where
-	addObject objs = return (Data.Map.insert path info objs)
+export client path methods = atomicModifyIORef (clientObjects client) addObject where
+	addObject objs = (Data.Map.insert path info objs, ())
 	
 	info = foldl' addMethod Data.Map.empty (defaultIntrospect : methods)
 	addMethod m (Method iface name inSig outSig cb) = Data.Map.insertWith'
@@ -334,7 +334,7 @@ export client path methods = modifyMVar_ (clientObjects client) addObject where
 	wrapCB _ _ = return ()
 	
 	defaultIntrospect = methodIntrospect $ do
-		objects <- readMVar (clientObjects client)
+		objects <- readIORef (clientObjects client)
 		let Just obj = Data.Map.lookup path objects
 		return (introspect path obj)
 
@@ -350,7 +350,7 @@ findMethod objects msg = do
 
 introspectRoot :: Client -> Method
 introspectRoot client = methodIntrospect $ do
-	objects <- readMVar (clientObjects client)
+	objects <- readIORef (clientObjects client)
 	let paths = filter (/= "/") (Data.Map.keys objects)
 	let iface = "org.freedesktop.DBus.Introspectable"
 	let name = "Introspect"
