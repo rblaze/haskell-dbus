@@ -24,6 +24,7 @@ extra-source-files:
   examples/introspect.hs
   examples/simple.hs
   --
+  tests/data/dbus-daemon.xml
   tests/haskell-dbus-tests.cabal
   tests/DBusTests.hs
   tests/DBusTests/*.hs

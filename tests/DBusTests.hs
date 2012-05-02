@@ -23,6 +23,7 @@ import           Test.Chell
 import           DBusTests.Address
 import           DBusTests.BusName
 import           DBusTests.ErrorName
+import           DBusTests.Integration
 import           DBusTests.InterfaceName
 import           DBusTests.Introspection
 import           DBusTests.MemberName
@@ -52,6 +53,7 @@ tests =
 	[ test_Address
 	, test_BusName
 	, test_ErrorName
+	, test_Integration
 	, test_InterfaceName
 	, test_Introspection
 	, test_MemberName
