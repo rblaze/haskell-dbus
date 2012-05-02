@@ -130,10 +130,11 @@ call_ client msg = do
 call :: Proxy -> InterfaceName -> MemberName -> [Variant] -> IO [Variant]
 call (Proxy client dest path) iface member body = do
 	reply <- call_ client $ MethodCall
-		{ methodCallDestination = Just dest
+		{ methodCallPath = path
 		, methodCallMember = member
 		, methodCallInterface = Just iface
-		, methodCallPath = path
+		, methodCallSender = Nothing
+		, methodCallDestination = Just dest
 		, methodCallFlags = Data.Set.empty
 		, methodCallBody = body
 		}
@@ -141,10 +142,11 @@ call (Proxy client dest path) iface member body = do
 
 emit :: Client -> ObjectPath -> InterfaceName -> MemberName -> [Variant] -> IO ()
 emit client path iface member body = DBus.Client.emit client $ Signal
-	{ signalDestination = Nothing
-	, signalPath = path
-	, signalInterface = iface
+	{ signalPath = path
 	, signalMember = member
+	, signalInterface = iface
+	, signalSender = Nothing
+	, signalDestination = Nothing
 	, signalBody = body
 	}
 

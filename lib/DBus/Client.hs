@@ -129,10 +129,11 @@ attach sock = do
 	export client "/" [introspectRoot client]
 	
 	void (call_ client (MethodCall
-		{ methodCallDestination = Just "org.freedesktop.DBus"
+		{ methodCallPath = "/org/freedesktop/DBus"
 		, methodCallMember = "Hello"
 		, methodCallInterface = Just "org.freedesktop.DBus"
-		, methodCallPath = "/org/freedesktop/DBus"
+		, methodCallSender = Nothing
+		, methodCallDestination = Just "org.freedesktop.DBus"
 		, methodCallFlags = Data.Set.empty
 		, methodCallBody = []
 		}))
@@ -206,17 +207,18 @@ dispatch client received = void . forkIO $ do
 			Nothing -> return ()
 	
 	unless handled $ case received of
-		(ReceivedMethodReturn _ _ msg) -> onReply (methodReturnSerial msg)
-		(ReceivedMethodError _ _ msg) -> onReply (methodErrorSerial msg)
-		(ReceivedSignal _ _ _) -> do
+		(ReceivedMethodReturn _ msg) -> onReply (methodReturnSerial msg)
+		(ReceivedMethodError _ msg) -> onReply (methodErrorSerial msg)
+		(ReceivedSignal _ _) -> do
 			handlers <- readMVar (clientSignalHandlers client)
 			mapM_ ($ received) handlers
-		(ReceivedMethodCall serial sender msg) -> do
+		(ReceivedMethodCall serial msg) -> do
 			objects <- readMVar (clientObjects client)
+			let sender = methodCallSender msg
 			case findMethod objects msg of
 				Just io -> io received
 				Nothing -> send_ client
-					(MethodError errorUnknownMethod serial sender [])
+					(MethodError errorUnknownMethod serial Nothing sender [])
 					(\_ -> return ())
 		_ -> return ()
 
@@ -231,8 +233,8 @@ call :: Client -> MethodCall -> IO (Either MethodError MethodReturn)
 call client msg = do
 	mvar <- newEmptyMVar
 	
-	let callback (ReceivedMethodError _ _ err) = putMVar mvar (Left err)
-	    callback (ReceivedMethodReturn _ _ reply) = putMVar mvar (Right reply)
+	let callback (ReceivedMethodError _ err) = putMVar mvar (Left err)
+	    callback (ReceivedMethodReturn _ reply) = putMVar mvar (Right reply)
 	    callback _ = return ()
 	
 	send_ client msg (\serial ->
@@ -270,15 +272,20 @@ data MatchRule = MatchRule
 
 listen :: Client -> MatchRule -> (BusName -> Signal -> IO ()) -> IO ()
 listen client rule io = do
-	let handler (ReceivedSignal _ (Just sender) msg)
-	    	| checkMatchRule rule sender msg = io sender msg
-	    handler _ = return ()
+	let handler received = case received of
+		(ReceivedSignal _ msg) -> case signalSender msg of
+			Just sender -> if checkMatchRule rule sender msg
+				then io sender msg
+				else return ()
+			Nothing -> return ()
+		_ -> return ()
 	
 	modifyMVar_ (clientSignalHandlers client) (\hs -> return (handler : hs))
 	void (call_ client (MethodCall
 		{ methodCallPath = DBus.Constants.dbusPath
 		, methodCallMember = "AddMatch"
 		, methodCallInterface = Just DBus.Constants.dbusInterface
+		, methodCallSender = Nothing
 		, methodCallDestination = Just DBus.Constants.dbusName
 		, methodCallFlags = Data.Set.empty
 		, methodCallBody = [toVariant (formatMatchRule rule)]
@@ -339,11 +346,12 @@ export client path methods = modifyMVar_ (clientObjects client) addObject where
 		Data.Map.union iface
 		(Data.Map.fromList [(name, MemberMethod inSig outSig (wrapCB cb))]) m
 	
-	wrapCB cb (ReceivedMethodCall serial sender msg) = do
+	wrapCB cb (ReceivedMethodCall serial msg) = do
 		reply <- cb (methodCallBody msg)
+		let sender = methodCallSender msg
 		case reply of
-			ReplyReturn vs -> send_ client (MethodReturn serial sender vs) (\_ -> return ())
-			ReplyError name vs -> send_ client (MethodError name serial sender vs) (\_ -> return ())
+			ReplyReturn vs -> send_ client (MethodReturn serial Nothing sender vs) (\_ -> return ())
+			ReplyError name vs -> send_ client (MethodError name serial Nothing sender vs) (\_ -> return ())
 	wrapCB _ _ = return ()
 	
 	defaultIntrospect = methodIntrospect $ do

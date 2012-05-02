@@ -68,7 +68,7 @@ test_MethodCall = property "MethodCall" prop where
 	check msg endianness serial = let
 		Right bytes = marshalMessage endianness serial msg
 		Right received = unmarshalMessage bytes
-		in ReceivedMethodCall serial Nothing msg == received
+		in ReceivedMethodCall serial msg == received
 
 test_MethodReturn :: Suite
 test_MethodReturn = property "MethodReturn" prop where
@@ -76,7 +76,7 @@ test_MethodReturn = property "MethodReturn" prop where
 	check msg endianness serial = let
 		Right bytes = marshalMessage endianness serial msg
 		Right received = unmarshalMessage bytes
-		in ReceivedMethodReturn serial Nothing msg == received
+		in ReceivedMethodReturn serial msg == received
 
 test_MethodError :: Suite
 test_MethodError = property "MethodError" prop where
@@ -84,7 +84,7 @@ test_MethodError = property "MethodError" prop where
 	check msg endianness serial = let
 		Right bytes = marshalMessage endianness serial msg
 		Right received = unmarshalMessage bytes
-		in ReceivedMethodError serial Nothing msg == received
+		in ReceivedMethodError serial msg == received
 
 test_Signal :: Suite
 test_Signal = property "Signal" prop where
@@ -92,7 +92,7 @@ test_Signal = property "Signal" prop where
 	check msg endianness serial = let
 		Right bytes = marshalMessage endianness serial msg
 		Right received = unmarshalMessage bytes
-		in ReceivedSignal serial Nothing msg == received
+		in ReceivedSignal serial msg == received
 
 gen_Atom :: Gen DBus.Types.Atom
 gen_Atom = oneof
@@ -149,10 +149,12 @@ gen_MethodCall = return MethodCall
 	<*> arbitrary
 	<*> arbitrary
 	<*> arbitrary
+	<*> arbitrary
 	<*> return [] -- TODO
 
 gen_MethodReturn :: Gen MethodReturn
 gen_MethodReturn = return MethodReturn
+	<*> arbitrary
 	<*> arbitrary
 	<*> arbitrary
 	<*> return [] -- TODO
@@ -162,10 +164,12 @@ gen_MethodError = return MethodError
 	<*> arbitrary
 	<*> arbitrary
 	<*> arbitrary
+	<*> arbitrary
 	<*> return [] -- TODO
 
 gen_Signal :: Gen Signal
 gen_Signal = return Signal
+	<*> arbitrary
 	<*> arbitrary
 	<*> arbitrary
 	<*> arbitrary

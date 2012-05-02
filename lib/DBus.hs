@@ -29,9 +29,6 @@ module DBus
 	, methodErrorMessage
 	, Signal (..)
 	, ReceivedMessage (..)
-	, receivedSerial
-	, receivedSender
-	, receivedBody
 	
 	-- * Values
 	, Type(..)

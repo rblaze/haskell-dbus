@@ -692,16 +692,16 @@ buildReceivedMessage 1 fields = do
 		iface = listToMaybe [x | HeaderInterface x <- fields]
 		dest = listToMaybe [x | HeaderDestination x <- fields]
 		sender = listToMaybe [x | HeaderSender x <- fields]
-		msg = MethodCall path member iface dest flags body
-		in ReceivedMethodCall serial sender msg
+		msg = MethodCall path member iface sender dest flags body
+		in ReceivedMethodCall serial msg
 
 buildReceivedMessage 2 fields = do
 	replySerial <- require "reply serial" [x | HeaderReplySerial x <- fields]
 	return $ \serial _ body -> let
 		dest = listToMaybe [x | HeaderDestination x <- fields]
 		sender = listToMaybe [x | HeaderSender x <- fields]
-		msg = MethodReturn replySerial dest body
-		in ReceivedMethodReturn serial sender msg
+		msg = MethodReturn replySerial sender dest body
+		in ReceivedMethodReturn serial msg
 
 buildReceivedMessage 3 fields = do
 	name <- require "error name" [x | HeaderErrorName x <- fields]
@@ -709,8 +709,8 @@ buildReceivedMessage 3 fields = do
 	return $ \serial _ body -> let
 		dest = listToMaybe [x | HeaderDestination x <- fields]
 		sender = listToMaybe [x | HeaderSender x <- fields]
-		msg = MethodError name replySerial dest body
-		in ReceivedMethodError serial sender msg
+		msg = MethodError name replySerial sender dest body
+		in ReceivedMethodError serial msg
 
 buildReceivedMessage 4 fields = do
 	path <- require "path" [x | HeaderPath x <- fields]
@@ -719,13 +719,12 @@ buildReceivedMessage 4 fields = do
 	return $ \serial _ body -> let
 		dest = listToMaybe [x | HeaderDestination x <- fields]
 		sender = listToMaybe [x | HeaderSender x <- fields]
-		msg = Signal dest path iface member body
-		in ReceivedSignal serial sender msg
+		msg = Signal path member iface sender dest body
+		in ReceivedSignal serial msg
 
 buildReceivedMessage messageType fields = return $ \serial flags body -> let
-	sender = listToMaybe [x | HeaderSender x <- fields]
 	msg = Unknown messageType flags body
-	in ReceivedUnknown serial sender msg
+	in ReceivedUnknown serial msg
 
 require :: Text -> [a] -> E.ErrorM Text a
 require _     (x:_) = return x
