@@ -190,8 +190,24 @@ mainLoop client = forever $ do
 	dispatch client msg
 
 dispatch :: Client -> ReceivedMessage -> IO ()
-dispatch client received = void . forkIO $ do
-	let onReply serial result = do
+dispatch client = go where
+	go (ReceivedMethodReturn _ msg) = dispatchReply (methodReturnSerial msg) (Right msg)
+	go (ReceivedMethodError _ msg) = dispatchReply (methodErrorSerial msg) (Left msg)
+	go (ReceivedSignal _ msg) = do
+		handlers <- readIORef (clientSignalHandlers client)
+		forM_ handlers (\h -> void (forkIO (h msg)))
+	go received@(ReceivedMethodCall serial msg) = do
+		objects <- readMVar (clientObjects client)
+		let sender = methodCallSender msg
+		_ <- forkIO $ case findMethod objects msg of
+			Just io -> io received
+			Nothing -> send_ client
+				(MethodError errorUnknownMethod serial Nothing sender [])
+				(\_ -> return ())
+		return ()
+	go (ReceivedUnknown _ _) = return ()
+	
+	dispatchReply serial result = do
 		pending <- atomicModifyIORef
 			(clientPendingCalls client)
 			(\p -> case Data.Map.lookup serial p of
@@ -200,22 +216,6 @@ dispatch client received = void . forkIO $ do
 		case pending of
 			Just mvar -> putMVar mvar result
 			Nothing -> return ()
-	
-	case received of
-		(ReceivedMethodReturn _ msg) -> onReply (methodReturnSerial msg) (Right msg)
-		(ReceivedMethodError _ msg) -> onReply (methodErrorSerial msg) (Left msg)
-		(ReceivedSignal _ msg) -> do
-			handlers <- readIORef (clientSignalHandlers client)
-			mapM_ ($ msg) handlers
-		(ReceivedMethodCall serial msg) -> do
-			objects <- readMVar (clientObjects client)
-			let sender = methodCallSender msg
-			case findMethod objects msg of
-				Just io -> io received
-				Nothing -> send_ client
-					(MethodError errorUnknownMethod serial Nothing sender [])
-					(\_ -> return ())
-		_ -> return ()
 
 send_ :: Message msg => Client -> msg -> (Serial -> IO a) -> IO a
 send_ client msg io = do
