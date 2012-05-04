@@ -22,8 +22,7 @@ module DBus.Client
 	  Client
 	, ClientError
 	, ClientOptions
-	, clientTransports
-	, clientAuthenticators
+	, clientSocketOptions
 	, defaultClientOptions
 	, connect
 	, connectWith
@@ -64,6 +63,7 @@ import           DBus.Constants ( errorFailed, errorUnknownMethod
                                 , errorInvalidParameters)
 import qualified DBus.Introspection
 import qualified DBus.Socket
+import           DBus.Transport (TransportOpen, SocketTransport)
 import           DBus.Util (void)
 
 data Client = Client
@@ -74,18 +74,19 @@ data Client = Client
 	, clientThreadID :: ThreadId
 	}
 
-data ClientOptions = ClientOptions
-	{ clientTransports :: [DBus.Socket.Transport]
-	, clientAuthenticators :: [DBus.Socket.Authenticator]
-	
-	-- if specified, forces connection attempts to abort after the given
+data ClientOptions t = ClientOptions
+	{
+	-- | If specified, forces connection attempts to abort after the given
 	-- number of milliseconds.
-	, clientTimeout :: Maybe Integer
+	  clientTimeout :: Maybe Integer
 	
-	-- whether the client should attempt to reconnect, if it loses its
+	-- | Whether the client should attempt to reconnect, if it loses its
 	-- connection to the server. any pending method calls will fail with
 	-- an error saying the connection was lost.
 	, clientReconnect :: Bool
+	
+	-- | Options for the underlying socket, for advanced use cases.
+	, clientSocketOptions :: DBus.Socket.SocketOptions t
 	}
 
 type Callback = (ReceivedMessage -> IO ())
@@ -139,23 +140,19 @@ attach sock = do
 connect :: Address -> IO (Either ClientError Client)
 connect = connectWith defaultClientOptions
 
-connectWith :: ClientOptions -> Address -> IO (Either ClientError Client)
+connectWith :: TransportOpen t => ClientOptions t -> Address -> IO (Either ClientError Client)
 connectWith opts addr = do
-	ret <- DBus.Socket.openWith (DBus.Socket.defaultSocketOptions
-		{ DBus.Socket.socketTransports = clientTransports opts
-		, DBus.Socket.socketAuthenticators = clientAuthenticators opts
-		}) addr
+	ret <- DBus.Socket.openWith (clientSocketOptions opts) addr
 	case ret of
 		Left err -> return (Left (ClientError (show err)))
 		Right conn -> Right `fmap` attach conn
 
 -- | TODO
-defaultClientOptions :: ClientOptions
+defaultClientOptions :: ClientOptions SocketTransport
 defaultClientOptions = ClientOptions
-	{ clientTransports = DBus.Socket.socketTransports DBus.Socket.defaultSocketOptions
-	, clientAuthenticators = DBus.Socket.socketAuthenticators DBus.Socket.defaultSocketOptions
-	, clientTimeout = Nothing
+	{ clientTimeout = Nothing
 	, clientReconnect = True
+	, clientSocketOptions = DBus.Socket.defaultSocketOptions
 	}
 
 -- | Stop a 'Client''s callback thread and close its underlying socket.

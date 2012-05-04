@@ -38,6 +38,8 @@ source-repository this
   location: https://john-millikin.com/branches/haskell-dbus/0.10/
   tag: haskell-dbus_0.10
 
+flag network-includes-bytestring
+
 library
   ghc-options: -Wall -O2
   hs-source-dirs: lib
@@ -51,13 +53,20 @@ library
     , containers >= 0.1 && < 0.5
     , data-binary-ieee754 >= 0.3 && < 0.5
     , libxml-sax >= 0.7 && < 0.8
-    , network >= 2.2 && < 2.4
     , parsec >= 2.0 && < 3.2
     , text >= 0.11.1.5 && < 0.12
     , transformers >= 0.2 && < 0.4
     , unix >= 2.2 && < 2.6
     , vector >= 0.7 && < 0.10
     , xml-types >= 0.3 && < 0.4
+
+  if flag(network-includes-bytestring)
+    build-depends:
+        network >= 2.2.3 && < 2.4
+  else
+    build-depends:
+        network >= 2.2 && < 2.2.3
+      , network-bytestring >= 0.1.2 && < 0.2
 
   exposed-modules:
     DBus
@@ -66,6 +75,7 @@ library
     DBus.Constants
     DBus.Introspection
     DBus.Socket
+    DBus.Transport
 
   other-modules:
     DBus.Address

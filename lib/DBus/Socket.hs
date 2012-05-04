@@ -1,4 +1,6 @@
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- Copyright (C) 2009-2012 John Millikin <jmillikin@gmail.com>
 --
@@ -31,8 +33,8 @@ module DBus.Socket
 	, openWith
 	, close
 	, SocketOptions
-	, socketTransports
 	, socketAuthenticators
+	, socketTransportOptions
 	, defaultSocketOptions
 	
 	-- * Sending and receiving messages
@@ -42,11 +44,6 @@ module DBus.Socket
 	-- * Authentication
 	, Authenticator
 	, authExternal
-	
-	-- * Transports
-	, Transport
-	, transportUnix
-	, transportTcp
 	) where
 
 import           Prelude hiding (getLine)
@@ -57,21 +54,17 @@ import           Control.Monad.IO.Class (liftIO)
 import           Control.Monad.Trans.Class (lift)
 import           Control.Monad.Trans.Reader
 import qualified Data.ByteString
-import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as Char8
 import           Data.Char (ord)
 import           Data.IORef
-import qualified Data.Map
-import qualified Network
-import qualified Network.Socket
-import           System.IO hiding (getLine)
 import qualified System.Posix.User
 import           Text.Printf (printf)
 
 import           DBus
+import           DBus.Transport
 import           DBus.Types (Serial(..))
 import           DBus.Wire (unmarshalMessageM)
-import           DBus.Util (readUntil, dropEnd, readPortNumber)
+import           DBus.Util (readUntil, dropEnd)
 import           DBus.Util.MonadError
 
 -- | Stores information about an error encountered while creating or using a
@@ -96,16 +89,22 @@ socketIO io = do
 		Right a -> return a
 
 -- | TODO
-data Transport = Transport ByteString (Address -> SocketM Handle)
+newtype Authenticator t = Authenticator (t -> SocketM Bool)
 
--- | TODO
-newtype Authenticator = Authenticator (Handle -> SocketM Bool)
+data SomeTransport = forall t. (Transport t) => SomeTransport t
+
+instance Transport SomeTransport where
+	data TransportOptions SomeTransport = SomeTransportOptions
+	transportDefaultOptions = SomeTransportOptions
+	transportPut (SomeTransport t) = transportPut t
+	transportGet (SomeTransport t) = transportGet t
+	transportClose (SomeTransport t) = transportClose t
 
 -- | An open socket to another process. Messages can be sent to the remote
 -- peer using 'send', or received using 'receive'.
 data Socket = Socket
 	{ socketAddress_ :: Address
-	, socketHandle :: Handle
+	, socketTransport :: SomeTransport
 	, socketSerial :: IORef Serial
 	, socketReadLock :: MVar ()
 	, socketWriteLock :: MVar ()
@@ -115,23 +114,25 @@ data Socket = Socket
 socketAddress :: Socket -> Address
 socketAddress = socketAddress_
 
--- | Used with 'openWith' to provide custom transports or authenticators.
-data SocketOptions = SocketOptions
+-- | Used with 'openWith' to provide custom authenticators or transport options.
+data SocketOptions t = SocketOptions
 	{
-	-- | A list of available transport mechanisms, which can be used when
-	-- opening a socket.
-	  socketTransports :: [Transport]
-	
 	-- | A list of available authentication mechanisms, whican can be used
-	-- to authenticate a socket.
-	, socketAuthenticators :: [Authenticator]
+	-- to authenticate the socket.
+	  socketAuthenticators :: [Authenticator t]
+	
+	-- | Options for the underlying transport, to be used by custom transports
+	-- for controlling how to connect to the remote peer.
+	--
+	-- See "DBus.Transport" for details on defining custom transports
+	, socketTransportOptions :: TransportOptions t
 	}
 
--- | Default 'SocketOptions', using the transports and authenticators
--- built into @haskell-dbus@.
-defaultSocketOptions :: SocketOptions
+-- | Default 'SocketOptions', which uses the authenticators built into
+-- @haskell-dbus@, and the default socket-based transport.
+defaultSocketOptions :: SocketOptions SocketTransport
 defaultSocketOptions = SocketOptions
-	{ socketTransports = [transportUnix, transportTcp]
+	{ socketTransportOptions = transportDefaultOptions
 	, socketAuthenticators = [authExternal]
 	}
 
@@ -145,31 +146,32 @@ open = openWith defaultSocketOptions
 
 -- | Open a socket to a remote peer listening at the given address.
 --
--- This allows the user to define custom transports or authenticators.
-openWith :: SocketOptions -> Address -> IO (Either SocketError Socket)
+-- Most users should use 'open'. This function is for users who need to define
+-- custom authenticators or transports.
+openWith :: TransportOpen t => SocketOptions t -> Address -> IO (Either SocketError Socket)
 openWith opts addr = do
-	connected <- runErrorT (connectTransport (socketTransports opts) addr)
-	case connected of
-		Left err -> return (Left err)
-		Right h -> do
-			authed <- runErrorT (authenticate h (socketAuthenticators opts))
+	eTrans <- transportOpen (socketTransportOptions opts) addr
+	case eTrans of
+		Left err -> return (Left (SocketError (show err)))
+		Right trans -> do
+			authed <- runErrorT (authenticate trans (socketAuthenticators opts))
 			case authed of
 				Left err -> do
-					hClose h
+					transportClose trans
 					return (Left err)
 				Right False -> do
-					hClose h
+					transportClose trans
 					return (Left (SocketError "Authentication failed"))
 				Right True -> do
 					serial <- newIORef (Serial 1)
 					readLock <- newMVar ()
 					writeLock <- newMVar ()
-					return (Right (Socket addr h serial readLock writeLock))
+					return (Right (Socket addr (SomeTransport trans) serial readLock writeLock))
 
 -- | Close an open 'Socket'. Once closed, the 'Socket' is no longer valid and
 -- must not be used.
 close :: Socket -> IO ()
-close = hClose . socketHandle
+close = transportClose . socketTransport
 
 -- | Send a single message, with a generated 'Serial'. The second parameter
 -- exists to prevent race conditions when registering a reply handler; it
@@ -187,7 +189,7 @@ send sock msg io = do
 			a <- io serial
 			tried <- Control.Exception.try (withMVar
 				(socketWriteLock sock)
-				(\_ -> Data.ByteString.hPut (socketHandle sock) bytes))
+				(\_ -> transportPut (socketTransport sock) bytes))
 			case tried of
 				Left err -> return (Left (SocketError (show (err :: IOException))))
 				Right _ -> return (Right a)
@@ -211,137 +213,42 @@ receive sock = do
 		-- TODO: after reading the length, read all bytes from the
 		--       handle, then return a closure to perform the parse
 		--       outside of the lock.
-		(\_ -> unmarshalMessageM (Data.ByteString.hGet (socketHandle sock) . fromIntegral)))
+		(\_ -> unmarshalMessageM (transportGet (socketTransport sock) . fromIntegral)))
 	case tried of
 		Left err -> return (Left (SocketError (show (err :: IOException))))
 		Right unmarshaled -> case unmarshaled of
 			Left err -> return (Left (SocketError ("Error reading message from socket: " ++ show err)))
 			Right msg -> return (Right msg)
 
-connectTransport :: [Transport] -> Address -> SocketM Handle
-connectTransport transports addr = loop transports where
-	method = addressMethod addr
-	loop [] = socketError ("Unknown address method: " ++ show method)
-	loop ((Transport m io):ts) = if m == method
-		then io addr
-		else loop ts
-
--- | TODO
-transportUnix :: Transport
-transportUnix = Transport "unix" $ \a -> let
-	params = addressParameters a
-	param key = Data.Map.lookup key params
-	
-	tooMany = "Only one of 'path' or 'abstract' may be specified for the\
-	          \ 'unix' transport."
-	tooFew = "One of 'path' or 'abstract' must be specified for the\
-	         \ 'unix' transport."
-	
-	path = case (param "path", param "abstract") of
-		(Just _, Just _) -> socketError tooMany
-		(Nothing, Nothing) -> socketError tooFew
-		(Just x, Nothing) -> return (Char8.unpack x)
-		(Nothing, Just x) -> return ('\x00' : Char8.unpack x)
-	
-	getHandle = do
-		port <- fmap Network.UnixSocket path
-		socketIO (Network.connectTo "localhost" port)
-	
-	in getHandle >>= connectHandle
-
--- | TODO
-transportTcp :: Transport
-transportTcp = Transport "tcp" $ \a -> let
-	params = addressParameters a
-	param key = Data.Map.lookup key params
-	
-	getHandle = do
-		port <- getPort
-		family <- getFamily
-		addrs <- socketIO (getAddresses family)
-		sock <- openSocket port addrs
-		socketIO (Network.Socket.socketToHandle sock System.IO.ReadWriteMode)
-	hostname = maybe "localhost" Char8.unpack (param "host")
-	unknownFamily x = "Unknown socket family for TCP transport: " ++ show x
-	getFamily = case param "family" of
-		Just "ipv4" -> return Network.Socket.AF_INET
-		Just "ipv6" -> return Network.Socket.AF_INET6
-		Nothing     -> return Network.Socket.AF_UNSPEC
-		Just x      -> socketError (unknownFamily x)
-	missingPort = "TCP transport requires the `port' parameter."
-	badPort x = "Invalid socket port for TCP transport: " ++ show x
-	getPort = case param "port" of
-		Nothing -> socketError missingPort
-		Just x -> case readPortNumber (Char8.unpack x) of
-			Just port -> return port
-			Nothing -> socketError (badPort x)
-
-	getAddresses family = do
-		let hints = Network.Socket.defaultHints
-			{ Network.Socket.addrFlags = [Network.Socket.AI_ADDRCONFIG]
-			, Network.Socket.addrFamily = family
-			, Network.Socket.addrSocketType = Network.Socket.Stream
-			}
-		-- TODO: catch exception? can this call fail?
-		Network.Socket.getAddrInfo (Just hints) (Just hostname) Nothing
-
-	setPort port (Network.Socket.SockAddrInet  _ x)     = Network.Socket.SockAddrInet port x
-	setPort port (Network.Socket.SockAddrInet6 _ x y z) = Network.Socket.SockAddrInet6 port x y z
-	setPort _    addr                                   = addr
-
-	openSocket _ [] = socketError ("Failed to open socket to address " ++ show a)
-	openSocket port (addr:addrs) = do
-		tried <- liftIO (Control.Exception.try (openSocket' port addr))
-		case tried :: Either IOException Network.Socket.Socket of
-			Left err -> case err :: IOException of
-				_ -> openSocket port addrs 
-			Right sock -> return sock
-	openSocket' port addr = do
-		sock <- Network.Socket.socket (Network.Socket.addrFamily addr)
-		                  (Network.Socket.addrSocketType addr)
-		                  (Network.Socket.addrProtocol addr)
-		Network.Socket.connect sock (setPort port (Network.Socket.addrAddress addr))
-		return sock
-	
-	in getHandle >>= connectHandle
-
-connectHandle :: System.IO.Handle -> SocketM Handle
-connectHandle h = socketIO $ do
-	System.IO.hSetBuffering h System.IO.NoBuffering
-	System.IO.hSetBinaryMode h True
-	return h
-
-authenticate :: Handle
-             -> [Authenticator]
-             -> SocketM Bool
-authenticate h authenticators = go where
+authenticate :: Transport t => t -> [Authenticator t] -> SocketM Bool
+authenticate t authenticators = go where
 	go = do
-		socketIO (Data.ByteString.hPut h (Data.ByteString.pack [0]))
+		socketIO (transportPut t (Data.ByteString.pack [0]))
 		loop authenticators
 	loop [] = return False
 	loop ((Authenticator auth):next) = do
-		success <- auth h
+		success <- auth t
 		if success
 			then return True
 			else loop next
 
-type AuthM = ReaderT Handle SocketM
+type AuthM t = ReaderT t SocketM
 
-putLine :: String -> AuthM ()
+putLine :: Transport t => String -> AuthM t ()
 putLine line = do
-	h <- ask
-	lift (socketIO (Data.ByteString.hPut h (Char8.pack (line ++ "\r\n"))))
+	t <- ask
+	lift (socketIO (transportPut t (Char8.pack (line ++ "\r\n"))))
 
-getLine :: AuthM String
+getLine :: Transport t => AuthM t String
 getLine = do
-	h <- ask
-	let getchr = Char8.head `fmap` Data.ByteString.hGet h 1
+	t <- ask
+	let getchr = Char8.head `fmap` transportGet t 1
 	lift (socketIO (do
 		raw <- readUntil "\r\n" getchr
 		return (dropEnd 2 raw)))
 
 -- | TODO
-authExternal :: Authenticator
+authExternal :: Transport t => Authenticator t
 authExternal = Authenticator $ runReaderT $ do
 	uid <- lift (socketIO System.Posix.User.getRealUserID)
 	let token = concatMap (printf "%02X" . ord) (show uid)
