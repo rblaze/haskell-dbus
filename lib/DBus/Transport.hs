@@ -84,6 +84,9 @@ class Transport t => TransportListen t where
 	-- transport is ready to exchange bytes (for example, an authentication
 	-- error).
 	transportAccept :: TransportListener t -> IO (Either TransportError t)
+	
+	-- | Close an open listener.
+	transportListenerClose :: TransportListener t -> IO ()
 
 data TransportError = TransportError String
 	deriving (Eq, Show)
