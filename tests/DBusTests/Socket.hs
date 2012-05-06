@@ -21,7 +21,6 @@ module DBusTests.Socket (test_Socket) where
 import           Test.Chell
 
 import           Control.Concurrent
-import           Control.Exception (finally)
 import           Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.ByteString
 import qualified Data.ByteString.Char8 as Char8
@@ -41,9 +40,11 @@ test_Socket = suite "Socket"
 test_Open :: Suite
 test_Open = assertions "open" $ do
 	(addr, networkSocket) <- listenRandomIPv4
-	opened <- withDummyServer networkSocket (DBus.Socket.open addr)
+	startDummyServer networkSocket
+	opened <- liftIO (DBus.Socket.open addr)
 	$assert (right opened)
 	let Right s = opened
+	afterTest (DBus.Socket.close s)
 	
 	$expect (equal (socketAddress s) addr)
 
@@ -52,14 +53,10 @@ readChar8 h = fmap (Char8.head) (Data.ByteString.hGet h 1)
 
 newtype DummyServer = DummyServer (MVar ())
 
-withDummyServer :: MonadIO m => N.Socket -> IO a -> m a
-withDummyServer sock io = liftIO go where
-	go = do
-		mvar <- newEmptyMVar
-		_ <- forkIO (run mvar)
-		finally io (putMVar mvar ())
-	
-	run mvar = do
+startDummyServer :: N.Socket -> Assertions ()
+startDummyServer sock = do
+	mvar <- liftIO newEmptyMVar
+	_ <- liftIO (forkIO (do
 		(h, _, _) <- N.accept sock
 		hSetBuffering h NoBuffering
 		
@@ -70,4 +67,7 @@ withDummyServer sock io = liftIO go where
 		
 		_ <- readMVar mvar
 		hClose h
-		N.sClose sock
+		N.sClose sock))
+	
+	afterTest (N.sClose sock)
+	afterTest (putMVar mvar ())
