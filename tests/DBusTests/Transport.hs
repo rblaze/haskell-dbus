@@ -67,20 +67,22 @@ test_OpenUnix = suite "unix"
 test_OpenUnix_Path :: Suite
 test_OpenUnix_Path = assertions "path" $ do
 	(addr, networkSocket) <- listenRandomUnixPath
+	afterTest (N.sClose networkSocket)
+	
 	opened <- liftIO (transportOpen transportDefaultOptions addr)
 	$assert (right (opened :: Either TransportError SocketTransport))
 	let Right t = opened
-	liftIO (transportClose t)
-	liftIO (N.sClose networkSocket)
+	afterTest (transportClose t)
 
 test_OpenUnix_Abstract :: Suite
 test_OpenUnix_Abstract = assertions "abstract" $ do
 	(addr, networkSocket) <- listenRandomUnixAbstract
+	afterTest (N.sClose networkSocket)
+	
 	opened <- liftIO (transportOpen transportDefaultOptions addr)
 	$assert (right (opened :: Either TransportError SocketTransport))
 	let Right t = opened
-	liftIO (transportClose t)
-	liftIO (N.sClose networkSocket)
+	afterTest (transportClose t)
 
 test_OpenUnix_TooFew :: Suite
 test_OpenUnix_TooFew = assertions "too-few" $ do
@@ -125,20 +127,22 @@ test_OpenTcp = suite "tcp"
 test_OpenTcp_IPv4 :: Suite
 test_OpenTcp_IPv4 = assertions "ipv4" $ do
 	(addr, networkSocket) <- listenRandomIPv4
+	afterTest (N.sClose networkSocket)
+	
 	opened <- liftIO (transportOpen transportDefaultOptions addr)
 	$assert (right (opened :: Either TransportError SocketTransport))
 	let Right t = opened
-	liftIO (transportClose t)
-	liftIO (N.sClose networkSocket)
+	afterTest (transportClose t)
 
 test_OpenTcp_IPv6 :: Suite
 test_OpenTcp_IPv6 = assertions "ipv6" $ do
 	(addr, networkSocket) <- listenRandomIPv6
+	afterTest (N.sClose networkSocket)
+	
 	opened <- liftIO (transportOpen transportDefaultOptions addr)
 	$assert (right (opened :: Either TransportError SocketTransport))
 	let Right t = opened
-	liftIO (transportClose t)
-	liftIO (N.sClose networkSocket)
+	afterTest (transportClose t)
 
 test_OpenTcp_Unknown :: Suite
 test_OpenTcp_Unknown = assertions "unknown-family" $ do
@@ -197,6 +201,7 @@ test_OpenTcp_NotListening = assertions "too-many" $ do
 test_TransportSendReceive :: Suite
 test_TransportSendReceive = assertions "send-receive" $ do
 	(addr, networkSocket) <- listenRandomIPv4
+	afterTest (N.sClose networkSocket)
 	_ <- liftIO $ forkIO $ do
 		(h, _, _) <- N.accept networkSocket
 		hSetBuffering h NoBuffering
@@ -209,6 +214,7 @@ test_TransportSendReceive = assertions "send-receive" $ do
 	opened <- liftIO (transportOpen socketTransportOptions addr)
 	$assert (right (opened :: Either TransportError SocketTransport))
 	let Right t = opened
+	afterTest (transportClose t)
 	
 	liftIO (transportPut t "testing\n")
 	bytes1 <- liftIO (transportGet t 2)
@@ -216,9 +222,6 @@ test_TransportSendReceive = assertions "send-receive" $ do
 	
 	$expect (equal bytes1 "te")
 	$expect (equal bytes2 "sting")
-	
-	liftIO (transportClose t)
-	liftIO (N.sClose networkSocket)
 
 socketTransportOptions :: TransportOptions SocketTransport
 socketTransportOptions = transportDefaultOptions

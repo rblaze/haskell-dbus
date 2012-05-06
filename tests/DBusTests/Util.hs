@@ -45,7 +45,7 @@ import qualified Data.Set
 import qualified Data.Text as T
 import qualified Network as N
 import qualified Network.Socket as NS
-import           System.Directory (getTemporaryDirectory)
+import           System.Directory (getTemporaryDirectory, removeFile)
 import           System.FilePath ((</>))
 import           System.Random (randomIO)
 
@@ -82,15 +82,17 @@ assertAtom t a = do
 	$expect $ equal (toAtom a) (toAtom a)
 	assertValue t a
 
-listenRandomUnixPath :: MonadIO m => m (Address, N.Socket)
-listenRandomUnixPath = liftIO $ do
-	tmp <- getTemporaryDirectory
+listenRandomUnixPath :: Assertions (Address, N.Socket)
+listenRandomUnixPath = do
+	tmp <- liftIO getTemporaryDirectory
 	uuid <- liftIO randomIO
-	let sockAddr = NS.SockAddrUnix (tmp </> UUID.toString uuid)
+	let path = tmp </> UUID.toString uuid
 	
-	sock <- NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol
-	NS.bindSocket sock sockAddr
-	NS.listen sock 1
+	let sockAddr = NS.SockAddrUnix (tmp </> UUID.toString uuid)
+	sock <- liftIO (NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol)
+	liftIO (NS.bindSocket sock sockAddr)
+	liftIO (NS.listen sock 1)
+	afterTest (removeFile path)
 	
 	let Just addr = address "unix" (Map.fromList
 		[ ("path", Char8.pack (tmp </> UUID.toString uuid))
