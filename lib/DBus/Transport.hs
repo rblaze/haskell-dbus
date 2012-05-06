@@ -29,8 +29,7 @@ import           Control.Exception
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as Char8
 import qualified Data.Map as Map
-import qualified Network.Socket
-import           Network.Socket (Socket)
+import           Network.Socket hiding (recv)
 import           Network.Socket.ByteString (sendAll, recv)
 
 import           DBus
@@ -105,16 +104,16 @@ instance Transport SocketTransport where
 	transportDefaultOptions = SocketTransportOptions
 	transportPut (SocketTransport s) = sendAll s
 	transportGet (SocketTransport s) = recv s
-	transportClose (SocketTransport s) = Network.Socket.sClose s
+	transportClose (SocketTransport s) = sClose s
 
 instance TransportOpen SocketTransport where
 	transportOpen _ a = case Char8.unpack (addressMethod a) of
 		"unix" -> openUnix (addressParameters a)
-		"tcp" -> openTcp a (addressParameters a)
+		"tcp" -> openTcp (addressParameters a)
 		method -> return (Left (TransportError ("Unknown address method: " ++ show method)))
 
 openUnix :: Map.Map ByteString ByteString -> IO (Either TransportError SocketTransport)
-openUnix params = go where
+openUnix params = catchIOException go where
 	param key = Map.lookup (Char8.pack key) params
 	
 	tooMany = "Only one of 'path' or 'abstract' may be specified for the\
@@ -131,23 +130,20 @@ openUnix params = go where
 	go = case path of
 		Left err -> return (Left (TransportError err))
 		Right p -> do
-			sock <- Network.Socket.socket
-				Network.Socket.AF_UNIX
-				Network.Socket.Stream
-				Network.Socket.defaultProtocol
-			Network.Socket.connect sock (Network.Socket.SockAddrUnix p)
+			sock <- socket AF_UNIX Stream defaultProtocol
+			connect sock (SockAddrUnix p)
 			return (Right (SocketTransport sock))
 
-openTcp :: Address -> Map.Map ByteString ByteString -> IO (Either TransportError SocketTransport)
-openTcp a params = go where
+openTcp :: Map.Map ByteString ByteString -> IO (Either TransportError SocketTransport)
+openTcp params = catchIOException go where
 	param key = Map.lookup (Char8.pack key) params
 	
 	hostname = maybe "localhost" Char8.unpack (param "host")
 	unknownFamily x = "Unknown socket family for TCP transport: " ++ show x
 	getFamily = case fmap Char8.unpack (param "family") of
-		Just "ipv4" -> Right Network.Socket.AF_INET
-		Just "ipv6" -> Right Network.Socket.AF_INET6
-		Nothing     -> Right Network.Socket.AF_UNSPEC
+		Just "ipv4" -> Right AF_INET
+		Just "ipv6" -> Right AF_INET6
+		Nothing     -> Right AF_UNSPEC
 		Just x      -> Left (TransportError (unknownFamily x))
 	missingPort = "TCP transport requires the `port' parameter."
 	badPort x = "Invalid socket port for TCP transport: " ++ show x
@@ -156,33 +152,32 @@ openTcp a params = go where
 		Just x -> case readPortNumber (Char8.unpack x) of
 			Just port -> Right port
 			Nothing -> Left (TransportError (badPort x))
-
-	getAddresses family = do
-		let hints = Network.Socket.defaultHints
-			{ Network.Socket.addrFlags = [Network.Socket.AI_ADDRCONFIG]
-			, Network.Socket.addrFamily = family
-			, Network.Socket.addrSocketType = Network.Socket.Stream
-			}
-		-- TODO: catch exception? can this call fail?
-		Network.Socket.getAddrInfo (Just hints) (Just hostname) Nothing
-
-	setPort port (Network.Socket.SockAddrInet  _ x)     = Network.Socket.SockAddrInet port x
-	setPort port (Network.Socket.SockAddrInet6 _ x y z) = Network.Socket.SockAddrInet6 port x y z
-	setPort _    addr                                   = addr
-
-	openSocket _ [] = return (Left (TransportError ("Failed to open socket to address " ++ show a)))
-	openSocket port (addr:addrs) = do
-		tried <- Control.Exception.try (openSocket' port addr)
-		case tried :: Either IOException Network.Socket.Socket of
-			Left err -> case err :: IOException of
-				_ -> openSocket port addrs
+	
+	getAddresses family = getAddrInfo (Just (defaultHints
+		{ addrFlags = [AI_ADDRCONFIG]
+		, addrFamily = family
+		, addrSocketType = Stream
+		})) (Just hostname) Nothing
+	
+	setPort port info = case addrAddress info of
+		(SockAddrInet  _ x) -> info { addrAddress = SockAddrInet port x }
+		(SockAddrInet6 _ x y z) -> info { addrAddress = SockAddrInet6 port x y z }
+		_ -> info
+	
+	openSocket [] = error "openSocket: no addresses"
+	openSocket (addr:addrs) = do
+		tried <- Control.Exception.try $ do
+			sock <- socket
+				(addrFamily addr)
+				(addrSocketType addr)
+				(addrProtocol addr)
+			connect sock (addrAddress addr)
+			return sock
+		case tried of
+			Left err -> case addrs of
+				[] -> return (Left (TransportError (show (err :: IOException))))
+				_ -> openSocket addrs
 			Right sock -> return (Right sock)
-	openSocket' port addr = do
-		sock <- Network.Socket.socket (Network.Socket.addrFamily addr)
-		                  (Network.Socket.addrSocketType addr)
-		                  (Network.Socket.addrProtocol addr)
-		Network.Socket.connect sock (setPort port (Network.Socket.addrAddress addr))
-		return sock
 	
 	go = case getPort of
 		Left err -> return (Left err)
@@ -190,7 +185,14 @@ openTcp a params = go where
 			Left err -> return (Left err)
 			Right family -> do
 				addrs <- getAddresses family
-				eSock <- openSocket port addrs
+				eSock <- openSocket (map (setPort port) addrs)
 				case eSock of
 					Left err -> return (Left err)
 					Right sock -> return (Right (SocketTransport sock))
+
+catchIOException :: IO (Either TransportError a) -> IO (Either TransportError a)
+catchIOException io = do
+	tried <- try io
+	return $ case tried of
+		Right a -> a
+		Left err -> Left (TransportError (show (err :: IOException)))

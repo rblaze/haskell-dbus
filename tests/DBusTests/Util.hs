@@ -20,21 +20,38 @@ module DBusTests.Util
 	( assertVariant
 	, assertValue
 	, assertAtom
+	
+	, listenRandomUnixPath
+	, listenRandomUnixAbstract
+	, listenRandomIPv4
+	, listenRandomIPv6
+	, noIPv6
+	
 	, halfSized
 	, clampedSize
 	, smallListOf
 	, smallListOf1
 	) where
 
-import           Test.Chell
-import           Test.QuickCheck hiding ((.&.))
-
+import           Control.Exception (IOException, try)
+import           Control.Monad.IO.Class (MonadIO, liftIO)
 import           Data.Bits ((.&.))
 import qualified Data.ByteString
 import qualified Data.ByteString.Lazy
+import qualified Data.ByteString.Char8 as Char8
 import           Data.Char (chr)
-import qualified Data.Text as T
+import qualified Data.Map as Map
 import qualified Data.Set
+import qualified Data.Text as T
+import qualified Network as N
+import qualified Network.Socket as NS
+import           System.Directory (getTemporaryDirectory)
+import           System.FilePath ((</>))
+import           System.Random (randomIO)
+
+import qualified Data.UUID as UUID
+import           Test.Chell
+import           Test.QuickCheck hiding ((.&.))
 
 import           DBus
 import           DBus.Types
@@ -64,6 +81,78 @@ assertAtom t a = do
 	$expect $ equal (fromAtom (toAtom a)) (Just a)
 	$expect $ equal (toAtom a) (toAtom a)
 	assertValue t a
+
+listenRandomUnixPath :: MonadIO m => m (Address, N.Socket)
+listenRandomUnixPath = liftIO $ do
+	tmp <- getTemporaryDirectory
+	uuid <- liftIO randomIO
+	let sockAddr = NS.SockAddrUnix (tmp </> UUID.toString uuid)
+	
+	sock <- NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol
+	NS.bindSocket sock sockAddr
+	NS.listen sock 1
+	
+	let Just addr = address "unix" (Map.fromList
+		[ ("path", Char8.pack (tmp </> UUID.toString uuid))
+		])
+	return (addr, sock)
+
+listenRandomUnixAbstract :: MonadIO m => m (Address, N.Socket)
+listenRandomUnixAbstract = liftIO $ do
+	uuid <- liftIO randomIO
+	let sockAddr = NS.SockAddrUnix ('\x00' : UUID.toString uuid)
+	
+	sock <- NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol
+	NS.bindSocket sock sockAddr
+	NS.listen sock 1
+	
+	let Just addr = address "unix" (Map.fromList
+		[ ("abstract", Char8.pack (UUID.toString uuid))
+		])
+	return (addr, sock)
+
+listenRandomIPv4 :: MonadIO m => m (Address, N.Socket)
+listenRandomIPv4 = liftIO $ do
+	hostAddr <- NS.inet_addr "127.0.0.1"
+	let sockAddr = NS.SockAddrInet 0 hostAddr
+	
+	sock <- NS.socket NS.AF_INET NS.Stream NS.defaultProtocol
+	NS.bindSocket sock sockAddr
+	NS.listen sock 1
+	
+	sockPort <- NS.socketPort sock
+	let Just addr = address "tcp" (Map.fromList
+		[ ("family", "ipv4")
+		, ("host", "localhost")
+		, ("port", Char8.pack (show (toInteger sockPort)))
+		])
+	return (addr, sock)
+
+listenRandomIPv6 :: MonadIO m => m (Address, N.Socket)
+listenRandomIPv6 = liftIO $ do
+	addrs <- NS.getAddrInfo Nothing (Just "::1") Nothing
+	let sockAddr = case addrs of
+		[] -> error "listenRandomIPv6: no address for localhost?"
+		a:_ -> NS.addrAddress a
+	
+	sock <- NS.socket NS.AF_INET6 NS.Stream NS.defaultProtocol
+	NS.bindSocket sock sockAddr
+	NS.listen sock 1
+	
+	sockPort <- NS.socketPort sock
+	let Just addr = address "tcp" (Map.fromList
+		[ ("family", "ipv6")
+		, ("host", "localhost")
+		, ("port", Char8.pack (show (toInteger sockPort)))
+		])
+	return (addr, sock)
+
+noIPv6 :: IO Bool
+noIPv6 = do
+	tried <- try (NS.getAddrInfo Nothing (Just "::1") Nothing)
+	case (tried :: Either IOException [NS.AddrInfo]) of
+		Left _ -> return True
+		Right addrs -> return (null addrs)
 
 instance (Arbitrary a, Ord a) => Arbitrary (Data.Set.Set a) where
 	arbitrary = fmap Data.Set.fromList arbitrary

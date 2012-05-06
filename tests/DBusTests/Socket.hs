@@ -21,53 +21,31 @@ module DBusTests.Socket (test_Socket) where
 import           Test.Chell
 
 import           Control.Concurrent
-import           Control.Exception (IOException, finally, try)
+import           Control.Exception (finally)
 import           Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.ByteString
 import qualified Data.ByteString.Char8 as Char8
-import qualified Data.Map
-import qualified Data.Text as T
 import qualified Network as N
-import qualified Network.Socket as NS
 import           System.IO
-import           System.Random (randomIO)
 
-import qualified Data.UUID as UUID
-
-import           DBus
 import           DBus.Socket
 import           DBus.Util (readUntil)
 
+import           DBusTests.Util (listenRandomIPv4)
+
 test_Socket :: Suite
 test_Socket = suite "Socket"
-	[ test_OpenUnix
-	, test_OpenTcp_IPv4
-	, skipWhen noIPv6 test_OpenTcp_IPv6
+	[ test_Open
 	]
 
-test_OpenUnix :: Suite
-test_OpenUnix = assertions "open-unix" $ do
-	(addr, networkSocket) <- listenRandomUnix
-	openResult <- withDummyServer networkSocket (DBus.Socket.open addr)
-	case openResult of
-		Left err -> $(Test.Chell.fail) (T.pack ("expected successful connection, got error: " ++ show err))
-		Right s -> $assert (equal (socketAddress s) addr)
-
-test_OpenTcp_IPv4 :: Suite
-test_OpenTcp_IPv4 = assertions "open-tcp-ipv4" $ do
+test_Open :: Suite
+test_Open = assertions "open" $ do
 	(addr, networkSocket) <- listenRandomIPv4
-	openResult <- withDummyServer networkSocket (DBus.Socket.open addr)
-	case openResult of
-		Left err -> $(Test.Chell.fail) (T.pack ("expected successful connection, got error: " ++ show err))
-		Right s -> $assert (equal (socketAddress s) addr)
-
-test_OpenTcp_IPv6 :: Suite
-test_OpenTcp_IPv6 = assertions "open-tcp-ipv6" $ do
-	(addr, networkSocket) <- listenRandomIPv6
-	openResult <- withDummyServer networkSocket (DBus.Socket.open addr)
-	case openResult of
-		Left err -> $(Test.Chell.fail) (T.pack ("expected successful connection, got error: " ++ show err))
-		Right s -> $assert (equal (socketAddress s) addr)
+	opened <- withDummyServer networkSocket (DBus.Socket.open addr)
+	$assert (right opened)
+	let Right s = opened
+	
+	$expect (equal (socketAddress s) addr)
 
 readChar8 :: Handle -> IO Char
 readChar8 h = fmap (Char8.head) (Data.ByteString.hGet h 1)
@@ -93,60 +71,3 @@ withDummyServer sock io = liftIO go where
 		_ <- readMVar mvar
 		hClose h
 		N.sClose sock
-
-listenRandomUnix :: MonadIO m => m (Address, N.Socket)
-listenRandomUnix = liftIO $ do
-	uuid <- liftIO randomIO
-	let sockAddr = NS.SockAddrUnix ('\x00' : UUID.toString uuid)
-	
-	sock <- NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol
-	NS.bindSocket sock sockAddr
-	NS.listen sock 1
-	
-	let Just addr = address "unix" (Data.Map.fromList
-		[ ("abstract", Char8.pack (UUID.toString uuid))
-		])
-	return (addr, sock)
-
-listenRandomIPv4 :: MonadIO m => m (Address, N.Socket)
-listenRandomIPv4 = liftIO $ do
-	hostAddr <- NS.inet_addr "127.0.0.1"
-	let sockAddr = NS.SockAddrInet 0 hostAddr
-	
-	sock <- NS.socket NS.AF_INET NS.Stream NS.defaultProtocol
-	NS.bindSocket sock sockAddr
-	NS.listen sock 1
-	
-	sockPort <- NS.socketPort sock
-	let Just addr = address "tcp" (Data.Map.fromList
-		[ ("family", "ipv4")
-		, ("host", "localhost")
-		, ("port", Char8.pack (show (toInteger sockPort)))
-		])
-	return (addr, sock)
-
-listenRandomIPv6 :: MonadIO m => m (Address, N.Socket)
-listenRandomIPv6 = liftIO $ do
-	addrs <- NS.getAddrInfo Nothing (Just "::1") Nothing
-	let sockAddr = case addrs of
-		[] -> error "listenRandomIPv6: no address for localhost?"
-		a:_ -> NS.addrAddress a
-	
-	sock <- NS.socket NS.AF_INET6 NS.Stream NS.defaultProtocol
-	NS.bindSocket sock sockAddr
-	NS.listen sock 1
-	
-	sockPort <- NS.socketPort sock
-	let Just addr = address "tcp" (Data.Map.fromList
-		[ ("family", "ipv6")
-		, ("host", "localhost")
-		, ("port", Char8.pack (show (toInteger sockPort)))
-		])
-	return (addr, sock)
-
-noIPv6 :: IO Bool
-noIPv6 = do
-	tried <- try (NS.getAddrInfo Nothing (Just "::1") Nothing)
-	case (tried :: Either IOException [NS.AddrInfo]) of
-		Left _ -> return True
-		Right addrs -> return (null addrs)

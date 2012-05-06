@@ -31,6 +31,7 @@ import           DBusTests.ObjectPath
 import           DBusTests.Serialization
 import           DBusTests.Socket
 import           DBusTests.Signature
+import           DBusTests.Transport
 import           DBusTests.Variant
 
 -- import all dbus modules here to ensure they show up in the coverage report,
@@ -61,6 +62,7 @@ tests =
 	, test_Serialization
 	, test_Signature
 	, test_Socket
+	, test_Transport
 	, test_Variant
 	]
 
