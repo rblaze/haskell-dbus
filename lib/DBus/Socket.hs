@@ -44,6 +44,11 @@ module DBus.Socket
 	
 	-- * Authentication
 	, Authenticator
+	, authenticator
+	, authenticatorClient
+	, authenticatorServer
+	
+	-- ** Built-in authenticators
 	, authExternal
 	) where
 
@@ -52,8 +57,6 @@ import           Prelude hiding (getLine)
 import           Control.Concurrent
 import           Control.Exception
 import           Control.Monad (when)
-import           Control.Monad.IO.Class (liftIO)
-import           Control.Monad.Trans.Reader
 import qualified Data.ByteString
 import qualified Data.ByteString.Char8 as Char8
 import           Data.Char (ord)
@@ -79,9 +82,6 @@ instance Exception SocketError
 socketErrorMessage :: SocketError -> String
 socketErrorMessage (SocketError msg) = msg
 
--- | TODO
-newtype Authenticator t = Authenticator (t -> IO Bool)
-
 data SomeTransport = forall t. (Transport t) => SomeTransport t
 
 instance Transport SomeTransport where
@@ -99,6 +99,17 @@ data Socket = Socket
 	, socketSerial :: IORef Serial
 	, socketReadLock :: MVar ()
 	, socketWriteLock :: MVar ()
+	}
+
+-- | An Authenticator defines how the local peer (client) authenticates
+-- itself to the remote peer (server).
+data Authenticator t = Authenticator
+	{
+	-- | Defines the client-side half of an authenticator.
+	  authenticatorClient :: t -> IO Bool
+	
+	-- | Defines the server-side half of an authenticator.
+	, authenticatorServer :: t -> IO Bool
 	}
 
 -- | Get the address of the remote peer.
@@ -144,7 +155,7 @@ openWith opts addr = toEither $ bracketOnError
 	(transportOpen (socketTransportOptions opts) addr)
 	transportClose
 	(\t -> do
-		authed <- authenticate t (socketAuthenticators opts)
+		authed <- authClient t (socketAuthenticators opts)
 		when (not authed) $ do
 			throwIO (SocketError "Authentication failed")
 		serial <- newIORef (Serial 1)
@@ -210,40 +221,58 @@ toEither io = catches (fmap Right io) handlers where
 	catchTransportError (TransportError err) = return (Left (SocketError err))
 	catchIOException exc = return (Left (SocketError (show (exc :: IOException))))
 
-authenticate :: Transport t => t -> [Authenticator t] -> IO Bool
-authenticate t authenticators = go where
+authClient :: Transport t => t -> [Authenticator t] -> IO Bool
+authClient t authenticators = go where
 	go = do
 		transportPut t (Data.ByteString.pack [0])
 		loop authenticators
 	loop [] = return False
-	loop ((Authenticator auth):next) = do
-		success <- auth t
+	loop (auth:next) = do
+		success <- authenticatorClient auth t
 		if success
-			then return True
+			then do
+				transportPut t "BEGIN\r\n"
+				return True
 			else loop next
 
-putLine :: Transport t => String -> ReaderT t IO ()
-putLine line = do
-	t <- ask
-	liftIO (transportPut t (Char8.pack (line ++ "\r\n")))
+-- | An empty authenticator. Use 'authentictorClient' or 'authenticatorServer'
+-- to control how the authentication is performed.
+--
+-- @
+--myAuthenticator :: Authenticator MyTransport
+--myAuthenticator = authenticator
+--    { 'authenticatorClient' = clientMyAuth
+--    , 'authenticatorServer' = serverMyAuth
+--    }
+--
+--clientMyAuth :: MyTransport -> IO Bool
+--serverMyAuth :: MyTransport -> IO Bool
+-- @
+authenticator :: Authenticator t
+authenticator = Authenticator (\_ -> return False) (\_ -> return False)
 
-getLine :: Transport t => ReaderT t IO String
-getLine = do
-	t <- ask
-	let getchr = Char8.head `fmap` transportGet t 1
-	liftIO (do
-		raw <- readUntil "\r\n" getchr
-		return (dropEnd 2 raw))
+-- | Implements the D-Bus @EXTERNAL@ mechanism, which uses credential
+-- passing over a UNIX socket.
+authExternal :: Authenticator SocketTransport
+authExternal = authenticator
+	{ authenticatorClient = clientAuthExternal
+	}
 
--- | TODO
-authExternal :: Transport t => Authenticator t
-authExternal = Authenticator $ runReaderT $ do
-	uid <- liftIO System.Posix.User.getRealUserID
+clientAuthExternal :: Transport t => t -> IO Bool
+clientAuthExternal t = do
+	uid <- System.Posix.User.getRealUserID
 	let token = concatMap (printf "%02X" . ord) (show uid)
-	putLine ("AUTH EXTERNAL " ++ token)
-	resp <- getLine
-	case takeWhile (/= ' ') resp of
-		"OK" -> do
-			putLine "BEGIN"
-			return True
-		_ -> return False
+	transportPutLine t ("AUTH EXTERNAL " ++ token)
+	resp <- transportGetLine t
+	return $ case takeWhile (/= ' ') resp of
+		"OK" -> True
+		_ -> False
+
+transportPutLine :: Transport t => t -> String -> IO ()
+transportPutLine t line = transportPut t (Char8.pack (line ++ "\r\n"))
+
+transportGetLine :: Transport t => t -> IO String
+transportGetLine t = do
+	let getchr = Char8.head `fmap` transportGet t 1
+	raw <- readUntil "\r\n" getchr
+	return (dropEnd 2 raw)
