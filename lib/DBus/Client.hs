@@ -225,8 +225,8 @@ call :: Client -> MethodCall -> IO (Either MethodError MethodReturn)
 call client msg = do
 	-- remove some fields that should not be set:
 	--
-	-- * methodCallSender is not used in client/bus mode.
-	-- * NoReplyExpected can cause this function to block indefinitely.
+	-- methodCallSender: not used in client/bus mode.
+	-- NoReplyExpected: can cause this function to block indefinitely.
 	let safeMsg = msg
 		{ methodCallSender = Nothing
 		, methodCallFlags = Data.Set.delete NoReplyExpected (methodCallFlags msg)
