@@ -20,6 +20,9 @@
 
 -- | D-Bus sockets are used for communication between two peers. In this model,
 -- there is no \"bus\" or \"client\", simply two endpoints sending messages.
+--
+-- Most users will want to use the "DBus.Client" or "DBus.Client.Simple"
+-- modules instead.
 module DBus.Socket
 	(
 	

@@ -19,10 +19,10 @@
 -- | Support for defining custom transport mechanisms. Most users will not
 -- need to care about the types defined in this module.
 module DBus.Transport
-	( Transport(..)
+	( TransportError(..)
+	, Transport(..)
 	, TransportOpen(..)
 	, TransportListen(..)
-	, TransportError(..)
 	, SocketTransport
 	) where
 
@@ -37,13 +37,13 @@ import           Network.Socket.ByteString (sendAll, recv)
 import           DBus
 import           DBus.Util (readPortNumber)
 
--- | TODO
+-- | Thrown from transport methods when an error occurs.
 data TransportError = TransportError String
 	deriving (Eq, Show, Typeable)
 
 instance Exception TransportError
 
--- | A Transport can exchange bytes with a remote peer.
+-- | A 'Transport' can exchange bytes with a remote peer.
 class Transport t where
 	-- | Additional options that this transport type may use when establishing
 	-- a connection.
@@ -69,7 +69,7 @@ class Transport t where
 	-- or handles.
 	transportClose :: t -> IO ()
 
--- | A TransportOpen can open a connection to a remote peer.
+-- | A 'Transport' which can open a connection to a remote peer.
 class Transport t => TransportOpen t where
 	-- | Open a connection to the given address, using the given options.
 	--
@@ -77,7 +77,8 @@ class Transport t => TransportOpen t where
 	-- established.
 	transportOpen :: TransportOptions t -> Address -> IO t
 
--- | A TransportListen can listen for and accept connections from remote peers.
+-- | A 'Transport' which can listen for and accept connections from remote
+-- peers.
 class Transport t => TransportListen t where
 	-- | Used for transports that listen on a port or address.
 	data TransportListener t :: *
