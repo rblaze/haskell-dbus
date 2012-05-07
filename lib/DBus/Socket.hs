@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -50,13 +51,14 @@ import           Prelude hiding (getLine)
 
 import           Control.Concurrent
 import           Control.Exception
+import           Control.Monad (when)
 import           Control.Monad.IO.Class (liftIO)
-import           Control.Monad.Trans.Class (lift)
 import           Control.Monad.Trans.Reader
 import qualified Data.ByteString
 import qualified Data.ByteString.Char8 as Char8
 import           Data.Char (ord)
 import           Data.IORef
+import           Data.Typeable (Typeable)
 import qualified System.Posix.User
 import           Text.Printf (printf)
 
@@ -65,31 +67,20 @@ import           DBus.Transport
 import           DBus.Types (Serial(..))
 import           DBus.Wire (unmarshalMessageM)
 import           DBus.Util (readUntil, dropEnd)
-import           DBus.Util.MonadError
 
 -- | Stores information about an error encountered while creating or using a
 -- 'Socket'.
 data SocketError = SocketError String
-	deriving (Eq, Ord, Show)
+	deriving (Eq, Show, Typeable)
+
+instance Exception SocketError
 
 -- | Get an error message describing a 'SocketError'.
 socketErrorMessage :: SocketError -> String
 socketErrorMessage (SocketError msg) = msg
 
-type SocketM = ErrorT SocketError IO
-
-socketError :: String -> SocketM a
-socketError = throwErrorT . SocketError
-
-socketIO :: IO a -> SocketM a
-socketIO io = do
-	tried <- liftIO (Control.Exception.try io)
-	case tried of
-		Left err -> socketError (show (err :: IOException))
-		Right a -> return a
-
 -- | TODO
-newtype Authenticator t = Authenticator (t -> SocketM Bool)
+newtype Authenticator t = Authenticator (t -> IO Bool)
 
 data SomeTransport = forall t. (Transport t) => SomeTransport t
 
@@ -149,24 +140,17 @@ open = openWith defaultSocketOptions
 -- Most users should use 'open'. This function is for users who need to define
 -- custom authenticators or transports.
 openWith :: TransportOpen t => SocketOptions t -> Address -> IO (Either SocketError Socket)
-openWith opts addr = do
-	eTrans <- transportOpen (socketTransportOptions opts) addr
-	case eTrans of
-		Left err -> return (Left (SocketError (show err)))
-		Right trans -> do
-			authed <- runErrorT (authenticate trans (socketAuthenticators opts))
-			case authed of
-				Left err -> do
-					transportClose trans
-					return (Left err)
-				Right False -> do
-					transportClose trans
-					return (Left (SocketError "Authentication failed"))
-				Right True -> do
-					serial <- newIORef (Serial 1)
-					readLock <- newMVar ()
-					writeLock <- newMVar ()
-					return (Right (Socket addr (SomeTransport trans) serial readLock writeLock))
+openWith opts addr = toEither $ bracketOnError
+	(transportOpen (socketTransportOptions opts) addr)
+	transportClose
+	(\t -> do
+		authed <- authenticate t (socketAuthenticators opts)
+		when (not authed) $ do
+			throwIO (SocketError "Authentication failed")
+		serial <- newIORef (Serial 1)
+		readLock <- newMVar ()
+		writeLock <- newMVar ()
+		return (Socket addr (SomeTransport t) serial readLock writeLock))
 
 -- | Close an open 'Socket'. Once closed, the 'Socket' is no longer valid and
 -- must not be used.
@@ -185,15 +169,12 @@ send :: Message msg => Socket -> msg -> (Serial -> IO a) -> IO (Either SocketErr
 send sock msg io = do
 	serial <- nextSerial sock
 	case marshalMessage LittleEndian serial msg of
-		Right bytes -> do
+		Right bytes -> toEither $ do
+			let t = socketTransport sock
 			a <- io serial
-			tried <- Control.Exception.try (withMVar
-				(socketWriteLock sock)
-				(\_ -> transportPut (socketTransport sock) bytes))
-			case tried of
-				Left err -> return (Left (SocketError (show (err :: IOException))))
-				Right _ -> return (Right a)
-		Left err -> return (Left (SocketError ("Message cannot be written: " ++ show err)))
+			withMVar (socketWriteLock sock) (\_ -> transportPut t bytes)
+			return a
+		Left err -> return (Left (SocketError ("Message cannot be sent: " ++ show err)))
 
 nextSerial :: Socket -> IO Serial
 nextSerial sock = atomicModifyIORef
@@ -206,24 +187,33 @@ nextSerial sock = atomicModifyIORef
 -- multiple threads attempt to receive messages concurrently, one will block
 -- until after the other has finished.
 receive :: Socket -> IO (Either SocketError ReceivedMessage)
-receive sock = do
-	tried <- Control.Exception.try (withMVar
-		(socketReadLock sock)
-		-- TODO: instead of fromIntegral, unify types
-		-- TODO: after reading the length, read all bytes from the
-		--       handle, then return a closure to perform the parse
-		--       outside of the lock.
-		(\_ -> unmarshalMessageM (transportGet (socketTransport sock) . fromIntegral)))
-	case tried of
-		Left err -> return (Left (SocketError (show (err :: IOException))))
-		Right unmarshaled -> case unmarshaled of
-			Left err -> return (Left (SocketError ("Error reading message from socket: " ++ show err)))
-			Right msg -> return (Right msg)
+receive sock = toEither $ do
+	-- TODO: instead of fromIntegral, unify types
+	-- TODO: after reading the length, read all bytes from the
+	--       handle, then return a closure to perform the parse
+	--       outside of the lock.
+	let t = socketTransport sock
+	let get = transportGet t . fromIntegral
+	received <- withMVar (socketReadLock sock) (\_ -> unmarshalMessageM get)
+	case received of
+		Left err -> throwIO (SocketError ("Error reading message from socket: " ++ show err))
+		Right msg -> return msg
 
-authenticate :: Transport t => t -> [Authenticator t] -> SocketM Bool
+toEither :: IO a -> IO (Either SocketError a)
+toEither io = catches (fmap Right io) handlers where
+	handlers =
+		[ Handler catchSocketError
+		, Handler catchTransportError
+		, Handler catchIOException
+		]
+	catchSocketError exc = return (Left exc)
+	catchTransportError (TransportError err) = return (Left (SocketError err))
+	catchIOException exc = return (Left (SocketError (show (exc :: IOException))))
+
+authenticate :: Transport t => t -> [Authenticator t] -> IO Bool
 authenticate t authenticators = go where
 	go = do
-		socketIO (transportPut t (Data.ByteString.pack [0]))
+		transportPut t (Data.ByteString.pack [0])
 		loop authenticators
 	loop [] = return False
 	loop ((Authenticator auth):next) = do
@@ -232,25 +222,23 @@ authenticate t authenticators = go where
 			then return True
 			else loop next
 
-type AuthM t = ReaderT t SocketM
-
-putLine :: Transport t => String -> AuthM t ()
+putLine :: Transport t => String -> ReaderT t IO ()
 putLine line = do
 	t <- ask
-	lift (socketIO (transportPut t (Char8.pack (line ++ "\r\n"))))
+	liftIO (transportPut t (Char8.pack (line ++ "\r\n")))
 
-getLine :: Transport t => AuthM t String
+getLine :: Transport t => ReaderT t IO String
 getLine = do
 	t <- ask
 	let getchr = Char8.head `fmap` transportGet t 1
-	lift (socketIO (do
+	liftIO (do
 		raw <- readUntil "\r\n" getchr
-		return (dropEnd 2 raw)))
+		return (dropEnd 2 raw))
 
 -- | TODO
 authExternal :: Transport t => Authenticator t
 authExternal = Authenticator $ runReaderT $ do
-	uid <- lift (socketIO System.Posix.User.getRealUserID)
+	uid <- liftIO System.Posix.User.getRealUserID
 	let token = concatMap (printf "%02X" . ord) (show uid)
 	putLine ("AUTH EXTERNAL " ++ token)
 	resp <- getLine

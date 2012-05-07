@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- Copyright (C) 2009-2012 John Millikin <jmillikin@gmail.com>
@@ -29,11 +30,18 @@ import           Control.Exception
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as Char8
 import qualified Data.Map as Map
+import           Data.Typeable (Typeable)
 import           Network.Socket hiding (recv)
 import           Network.Socket.ByteString (sendAll, recv)
 
 import           DBus
 import           DBus.Util (readPortNumber)
+
+-- | TODO
+data TransportError = TransportError String
+	deriving (Eq, Show, Typeable)
+
+instance Exception TransportError
 
 -- | A Transport can exchange bytes with a remote peer.
 class Transport t where
@@ -45,12 +53,16 @@ class Transport t where
 	transportDefaultOptions :: TransportOptions t
 	
 	-- | Send a 'ByteString' over the transport.
+	--
+	-- Throws a 'TransportError' if an error occurs.
 	transportPut :: t -> ByteString -> IO ()
 	
 	-- | Receive a 'ByteString' of the given size from the transport. The
 	-- transport should block until sufficient bytes are available, and
 	-- only return fewer than the requested amount if there will not be
 	-- any more data.
+	--
+	-- Throws a 'TransportError' if an error occurs.
 	transportGet :: t -> Int -> IO ByteString
 	
 	-- | Close an open transport, and release any associated resources
@@ -61,9 +73,9 @@ class Transport t where
 class Transport t => TransportOpen t where
 	-- | Open a connection to the given address, using the given options.
 	--
-	-- Returns a 'TransportError' if the connection could not be
+	-- Throws a 'TransportError' if the connection could not be
 	-- established.
-	transportOpen :: TransportOptions t -> Address -> IO (Either TransportError t)
+	transportOpen :: TransportOptions t -> Address -> IO t
 
 -- | A TransportListen can listen for and accept connections from remote peers.
 class Transport t => TransportListen t where
@@ -73,22 +85,18 @@ class Transport t => TransportListen t where
 	-- | Begin listening for connections on the given address, using the
 	-- given options.
 	--
-	-- Returns a 'TransportError' if it's not possible to listen at that
+	-- Throws a 'TransportError' if it's not possible to listen at that
 	-- address (for example, if the port is already in use).
-	transportListen :: TransportOptions t -> Address -> IO (Either TransportError (TransportListener t))
+	transportListen :: TransportOptions t -> Address -> IO (TransportListener t)
 	
 	-- | Accept a new connection.
 	--
-	-- Returns a 'TransportError' if some error happens before the
-	-- transport is ready to exchange bytes (for example, an authentication
-	-- error).
-	transportAccept :: TransportListener t -> IO (Either TransportError t)
+	-- Throws a 'TransportError' if some error happens before the
+	-- transport is ready to exchange bytes.
+	transportAccept :: TransportListener t -> IO t
 	
 	-- | Close an open listener.
 	transportListenerClose :: TransportListener t -> IO ()
-
-data TransportError = TransportError String
-	deriving (Eq, Show)
 
 -- | Supports connecting over UNIX or TCP sockets.
 --
@@ -102,18 +110,18 @@ newtype SocketTransport = SocketTransport Socket
 instance Transport SocketTransport where
 	data TransportOptions SocketTransport = SocketTransportOptions
 	transportDefaultOptions = SocketTransportOptions
-	transportPut (SocketTransport s) = sendAll s
-	transportGet (SocketTransport s) = recv s
-	transportClose (SocketTransport s) = sClose s
+	transportPut (SocketTransport s) bytes = catchIOException (sendAll s bytes)
+	transportGet (SocketTransport s) n = catchIOException (recv s n)
+	transportClose (SocketTransport s) = catchIOException (sClose s)
 
 instance TransportOpen SocketTransport where
 	transportOpen _ a = case Char8.unpack (addressMethod a) of
 		"unix" -> openUnix (addressParameters a)
 		"tcp" -> openTcp (addressParameters a)
-		method -> return (Left (TransportError ("Unknown address method: " ++ show method)))
+		method -> throwIO (TransportError ("Unknown address method: " ++ show method))
 
-openUnix :: Map.Map ByteString ByteString -> IO (Either TransportError SocketTransport)
-openUnix params = catchIOException go where
+openUnix :: Map.Map ByteString ByteString -> IO SocketTransport
+openUnix params = go where
 	param key = Map.lookup (Char8.pack key) params
 	
 	tooMany = "Only one of 'path' or 'abstract' may be specified for the\
@@ -128,14 +136,14 @@ openUnix params = catchIOException go where
 		(Nothing, Just x) -> Right ('\x00' : Char8.unpack x)
 	
 	go = case path of
-		Left err -> return (Left (TransportError err))
-		Right p -> do
+		Left err -> throwIO (TransportError err)
+		Right p -> catchIOException $ do
 			sock <- socket AF_UNIX Stream defaultProtocol
 			connect sock (SockAddrUnix p)
-			return (Right (SocketTransport sock))
+			return (SocketTransport sock)
 
-openTcp :: Map.Map ByteString ByteString -> IO (Either TransportError SocketTransport)
-openTcp params = catchIOException go where
+openTcp :: Map.Map ByteString ByteString -> IO SocketTransport
+openTcp params = go where
 	param key = Map.lookup (Char8.pack key) params
 	
 	hostname = maybe "localhost" Char8.unpack (param "host")
@@ -144,14 +152,14 @@ openTcp params = catchIOException go where
 		Just "ipv4" -> Right AF_INET
 		Just "ipv6" -> Right AF_INET6
 		Nothing     -> Right AF_UNSPEC
-		Just x      -> Left (TransportError (unknownFamily x))
+		Just x      -> Left (unknownFamily x)
 	missingPort = "TCP transport requires the `port' parameter."
 	badPort x = "Invalid socket port for TCP transport: " ++ show x
 	getPort = case param "port" of
-		Nothing -> Left (TransportError missingPort)
+		Nothing -> Left missingPort
 		Just x -> case readPortNumber (Char8.unpack x) of
 			Just port -> Right port
-			Nothing -> Left (TransportError (badPort x))
+			Nothing -> Left (badPort x)
 	
 	getAddresses family = getAddrInfo (Just (defaultHints
 		{ addrFlags = [AI_ADDRCONFIG]
@@ -164,7 +172,7 @@ openTcp params = catchIOException go where
 		(SockAddrInet6 _ x y z) -> info { addrAddress = SockAddrInet6 port x y z }
 		_ -> info
 	
-	openSocket [] = error "openSocket: no addresses"
+	openSocket [] = throwIO (TransportError "openSocket: no addresses")
 	openSocket (addr:addrs) = do
 		tried <- Control.Exception.try $ do
 			sock <- socket
@@ -175,24 +183,22 @@ openTcp params = catchIOException go where
 			return sock
 		case tried of
 			Left err -> case addrs of
-				[] -> return (Left (TransportError (show (err :: IOException))))
+				[] -> throwIO (TransportError (show (err :: IOException)))
 				_ -> openSocket addrs
-			Right sock -> return (Right sock)
+			Right sock -> return sock
 	
 	go = case getPort of
-		Left err -> return (Left err)
+		Left err -> throwIO (TransportError err)
 		Right port -> case getFamily of
-			Left err -> return (Left err)
-			Right family -> do
+			Left err -> throwIO (TransportError err)
+			Right family -> catchIOException $ do
 				addrs <- getAddresses family
-				eSock <- openSocket (map (setPort port) addrs)
-				case eSock of
-					Left err -> return (Left err)
-					Right sock -> return (Right (SocketTransport sock))
+				sock <- openSocket (map (setPort port) addrs)
+				return (SocketTransport sock)
 
-catchIOException :: IO (Either TransportError a) -> IO (Either TransportError a)
+catchIOException :: IO a -> IO a
 catchIOException io = do
 	tried <- try io
-	return $ case tried of
-		Right a -> a
-		Left err -> Left (TransportError (show (err :: IOException)))
+	case tried of
+		Right a -> return a
+		Left err -> throwIO (TransportError (show (err :: IOException)))

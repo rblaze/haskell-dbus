@@ -49,11 +49,9 @@ test_TransportOpen = suite "transportOpen"
 
 test_OpenUnknown :: Suite
 test_OpenUnknown = assertions "unknown" $ do
-	opened <- liftIO (transportOpen socketTransportOptions (address_ "noexist" Map.empty))
-	$assert (left (opened :: Either TransportError SocketTransport))
-	
-	let Left err = opened
-	$expect (equal err (TransportError "Unknown address method: \"noexist\""))
+	$assert $ throwsEq
+		(TransportError "Unknown address method: \"noexist\"")
+		(transportOpen socketTransportOptions (address_ "noexist" Map.empty))
 
 test_OpenUnix :: Suite
 test_OpenUnix = suite "unix"
@@ -69,9 +67,7 @@ test_OpenUnix_Path = assertions "path" $ do
 	(addr, networkSocket) <- listenRandomUnixPath
 	afterTest (N.sClose networkSocket)
 	
-	opened <- liftIO (transportOpen transportDefaultOptions addr)
-	$assert (right (opened :: Either TransportError SocketTransport))
-	let Right t = opened
+	t <- liftIO (transportOpen socketTransportOptions addr)
 	afterTest (transportClose t)
 
 test_OpenUnix_Abstract :: Suite
@@ -79,39 +75,31 @@ test_OpenUnix_Abstract = assertions "abstract" $ do
 	(addr, networkSocket) <- listenRandomUnixAbstract
 	afterTest (N.sClose networkSocket)
 	
-	opened <- liftIO (transportOpen transportDefaultOptions addr)
-	$assert (right (opened :: Either TransportError SocketTransport))
-	let Right t = opened
+	t <- liftIO (transportOpen socketTransportOptions addr)
 	afterTest (transportClose t)
 
 test_OpenUnix_TooFew :: Suite
 test_OpenUnix_TooFew = assertions "too-few" $ do
-	opened <- liftIO (transportOpen socketTransportOptions (address_ "unix" Map.empty))
-	$assert (left (opened :: Either TransportError SocketTransport))
-	
-	let Left err = opened
-	$expect (equal err (TransportError "One of 'path' or 'abstract' must be specified for the 'unix' transport."))
+	$assert $ throwsEq
+		(TransportError "One of 'path' or 'abstract' must be specified for the 'unix' transport.")
+		(transportOpen socketTransportOptions (address_ "unix" Map.empty))
 
 test_OpenUnix_TooMany :: Suite
 test_OpenUnix_TooMany = assertions "too-many" $ do
-	opened <- liftIO (transportOpen socketTransportOptions (address_ "unix" (Map.fromList
-		[ ("path", "foo")
-		, ("abstract", "bar")
-		])))
-	$assert (left (opened :: Either TransportError SocketTransport))
-	
-	let Left err = opened
-	$expect (equal err (TransportError "Only one of 'path' or 'abstract' may be specified for the 'unix' transport."))
+	$assert $ throwsEq
+		(TransportError "Only one of 'path' or 'abstract' may be specified for the 'unix' transport.")
+		(transportOpen socketTransportOptions (address_ "unix" (Map.fromList
+			[ ("path", "foo")
+			, ("abstract", "bar")
+			])))
 
 test_OpenUnix_NotListening :: Suite
 test_OpenUnix_NotListening = assertions "too-many" $ do
 	(addr, networkSocket) <- listenRandomUnixAbstract
 	liftIO (NS.sClose networkSocket)
-	opened <- liftIO (transportOpen socketTransportOptions addr)
-	$assert (left (opened :: Either TransportError SocketTransport))
-	
-	let Left err = opened
-	$expect (equal err (TransportError "connect: does not exist (Connection refused)"))
+	$assert $ throwsEq
+		(TransportError "connect: does not exist (Connection refused)")
+		(transportOpen socketTransportOptions addr)
 
 test_OpenTcp :: Suite
 test_OpenTcp = suite "tcp"
@@ -129,9 +117,7 @@ test_OpenTcp_IPv4 = assertions "ipv4" $ do
 	(addr, networkSocket) <- listenRandomIPv4
 	afterTest (N.sClose networkSocket)
 	
-	opened <- liftIO (transportOpen transportDefaultOptions addr)
-	$assert (right (opened :: Either TransportError SocketTransport))
-	let Right t = opened
+	t <- liftIO (transportOpen socketTransportOptions addr)
 	afterTest (transportClose t)
 
 test_OpenTcp_IPv6 :: Suite
@@ -139,64 +125,52 @@ test_OpenTcp_IPv6 = assertions "ipv6" $ do
 	(addr, networkSocket) <- listenRandomIPv6
 	afterTest (N.sClose networkSocket)
 	
-	opened <- liftIO (transportOpen transportDefaultOptions addr)
-	$assert (right (opened :: Either TransportError SocketTransport))
-	let Right t = opened
+	t <- liftIO (transportOpen socketTransportOptions addr)
 	afterTest (transportClose t)
 
 test_OpenTcp_Unknown :: Suite
 test_OpenTcp_Unknown = assertions "unknown-family" $ do
-	opened <- liftIO (transportOpen socketTransportOptions (address_ "tcp" (Map.fromList
-		[ ("family", "noexist")
-		, ("port", "1234")
-		])))
-	$assert (left (opened :: Either TransportError SocketTransport))
-	
-	let Left err = opened
-	$expect (equal err (TransportError "Unknown socket family for TCP transport: \"noexist\""))
+	$assert $ throwsEq
+		(TransportError "Unknown socket family for TCP transport: \"noexist\"")
+		(transportOpen socketTransportOptions (address_ "tcp" (Map.fromList
+			[ ("family", "noexist")
+			, ("port", "1234")
+			])))
 
 test_OpenTcp_NoPort :: Suite
 test_OpenTcp_NoPort = assertions "no-port" $ do
-	opened <- liftIO (transportOpen socketTransportOptions (address_ "tcp" (Map.fromList
-		[ ("family", "ipv4")
-		])))
-	$assert (left (opened :: Either TransportError SocketTransport))
-	
-	let Left err = opened
-	$expect (equal err (TransportError "TCP transport requires the `port' parameter."))
+	$assert $ throwsEq
+		(TransportError "TCP transport requires the `port' parameter.")
+		(transportOpen socketTransportOptions (address_ "tcp" (Map.fromList
+			[ ("family", "ipv4")
+			])))
 
 test_OpenTcp_InvalidPort :: Suite
 test_OpenTcp_InvalidPort = assertions "invalid-port" $ do
-	opened <- liftIO (transportOpen socketTransportOptions (address_ "tcp" (Map.fromList
-		[ ("family", "ipv4")
-		, ("port", "123456")
-		])))
-	$assert (left (opened :: Either TransportError SocketTransport))
-	
-	let Left err = opened
-	$expect (equal err (TransportError "Invalid socket port for TCP transport: \"123456\""))
+	$assert $ throwsEq
+		(TransportError "Invalid socket port for TCP transport: \"123456\"")
+		(transportOpen socketTransportOptions (address_ "tcp" (Map.fromList
+			[ ("family", "ipv4")
+			, ("port", "123456")
+			])))
 
 test_OpenTcp_NoUsableAddresses :: Suite
 test_OpenTcp_NoUsableAddresses = assertions "no-usable-addresses" $ do
-	opened <- liftIO (transportOpen socketTransportOptions (address_ "tcp" (Map.fromList
-		[ ("family", "ipv4")
-		, ("port", "1234")
-		, ("host", "256.256.256.256")
-		])))
-	$assert (left (opened :: Either TransportError SocketTransport))
-	
-	let Left err = opened
-	$expect (equal err (TransportError "getAddrInfo: does not exist (No address associated with hostname)"))
+	$assert $ throwsEq
+		(TransportError "getAddrInfo: does not exist (No address associated with hostname)")
+		(transportOpen socketTransportOptions (address_ "tcp" (Map.fromList
+			[ ("family", "ipv4")
+			, ("port", "1234")
+			, ("host", "256.256.256.256")
+			])))
 
 test_OpenTcp_NotListening :: Suite
 test_OpenTcp_NotListening = assertions "too-many" $ do
 	(addr, networkSocket) <- listenRandomIPv4
 	liftIO (NS.sClose networkSocket)
-	opened <- liftIO (transportOpen socketTransportOptions addr)
-	$assert (left (opened :: Either TransportError SocketTransport))
-	
-	let Left err = opened
-	$expect (equal err (TransportError "connect: does not exist (Connection refused)"))
+	$assert $ throwsEq
+		(TransportError "connect: does not exist (Connection refused)")
+		(transportOpen socketTransportOptions addr)
 
 test_TransportSendReceive :: Suite
 test_TransportSendReceive = assertions "send-receive" $ do
@@ -211,9 +185,7 @@ test_TransportSendReceive = assertions "send-receive" $ do
 		hClose h
 		NS.sClose networkSocket
 	
-	opened <- liftIO (transportOpen socketTransportOptions addr)
-	$assert (right (opened :: Either TransportError SocketTransport))
-	let Right t = opened
+	t <- liftIO (transportOpen socketTransportOptions addr)
 	afterTest (transportClose t)
 	
 	liftIO (transportPut t "testing\n")
