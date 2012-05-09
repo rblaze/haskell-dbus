@@ -33,6 +33,9 @@ import qualified Data.Map as Map
 import           Data.Typeable (Typeable)
 import           Network.Socket hiding (recv)
 import           Network.Socket.ByteString (sendAll, recv)
+import           System.Random (randomIO)
+
+import qualified Data.UUID as UUID
 
 import           DBus
 import           DBus.Util (readPortNumber)
@@ -98,6 +101,9 @@ class Transport t => TransportListen t where
 	
 	-- | Close an open listener.
 	transportListenerClose :: TransportListener t -> IO ()
+	
+	-- | Get the address to use to connect to a listener.
+	transportListenerAddress :: TransportListener t -> Address
 
 -- | Supports connecting over UNIX or TCP sockets.
 --
@@ -121,6 +127,20 @@ instance TransportOpen SocketTransport where
 		"tcp" -> openTcp (addressParameters a)
 		method -> throwIO (TransportError ("Unknown address method: " ++ show method))
 
+instance TransportListen SocketTransport where
+	data TransportListener SocketTransport = SocketTransportListener Address Socket
+	transportListen _ a = do
+		sock <- case Char8.unpack (addressMethod a) of
+			"unix" -> listenUnix (addressParameters a)
+			"tcp" -> listenTcp (addressParameters a)
+			method -> throwIO (TransportError ("Unknown address method: " ++ show method))
+		return (SocketTransportListener a sock)
+	transportAccept (SocketTransportListener _ s) = do
+		(s', _) <- accept s
+		return (SocketTransport s')
+	transportListenerClose (SocketTransportListener _ s) = sClose s
+	transportListenerAddress (SocketTransportListener a _) = a
+
 openUnix :: Map.Map ByteString ByteString -> IO SocketTransport
 openUnix params = go where
 	param key = Map.lookup (Char8.pack key) params
@@ -131,10 +151,10 @@ openUnix params = go where
 	         \ 'unix' transport."
 	
 	path = case (param "path", param "abstract") of
-		(Just _, Just _) -> Left tooMany
-		(Nothing, Nothing) -> Left tooFew
 		(Just x, Nothing) -> Right (Char8.unpack x)
 		(Nothing, Just x) -> Right ('\x00' : Char8.unpack x)
+		(Nothing, Nothing) -> Left tooFew
+		_ -> Left tooMany
 	
 	go = case path of
 		Left err -> throwIO (TransportError err)
@@ -196,6 +216,42 @@ openTcp params = go where
 				addrs <- getAddresses family
 				sock <- openSocket (map (setPort port) addrs)
 				return (SocketTransport sock)
+
+listenUnix :: Map.Map ByteString ByteString -> IO Socket
+listenUnix params = getPath >>= go where
+	param key = Map.lookup (Char8.pack key) params
+	
+	tooMany = "Only one of 'abstract', 'path', or 'tmpdir' may be\
+	          \ specified for the 'unix' transport."
+	tooFew = "One of 'abstract', 'path', or 'tmpdir' must be specified\
+	         \ for the 'unix' transport."
+	
+	getPath = case (param "abstract", param "path", param "tmpdir") of
+		(Just x, Nothing, Nothing) -> return (Right ('\x00' : Char8.unpack x))
+		(Nothing, Just x, Nothing) -> return (Right (Char8.unpack x))
+		(Nothing, Nothing, Just x) -> do
+			uuid <- randomIO
+			-- TODO: check if abstract paths are supported, and if
+			-- not, use a standard path.
+			let fileName = "haskell-dbus-" ++ UUID.toString uuid
+			return (Right ('\x00' : (Char8.unpack x ++ "/" ++ fileName)))
+		(Nothing, Nothing, Nothing) -> return (Left tooFew)
+		_ -> return (Left tooMany)
+	
+	go path = case path of
+		Left err -> throwIO (TransportError err)
+		Right p -> catchIOException $ do
+			sock <- socket AF_UNIX Stream defaultProtocol
+			bindSocket sock (SockAddrUnix p)
+			Network.Socket.listen sock 1
+			return sock
+
+listenTcp :: Map.Map ByteString ByteString -> IO Socket
+listenTcp params = go where
+	param key = Map.lookup (Char8.pack key) params
+	
+	-- TODO
+	go = undefined
 
 catchIOException :: IO a -> IO a
 catchIOException io = do

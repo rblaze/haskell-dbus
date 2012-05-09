@@ -26,20 +26,26 @@
 module DBus.Socket
 	(
 	
-	-- * Types
+	-- * Sockets
 	  Socket
-	, socketAddress
+	, SocketListener
 	, SocketError
 	, socketErrorMessage
 	
-	-- * Opening and closing sockets
-	, open
-	, openWith
-	, close
+	-- * Socket options
 	, SocketOptions
 	, socketAuthenticators
 	, socketTransportOptions
 	, defaultSocketOptions
+	
+	-- * Opening and closing sockets
+	, open
+	, openWith
+	, listen
+	, listenWith
+	, accept
+	, close
+	, closeListener
 	
 	-- * Sending and receiving messages
 	, send
@@ -97,8 +103,7 @@ instance Transport SomeTransport where
 -- | An open socket to another process. Messages can be sent to the remote
 -- peer using 'send', or received using 'receive'.
 data Socket = Socket
-	{ socketAddress_ :: Address
-	, socketTransport :: SomeTransport
+	{ socketTransport :: SomeTransport
 	, socketSerial :: IORef Serial
 	, socketReadLock :: MVar ()
 	, socketWriteLock :: MVar ()
@@ -114,10 +119,6 @@ data Authenticator t = Authenticator
 	-- | Defines the server-side half of an authenticator.
 	, authenticatorServer :: t -> IO Bool
 	}
-
--- | Get the address of the remote peer.
-socketAddress :: Socket -> Address
-socketAddress = socketAddress_
 
 -- | Used with 'openWith' to provide custom authenticators or transport options.
 data SocketOptions t = SocketOptions
@@ -164,12 +165,57 @@ openWith opts addr = toEither $ bracketOnError
 		serial <- newIORef (Serial 1)
 		readLock <- newMVar ()
 		writeLock <- newMVar ()
-		return (Socket addr (SomeTransport t) serial readLock writeLock))
+		return (Socket (SomeTransport t) serial readLock writeLock))
 
--- | Close an open 'Socket'. Once closed, the 'Socket' is no longer valid and
+data SocketListener = forall t. (TransportListen t) => SocketListener (TransportListener t) [Authenticator t]
+
+-- | Begin listening at the given address.
+--
+-- Use 'accept' to create sockets from incoming connections.
+--
+-- Use 'closeListener' to stop listening, and to free underlying transport
+-- resources such as file descriptors.
+listen :: Address -> IO (Either SocketError SocketListener)
+listen = listenWith defaultSocketOptions
+
+-- | Begin listening at the given address.
+--
+-- Use 'accept' to create sockets from incoming connections.
+--
+-- Use 'closeListener' to stop listening, and to free underlying transport
+-- resources such as file descriptors.
+--
+-- This function is for users who need to define custom authenticators
+-- or transports.
+listenWith :: TransportListen t => SocketOptions t -> Address -> IO (Either SocketError SocketListener)
+listenWith opts addr = toEither $ bracketOnError
+	(transportListen (socketTransportOptions opts) addr)
+	transportListenerClose
+	(\l -> return (SocketListener l (socketAuthenticators opts)))
+
+-- | Accept a new connection from a socket listener.
+accept :: SocketListener -> IO (Either SocketError Socket)
+accept (SocketListener l auths) = toEither $ bracketOnError
+	(transportAccept l)
+	transportClose
+	(\t -> do
+		authed <- authServer t auths
+		when (not authed) $ do
+			throwIO (SocketError "Authentication failed")
+		serial <- newIORef (Serial 1)
+		readLock <- newMVar ()
+		writeLock <- newMVar ()
+		return (Socket (SomeTransport t) serial readLock writeLock))
+
+-- | Close an open 'Socket'. Once closed, the socket is no longer valid and
 -- must not be used.
 close :: Socket -> IO ()
 close = transportClose . socketTransport
+
+-- | Close an open 'SocketListener'. Once closed, the listener is no longer
+-- valid and must not be used.
+closeListener :: SocketListener -> IO ()
+closeListener (SocketListener l _) = transportListenerClose l
 
 -- | Send a single message, with a generated 'Serial'. The second parameter
 -- exists to prevent race conditions when registering a reply handler; it
@@ -235,6 +281,25 @@ authClient t authenticators = go where
 		if success
 			then do
 				transportPut t "BEGIN\r\n"
+				return True
+			else loop next
+
+authServer :: Transport t => t -> [Authenticator t] -> IO Bool
+authServer t authenticators = go where
+	go = do
+		c <- transportGet t 1
+		if c == "\x00"
+			then loop authenticators
+			else return False
+	-- TODO: this is broken, we need to handle "AUTH ...", then parse
+	-- out the method and check if it's supported by the list of
+	-- authenticators.
+	loop [] = return False
+	loop (auth:next) = do
+		success <- authenticatorServer auth t
+		if success
+			then do
+				transportPut t "OK guid-goes-here\r\n"
 				return True
 			else loop next
 

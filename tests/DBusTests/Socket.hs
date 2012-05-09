@@ -24,50 +24,99 @@ import           Control.Concurrent
 import           Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.ByteString
 import qualified Data.ByteString.Char8 as Char8
+import qualified Data.Map as Map
+import qualified Data.Set as Set
 import qualified Network as N
 import           System.IO
+import           System.Random (randomIO)
 
+import qualified Data.UUID as UUID
+
+import           DBus
 import           DBus.Socket
+import           DBus.Transport
 import           DBus.Util (readUntil)
 
 import           DBusTests.Util (listenRandomIPv4)
 
 test_Socket :: Suite
-test_Socket = suite "Socket"
-	[ test_Open
-	]
-
-test_Open :: Suite
-test_Open = assertions "open" $ do
-	(addr, networkSocket) <- listenRandomIPv4
-	startDummyServer networkSocket
-	opened <- liftIO (DBus.Socket.open addr)
+test_Socket = assertions "Socket" $ do
+	uuid <- liftIO randomIO
+	let Just addr = address "unix" (Map.fromList
+		[ ("abstract", Char8.pack (UUID.toString uuid))
+		])
+	
+	let msg = MethodCall
+		{ methodCallPath = "/"
+		, methodCallMember = "Foo"
+		, methodCallInterface = Just "org.example.iface"
+		, methodCallSender = Just "org.example.src"
+		, methodCallDestination = Just "org.example.dst"
+		, methodCallFlags = Set.fromList [NoReplyExpected, NoAutoStart]
+		, methodCallBody = [toVariant True]
+		}
+	
+	listened <- liftIO (listenWith (defaultSocketOptions
+		{ socketAuthenticators = [dummyAuth]
+		}) addr)
+	$assert (right listened)
+	let Right listener = listened
+	afterTest (closeListener listener)
+	
+	acceptedVar <- forkVar (accept listener)
+	openedVar <- forkVar (openWith (defaultSocketOptions
+		{ socketAuthenticators = [dummyAuth]
+		}) addr)
+	
+	accepted <- liftIO (takeMVar acceptedVar)
+	$assert (right accepted)
+	let Right sock1 = accepted
+	afterTest (close sock1)
+	
+	opened <- liftIO (takeMVar openedVar)
 	$assert (right opened)
-	let Right s = opened
-	afterTest (DBus.Socket.close s)
+	let Right sock2 = opened
+	afterTest (close sock2)
 	
-	$expect (equal (socketAddress s) addr)
-
-readChar8 :: Handle -> IO Char
-readChar8 h = fmap (Char8.head) (Data.ByteString.hGet h 1)
-
-newtype DummyServer = DummyServer (MVar ())
-
-startDummyServer :: N.Socket -> Assertions ()
-startDummyServer sock = do
-	mvar <- liftIO newEmptyMVar
-	_ <- liftIO (forkIO (do
-		(h, _, _) <- N.accept sock
-		hSetBuffering h NoBuffering
-		
-		-- authentication sends '\x00', then AUTH EXTERNAL ...
-		_ <- readChar8 h
-		_ <- readUntil "\r\n" (readChar8 h)
-		Data.ByteString.hPut h "OK blah blah blah\r\n"
-		
-		_ <- readMVar mvar
-		hClose h
-		N.sClose sock))
+	serialVar <- liftIO newEmptyMVar
+	sentVar <- forkVar (send sock1 msg (putMVar serialVar))
+	receivedVar <- forkVar (receive sock2)
 	
-	afterTest (N.sClose sock)
-	afterTest (putMVar mvar ())
+	serial <- liftIO (takeMVar serialVar)
+	sent <- liftIO (takeMVar sentVar)
+	received <- liftIO (takeMVar receivedVar)
+	
+	$assert (equal sent (Right ()))
+	$assert (equal received (Right (ReceivedMethodCall serial msg)))
+
+dummyAuth :: Transport t => Authenticator t
+dummyAuth = authenticator
+	{ authenticatorClient = dummyAuthClient
+	, authenticatorServer = dummyAuthServer
+	}
+
+dummyAuthClient :: Transport t => t -> IO Bool
+dummyAuthClient t = do
+	transportPut t "AUTH DUMMY\r\n"
+	resp <- readUntil "\r\n" (readChar8 t)
+	return $ case takeWhile (/= ' ') resp of
+		"OK" -> True
+		_ -> False
+
+dummyAuthServer :: Transport t => t -> IO Bool
+dummyAuthServer t = do
+	req <- readUntil "\r\n" (readChar8 t)
+	return $ case req of
+		"AUTH DUMMY\r\n" -> True
+		_ -> False
+
+readChar8 :: Transport t => t -> IO Char
+readChar8 t = do
+	c <- transportGet t 1
+	return (Char8.head c)
+
+forkVar :: MonadIO m => IO a -> m (MVar a)
+forkVar io = liftIO $ do
+	var <- newEmptyMVar
+	_ <- forkIO (io >>= putMVar var)
+	return var
