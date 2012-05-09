@@ -512,7 +512,7 @@ unmarshalVariant = do
 protocolVersion :: Word8
 protocolVersion = 1
 
-messageMaximumLength :: Word64
+messageMaximumLength :: Integer
 messageMaximumLength = 134217728
 
 encodeFlags :: Set Flag -> Word8
@@ -614,13 +614,13 @@ marshalHeader msg serial bodySig bodyLength = do
 checkMaximumSize :: Marshal ()
 checkMaximumSize = do
 	(MarshalState _ messageLength) <- getState
-	when (messageLength > messageMaximumLength) (throwError (concat
+	when (toInteger messageLength > messageMaximumLength) (throwError (concat
 		[ "Marshaled message size (", show messageLength
 		, " bytes) exeeds maximum limit of ("
 		, show messageMaximumLength, " bytes)."
 		]))
 
-unmarshalMessageM :: Monad m => (Word32 -> m ByteString)
+unmarshalMessageM :: Monad m => (Int -> m ByteString)
                   -> m (Either UnmarshalError ReceivedMessage)
 unmarshalMessageM getBytes' = E.runErrorT $ do
 	let getBytes = E.ErrorT . liftM Right . getBytes'
@@ -650,14 +650,22 @@ unmarshalMessageM getBytes' = E.runErrorT $ do
 	fixed <- unmarshal' fixedSig fixedBytes
 	let messageType = fromJust (fromValue (fixed !! 1))
 	let flags = decodeFlags (fromJust (fromValue (fixed !! 2)))
-	let bodyLength = fromJust (fromValue (fixed !! 4))
+	let bodyLength = fromJust (fromValue (fixed !! 4)) :: Word32
 	let serial = fromJust (fromVariant (Variant (fixed !! 5)))
 
-	let fieldByteCount = fromJust (fromValue (fixed !! 6))
+	let fieldByteCount = fromJust (fromValue (fixed !! 6)) :: Word32
+	let bodyPadding = padding (fromIntegral fieldByteCount + 16) 8
 
+	-- Forbid messages larger than 'messageMaximumLength'
+	let messageLength = 16 + toInteger fieldByteCount + toInteger bodyPadding + toInteger bodyLength
+	when (messageLength > messageMaximumLength) $
+		E.throwErrorT (UnmarshalError (Data.Text.pack (concat
+			[ "Message size ", show messageLength, " exceeds limit of "
+			, show messageMaximumLength
+			])))
 
 	let headerSig  = "yyyyuua(yv)"
-	fieldBytes <- getBytes fieldByteCount
+	fieldBytes <- getBytes (fromIntegral fieldByteCount)
 	let headerBytes = Data.ByteString.append fixedBytes fieldBytes
 	header <- unmarshal' headerSig headerBytes
 
@@ -665,10 +673,9 @@ unmarshalMessageM getBytes' = E.runErrorT $ do
 	fields <- case E.runErrorM $ concat `liftM` mapM decodeField fieldArray of
 		Left err -> E.throwErrorT err
 		Right x -> return x
-	let bodyPadding = padding (fromIntegral fieldByteCount + 16) 8
-	void (getBytes (fromIntegral bodyPadding))
+	_ <- getBytes (fromIntegral bodyPadding)
 	let bodySig = findBodySignature fields
-	bodyBytes <- getBytes bodyLength
+	bodyBytes <- getBytes (fromIntegral bodyLength)
 	body <- unmarshal' bodySig bodyBytes
 	y <- case E.runErrorM (buildReceivedMessage messageType fields) of
 		Right x -> return x
@@ -737,5 +744,5 @@ require label _     = E.throwErrorM label
 unmarshalMessage :: ByteString -> Either UnmarshalError ReceivedMessage
 unmarshalMessage = Data.Binary.Get.runGet get . toLazy where
 	get = unmarshalMessageM getBytes
-	getBytes = Data.Binary.Get.getByteString . fromIntegral
+	getBytes = Data.Binary.Get.getByteString
 	toLazy bs = Data.ByteString.Lazy.fromChunks [bs]

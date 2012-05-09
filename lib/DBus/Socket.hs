@@ -248,13 +248,11 @@ nextSerial sock = atomicModifyIORef
 -- until after the other has finished.
 receive :: Socket -> IO (Either SocketError ReceivedMessage)
 receive sock = toEither $ do
-	-- TODO: instead of fromIntegral, unify types
 	-- TODO: after reading the length, read all bytes from the
 	--       handle, then return a closure to perform the parse
 	--       outside of the lock.
 	let t = socketTransport sock
-	let get = transportGet t . fromIntegral
-	received <- withMVar (socketReadLock sock) (\_ -> unmarshalMessageM get)
+	received <- withMVar (socketReadLock sock) (\_ -> unmarshalMessageM (transportGet t))
 	case received of
 		Left err -> throwIO (SocketError ("Error reading message from socket: " ++ show err))
 		Right msg -> return msg
