@@ -23,7 +23,9 @@ import           Test.Chell.QuickCheck
 import           Test.QuickCheck hiding ((.&.), property)
 
 import           Control.Applicative ((<*>))
+import           Data.ByteString (ByteString)
 import           Data.Text (Text)
+import           Data.Int (Int16, Int32, Int64)
 import           Data.Word (Word8, Word16, Word32, Word64)
 import           Data.Map (Map)
 import qualified Data.Map
@@ -38,7 +40,7 @@ import           DBusTests.InterfaceName ()
 import           DBusTests.MemberName ()
 import           DBusTests.ObjectPath ()
 import           DBusTests.Signature ()
-import           DBusTests.Util (halfSized, smallListOf)
+import           DBusTests.Util (smallListOf)
 
 test_Serialization :: Suite
 test_Serialization = suite "Serialization"
@@ -80,53 +82,50 @@ test_Signal = property "Signal" prop where
 		Right received = unmarshalMessage bytes
 		in ReceivedSignal serial msg == received
 
-gen_Atom :: Gen DBus.Types.Atom
+gen_Atom :: Gen Variant
 gen_Atom = oneof
-	[ fmap DBus.Types.AtomWord8 arbitrary
-	, fmap DBus.Types.AtomWord16 arbitrary
-	, fmap DBus.Types.AtomWord32 arbitrary
-	, fmap DBus.Types.AtomWord64 arbitrary
-	, fmap DBus.Types.AtomInt16 arbitrary
-	, fmap DBus.Types.AtomInt32 arbitrary
-	, fmap DBus.Types.AtomInt64 arbitrary
-	, fmap DBus.Types.AtomBool arbitrary
-	, fmap DBus.Types.AtomDouble arbitrary
-	, fmap DBus.Types.AtomText arbitrary
-	, fmap DBus.Types.AtomObjectPath arbitrary
-	, fmap DBus.Types.AtomSignature arbitrary
-	]
-
-gen_Value :: Gen DBus.Types.Value
-gen_Value = oneof
-	[ fmap DBus.Types.ValueAtom gen_Atom
-	, fmap DBus.Types.ValueBytes arbitrary
-	
-	-- TODO: proper arbitrary ValueVector
-	, elements
-	  [ DBus.Types.toValue (Data.Vector.fromList ([] :: [Word8]))
-	  , DBus.Types.toValue (Data.Vector.fromList ([0, 1, 2, 3, 4, 5] :: [Word8]))
-	  , DBus.Types.toValue (Data.Vector.fromList ([0, 1, 2, 3, 4, 5] :: [Word16]))
-	  , DBus.Types.toValue (Data.Vector.fromList ([0, 1, 2, 3, 4, 5] :: [Word32]))
-	  , DBus.Types.toValue (Data.Vector.fromList ([0, 1, 2, 3, 4, 5] :: [Word64]))
-	  , DBus.Types.toValue (Data.Vector.fromList (["foo", "bar", "baz"] :: [Text]))
-	  ]
-	
-	-- TODO: proper arbitrary ValueMap
-	, elements
-	  [ DBus.Types.toValue (Data.Map.fromList [] :: Map Text Text)
-	  , DBus.Types.toValue (Data.Map.fromList [("foo", "bar"), ("baz", "qux")] :: Map Text Text)
-	  ]
-	
-	, fmap DBus.Types.ValueStructure (listOf1 (halfSized gen_Value))
-	, fmap DBus.Types.ValueVariant gen_Variant
+	[ fmap toVariant (arbitrary :: Gen Word8)
+	, fmap toVariant (arbitrary :: Gen Word16)
+	, fmap toVariant (arbitrary :: Gen Word32)
+	, fmap toVariant (arbitrary :: Gen Word64)
+	, fmap toVariant (arbitrary :: Gen Int16)
+	, fmap toVariant (arbitrary :: Gen Int32)
+	, fmap toVariant (arbitrary :: Gen Int64)
+	, fmap toVariant (arbitrary :: Gen Bool)
+	, fmap toVariant (arbitrary :: Gen Double)
+	, fmap toVariant (arbitrary :: Gen Text)
+	, fmap toVariant (arbitrary :: Gen ObjectPath)
+	, fmap toVariant (arbitrary :: Gen Signature)
 	]
 
 gen_Variant :: Gen Variant
-gen_Variant = do
-	val <- gen_Value
-	case signature [DBus.Types.valueType val] of
-		Just _ -> return (DBus.Types.Variant val)
-		Nothing -> halfSized gen_Variant
+gen_Variant = oneof
+	[ gen_Atom
+	, fmap toVariant (arbitrary :: Gen ByteString)
+	
+	-- TODO: proper arbitrary vectors
+	, elements
+	  [ toVariant (Data.Vector.fromList ([] :: [Word8]))
+	  , toVariant (Data.Vector.fromList ([0, 1, 2, 3, 4, 5] :: [Word8]))
+	  , toVariant (Data.Vector.fromList ([0, 1, 2, 3, 4, 5] :: [Word16]))
+	  , toVariant (Data.Vector.fromList ([0, 1, 2, 3, 4, 5] :: [Word32]))
+	  , toVariant (Data.Vector.fromList ([0, 1, 2, 3, 4, 5] :: [Word64]))
+	  , toVariant (Data.Vector.fromList (["foo", "bar", "baz"] :: [Text]))
+	  ]
+	
+	-- TODO: proper arbitrary maps
+	, elements
+	  [ toVariant (Data.Map.fromList [] :: Map Text Text)
+	  , toVariant (Data.Map.fromList [("foo", "bar"), ("baz", "qux")] :: Map Text Text)
+	  ]
+	
+	-- TODO: proper arbitrary structures
+	, elements
+	  [ toVariant (True, "foo" :: Text, ["bar" :: Text])
+	  , toVariant (1 :: Word8, 1 :: Word16, 1 :: Word32, 1 :: Word64)
+	  ]
+	, fmap toVariant gen_Variant
+	]
 
 gen_MethodCall :: Gen MethodCall
 gen_MethodCall = return MethodCall
