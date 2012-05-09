@@ -23,10 +23,6 @@ import           Test.Chell.QuickCheck
 import           Test.QuickCheck hiding ((.&.), property)
 
 import           Control.Applicative ((<*>))
-import qualified Data.Binary.Builder
-import           Data.ByteString (ByteString)
-import qualified Data.ByteString
-import qualified Data.ByteString.Lazy
 import           Data.Text (Text)
 import           Data.Word (Word8, Word16, Word32, Word64)
 import           Data.Map (Map)
@@ -35,7 +31,6 @@ import qualified Data.Vector
 
 import           DBus
 import qualified DBus.Types
-import qualified DBus.Wire
 
 import           DBusTests.BusName ()
 import           DBusTests.ErrorName ()
@@ -43,24 +38,15 @@ import           DBusTests.InterfaceName ()
 import           DBusTests.MemberName ()
 import           DBusTests.ObjectPath ()
 import           DBusTests.Signature ()
-import           DBusTests.Util (halfSized)
+import           DBusTests.Util (halfSized, smallListOf)
 
 test_Serialization :: Suite
 test_Serialization = suite "Serialization"
-	[ test_ValuePassthrough
-	, test_MethodCall
+	[ test_MethodCall
 	, test_MethodReturn
 	, test_MethodError
 	, test_Signal
 	]
-
-test_ValuePassthrough :: Suite
-test_ValuePassthrough = property "value-passthrough" prop where
-	prop = forAll gen_Value check
-	check v e = let
-		Right bytes = marshal e v
-		Right unmarshaled = unmarshal e (DBus.Types.valueType v) bytes
-		in unmarshaled == v
 
 test_MethodCall :: Suite
 test_MethodCall = property "MethodCall" prop where
@@ -150,14 +136,14 @@ gen_MethodCall = return MethodCall
 	<*> arbitrary
 	<*> arbitrary
 	<*> arbitrary
-	<*> return [] -- TODO
+	<*> smallListOf gen_Variant
 
 gen_MethodReturn :: Gen MethodReturn
 gen_MethodReturn = return MethodReturn
 	<*> arbitrary
 	<*> arbitrary
 	<*> arbitrary
-	<*> return [] -- TODO
+	<*> smallListOf gen_Variant
 
 gen_MethodError :: Gen MethodError
 gen_MethodError = return MethodError
@@ -165,7 +151,7 @@ gen_MethodError = return MethodError
 	<*> arbitrary
 	<*> arbitrary
 	<*> arbitrary
-	<*> return [] -- TODO
+	<*> smallListOf gen_Variant
 
 gen_Signal :: Gen Signal
 gen_Signal = return Signal
@@ -174,17 +160,7 @@ gen_Signal = return Signal
 	<*> arbitrary
 	<*> arbitrary
 	<*> arbitrary
-	<*> return [] -- TODO
-
-marshal :: DBus.Wire.Endianness -> DBus.Types.Value -> Either String ByteString
-marshal e v = case DBus.Wire.unWire (DBus.Wire.marshal v) e (DBus.Wire.MarshalState Data.Binary.Builder.empty 0) of
-	DBus.Wire.WireRR _ (DBus.Wire.MarshalState builder _) -> Right (Data.ByteString.concat (Data.ByteString.Lazy.toChunks (Data.Binary.Builder.toLazyByteString builder)))
-	DBus.Wire.WireRL err -> Left err
-
-unmarshal :: DBus.Wire.Endianness -> Type -> ByteString -> Either String DBus.Types.Value
-unmarshal e t bytes = case DBus.Wire.unWire (DBus.Wire.unmarshal t) e (DBus.Wire.UnmarshalState bytes 0) of
-	DBus.Wire.WireRR v _ -> Right v
-	DBus.Wire.WireRL err -> Left err
+	<*> smallListOf gen_Variant
 
 instance Arbitrary Endianness where
 	arbitrary = elements [BigEndian, LittleEndian]

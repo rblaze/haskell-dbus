@@ -15,7 +15,14 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-module DBus.Wire where
+module DBus.Wire
+	( Endianness(..)
+	, MarshalError
+	, UnmarshalError
+	, marshalMessage
+	, unmarshalMessage
+	, unmarshalMessageM
+	) where
 
 import           Control.Monad (liftM, when, unless)
 import qualified Data.Binary.Builder
@@ -43,7 +50,7 @@ import qualified Data.Binary.IEEE754
 
 import           DBus.Message
 import           DBus.Types
-import           DBus.Util (void, untilM)
+import           DBus.Util (untilM)
 import qualified DBus.Util.MonadError as E
 
 data Endianness = LittleEndian | BigEndian
