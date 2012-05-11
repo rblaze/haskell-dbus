@@ -185,6 +185,7 @@ parseAtom byte yes no = case byte of
 	0x67 -> yes TypeSignature
 	0x6F -> yes TypeObjectPath
 	_ -> no
+{-# INLINE parseAtom #-}
 
 parseSigFull :: ByteString -> Maybe Signature
 parseSigFull bytes = unsafePerformIO io where
