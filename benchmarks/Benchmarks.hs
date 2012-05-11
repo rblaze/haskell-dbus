@@ -25,9 +25,7 @@ import qualified Data.Set
 import           Data.Word (Word32)
 import           Unsafe.Coerce (unsafeCoerce)
 
-import           DBus.Message
-import           DBus.Wire
-import           DBus.Types
+import           DBus
 
 config :: Config
 config = defaultConfig { cfgPerformGC = ljust True }
@@ -56,6 +54,7 @@ empty_MethodCall = MethodCall
 	{ methodCallPath = "/"
 	, methodCallMember = "m"
 	, methodCallInterface = Nothing
+	, methodCallSender = Nothing
 	, methodCallDestination = Nothing
 	, methodCallFlags = Data.Set.empty
 	, methodCallBody = []
@@ -64,6 +63,7 @@ empty_MethodCall = MethodCall
 empty_MethodReturn :: MethodReturn
 empty_MethodReturn = MethodReturn
 	{ methodReturnSerial = serial 0
+	, methodReturnSender = Nothing
 	, methodReturnDestination = Nothing
 	, methodReturnBody =  []
 	}
@@ -80,10 +80,9 @@ benchmarks :: [Benchmark]
 benchmarks = 
 	[  bgroup "Types"
 		[ bgroup "Signature"
-			[ bench "signature_/small" (nf signature_ "y")
-			, bench "signature_/medium" (nf signature_ "yyyyuua(yv)")
-			, bench "signature_/large" (nf signature_ "a{s(asiiiiasa(siiia{s(iiiiv)}))}")
-			, bench "signatureText" (nf signatureText "a{s(asiiiiasa(siiia{s(iiiiv)}))}")
+			[ bench "parseSignature/small" (nf parseSignature "y")
+			, bench "parseSignature/medium" (nf parseSignature "yyyyuua(yv)")
+			, bench "parseSignature/large" (nf parseSignature "a{s(asiiiiasa(siiia{s(iiiiv)}))}")
 			]
 		, bgroup "ObjectPath"
 			[ bench "objectPath_/small" (nf objectPath "/")
