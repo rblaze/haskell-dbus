@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE IncoherentInstances #-}
 
@@ -21,6 +22,7 @@
 module DBus.Types where
 
 import           Control.Monad (liftM, when, (>=>))
+import           Control.Exception (Exception, handle, throwIO)
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString
 import qualified Data.ByteString.Char8
@@ -35,6 +37,7 @@ import qualified Data.Text
 import           Data.Text (Text)
 import qualified Data.Text.Encoding
 import qualified Data.Text.Lazy
+import           Data.Typeable (Typeable)
 import qualified Data.Vector
 import           Data.Vector (Vector)
 import           Data.Word
@@ -163,14 +166,14 @@ parseSignature bytes =
 
 parseSigFast :: ByteString -> Maybe Signature
 parseSigFast bytes =
-	let byte = Data.ByteString.head bytes in
-	parseAtom byte
+	let byte = Data.ByteString.Unsafe.unsafeHead bytes in
+	parseAtom (fromIntegral byte)
 		(\t -> Just (Signature [t]))
 		(case byte of
 			0x76 -> Just (Signature [TypeVariant])
 			_ -> Nothing)
 
-parseAtom :: Word8 -> (Type -> a) -> a -> a
+parseAtom :: Int -> (Type -> a) -> a -> a
 parseAtom byte yes no = case byte of
 	0x62 -> yes TypeBoolean
 	0x6E -> yes TypeInt16
@@ -187,97 +190,99 @@ parseAtom byte yes no = case byte of
 	_ -> no
 {-# INLINE parseAtom #-}
 
+data SigParseError = SigParseError
+	deriving (Show, Typeable)
+
+instance Exception SigParseError
+
+peekWord8AsInt :: Foreign.Ptr Word8 -> Int -> IO Int
+peekWord8AsInt ptr off = do
+	w <- Foreign.peekElemOff ptr off
+	return (fromIntegral w)
+
 parseSigFull :: ByteString -> Maybe Signature
 parseSigFull bytes = unsafePerformIO io where
-	io = Data.ByteString.Unsafe.unsafeUseAsCStringLen bytes castBuf
-	castBuf (ptr, len) = parseSigBuf (Foreign.castPtr ptr, len)
+	io = handle
+		(\SigParseError -> return Nothing)
+		$ Data.ByteString.Unsafe.unsafeUseAsCStringLen bytes
+		$ \(ptr, len) -> do
+			ts <- parseSigBuf (Foreign.castPtr ptr, len)
+			return (Just (Signature ts))
+
 	parseSigBuf (buf, len) = mainLoop [] 0 where
 
-		mainLoop acc ii | ii >= len = return (Just (Signature (reverse acc)))
+		mainLoop acc ii | ii >= len = return (reverse acc)
 		mainLoop acc ii = do
-			c <- Foreign.peekElemOff buf ii
+			c <- peekWord8AsInt buf ii
 			let next t = mainLoop (t : acc) (ii + 1)
 			parseAtom c next $ case c of
 				0x76 -> next TypeVariant
 				0x28 -> do -- '('
-					mt <- structure (ii + 1)
-					case mt of
-						Just (ii', t) -> mainLoop (t : acc) ii'
-						Nothing -> return Nothing
+					(ii', t) <- structure (ii + 1)
+					mainLoop (t : acc) ii'
 				0x61 -> do -- 'a'
-					mt <- array (ii + 1)
-					case mt of
-						Just (ii', t) -> mainLoop (t : acc) ii'
-						Nothing -> return Nothing
-				_ -> return Nothing
+					(ii', t) <- array (ii + 1)
+					mainLoop (t : acc) ii'
+				_ -> throwIO SigParseError
 
-		structure :: Int -> IO (Maybe (Int, Type))
+		structure :: Int -> IO (Int, Type)
 		structure = loop [] where
-			loop _ ii | ii >= len = return Nothing
+			loop _ ii | ii >= len = throwIO SigParseError
 			loop acc ii = do
-				c <- Foreign.peekElemOff buf ii
+				c <- peekWord8AsInt buf ii
 				let next t = loop (t : acc) (ii + 1)
 				parseAtom c next $ case c of
 					0x76 -> next TypeVariant
 					0x28 -> do -- '('
-						mt <- structure (ii + 1)
-						case mt of
-							Just (ii', t) -> loop (t : acc) ii'
-							Nothing -> return Nothing
+						(ii', t) <- structure (ii + 1)
+						loop (t : acc) ii'
 					0x61 -> do -- 'a'
-						mt <- array (ii + 1)
-						case mt of
-							Just (ii', t) -> loop (t : acc) ii'
-							Nothing -> return Nothing
+						(ii', t) <- array (ii + 1)
+						loop (t : acc) ii'
 					-- ')'
-					0x29 -> return $ case acc of
-						[] -> Nothing
-						_ -> Just $ (ii + 1, TypeStructure (reverse acc))
-					_ -> return Nothing
+					0x29 -> case acc of
+						[] -> throwIO SigParseError
+						_ -> return (ii + 1, TypeStructure (reverse acc))
+					_ -> throwIO SigParseError
 
-		array :: Int -> IO (Maybe (Int, Type))
-		array ii | ii >= len = return Nothing
+		array :: Int -> IO (Int, Type)
+		array ii | ii >= len = throwIO SigParseError
 		array ii = do
-			c <- Foreign.peekElemOff buf ii
-			let next t = return $ Just (ii + 1, TypeArray t)
+			c <- peekWord8AsInt buf ii
+			let next t = return (ii + 1, TypeArray t)
 			parseAtom c next $ case c of
 				0x76 -> next TypeVariant
 				0x7B -> dict (ii + 1) -- '{'
 				0x28 -> do -- '('
-					mt <- structure (ii + 1)
-					case mt of
-						Just (ii', t) -> return $ Just (ii', TypeArray t)
-						Nothing -> return Nothing
+					(ii', t) <- structure (ii + 1)
+					return (ii', TypeArray t)
 				0x61 -> do -- 'a'
-					mt <- array (ii + 1)
-					case mt of
-						Just (ii', t) -> return $ Just (ii', TypeArray t)
-						Nothing -> return Nothing
-				_ -> return Nothing
+					(ii', t) <- array (ii + 1)
+					return (ii', TypeArray t)
+				_ -> throwIO SigParseError
 
-		dict :: Int -> IO (Maybe (Int, Type))
-		dict ii | ii + 1 >= len = return Nothing
+		dict :: Int -> IO (Int, Type)
+		dict ii | ii + 1 >= len = throwIO SigParseError
 		dict ii = do
-			c1 <- Foreign.peekElemOff buf ii
-			c2 <- Foreign.peekElemOff buf (ii + 1)
+			c1 <- peekWord8AsInt buf ii
+			c2 <- peekWord8AsInt buf (ii + 1)
 			
-			let next t = return (Just (ii + 2, t))
-			mt2 <- parseAtom c2 next $ case c2 of
+			let next t = return (ii + 2, t)
+			(ii', t2) <- parseAtom c2 next $ case c2 of
 				0x76 -> next TypeVariant
 				0x28 -> structure (ii + 2) -- '('
 				0x61 -> array (ii + 2) -- 'a'
-				_ -> return Nothing
+				_ -> throwIO SigParseError
 			
-			case mt2 of
-				Nothing -> return Nothing
-				Just (ii', t2) -> if ii' >= len
-					then return Nothing
-					else do
-						c3 <- Foreign.peekElemOff buf ii'
-						return $ do
-							if c3 == 0x7D then Just () else Nothing
-							t1 <- parseAtom c1 Just Nothing
-							Just (ii' + 1, TypeDictionary t1 t2)
+			if ii' >= len
+				then throwIO SigParseError
+				else do
+					c3 <- peekWord8AsInt buf ii'
+					if c3 == 0x7D
+						then do
+							t1 <- parseAtom c1 return (throwIO SigParseError)
+							return (ii' + 1, TypeDictionary t1 t2)
+						else throwIO SigParseError
 
 class IsVariant a where
 	toVariant :: a -> Variant
