@@ -22,12 +22,16 @@ module DBus.Util
 	, untilM
 	, parseBytes
 	, readPortNumber
+	, randomUUID
 	) where
 
 import qualified Data.ByteString.Char8 as Char8
 import           Data.Char (digitToInt)
 import           Data.List (isPrefixOf)
+import           Data.Word (Word32)
 import           Network.Socket (PortNumber)
+import           System.Random (randomIO)
+import           Text.Printf (printf)
 
 import           Text.ParserCombinators.Parsec (Parser, runParser)
 
@@ -82,3 +86,14 @@ readPortNumber s = do
 	if word > 0 && word <= 65535
 		then Just (fromInteger word)
 		else Nothing
+
+-- | Generate a UUID, which is 128 bits of random data hex-encoded.
+randomUUID :: IO String
+randomUUID = do
+	w1 <- randomIO
+	w2 <- randomIO
+	w3 <- randomIO
+	w4 <- randomIO
+	
+	let hexW w = printf "%08X" (w :: Word32)
+	return (concat [hexW w1, hexW w2, hexW w3, hexW w4])

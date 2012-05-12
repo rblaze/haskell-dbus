@@ -33,12 +33,9 @@ import qualified Data.Map as Map
 import           Data.Typeable (Typeable)
 import           Network.Socket hiding (recv)
 import           Network.Socket.ByteString (sendAll, recv)
-import           System.Random (randomIO)
-
-import qualified Data.UUID as UUID
 
 import           DBus
-import           DBus.Util (readPortNumber)
+import           DBus.Util (readPortNumber, randomUUID)
 
 -- | Thrown from transport methods when an error occurs.
 data TransportError = TransportError String
@@ -230,10 +227,10 @@ listenUnix params = getPath >>= go where
 		(Just x, Nothing, Nothing) -> return (Right ('\x00' : Char8.unpack x))
 		(Nothing, Just x, Nothing) -> return (Right (Char8.unpack x))
 		(Nothing, Nothing, Just x) -> do
-			uuid <- randomIO
+			uuid <- randomUUID
 			-- TODO: check if abstract paths are supported, and if
 			-- not, use a standard path.
-			let fileName = "haskell-dbus-" ++ UUID.toString uuid
+			let fileName = "haskell-dbus-" ++ uuid
 			return (Right ('\x00' : (Char8.unpack x ++ "/" ++ fileName)))
 		(Nothing, Nothing, Nothing) -> return (Left tooFew)
 		_ -> return (Left tooMany)

@@ -47,14 +47,13 @@ import qualified Network as N
 import qualified Network.Socket as NS
 import           System.Directory (getTemporaryDirectory, removeFile)
 import           System.FilePath ((</>))
-import           System.Random (randomIO)
 
-import qualified Data.UUID as UUID
 import           Test.Chell
 import           Test.QuickCheck hiding ((.&.))
 
 import           DBus
 import           DBus.Types
+import           DBus.Util (randomUUID)
 
 assertVariant :: (Eq a, Show a, IsVariant a) => Type -> a -> Assertions ()
 assertVariant t a = do
@@ -85,31 +84,31 @@ assertAtom t a = do
 listenRandomUnixPath :: Assertions (Address, N.Socket)
 listenRandomUnixPath = do
 	tmp <- liftIO getTemporaryDirectory
-	uuid <- liftIO randomIO
-	let path = tmp </> UUID.toString uuid
+	uuid <- liftIO randomUUID
+	let path = tmp </> uuid
 	
-	let sockAddr = NS.SockAddrUnix (tmp </> UUID.toString uuid)
+	let sockAddr = NS.SockAddrUnix (tmp </> uuid)
 	sock <- liftIO (NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol)
 	liftIO (NS.bindSocket sock sockAddr)
 	liftIO (NS.listen sock 1)
 	afterTest (removeFile path)
 	
 	let Just addr = address "unix" (Map.fromList
-		[ ("path", Char8.pack (tmp </> UUID.toString uuid))
+		[ ("path", Char8.pack (tmp </> uuid))
 		])
 	return (addr, sock)
 
 listenRandomUnixAbstract :: MonadIO m => m (Address, N.Socket)
 listenRandomUnixAbstract = liftIO $ do
-	uuid <- liftIO randomIO
-	let sockAddr = NS.SockAddrUnix ('\x00' : UUID.toString uuid)
+	uuid <- liftIO randomUUID
+	let sockAddr = NS.SockAddrUnix ('\x00' : uuid)
 	
 	sock <- NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol
 	NS.bindSocket sock sockAddr
 	NS.listen sock 1
 	
 	let Just addr = address "unix" (Map.fromList
-		[ ("abstract", Char8.pack (UUID.toString uuid))
+		[ ("abstract", Char8.pack uuid)
 		])
 	return (addr, sock)
 

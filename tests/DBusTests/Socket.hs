@@ -30,20 +30,18 @@ import qualified Network as N
 import           System.IO
 import           System.Random (randomIO)
 
-import qualified Data.UUID as UUID
-
 import           DBus
 import           DBus.Socket
 import           DBus.Transport
-import           DBus.Util (readUntil)
+import           DBus.Util (readUntil, randomUUID)
 
 import           DBusTests.Util (listenRandomIPv4)
 
 test_Socket :: Suite
 test_Socket = assertions "Socket" $ do
-	uuid <- liftIO randomIO
+	uuid <- liftIO randomUUID
 	let Just addr = address "unix" (Map.fromList
-		[ ("abstract", Char8.pack (UUID.toString uuid))
+		[ ("abstract", Char8.pack uuid)
 		])
 	
 	let msg = MethodCall
