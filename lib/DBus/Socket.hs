@@ -28,9 +28,10 @@ module DBus.Socket
 	
 	-- * Sockets
 	  Socket
-	, SocketListener
 	, SocketError
 	, socketErrorMessage
+	, send
+	, receive
 	
 	-- * Socket options
 	, SocketOptions
@@ -41,15 +42,14 @@ module DBus.Socket
 	-- * Opening and closing sockets
 	, open
 	, openWith
+	, close
+	
+	-- * Listening for connections
+	, SocketListener
 	, listen
 	, listenWith
 	, accept
-	, close
 	, closeListener
-	
-	-- * Sending and receiving messages
-	, send
-	, receive
 	
 	-- * Authentication
 	, Authenticator
@@ -120,7 +120,8 @@ data Authenticator t = Authenticator
 	, authenticatorServer :: t -> IO Bool
 	}
 
--- | Used with 'openWith' to provide custom authenticators or transport options.
+-- | Used with 'openWith' and 'listenWith' to provide custom authenticators or
+-- transport options.
 data SocketOptions t = SocketOptions
 	{
 	-- | A list of available authentication mechanisms, whican can be used
