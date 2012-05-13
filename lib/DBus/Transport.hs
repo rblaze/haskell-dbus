@@ -186,20 +186,14 @@ openTcp params = go where
 		, addrSocketType = Stream
 		})) (Just hostname) Nothing
 	
-	setPort port info = case addrAddress info of
-		(SockAddrInet  _ x) -> info { addrAddress = SockAddrInet port x }
-		(SockAddrInet6 _ x y z) -> info { addrAddress = SockAddrInet6 port x y z }
-		_ -> info
-	
-	openSocket [] = throwIO (TransportError "openSocket: no addresses")
+	openSocket [] = throwIO (TransportError "openTcp: no addresses")
 	openSocket (addr:addrs) = do
-		tried <- Control.Exception.try $ do
-			sock <- socket
-				(addrFamily addr)
-				(addrSocketType addr)
-				(addrProtocol addr)
-			connect sock (addrAddress addr)
-			return sock
+		tried <- Control.Exception.try $ bracketOnError
+			(socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr))
+			sClose
+			(\sock -> do
+				connect sock (addrAddress addr)
+				return sock)
 		case tried of
 			Left err -> case addrs of
 				[] -> throwIO (TransportError (show (err :: IOException)))
@@ -260,8 +254,71 @@ listenTcp :: Map.Map ByteString ByteString -> IO (Address, Socket)
 listenTcp params = go where
 	param key = Map.lookup (Char8.pack key) params
 	
-	-- TODO
-	go = undefined
+	unknownFamily x = "Unknown socket family for TCP transport: " ++ show x
+	getFamily = case fmap Char8.unpack (param "family") of
+		Just "ipv4" -> Right AF_INET
+		Just "ipv6" -> Right AF_INET6
+		Nothing     -> Right AF_UNSPEC
+		Just x      -> Left (unknownFamily x)
+	
+	badPort x = "Invalid socket port for TCP transport: " ++ show x
+	getPort = case param "port" of
+		Nothing -> Right 0
+		Just x -> case readPortNumber (Char8.unpack x) of
+			Just port -> Right port
+			Nothing -> Left (badPort x)
+	
+	paramBind = case param "bind" of
+		Just x | Char8.unpack x == "*" -> Nothing
+		Just x -> Just (Char8.unpack x)
+		Nothing -> case param "host" of
+			Just x -> Just (Char8.unpack x)
+			Nothing -> Just "localhost"
+	
+	getAddresses family = getAddrInfo (Just (defaultHints
+		{ addrFlags = [AI_ADDRCONFIG, AI_PASSIVE]
+		, addrFamily = family
+		, addrSocketType = Stream
+		})) paramBind Nothing
+	
+	bindAddrs _ [] = throwIO (TransportError "listenTcp: no addresses")
+	bindAddrs sock (addr:addrs) = do
+		tried <- Control.Exception.try (bindSocket sock (addrAddress addr))
+		case tried of
+			Left err -> case addrs of
+				[] -> throwIO (TransportError (show (err :: IOException)))
+				_ -> bindAddrs sock addrs
+			Right _ -> return ()
+	
+	sockAddr (PortNum port) = address_ "tcp" p where
+		p = [("port", show port)] ++ hostParam ++ familyParam
+		hostParam = case param "host" of
+			Just x -> [("host", Char8.unpack x)]
+			Nothing -> []
+		familyParam = case param "family" of
+			Just x -> [("family", Char8.unpack x)]
+			Nothing -> []
+	
+	go = case getPort of
+		Left err -> throwIO (TransportError err)
+		Right port -> case getFamily of
+			Left err -> throwIO (TransportError err)
+			Right family -> catchIOException $ do
+				sockAddrs <- getAddresses family
+				
+				sock <- (bracketOnError
+					(do
+						sock <- socket family Stream defaultProtocol
+						setSocketOption sock ReuseAddr 1
+						return sock)
+					sClose
+					(\sock -> do
+						bindAddrs sock (map (setPort port) sockAddrs)
+						return sock))
+				
+				Network.Socket.listen sock 1
+				sockPort <- socketPort sock
+				return (sockAddr sockPort, sock)
 
 catchIOException :: IO a -> IO a
 catchIOException io = do
@@ -275,3 +332,9 @@ address_ method params = addr where
 	Just addr = address (Char8.pack method) (Map.fromList (do
 		(key, val) <- params
 		return (Char8.pack key, Char8.pack val)))
+
+setPort :: PortNumber -> AddrInfo -> AddrInfo
+setPort port info = case addrAddress info of
+	(SockAddrInet  _ x) -> info { addrAddress = SockAddrInet port x }
+	(SockAddrInet6 _ x y z) -> info { addrAddress = SockAddrInet6 port x y z }
+	_ -> info

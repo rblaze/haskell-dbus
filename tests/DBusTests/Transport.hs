@@ -233,11 +233,11 @@ test_ListenUnix_Path = assertions "path" $ do
 	let addr = address_ "unix" (Map.fromList
 		[ ("path", Char8.pack path)
 		])
-	t <- liftIO (transportListen socketTransportOptions addr)
-	afterTest (transportListenerClose t)
+	l <- liftIO (transportListen socketTransportOptions addr)
+	afterTest (transportListenerClose l)
 	afterTest (removeFile path)
 	
-	$expect (equal (transportListenerAddress t) addr)
+	$expect (equal (transportListenerAddress l) addr)
 
 test_ListenUnix_Abstract :: Suite
 test_ListenUnix_Abstract = assertions "abstract" $ do
@@ -245,10 +245,10 @@ test_ListenUnix_Abstract = assertions "abstract" $ do
 	let addr = address_ "unix" (Map.fromList
 		[ ("abstract", Char8.pack path)
 		])
-	t <- liftIO (transportListen socketTransportOptions addr)
-	afterTest (transportListenerClose t)
+	l <- liftIO (transportListen socketTransportOptions addr)
+	afterTest (transportListenerClose l)
 	
-	$expect (equal (transportListenerAddress t) addr)
+	$expect (equal (transportListenerAddress l) addr)
 
 test_ListenUnix_Tmpdir :: Suite
 test_ListenUnix_Tmpdir = assertions "tmpdir" $ do
@@ -256,11 +256,11 @@ test_ListenUnix_Tmpdir = assertions "tmpdir" $ do
 	let addr = address_ "unix" (Map.fromList
 		[ ("tmpdir", Char8.pack tmpdir)
 		])
-	t <- liftIO (transportListen socketTransportOptions addr)
-	afterTest (transportListenerClose t)
+	l <- liftIO (transportListen socketTransportOptions addr)
+	afterTest (transportListenerClose l)
 	
 	-- listener address is random, so it can't be checked directly.
-	let addrKeys = Map.keys (addressParameters (transportListenerAddress t))
+	let addrKeys = Map.keys (addressParameters (transportListenerAddress l))
 	$expect ("path" `elem` addrKeys || "abstract" `elem` addrKeys)
 
 test_ListenUnix_TooFew :: Suite
@@ -288,13 +288,27 @@ test_ListenTcp = suite "tcp"
 
 test_ListenTcp_IPv4 :: Suite
 test_ListenTcp_IPv4 = assertions "ipv4" $ do
-	-- TODO
-	return ()
+	let addr = address_ "tcp" (Map.fromList
+		[ ("family", "ipv4")
+		])
+	l <- liftIO (transportListen socketTransportOptions addr)
+	afterTest (transportListenerClose l)
+	
+	let params = addressParameters (transportListenerAddress l)
+	$expect (equal (Map.lookup "family" params) (Just "ipv4"))
+	$expect ("port" `elem` Map.keys params)
 
 test_ListenTcp_IPv6 :: Suite
 test_ListenTcp_IPv6 = assertions "ipv6" $ do
-	-- TODO
-	return ()
+	let addr = address_ "tcp" (Map.fromList
+		[ ("family", "ipv6")
+		])
+	l <- liftIO (transportListen socketTransportOptions addr)
+	afterTest (transportListenerClose l)
+	
+	let params = addressParameters (transportListenerAddress l)
+	$expect (equal (Map.lookup "family" params) (Just "ipv6"))
+	$expect ("port" `elem` Map.keys params)
 
 test_ListenTcp_Unknown :: Suite
 test_ListenTcp_Unknown = assertions "unknown-family" $ do
