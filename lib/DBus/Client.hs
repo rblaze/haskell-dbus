@@ -312,7 +312,17 @@ instance Control.Exception.Exception MethodExc
 throwError :: ErrorName -> Text -> [Variant] -> IO a
 throwError name message extra = Control.Exception.throwIO (MethodExc name (toVariant message : extra))
 
-method :: InterfaceName -> MemberName -> Signature -> Signature -> ([Variant] -> IO Reply) -> Method
+-- | Define a method handler, which will accept method calls with the given
+-- interface and member name.
+--
+-- Note that the input and output parameter signatures are used for
+-- introspection, but are not checked when executing a method.
+method :: InterfaceName
+       -> MemberName
+       -> Signature -- ^ Input parameter signature
+       -> Signature -- ^ Output parameter signature
+       -> ([Variant] -> IO Reply)
+       -> Method
 method iface name inSig outSig io = Method iface name inSig outSig
 	(\vs -> Control.Exception.catch
 		(Control.Exception.catch
