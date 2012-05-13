@@ -25,14 +25,10 @@ module DBus.Wire
 	) where
 
 import           Control.Monad (liftM, when, unless)
-import qualified Data.Binary.Builder
-import qualified Data.Binary.Get
-import           Data.Binary.Put (runPut)
 import           Data.Bits ((.&.), (.|.))
 import qualified Data.ByteString
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8
-import qualified Data.ByteString.Lazy
 import           Data.Int (Int16, Int32, Int64)
 import qualified Data.Map
 import           Data.Map (Map)
@@ -46,7 +42,10 @@ import qualified Data.Vector
 import           Data.Vector (Vector)
 import           Data.Word (Word8, Word16, Word32, Word64)
 
-import qualified Data.Binary.IEEE754
+import qualified Data.Serialize.Builder as Builder
+import qualified Data.Serialize.Get as Get
+import           Data.Serialize.IEEE754 (getFloat64be, getFloat64le, putFloat64be, putFloat64le)
+import           Data.Serialize.Put (runPut)
 
 import           DBus.Message
 import           DBus.Types
@@ -136,7 +135,7 @@ newtype MarshalError = MarshalError Text
 	deriving (Show, Eq)
 
 data MarshalState = MarshalState
-	{-# UNPACK #-} !Data.Binary.Builder.Builder
+	{-# UNPACK #-} !Builder.Builder
 	{-# UNPACK #-} !Word64
 
 marshal :: Value -> Marshal ()
@@ -161,21 +160,16 @@ marshalAtom (AtomText x) = marshalText x
 marshalAtom (AtomObjectPath x) = marshalObjectPath x
 marshalAtom (AtomSignature x) = marshalSignature x
 
-appendB :: Word64 -> Data.Binary.Builder.Builder -> Marshal ()
+appendB :: Word64 -> Builder.Builder -> Marshal ()
 appendB size bytes = Wire (\_ (MarshalState builder count) -> let
-	builder' = Data.Binary.Builder.append builder bytes
+	builder' = Builder.append builder bytes
 	count' = count + size
 	in WireRR () (MarshalState builder' count'))
 
 appendS :: ByteString -> Marshal ()
 appendS bytes = appendB
 	(fromIntegral (Data.ByteString.length bytes))
-	(Data.Binary.Builder.fromByteString bytes)
-
-appendL :: Data.ByteString.Lazy.ByteString -> Marshal ()
-appendL bytes = appendB
-	(fromIntegral (Data.ByteString.Lazy.length bytes))
-	(Data.Binary.Builder.fromLazyByteString bytes)
+	(Builder.fromByteString bytes)
 
 pad :: Word8 -> Marshal ()
 pad count = do
@@ -184,8 +178,8 @@ pad count = do
 	appendS (Data.ByteString.replicate padding' 0)
 
 marshalBuilder :: Word8
-               -> (a -> Data.Binary.Builder.Builder)
-               -> (a -> Data.Binary.Builder.Builder)
+               -> (a -> Builder.Builder)
+               -> (a -> Builder.Builder)
                -> a -> Marshal ()
 marshalBuilder size be le x = do
 	builder <- chooseEndian (be x) (le x)
@@ -255,34 +249,34 @@ fromMaybeU label f x = case f x of
 	Just x' -> return x'
 	Nothing -> throwError (concat ["Invalid ", label, ": ", show x])
 
-unmarshalGet :: Word8 -> Data.Binary.Get.Get a -> Data.Binary.Get.Get a -> Unmarshal a
+unmarshalGet :: Word8 -> Get.Get a -> Get.Get a -> Unmarshal a
 unmarshalGet count be le = do
 	skipPadding count
 	bytes <- consume (fromIntegral count)
 	get <- chooseEndian be le
-	let lazy = Data.ByteString.Lazy.fromChunks [bytes]
-	return (Data.Binary.Get.runGet get lazy)
+	let Right ret = Get.runGet get bytes
+	return ret
 
 marshalWord8 :: Word8 -> Marshal ()
-marshalWord8 x = appendB 1 (Data.Binary.Builder.singleton x)
+marshalWord8 x = appendB 1 (Builder.singleton x)
 
 unmarshalWord8 :: Unmarshal Word8
 unmarshalWord8 = liftM Data.ByteString.head (consume 1)
 
 marshalWord16 :: Word16 -> Marshal ()
 marshalWord16 = marshalBuilder 2
-	Data.Binary.Builder.putWord16be
-	Data.Binary.Builder.putWord16le
+	Builder.putWord16be
+	Builder.putWord16le
 
 marshalWord32 :: Word32 -> Marshal ()
 marshalWord32 = marshalBuilder 4
-	Data.Binary.Builder.putWord32be
-	Data.Binary.Builder.putWord32le
+	Builder.putWord32be
+	Builder.putWord32le
 
 marshalWord64 :: Word64 -> Marshal ()
 marshalWord64 = marshalBuilder 8
-	Data.Binary.Builder.putWord64be
-	Data.Binary.Builder.putWord64le
+	Builder.putWord64be
+	Builder.putWord64le
 
 marshalInt16 :: Int16 -> Marshal ()
 marshalInt16 = marshalWord16 . fromIntegral
@@ -295,18 +289,18 @@ marshalInt64 = marshalWord64 . fromIntegral
 
 unmarshalWord16 :: Unmarshal Word16
 unmarshalWord16 = unmarshalGet 2
-	Data.Binary.Get.getWord16be
-	Data.Binary.Get.getWord16le
+	Get.getWord16be
+	Get.getWord16le
 
 unmarshalWord32 :: Unmarshal Word32
 unmarshalWord32 = unmarshalGet 4
-	Data.Binary.Get.getWord32be
-	Data.Binary.Get.getWord32le
+	Get.getWord32be
+	Get.getWord32le
 
 unmarshalWord64 :: Unmarshal Word64
 unmarshalWord64 = unmarshalGet 8
-	Data.Binary.Get.getWord64be
-	Data.Binary.Get.getWord64le
+	Get.getWord64be
+	Get.getWord64le
 
 unmarshalInt16 :: Unmarshal Int16
 unmarshalInt16 = liftM fromIntegral unmarshalWord16
@@ -319,16 +313,14 @@ unmarshalInt64 = liftM fromIntegral unmarshalWord64
 
 marshalDouble :: Double -> Marshal ()
 marshalDouble x = do
-	put <- chooseEndian
-		Data.Binary.IEEE754.putFloat64be
-		Data.Binary.IEEE754.putFloat64le
+	put <- chooseEndian putFloat64be putFloat64le
 	pad 8
-	appendL (runPut (put x))
+	appendS (runPut (put x))
 
 unmarshalDouble :: Unmarshal Double
 unmarshalDouble = unmarshalGet 8
-	Data.Binary.IEEE754.getFloat64be
-	Data.Binary.IEEE754.getFloat64le
+	getFloat64be
+	getFloat64le
 
 marshalBool :: Bool -> Marshal ()
 marshalBool False = marshalWord32 0
@@ -394,13 +386,13 @@ unmarshalSignature = do
 	skipTerminator
 	fromMaybeU "signature" parseSignature bytes
 
-arrayMaximumLength :: Int64
+arrayMaximumLength :: Int
 arrayMaximumLength = 67108864
 
 marshalVector :: Type -> Vector Value -> Marshal ()
 marshalVector t x = do
 	(arrayPadding, arrayBytes) <- getArrayBytes t x
-	let arrayLen = Data.ByteString.Lazy.length arrayBytes
+	let arrayLen = Data.ByteString.length arrayBytes
 	when (arrayLen > arrayMaximumLength) (throwError (concat
 		[ "Marshaled array size ("
 		, show arrayLen
@@ -409,8 +401,8 @@ marshalVector t x = do
 		, " bytes)."
 		]))
 	marshalWord32 (fromIntegral arrayLen)
-	appendL (Data.ByteString.Lazy.replicate arrayPadding 0)
-	appendL arrayBytes
+	appendS (Data.ByteString.replicate arrayPadding 0)
+	appendS arrayBytes
 
 marshalStrictBytes :: ByteString -> Marshal ()
 marshalStrictBytes bytes = do
@@ -425,16 +417,16 @@ marshalStrictBytes bytes = do
 	marshalWord32 (fromIntegral arrayLen)
 	appendS bytes
 
-getArrayBytes :: Type -> Vector Value -> Marshal (Int64, Data.ByteString.Lazy.ByteString)
+getArrayBytes :: Type -> Vector Value -> Marshal (Int, ByteString)
 getArrayBytes itemType vs = do
 	s <- getState
 	(MarshalState _ afterLength) <- marshalWord32 0 >> getState
 	(MarshalState _ afterPadding) <- pad (alignment itemType) >> getState
 	
-	putState (MarshalState Data.Binary.Builder.empty afterPadding)
+	putState (MarshalState Builder.empty afterPadding)
 	(MarshalState itemBuilder _) <- Data.Vector.mapM_ marshal vs >> getState
 	
-	let itemBytes = Data.Binary.Builder.toLazyByteString itemBuilder
+	let itemBytes = Builder.toByteString itemBuilder
 	    paddingSize = fromIntegral (afterPadding - afterLength)
 	
 	putState s
@@ -585,18 +577,15 @@ marshalMessage e serial msg = runMarshal where
 		(MarshalState bodyBytesB _) <- getState
 		putState empty
 		marshal (toValue (encodeEndianness e))
-		let bodyBytes = Data.Binary.Builder.toLazyByteString bodyBytesB
-		marshalHeader msg serial sig (fromIntegral (Data.ByteString.Lazy.length bodyBytes))
+		let bodyBytes = Builder.toByteString bodyBytesB
+		marshalHeader msg serial sig (fromIntegral (Data.ByteString.length bodyBytes))
 		pad 8
-		appendL bodyBytes
+		appendS bodyBytes
 		checkMaximumSize
-	emptyState = MarshalState Data.Binary.Builder.empty 0
+	emptyState = MarshalState Builder.empty 0
 	runMarshal = case unWire marshaler e emptyState of
 		WireRL err -> Left (MarshalError (Data.Text.pack err))
-		WireRR _ (MarshalState builder _) -> Right (toStrict builder)
-	toStrict = Data.ByteString.concat
-	         . Data.ByteString.Lazy.toChunks
-	         . Data.Binary.Builder.toLazyByteString
+		WireRR _ (MarshalState builder _) -> Right (Builder.toByteString builder)
 
 checkBodySig :: [Variant] -> Marshal Signature
 checkBodySig vs = case signature (map variantType vs) of
@@ -749,7 +738,6 @@ require label _     = E.throwErrorM label
 -- can still be parsed successfully, as long as they otherwise conform to
 -- the D&#8208;Bus standard.
 unmarshalMessage :: ByteString -> Either UnmarshalError ReceivedMessage
-unmarshalMessage = Data.Binary.Get.runGet get . toLazy where
-	get = unmarshalMessageM getBytes
-	getBytes = Data.Binary.Get.getByteString
-	toLazy bs = Data.ByteString.Lazy.fromChunks [bs]
+unmarshalMessage bytes = case Get.runGet (unmarshalMessageM Get.getByteString) bytes of
+	Left err -> Left (UnmarshalError (Data.Text.pack err))
+	Right x -> x
