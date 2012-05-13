@@ -40,6 +40,7 @@ test_Transport :: Suite
 test_Transport = suite "Transport"
 	[ test_TransportOpen
 	, test_TransportListen
+	, test_TransportAccept
 	, test_TransportSendReceive
 	]
 
@@ -55,6 +56,12 @@ test_TransportListen = suite "transportListen"
 	[ test_ListenUnknown
 	, test_ListenUnix
 	, test_ListenTcp
+	]
+
+test_TransportAccept :: Suite
+test_TransportAccept = suite "transportAccept"
+	[ test_AcceptSocket
+	, test_AcceptSocketClosed
 	]
 
 test_OpenUnknown :: Suite
@@ -276,7 +283,6 @@ test_ListenTcp = suite "tcp"
 	[ test_ListenTcp_IPv4
 	, skipWhen noIPv6 test_ListenTcp_IPv6
 	, test_ListenTcp_Unknown
-	, test_ListenTcp_NoPort
 	, test_ListenTcp_InvalidPort
 	]
 
@@ -307,6 +313,44 @@ test_ListenTcp_InvalidPort = assertions "invalid-port" $ do
 			[ ("family", "ipv4")
 			, ("port", "123456")
 			])))
+
+test_AcceptSocket :: Suite
+test_AcceptSocket = assertions "socket" $ do
+	path <- liftIO getTempPath
+	let addr = address_ "unix" (Map.fromList
+		[ ("abstract", Char8.pack path)
+		])
+	listener <- liftIO (transportListen socketTransportOptions addr)
+	afterTest (transportListenerClose listener)
+	
+	acceptedVar <- forkVar (transportAccept listener)
+	openedVar <- forkVar (transportOpen socketTransportOptions addr)
+	
+	accepted <- liftIO (readMVar acceptedVar)
+	opened <- liftIO (readMVar openedVar)
+	afterTest (transportClose accepted)
+	afterTest (transportClose opened)
+	
+	liftIO (transportPut opened "testing")
+	
+	bytes1 <- liftIO (transportGet accepted 2)
+	bytes2 <- liftIO (transportGet accepted 100)
+	
+	$expect (equal bytes1 "te")
+	$expect (equal bytes2 "sting")
+
+test_AcceptSocketClosed :: Suite
+test_AcceptSocketClosed = assertions "socket-closed" $ do
+	path <- liftIO getTempPath
+	let addr = address_ "unix" (Map.fromList
+		[ ("abstract", Char8.pack path)
+		])
+	listener <- liftIO (transportListen socketTransportOptions addr)
+	liftIO (transportListenerClose listener)
+	
+	$assert $ throwsEq
+		(TransportError "user error (accept: can't perform accept on socket ((AF_UNIX,Stream,0)) in status Closed)")
+		(transportAccept listener)
 
 socketTransportOptions :: TransportOptions SocketTransport
 socketTransportOptions = transportDefaultOptions

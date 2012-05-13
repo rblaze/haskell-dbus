@@ -27,6 +27,7 @@ module DBusTests.Util
 	, listenRandomIPv4
 	, listenRandomIPv6
 	, noIPv6
+	, forkVar
 	
 	, halfSized
 	, clampedSize
@@ -34,6 +35,7 @@ module DBusTests.Util
 	, smallListOf1
 	) where
 
+import           Control.Concurrent
 import           Control.Exception (IOException, try)
 import           Control.Monad.IO.Class (MonadIO, liftIO)
 import           Data.Bits ((.&.))
@@ -159,6 +161,12 @@ noIPv6 = do
 	case (tried :: Either IOException [NS.AddrInfo]) of
 		Left _ -> return True
 		Right addrs -> return (null addrs)
+
+forkVar :: MonadIO m => IO a -> m (MVar a)
+forkVar io = liftIO $ do
+	var <- newEmptyMVar
+	_ <- forkIO (io >>= putMVar var)
+	return var
 
 instance (Arbitrary a, Ord a) => Arbitrary (Data.Set.Set a) where
 	arbitrary = fmap Data.Set.fromList arbitrary

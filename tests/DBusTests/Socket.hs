@@ -22,20 +22,16 @@ import           Test.Chell
 
 import           Control.Concurrent
 import           Control.Monad.IO.Class (MonadIO, liftIO)
-import qualified Data.ByteString
 import qualified Data.ByteString.Char8 as Char8
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import qualified Network as N
-import           System.IO
-import           System.Random (randomIO)
 
 import           DBus
 import           DBus.Socket
 import           DBus.Transport
 import           DBus.Util (readUntil, randomUUID)
 
-import           DBusTests.Util (listenRandomIPv4)
+import           DBusTests.Util (forkVar)
 
 test_Socket :: Suite
 test_Socket = assertions "Socket" $ do
@@ -112,9 +108,3 @@ readChar8 :: Transport t => t -> IO Char
 readChar8 t = do
 	c <- transportGet t 1
 	return (Char8.head c)
-
-forkVar :: MonadIO m => IO a -> m (MVar a)
-forkVar io = liftIO $ do
-	var <- newEmptyMVar
-	_ <- forkIO (io >>= putMVar var)
-	return var

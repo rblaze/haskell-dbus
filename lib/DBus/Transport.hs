@@ -133,10 +133,10 @@ instance TransportListen SocketTransport where
 			"tcp" -> listenTcp (addressParameters a)
 			method -> throwIO (TransportError ("Unknown address method: " ++ show method))
 		return (SocketTransportListener a' sock)
-	transportAccept (SocketTransportListener _ s) = do
+	transportAccept (SocketTransportListener _ s) = catchIOException $ do
 		(s', _) <- accept s
 		return (SocketTransport s')
-	transportListenerClose (SocketTransportListener _ s) = sClose s
+	transportListenerClose (SocketTransportListener _ s) = catchIOException (sClose s)
 	transportListenerAddress (SocketTransportListener a _) = a
 
 openUnix :: Map.Map ByteString ByteString -> IO SocketTransport
