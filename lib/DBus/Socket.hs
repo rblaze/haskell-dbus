@@ -301,7 +301,7 @@ authServer t authenticators = go where
 				return True
 			else loop next
 
--- | An empty authenticator. Use 'authentictorClient' or 'authenticatorServer'
+-- | An empty authenticator. Use 'authenticatorClient' or 'authenticatorServer'
 -- to control how the authentication is performed.
 --
 -- @
