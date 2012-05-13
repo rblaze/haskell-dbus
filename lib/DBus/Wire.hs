@@ -82,6 +82,7 @@ alignment (TypeDictionary _ _) = 4
 alignment (TypeStructure _) = 8
 alignment TypeVariant = 1
 
+{-# INLINE padding #-}
 padding :: Word64 -> Word8 -> Word64
 padding current count = required where
 	count' = fromIntegral count
