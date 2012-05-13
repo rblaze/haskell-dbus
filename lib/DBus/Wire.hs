@@ -93,7 +93,7 @@ padding current count = required where
 
 data WireR s a
 	= WireRL String
-	| WireRR a {-# UNPACK #-} !s
+	| WireRR a !s
 
 newtype Wire s a = Wire
 	{ unWire :: Endianness -> s -> WireR s a
@@ -136,7 +136,7 @@ newtype MarshalError = MarshalError Text
 	deriving (Show, Eq)
 
 data MarshalState = MarshalState
-	{-# UNPACK #-} !Builder.Builder
+	!Builder.Builder
 	{-# UNPACK #-} !Word64
 
 marshal :: Value -> Marshal ()
