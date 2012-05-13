@@ -33,6 +33,7 @@ import qualified Data.Map as Map
 import           Data.Typeable (Typeable)
 import           Network.Socket hiding (recv)
 import           Network.Socket.ByteString (sendAll, recv)
+import qualified System.Info
 
 import           DBus
 import           DBus.Util (readPortNumber, randomUUID)
@@ -127,11 +128,11 @@ instance TransportOpen SocketTransport where
 instance TransportListen SocketTransport where
 	data TransportListener SocketTransport = SocketTransportListener Address Socket
 	transportListen _ a = do
-		sock <- case Char8.unpack (addressMethod a) of
+		(a', sock) <- case Char8.unpack (addressMethod a) of
 			"unix" -> listenUnix (addressParameters a)
 			"tcp" -> listenTcp (addressParameters a)
 			method -> throwIO (TransportError ("Unknown address method: " ++ show method))
-		return (SocketTransportListener a sock)
+		return (SocketTransportListener a' sock)
 	transportAccept (SocketTransportListener _ s) = do
 		(s', _) <- accept s
 		return (SocketTransport s')
@@ -214,7 +215,7 @@ openTcp params = go where
 				sock <- openSocket (map (setPort port) addrs)
 				return (SocketTransport sock)
 
-listenUnix :: Map.Map ByteString ByteString -> IO Socket
+listenUnix :: Map.Map ByteString ByteString -> IO (Address, Socket)
 listenUnix params = getPath >>= go where
 	param key = Map.lookup (Char8.pack key) params
 	
@@ -224,26 +225,38 @@ listenUnix params = getPath >>= go where
 	         \ for the 'unix' transport."
 	
 	getPath = case (param "abstract", param "path", param "tmpdir") of
-		(Just x, Nothing, Nothing) -> return (Right ('\x00' : Char8.unpack x))
-		(Nothing, Just x, Nothing) -> return (Right (Char8.unpack x))
+		(Just x, Nothing, Nothing) -> let
+			addr = address_ "unix" [("abstract", Char8.unpack x)]
+			path = '\x00' : Char8.unpack x
+			in return (Right (addr, path))
+		(Nothing, Just x, Nothing) -> let
+			addr = address_ "unix" [("path", Char8.unpack x)]
+			path = Char8.unpack x
+			in return (Right (addr, path))
 		(Nothing, Nothing, Just x) -> do
 			uuid <- randomUUID
-			-- TODO: check if abstract paths are supported, and if
-			-- not, use a standard path.
-			let fileName = "haskell-dbus-" ++ uuid
-			return (Right ('\x00' : (Char8.unpack x ++ "/" ++ fileName)))
+			let fileName = Char8.unpack x ++ "/haskell-dbus-" ++ uuid
+			
+			-- Abstract paths are supported on Linux, but not on
+			-- other UNIX-like systems.
+			let (addrParams, path) = if System.Info.os == "linux"
+				then ([("abstract", fileName)], ('\x00' : fileName))
+				else ([("path", fileName)], fileName)
+			
+			let addr = address_ "unix" addrParams
+			return (Right (addr, path))
 		(Nothing, Nothing, Nothing) -> return (Left tooFew)
 		_ -> return (Left tooMany)
 	
 	go path = case path of
 		Left err -> throwIO (TransportError err)
-		Right p -> catchIOException $ do
+		Right (addr, p) -> catchIOException $ do
 			sock <- socket AF_UNIX Stream defaultProtocol
 			bindSocket sock (SockAddrUnix p)
 			Network.Socket.listen sock 1
-			return sock
+			return (addr, sock)
 
-listenTcp :: Map.Map ByteString ByteString -> IO Socket
+listenTcp :: Map.Map ByteString ByteString -> IO (Address, Socket)
 listenTcp params = go where
 	param key = Map.lookup (Char8.pack key) params
 	
@@ -256,3 +269,9 @@ catchIOException io = do
 	case tried of
 		Right a -> return a
 		Left err -> throwIO (TransportError (show (err :: IOException)))
+
+address_ :: String -> [(String, String)] -> Address
+address_ method params = addr where
+	Just addr = address (Char8.pack method) (Map.fromList (do
+		(key, val) <- params
+		return (Char8.pack key, Char8.pack val)))

@@ -21,6 +21,7 @@ module DBusTests.Util
 	, assertValue
 	, assertAtom
 	
+	, getTempPath
 	, listenRandomUnixPath
 	, listenRandomUnixAbstract
 	, listenRandomIPv4
@@ -81,20 +82,24 @@ assertAtom t a = do
 	$expect $ equal (toAtom a) (toAtom a)
 	assertValue t a
 
+getTempPath :: IO String
+getTempPath = do
+	tmp <- getTemporaryDirectory
+	uuid <- randomUUID
+	return (tmp </> uuid)
+
 listenRandomUnixPath :: Assertions (Address, N.Socket)
 listenRandomUnixPath = do
-	tmp <- liftIO getTemporaryDirectory
-	uuid <- liftIO randomUUID
-	let path = tmp </> uuid
+	path <- liftIO getTempPath
 	
-	let sockAddr = NS.SockAddrUnix (tmp </> uuid)
+	let sockAddr = NS.SockAddrUnix path
 	sock <- liftIO (NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol)
 	liftIO (NS.bindSocket sock sockAddr)
 	liftIO (NS.listen sock 1)
 	afterTest (removeFile path)
 	
 	let Just addr = address "unix" (Map.fromList
-		[ ("path", Char8.pack (tmp </> uuid))
+		[ ("path", Char8.pack path)
 		])
 	return (addr, sock)
 

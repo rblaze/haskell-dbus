@@ -24,9 +24,11 @@ import           Control.Concurrent
 import           Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.ByteString
 import           Data.ByteString (ByteString)
+import qualified Data.ByteString.Char8 as Char8
 import qualified Data.Map as Map
 import qualified Network as N
 import qualified Network.Socket as NS
+import           System.Directory (getTemporaryDirectory, removeFile)
 import           System.IO
 
 import           DBus
@@ -37,6 +39,7 @@ import           DBusTests.Util
 test_Transport :: Suite
 test_Transport = suite "Transport"
 	[ test_TransportOpen
+	, test_TransportListen
 	, test_TransportSendReceive
 	]
 
@@ -45,6 +48,13 @@ test_TransportOpen = suite "transportOpen"
 	[ test_OpenUnknown
 	, test_OpenUnix
 	, test_OpenTcp
+	]
+
+test_TransportListen :: Suite
+test_TransportListen = suite "transportListen"
+	[ test_ListenUnknown
+	, test_ListenUnix
+	, test_ListenTcp
 	]
 
 test_OpenUnknown :: Suite
@@ -94,7 +104,7 @@ test_OpenUnix_TooMany = assertions "too-many" $ do
 			])))
 
 test_OpenUnix_NotListening :: Suite
-test_OpenUnix_NotListening = assertions "too-many" $ do
+test_OpenUnix_NotListening = assertions "not-listening" $ do
 	(addr, networkSocket) <- listenRandomUnixAbstract
 	liftIO (NS.sClose networkSocket)
 	$assert $ throwsEq
@@ -194,6 +204,109 @@ test_TransportSendReceive = assertions "send-receive" $ do
 	
 	$expect (equal bytes1 "te")
 	$expect (equal bytes2 "sting")
+
+test_ListenUnknown :: Suite
+test_ListenUnknown = assertions "unknown" $ do
+	$assert $ throwsEq
+		(TransportError "Unknown address method: \"noexist\"")
+		(transportListen socketTransportOptions (address_ "noexist" Map.empty))
+
+test_ListenUnix :: Suite
+test_ListenUnix = suite "unix"
+	[ test_ListenUnix_Path
+	, test_ListenUnix_Abstract
+	, test_ListenUnix_Tmpdir
+	, test_ListenUnix_TooFew
+	, test_ListenUnix_TooMany
+	]
+
+test_ListenUnix_Path :: Suite
+test_ListenUnix_Path = assertions "path" $ do
+	path <- liftIO getTempPath
+	let addr = address_ "unix" (Map.fromList
+		[ ("path", Char8.pack path)
+		])
+	t <- liftIO (transportListen socketTransportOptions addr)
+	afterTest (transportListenerClose t)
+	afterTest (removeFile path)
+	
+	$expect (equal (transportListenerAddress t) addr)
+
+test_ListenUnix_Abstract :: Suite
+test_ListenUnix_Abstract = assertions "abstract" $ do
+	path <- liftIO getTempPath
+	let addr = address_ "unix" (Map.fromList
+		[ ("abstract", Char8.pack path)
+		])
+	t <- liftIO (transportListen socketTransportOptions addr)
+	afterTest (transportListenerClose t)
+	
+	$expect (equal (transportListenerAddress t) addr)
+
+test_ListenUnix_Tmpdir :: Suite
+test_ListenUnix_Tmpdir = assertions "tmpdir" $ do
+	tmpdir <- liftIO getTemporaryDirectory
+	let addr = address_ "unix" (Map.fromList
+		[ ("tmpdir", Char8.pack tmpdir)
+		])
+	t <- liftIO (transportListen socketTransportOptions addr)
+	afterTest (transportListenerClose t)
+	
+	-- listener address is random, so it can't be checked directly.
+	let addrKeys = Map.keys (addressParameters (transportListenerAddress t))
+	$expect ("path" `elem` addrKeys || "abstract" `elem` addrKeys)
+
+test_ListenUnix_TooFew :: Suite
+test_ListenUnix_TooFew = assertions "too-few" $ do
+	$assert $ throwsEq
+		(TransportError "One of 'abstract', 'path', or 'tmpdir' must be specified for the 'unix' transport.")
+		(transportListen socketTransportOptions (address_ "unix" Map.empty))
+
+test_ListenUnix_TooMany :: Suite
+test_ListenUnix_TooMany = assertions "too-many" $ do
+	$assert $ throwsEq
+		(TransportError "Only one of 'abstract', 'path', or 'tmpdir' may be specified for the 'unix' transport.")
+		(transportListen socketTransportOptions (address_ "unix" (Map.fromList
+			[ ("path", "foo")
+			, ("abstract", "bar")
+			])))
+
+test_ListenTcp :: Suite
+test_ListenTcp = suite "tcp"
+	[ test_ListenTcp_IPv4
+	, skipWhen noIPv6 test_ListenTcp_IPv6
+	, test_ListenTcp_Unknown
+	, test_ListenTcp_NoPort
+	, test_ListenTcp_InvalidPort
+	]
+
+test_ListenTcp_IPv4 :: Suite
+test_ListenTcp_IPv4 = assertions "ipv4" $ do
+	-- TODO
+	return ()
+
+test_ListenTcp_IPv6 :: Suite
+test_ListenTcp_IPv6 = assertions "ipv6" $ do
+	-- TODO
+	return ()
+
+test_ListenTcp_Unknown :: Suite
+test_ListenTcp_Unknown = assertions "unknown-family" $ do
+	$assert $ throwsEq
+		(TransportError "Unknown socket family for TCP transport: \"noexist\"")
+		(transportListen socketTransportOptions (address_ "tcp" (Map.fromList
+			[ ("family", "noexist")
+			, ("port", "1234")
+			])))
+
+test_ListenTcp_InvalidPort :: Suite
+test_ListenTcp_InvalidPort = assertions "invalid-port" $ do
+	$assert $ throwsEq
+		(TransportError "Invalid socket port for TCP transport: \"123456\"")
+		(transportListen socketTransportOptions (address_ "tcp" (Map.fromList
+			[ ("family", "ipv4")
+			, ("port", "123456")
+			])))
 
 socketTransportOptions :: TransportOptions SocketTransport
 socketTransportOptions = transportDefaultOptions
