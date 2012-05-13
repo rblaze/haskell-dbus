@@ -37,9 +37,7 @@ import           DBusTests.Util (halfSized)
 
 test_Introspection :: Suite
 test_Introspection = suite "Introspection"
-	[
-	-- temporarily disabled due to poor performance
-	-- test_XmlPassthrough
+	[ test_XmlPassthrough
 	]
 
 test_XmlPassthrough :: Suite
@@ -77,7 +75,7 @@ instance Arbitrary Introspection.Object where
 subObject :: ObjectPath -> Gen Introspection.Object
 subObject parentPath = sized $ \n -> resize (min n 4) $ do
 	let nonRoot = do
-		x <- arbitrary
+		x <- resize 10 arbitrary
 		case objectPathText x of
 			"/" -> nonRoot
 			x'  -> return x'
