@@ -24,6 +24,7 @@ module DBus.Transport
 	, TransportOpen(..)
 	, TransportListen(..)
 	, SocketTransport
+	, socketTransportOptionBacklog
 	) where
 
 import           Control.Exception
@@ -114,7 +115,12 @@ newtype SocketTransport = SocketTransport Socket
 
 instance Transport SocketTransport where
 	data TransportOptions SocketTransport = SocketTransportOptions
-	transportDefaultOptions = SocketTransportOptions
+		{
+		-- | The maximum size of the connection queue for a listening
+		-- socket.
+		  socketTransportOptionBacklog :: Int
+		}
+	transportDefaultOptions = SocketTransportOptions 30
 	transportPut (SocketTransport s) bytes = catchIOException (sendAll s bytes)
 	transportGet (SocketTransport s) n = catchIOException (recv s n)
 	transportClose (SocketTransport s) = catchIOException (sClose s)
@@ -127,10 +133,10 @@ instance TransportOpen SocketTransport where
 
 instance TransportListen SocketTransport where
 	data TransportListener SocketTransport = SocketTransportListener Address Socket
-	transportListen _ a = do
+	transportListen opts a = do
 		(a', sock) <- case Char8.unpack (addressMethod a) of
-			"unix" -> listenUnix (addressParameters a)
-			"tcp" -> listenTcp (addressParameters a)
+			"unix" -> listenUnix (addressParameters a) opts
+			"tcp" -> listenTcp (addressParameters a) opts
 			method -> throwIO (TransportError ("Unknown address method: " ++ show method))
 		return (SocketTransportListener a' sock)
 	transportAccept (SocketTransportListener _ s) = catchIOException $ do
@@ -209,8 +215,8 @@ openTcp params = go where
 				sock <- openSocket (map (setPort port) addrs)
 				return (SocketTransport sock)
 
-listenUnix :: Map.Map ByteString ByteString -> IO (Address, Socket)
-listenUnix params = getPath >>= go where
+listenUnix :: Map.Map ByteString ByteString -> TransportOptions SocketTransport -> IO (Address, Socket)
+listenUnix params opts = getPath >>= go where
 	param key = Map.lookup (Char8.pack key) params
 	
 	tooMany = "Only one of 'abstract', 'path', or 'tmpdir' may be\
@@ -247,11 +253,11 @@ listenUnix params = getPath >>= go where
 		Right (addr, p) -> catchIOException $ do
 			sock <- socket AF_UNIX Stream defaultProtocol
 			bindSocket sock (SockAddrUnix p)
-			Network.Socket.listen sock 1
+			Network.Socket.listen sock (socketTransportOptionBacklog opts)
 			return (addr, sock)
 
-listenTcp :: Map.Map ByteString ByteString -> IO (Address, Socket)
-listenTcp params = go where
+listenTcp :: Map.Map ByteString ByteString -> TransportOptions SocketTransport -> IO (Address, Socket)
+listenTcp params opts = go where
 	param key = Map.lookup (Char8.pack key) params
 	
 	unknownFamily x = "Unknown socket family for TCP transport: " ++ show x
@@ -316,7 +322,7 @@ listenTcp params = go where
 						bindAddrs sock (map (setPort port) sockAddrs)
 						return sock))
 				
-				Network.Socket.listen sock 1
+				Network.Socket.listen sock (socketTransportOptionBacklog opts)
 				sockPort <- socketPort sock
 				return (sockAddr sockPort, sock)
 
