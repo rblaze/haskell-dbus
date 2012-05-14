@@ -25,6 +25,7 @@ module DBus.Transport
 	, TransportListen(..)
 	, SocketTransport
 	, socketTransportOptionBacklog
+	, socketTransportCredentials
 	) where
 
 import           Control.Exception
@@ -32,6 +33,7 @@ import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as Char8
 import qualified Data.Map as Map
 import           Data.Typeable (Typeable)
+import           Foreign.C (CUInt)
 import           Network.Socket hiding (recv)
 import           Network.Socket.ByteString (sendAll, recv)
 import qualified System.Info
@@ -144,6 +146,12 @@ instance TransportListen SocketTransport where
 		return (SocketTransport s')
 	transportListenerClose (SocketTransportListener _ s) = catchIOException (sClose s)
 	transportListenerAddress (SocketTransportListener a _) = a
+
+-- | Returns the processID, userID, and groupID of the socket's peer.
+--
+-- See 'getPeerCred'.
+socketTransportCredentials :: SocketTransport -> IO (CUInt, CUInt, CUInt)
+socketTransportCredentials (SocketTransport s) = catchIOException (getPeerCred s)
 
 openUnix :: Map.Map ByteString ByteString -> IO SocketTransport
 openUnix params = go where

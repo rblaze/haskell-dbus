@@ -34,7 +34,59 @@ import           DBus.Util (readUntil, randomUUID)
 import           DBusTests.Util (forkVar)
 
 test_Socket :: Suite
-test_Socket = assertions "Socket" $ do
+test_Socket = suite "Socket"
+	[ test_Listen
+	, test_ListenWith_CustomAuth
+	, test_SendReceive
+	]
+
+test_Listen :: Suite
+test_Listen = assertions "listen" $ do
+	uuid <- liftIO randomUUID
+	let Just addr = address "unix" (Map.fromList
+		[ ("abstract", Char8.pack uuid)
+		])
+	
+	listened <- liftIO (listen addr)
+	$assert (right listened)
+	let Right listener = listened
+	afterTest (closeListener listener)
+	
+	acceptedVar <- forkVar (accept listener)
+	openedVar <- forkVar (open addr)
+	
+	accepted <- liftIO (takeMVar acceptedVar)
+	$assert (right accepted)
+	let Right sock = accepted
+	afterTest (close sock)
+
+test_ListenWith_CustomAuth :: Suite
+test_ListenWith_CustomAuth = assertions "listenWith-custom-auth" $ do
+	uuid <- liftIO randomUUID
+	let Just addr = address "unix" (Map.fromList
+		[ ("abstract", Char8.pack uuid)
+		])
+	
+	listened <- liftIO (listenWith (defaultSocketOptions
+		{ socketAuthenticator = dummyAuth
+		}) addr)
+	$assert (right listened)
+	let Right listener = listened
+	afterTest (closeListener listener)
+	
+	acceptedVar <- forkVar (accept listener)
+	openedVar <- forkVar (openWith (defaultSocketOptions
+		{ socketAuthenticator = dummyAuth
+		}) addr)
+	
+	accepted <- liftIO (takeMVar acceptedVar)
+	$assert (right accepted)
+	let Right sock = accepted
+	afterTest (close sock)
+	return ()
+
+test_SendReceive :: Suite
+test_SendReceive = assertions "send-receive" $ do
 	uuid <- liftIO randomUUID
 	let Just addr = address "unix" (Map.fromList
 		[ ("abstract", Char8.pack uuid)
@@ -50,26 +102,16 @@ test_Socket = assertions "Socket" $ do
 		, methodCallBody = [toVariant True]
 		}
 	
-	listened <- liftIO (listenWith (defaultSocketOptions
-		{ socketAuthenticators = [dummyAuth]
-		}) addr)
-	$assert (right listened)
-	let Right listener = listened
+	Right listener <- liftIO (listen addr)
 	afterTest (closeListener listener)
 	
 	acceptedVar <- forkVar (accept listener)
-	openedVar <- forkVar (openWith (defaultSocketOptions
-		{ socketAuthenticators = [dummyAuth]
-		}) addr)
+	openedVar <- forkVar (open addr)
 	
-	accepted <- liftIO (takeMVar acceptedVar)
-	$assert (right accepted)
-	let Right sock1 = accepted
+	Right sock1 <- liftIO (takeMVar acceptedVar)
 	afterTest (close sock1)
 	
-	opened <- liftIO (takeMVar openedVar)
-	$assert (right opened)
-	let Right sock2 = opened
+	Right sock2 <- liftIO (takeMVar openedVar)
 	afterTest (close sock2)
 	
 	serialVar <- liftIO newEmptyMVar
@@ -91,18 +133,20 @@ dummyAuth = authenticator
 
 dummyAuthClient :: Transport t => t -> IO Bool
 dummyAuthClient t = do
-	transportPut t "AUTH DUMMY\r\n"
+	transportPut t "\x00"
 	resp <- readUntil "\r\n" (readChar8 t)
-	return $ case takeWhile (/= ' ') resp of
-		"OK" -> True
-		_ -> False
+	return (take 3 resp == "OK ")
 
-dummyAuthServer :: Transport t => t -> IO Bool
-dummyAuthServer t = do
-	req <- readUntil "\r\n" (readChar8 t)
-	return $ case req of
-		"AUTH DUMMY\r\n" -> True
-		_ -> False
+dummyAuthServer :: Transport t => t -> String -> IO Bool
+dummyAuthServer t uuid = do
+	c <- transportGet t 1
+	if c == "\x00"
+		then do
+			transportPut t "OK "
+			transportPut t (Char8.pack uuid)
+			transportPut t "\r\n"
+			return True
+		else return False
 
 readChar8 :: Transport t => t -> IO Char
 readChar8 t = do

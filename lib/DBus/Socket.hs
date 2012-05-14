@@ -35,7 +35,7 @@ module DBus.Socket
 	
 	-- * Socket options
 	, SocketOptions
-	, socketAuthenticators
+	, socketAuthenticator
 	, socketTransportOptions
 	, defaultSocketOptions
 	
@@ -56,9 +56,6 @@ module DBus.Socket
 	, authenticator
 	, authenticatorClient
 	, authenticatorServer
-	
-	-- ** Built-in authenticators
-	, authExternal
 	) where
 
 import           Prelude hiding (getLine)
@@ -70,6 +67,7 @@ import qualified Data.ByteString
 import qualified Data.ByteString.Char8 as Char8
 import           Data.Char (ord)
 import           Data.IORef
+import           Data.List (isPrefixOf)
 import           Data.Typeable (Typeable)
 import qualified System.Posix.User
 import           Text.Printf (printf)
@@ -78,7 +76,7 @@ import           DBus
 import           DBus.Transport
 import           DBus.Types (Serial(..))
 import           DBus.Wire (unmarshalMessageM)
-import           DBus.Util (readUntil, dropEnd)
+import           DBus.Util (readUntil, dropEnd, randomUUID)
 
 -- | Stores information about an error encountered while creating or using a
 -- 'Socket'.
@@ -116,17 +114,20 @@ data Authenticator t = Authenticator
 	-- | Defines the client-side half of an authenticator.
 	  authenticatorClient :: t -> IO Bool
 	
-	-- | Defines the server-side half of an authenticator.
-	, authenticatorServer :: t -> IO Bool
+	-- | Defines the server-side half of an authenticator. The string is
+	-- the listening server's UUID.
+	, authenticatorServer :: t -> String -> IO Bool
 	}
 
 -- | Used with 'openWith' and 'listenWith' to provide custom authenticators or
 -- transport options.
 data SocketOptions t = SocketOptions
 	{
-	-- | A list of available authentication mechanisms, whican can be used
-	-- to authenticate the socket.
-	  socketAuthenticators :: [Authenticator t]
+	-- | Used to perform authentication with the remote peer. After a
+	-- transport has been opened, it will be passed to the authenticator.
+	-- If the authenticator returns true, then the socket was
+	-- authenticated.
+	  socketAuthenticator :: Authenticator t
 	
 	-- | Options for the underlying transport, to be used by custom transports
 	-- for controlling how to connect to the remote peer.
@@ -135,12 +136,12 @@ data SocketOptions t = SocketOptions
 	, socketTransportOptions :: TransportOptions t
 	}
 
--- | Default 'SocketOptions', which uses the authenticators built into
--- @haskell-dbus@, and the default socket-based transport.
+-- | Default 'SocketOptions', which uses the default UNIX/TCP transport and
+-- authenticator.
 defaultSocketOptions :: SocketOptions SocketTransport
 defaultSocketOptions = SocketOptions
 	{ socketTransportOptions = transportDefaultOptions
-	, socketAuthenticators = [authExternal]
+	, socketAuthenticator = authExternal
 	}
 
 -- | Open a socket to a remote peer listening at the given address.
@@ -160,7 +161,7 @@ openWith opts addr = toEither $ bracketOnError
 	(transportOpen (socketTransportOptions opts) addr)
 	transportClose
 	(\t -> do
-		authed <- authClient t (socketAuthenticators opts)
+		authed <- authenticatorClient (socketAuthenticator opts) t
 		when (not authed) $ do
 			throwIO (SocketError "Authentication failed")
 		serial <- newIORef (Serial 1)
@@ -168,7 +169,7 @@ openWith opts addr = toEither $ bracketOnError
 		writeLock <- newMVar ()
 		return (Socket (SomeTransport t) serial readLock writeLock))
 
-data SocketListener = forall t. (TransportListen t) => SocketListener (TransportListener t) [Authenticator t]
+data SocketListener = forall t. (TransportListen t) => SocketListener String (TransportListener t) (Authenticator t)
 
 -- | Begin listening at the given address.
 --
@@ -192,15 +193,17 @@ listenWith :: TransportListen t => SocketOptions t -> Address -> IO (Either Sock
 listenWith opts addr = toEither $ bracketOnError
 	(transportListen (socketTransportOptions opts) addr)
 	transportListenerClose
-	(\l -> return (SocketListener l (socketAuthenticators opts)))
+	(\l -> do
+		uuid <- randomUUID
+		return (SocketListener uuid l (socketAuthenticator opts)))
 
 -- | Accept a new connection from a socket listener.
 accept :: SocketListener -> IO (Either SocketError Socket)
-accept (SocketListener l auths) = toEither $ bracketOnError
+accept (SocketListener uuid l auth) = toEither $ bracketOnError
 	(transportAccept l)
 	transportClose
 	(\t -> do
-		authed <- authServer t auths
+		authed <- authenticatorServer auth t uuid
 		when (not authed) $ do
 			throwIO (SocketError "Authentication failed")
 		serial <- newIORef (Serial 1)
@@ -216,7 +219,7 @@ close = transportClose . socketTransport
 -- | Close an open 'SocketListener'. Once closed, the listener is no longer
 -- valid and must not be used.
 closeListener :: SocketListener -> IO ()
-closeListener (SocketListener l _) = transportListenerClose l
+closeListener (SocketListener _ l _) = transportListenerClose l
 
 -- | Send a single message, with a generated 'Serial'. The second parameter
 -- exists to prevent race conditions when registering a reply handler; it
@@ -269,39 +272,6 @@ toEither io = catches (fmap Right io) handlers where
 	catchTransportError (TransportError err) = return (Left (SocketError err))
 	catchIOException exc = return (Left (SocketError (show (exc :: IOException))))
 
-authClient :: Transport t => t -> [Authenticator t] -> IO Bool
-authClient t authenticators = go where
-	go = do
-		transportPut t (Data.ByteString.pack [0])
-		loop authenticators
-	loop [] = return False
-	loop (auth:next) = do
-		success <- authenticatorClient auth t
-		if success
-			then do
-				transportPut t "BEGIN\r\n"
-				return True
-			else loop next
-
-authServer :: Transport t => t -> [Authenticator t] -> IO Bool
-authServer t authenticators = go where
-	go = do
-		c <- transportGet t 1
-		if c == "\x00"
-			then loop authenticators
-			else return False
-	-- TODO: this is broken, we need to handle "AUTH ...", then parse
-	-- out the method and check if it's supported by the list of
-	-- authenticators.
-	loop [] = return False
-	loop (auth:next) = do
-		success <- authenticatorServer auth t
-		if success
-			then do
-				transportPut t "OK guid-goes-here\r\n"
-				return True
-			else loop next
-
 -- | An empty authenticator. Use 'authenticatorClient' or 'authenticatorServer'
 -- to control how the authentication is performed.
 --
@@ -313,27 +283,57 @@ authServer t authenticators = go where
 --    }
 --
 --clientMyAuth :: MyTransport -> IO Bool
---serverMyAuth :: MyTransport -> IO Bool
+--serverMyAuth :: MyTransport -> String -> IO Bool
 -- @
 authenticator :: Authenticator t
-authenticator = Authenticator (\_ -> return False) (\_ -> return False)
+authenticator = Authenticator (\_ -> return False) (\_ _ -> return False)
 
 -- | Implements the D-Bus @EXTERNAL@ mechanism, which uses credential
 -- passing over a UNIX socket.
 authExternal :: Authenticator SocketTransport
 authExternal = authenticator
 	{ authenticatorClient = clientAuthExternal
+	, authenticatorServer = serverAuthExternal
 	}
 
-clientAuthExternal :: Transport t => t -> IO Bool
+clientAuthExternal :: SocketTransport -> IO Bool
 clientAuthExternal t = do
+	transportPut t (Data.ByteString.pack [0])
 	uid <- System.Posix.User.getRealUserID
 	let token = concatMap (printf "%02X" . ord) (show uid)
 	transportPutLine t ("AUTH EXTERNAL " ++ token)
 	resp <- transportGetLine t
-	return $ case takeWhile (/= ' ') resp of
-		"OK" -> True
-		_ -> False
+	case splitPrefix "OK " resp of
+		Just _ -> do
+			transportPutLine t "BEGIN"
+			return True
+		Nothing -> return False
+
+serverAuthExternal :: SocketTransport -> String -> IO Bool
+serverAuthExternal t uuid = do
+	let checkToken token = do
+		(_, uid, _) <- socketTransportCredentials t
+		let wantToken = concatMap (printf "%02X" . ord) (show uid)
+		if token == wantToken
+			then do
+				transportPutLine t ("OK " ++ uuid)
+				return True
+			else return False
+	
+	c <- transportGet t 1
+	if c /= "\x00"
+		then return False
+		else do
+			line <- transportGetLine t
+			case splitPrefix "AUTH EXTERNAL " line of
+				Just token -> checkToken token
+				Nothing -> if line == "AUTH EXTERNAL"
+					then do
+						dataLine <- transportGetLine t
+						case splitPrefix "DATA " dataLine of
+							Just token -> checkToken token
+							Nothing -> return False
+					else return False
 
 transportPutLine :: Transport t => t -> String -> IO ()
 transportPutLine t line = transportPut t (Char8.pack (line ++ "\r\n"))
@@ -343,3 +343,8 @@ transportGetLine t = do
 	let getchr = Char8.head `fmap` transportGet t 1
 	raw <- readUntil "\r\n" getchr
 	return (dropEnd 2 raw)
+
+splitPrefix :: String -> String -> Maybe String
+splitPrefix prefix str = if isPrefixOf prefix str
+	then Just (drop (length prefix) str)
+	else Nothing
