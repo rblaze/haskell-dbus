@@ -24,7 +24,7 @@ executable haskell-dbus-tests
     , cereal >= 0.3.4 && < 0.4
     , chell >= 0.2.3 && < 0.3
     , chell-quickcheck >= 0.1 && < 0.2
-    , containers >= 0.1 && < 0.5
+    , containers >= 0.1 && < 0.6
     , directory
     , filepath
     , libxml-sax >= 0.7 && < 0.8
