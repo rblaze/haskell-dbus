@@ -195,10 +195,11 @@ test_TransportSendReceive = assertions "send-receive" $ do
 	afterTest (N.sClose networkSocket)
 	_ <- liftIO $ forkIO $ do
 		(h, _, _) <- N.accept networkSocket
-		hSetBuffering h NoBuffering
+		hSetBuffering h LineBuffering
 		
 		bytes <- Data.ByteString.hGetLine h
 		Data.ByteString.hPut h bytes
+		hFlush h
 		hClose h
 		NS.sClose networkSocket
 	
