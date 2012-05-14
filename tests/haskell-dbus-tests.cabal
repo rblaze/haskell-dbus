@@ -32,7 +32,7 @@ executable haskell-dbus-tests
     , parsec >= 2.0 && < 3.2
     , process >= 1.0 && < 1.2
     , QuickCheck == 2.4.*
-    , random >= 1.0.1 && < 1.1
+    , random >= 1.0 && < 1.1
     , text >= 0.11.1.5 && < 0.12
     , transformers >= 0.2 && < 0.4
     , unix >= 2.2 && < 2.6

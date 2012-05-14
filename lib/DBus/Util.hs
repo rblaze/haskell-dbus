@@ -30,7 +30,7 @@ import           Data.Char (digitToInt)
 import           Data.List (isPrefixOf)
 import           Data.Word (Word32)
 import           Network.Socket (PortNumber)
-import           System.Random (randomIO)
+import           System.Random (randomRIO)
 import           Text.Printf (printf)
 
 import           Text.ParserCombinators.Parsec (Parser, runParser)
@@ -90,10 +90,13 @@ readPortNumber s = do
 -- | Generate a UUID, which is 128 bits of random data hex-encoded.
 randomUUID :: IO String
 randomUUID = do
-	w1 <- randomIO
-	w2 <- randomIO
-	w3 <- randomIO
-	w4 <- randomIO
+	w1 <- randomW32
+	w2 <- randomW32
+	w3 <- randomW32
+	w4 <- randomW32
 	
-	let hexW w = printf "%08X" (w :: Word32)
+	let hexW w = printf "%08X" w
 	return (concat [hexW w1, hexW w2, hexW w3, hexW w4])
+
+randomW32 :: IO Word32
+randomW32 = randomRIO (minBound, maxBound)
