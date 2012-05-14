@@ -25,10 +25,11 @@ module DBus.Util
 	, randomUUID
 	) where
 
+import           Control.Monad (replicateM)
 import qualified Data.ByteString.Char8 as Char8
 import           Data.Char (digitToInt)
 import           Data.List (isPrefixOf)
-import           Data.Word (Word32)
+import           Data.Word (Word16)
 import           Network.Socket (PortNumber)
 import           System.Random (randomRIO)
 import           Text.Printf (printf)
@@ -90,13 +91,12 @@ readPortNumber s = do
 -- | Generate a UUID, which is 128 bits of random data hex-encoded.
 randomUUID :: IO String
 randomUUID = do
-	w1 <- randomW32
-	w2 <- randomW32
-	w3 <- randomW32
-	w4 <- randomW32
-	
-	let hexW w = printf "%08X" w
-	return (concat [hexW w1, hexW w2, hexW w3, hexW w4])
-
-randomW32 :: IO Word32
-randomW32 = randomRIO (minBound, maxBound)
+	-- The version of System.Random bundled with ghc < 7.2 doesn't define
+	-- instances for any of the fixed-length word types, so we imitate
+	-- them using the instance for Int.
+	--
+	-- 128 bits is 8 16-bit integers. We use chunks of 16 instead of 32
+	-- because Int is not guaranteed to be able to store a Word32.
+	let hexInt16 i = printf "%04X" (i :: Int)
+	int16s <- replicateM 8 (randomRIO (0, fromIntegral (maxBound :: Word16)))
+	return (concatMap hexInt16 int16s)
