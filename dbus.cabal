@@ -38,7 +38,11 @@ source-repository this
   location: https://john-millikin.com/branches/haskell-dbus/0.10/
   tag: haskell-dbus_0.10
 
-flag network-includes-bytestring
+flag network-bytestring-610
+  default: False
+
+flag network-bytestring
+  default: True
 
 library
   ghc-options: -Wall -O2
@@ -60,13 +64,29 @@ library
     , vector >= 0.7 && < 0.10
     , xml-types >= 0.3 && < 0.4
 
-  if flag(network-includes-bytestring)
-    build-depends:
-        network >= 2.2.3 && < 2.4
+  -- haskell-dbus requires Network.Socket.ByteString, which can be provided
+  -- by EITHER (network >= 2.2.3) or (network-bytestring >= 0.1.2).
+  --
+  -- Flags do most of the work, but a little manual intervention is needed
+  -- because GHC 6.10 can't build (network >= 2.3.0.12). We want to make
+  -- network-bytestring the default *only* on old compilers, which requires
+  -- defining a separate flag with a different default value.
+  if impl(ghc < 6.12)
+    if flag(network-bytestring-610) && false
+      build-depends:
+          network >= 2.2.3 && < 2.4
+    else
+      build-depends:
+          network >= 2.2 && < 2.2.3
+        , network-bytestring >= 0.1.2 && < 0.2
   else
-    build-depends:
-        network >= 2.2 && < 2.2.3
-      , network-bytestring >= 0.1.2 && < 0.2
+    if flag(network-bytestring)
+      build-depends:
+          network >= 2.2.3 && < 2.4
+    else
+      build-depends:
+          network >= 2.2 && < 2.2.3
+        , network-bytestring >= 0.1.2 && < 0.2
 
   exposed-modules:
     DBus
