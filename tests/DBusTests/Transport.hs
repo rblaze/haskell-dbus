@@ -25,6 +25,7 @@ import           Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.ByteString
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as Char8
+import           Data.List (isPrefixOf)
 import qualified Data.Map as Map
 import qualified Network as N
 import qualified Network.Socket as NS
@@ -173,8 +174,8 @@ test_OpenTcp_InvalidPort = assertions "invalid-port" $ do
 
 test_OpenTcp_NoUsableAddresses :: Suite
 test_OpenTcp_NoUsableAddresses = assertions "no-usable-addresses" $ do
-	$assert $ throwsEq
-		(TransportError "getAddrInfo: does not exist (No address associated with hostname)")
+	$assert $ throws
+		(\(TransportError msg) -> "getAddrInfo: does not exist" `isPrefixOf` msg)
 		(transportOpen socketTransportOptions (address_ "tcp" (Map.fromList
 			[ ("family", "ipv4")
 			, ("port", "1234")
