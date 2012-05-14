@@ -53,7 +53,7 @@ library
     , containers >= 0.1 && < 0.5
     , libxml-sax >= 0.7 && < 0.8
     , parsec >= 2.0 && < 3.2
-    , random >= 1.0 && < 1.1
+    , random >= 1.0.1 && < 1.1
     , text >= 0.11.1.5 && < 0.12
     , transformers >= 0.2 && < 0.4
     , unix >= 2.2 && < 2.6
