@@ -269,7 +269,7 @@ toEither io = catches (fmap Right io) handlers where
 		, Handler catchIOException
 		]
 	catchSocketError exc = return (Left exc)
-	catchTransportError (TransportError err) = return (Left (SocketError err))
+	catchTransportError err = return (Left (SocketError (transportErrorMessage err)))
 	catchIOException exc = return (Left (SocketError (show (exc :: IOException))))
 
 -- | An empty authenticator. Use 'authenticatorClient' or 'authenticatorServer'

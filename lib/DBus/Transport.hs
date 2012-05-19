@@ -19,10 +19,19 @@
 -- | Support for defining custom transport mechanisms. Most users will not
 -- need to care about the types defined in this module.
 module DBus.Transport
-	( TransportError(..)
-	, Transport(..)
+	(
+	-- * Transports
+	  Transport(..)
 	, TransportOpen(..)
 	, TransportListen(..)
+	
+	-- * Transport errors
+	, TransportError
+	, transportError
+	, transportErrorMessage
+	, transportErrorAddress
+	
+	-- * Socket transport
 	, SocketTransport
 	, socketTransportOptionBacklog
 	, socketTransportCredentials
@@ -42,10 +51,16 @@ import           DBus
 import           DBus.Util (readPortNumber, randomUUID)
 
 -- | Thrown from transport methods when an error occurs.
-data TransportError = TransportError String
+data TransportError = TransportError
+	{ transportErrorMessage :: String
+	, transportErrorAddress :: Maybe Address
+	}
 	deriving (Eq, Show, Typeable)
 
 instance Exception TransportError
+
+transportError :: String -> TransportError
+transportError msg = TransportError msg Nothing
 
 -- | A 'Transport' can exchange bytes with a remote peer.
 class Transport t where
@@ -113,7 +128,7 @@ class Transport t => TransportListen t where
 -- not actually have entries in the filesystem.
 --
 -- TCP sockets may use either IPv4 or IPv6.
-newtype SocketTransport = SocketTransport Socket
+data SocketTransport = SocketTransport (Maybe Address) Socket
 
 instance Transport SocketTransport where
 	data TransportOptions SocketTransport = SocketTransportOptions
@@ -123,38 +138,43 @@ instance Transport SocketTransport where
 		  socketTransportOptionBacklog :: Int
 		}
 	transportDefaultOptions = SocketTransportOptions 30
-	transportPut (SocketTransport s) bytes = catchIOException (sendAll s bytes)
-	transportGet (SocketTransport s) n = catchIOException (recv s n)
-	transportClose (SocketTransport s) = catchIOException (sClose s)
+	transportPut (SocketTransport addr s) bytes = catchIOException addr (sendAll s bytes)
+	transportGet (SocketTransport addr s) n = catchIOException addr (recv s n)
+	transportClose (SocketTransport addr s) = catchIOException addr (sClose s)
 
 instance TransportOpen SocketTransport where
 	transportOpen _ a = case Char8.unpack (addressMethod a) of
-		"unix" -> openUnix (addressParameters a)
-		"tcp" -> openTcp (addressParameters a)
-		method -> throwIO (TransportError ("Unknown address method: " ++ show method))
+		"unix" -> openUnix a
+		"tcp" -> openTcp a
+		method -> throwIO (transportError ("Unknown address method: " ++ show method))
+			{ transportErrorAddress = Just a
+			}
 
 instance TransportListen SocketTransport where
 	data TransportListener SocketTransport = SocketTransportListener Address Socket
 	transportListen opts a = do
 		(a', sock) <- case Char8.unpack (addressMethod a) of
-			"unix" -> listenUnix (addressParameters a) opts
-			"tcp" -> listenTcp (addressParameters a) opts
-			method -> throwIO (TransportError ("Unknown address method: " ++ show method))
+			"unix" -> listenUnix a opts
+			"tcp" -> listenTcp a opts
+			method -> throwIO (transportError ("Unknown address method: " ++ show method))
+				{ transportErrorAddress = Just a
+				}
 		return (SocketTransportListener a' sock)
-	transportAccept (SocketTransportListener _ s) = catchIOException $ do
+	transportAccept (SocketTransportListener a s) = catchIOException (Just a) $ do
 		(s', _) <- accept s
-		return (SocketTransport s')
-	transportListenerClose (SocketTransportListener _ s) = catchIOException (sClose s)
+		return (SocketTransport Nothing s')
+	transportListenerClose (SocketTransportListener a s) = catchIOException (Just a) (sClose s)
 	transportListenerAddress (SocketTransportListener a _) = a
 
 -- | Returns the processID, userID, and groupID of the socket's peer.
 --
 -- See 'getPeerCred'.
 socketTransportCredentials :: SocketTransport -> IO (CUInt, CUInt, CUInt)
-socketTransportCredentials (SocketTransport s) = catchIOException (getPeerCred s)
+socketTransportCredentials (SocketTransport a s) = catchIOException a (getPeerCred s)
 
-openUnix :: Map.Map ByteString ByteString -> IO SocketTransport
-openUnix params = go where
+openUnix :: Address -> IO SocketTransport
+openUnix transportAddr = go where
+	params = addressParameters transportAddr
 	param key = Map.lookup (Char8.pack key) params
 	
 	tooMany = "Only one of 'path' or 'abstract' may be specified for the\
@@ -169,14 +189,17 @@ openUnix params = go where
 		_ -> Left tooMany
 	
 	go = case path of
-		Left err -> throwIO (TransportError err)
-		Right p -> catchIOException $ do
+		Left err -> throwIO (transportError err)
+			{ transportErrorAddress = Just transportAddr
+			}
+		Right p -> catchIOException (Just transportAddr) $ do
 			sock <- socket AF_UNIX Stream defaultProtocol
 			connect sock (SockAddrUnix p)
-			return (SocketTransport sock)
+			return (SocketTransport (Just transportAddr) sock)
 
-openTcp :: Map.Map ByteString ByteString -> IO SocketTransport
-openTcp params = go where
+openTcp :: Address -> IO SocketTransport
+openTcp transportAddr = go where
+	params = addressParameters transportAddr
 	param key = Map.lookup (Char8.pack key) params
 	
 	hostname = maybe "localhost" Char8.unpack (param "host")
@@ -200,7 +223,9 @@ openTcp params = go where
 		, addrSocketType = Stream
 		})) (Just hostname) Nothing
 	
-	openSocket [] = throwIO (TransportError "openTcp: no addresses")
+	openSocket [] = throwIO (transportError "openTcp: no addresses")
+		{ transportErrorAddress = Just transportAddr
+		}
 	openSocket (addr:addrs) = do
 		tried <- Control.Exception.try $ bracketOnError
 			(socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr))
@@ -210,21 +235,28 @@ openTcp params = go where
 				return sock)
 		case tried of
 			Left err -> case addrs of
-				[] -> throwIO (TransportError (show (err :: IOException)))
+				[] -> throwIO (transportError (show (err :: IOException)))
+					{ transportErrorAddress = Just transportAddr
+					}
 				_ -> openSocket addrs
 			Right sock -> return sock
 	
 	go = case getPort of
-		Left err -> throwIO (TransportError err)
+		Left err -> throwIO (transportError err)
+			{ transportErrorAddress = Just transportAddr
+			}
 		Right port -> case getFamily of
-			Left err -> throwIO (TransportError err)
-			Right family -> catchIOException $ do
+			Left err -> throwIO (transportError err)
+				{ transportErrorAddress = Just transportAddr
+				}
+			Right family -> catchIOException (Just transportAddr) $ do
 				addrs <- getAddresses family
 				sock <- openSocket (map (setPort port) addrs)
-				return (SocketTransport sock)
+				return (SocketTransport (Just transportAddr) sock)
 
-listenUnix :: Map.Map ByteString ByteString -> TransportOptions SocketTransport -> IO (Address, Socket)
-listenUnix params opts = getPath >>= go where
+listenUnix :: Address -> TransportOptions SocketTransport -> IO (Address, Socket)
+listenUnix origAddr opts = getPath >>= go where
+	params = addressParameters origAddr
 	param key = Map.lookup (Char8.pack key) params
 	
 	tooMany = "Only one of 'abstract', 'path', or 'tmpdir' may be\
@@ -257,15 +289,18 @@ listenUnix params opts = getPath >>= go where
 		_ -> return (Left tooMany)
 	
 	go path = case path of
-		Left err -> throwIO (TransportError err)
-		Right (addr, p) -> catchIOException $ do
+		Left err -> throwIO (transportError err)
+			{ transportErrorAddress = Just origAddr
+			}
+		Right (addr, p) -> catchIOException (Just addr) $ do
 			sock <- socket AF_UNIX Stream defaultProtocol
 			bindSocket sock (SockAddrUnix p)
 			Network.Socket.listen sock (socketTransportOptionBacklog opts)
 			return (addr, sock)
 
-listenTcp :: Map.Map ByteString ByteString -> TransportOptions SocketTransport -> IO (Address, Socket)
-listenTcp params opts = go where
+listenTcp :: Address -> TransportOptions SocketTransport -> IO (Address, Socket)
+listenTcp origAddr opts = go where
+	params = addressParameters origAddr
 	param key = Map.lookup (Char8.pack key) params
 	
 	unknownFamily x = "Unknown socket family for TCP transport: " ++ show x
@@ -295,12 +330,16 @@ listenTcp params opts = go where
 		, addrSocketType = Stream
 		})) paramBind Nothing
 	
-	bindAddrs _ [] = throwIO (TransportError "listenTcp: no addresses")
+	bindAddrs _ [] = throwIO (transportError "listenTcp: no addresses")
+		{ transportErrorAddress = Just origAddr
+		}
 	bindAddrs sock (addr:addrs) = do
 		tried <- Control.Exception.try (bindSocket sock (addrAddress addr))
 		case tried of
 			Left err -> case addrs of
-				[] -> throwIO (TransportError (show (err :: IOException)))
+				[] -> throwIO (transportError (show (err :: IOException)))
+					{ transportErrorAddress = Just origAddr
+					}
 				_ -> bindAddrs sock addrs
 			Right _ -> return ()
 	
@@ -314,10 +353,14 @@ listenTcp params opts = go where
 			Nothing -> []
 	
 	go = case getPort of
-		Left err -> throwIO (TransportError err)
+		Left err -> throwIO (transportError err)
+			{ transportErrorAddress = Just origAddr
+			}
 		Right port -> case getFamily of
-			Left err -> throwIO (TransportError err)
-			Right family -> catchIOException $ do
+			Left err -> throwIO (transportError err)
+				{ transportErrorAddress = Just origAddr
+				}
+			Right family -> catchIOException (Just origAddr) $ do
 				sockAddrs <- getAddresses family
 				
 				sock <- (bracketOnError
@@ -334,12 +377,14 @@ listenTcp params opts = go where
 				sockPort <- socketPort sock
 				return (sockAddr sockPort, sock)
 
-catchIOException :: IO a -> IO a
-catchIOException io = do
+catchIOException :: Maybe Address -> IO a -> IO a
+catchIOException addr io = do
 	tried <- try io
 	case tried of
 		Right a -> return a
-		Left err -> throwIO (TransportError (show (err :: IOException)))
+		Left err -> throwIO (transportError (show (err :: IOException)))
+			{ transportErrorAddress = addr
+			}
 
 address_ :: String -> [(String, String)] -> Address
 address_ method params = addr where

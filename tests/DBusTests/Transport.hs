@@ -67,9 +67,12 @@ test_TransportAccept = suite "transportAccept"
 
 test_OpenUnknown :: Suite
 test_OpenUnknown = assertions "unknown" $ do
+	let addr = address_ "noexist" Map.empty
 	$assert $ throwsEq
-		(TransportError "Unknown address method: \"noexist\"")
-		(transportOpen socketTransportOptions (address_ "noexist" Map.empty))
+		((transportError "Unknown address method: \"noexist\"")
+			{ transportErrorAddress = Just addr
+			})
+		(transportOpen socketTransportOptions addr)
 
 test_OpenUnix :: Suite
 test_OpenUnix = suite "unix"
@@ -98,25 +101,33 @@ test_OpenUnix_Abstract = assertions "abstract" $ do
 
 test_OpenUnix_TooFew :: Suite
 test_OpenUnix_TooFew = assertions "too-few" $ do
+	let addr = address_ "unix" Map.empty
 	$assert $ throwsEq
-		(TransportError "One of 'path' or 'abstract' must be specified for the 'unix' transport.")
-		(transportOpen socketTransportOptions (address_ "unix" Map.empty))
+		((transportError "One of 'path' or 'abstract' must be specified for the 'unix' transport.")
+			{ transportErrorAddress = Just addr
+			})
+		(transportOpen socketTransportOptions addr)
 
 test_OpenUnix_TooMany :: Suite
 test_OpenUnix_TooMany = assertions "too-many" $ do
+	let addr = address_ "unix" (Map.fromList
+		[ ("path", "foo")
+		, ("abstract", "bar")
+		])
 	$assert $ throwsEq
-		(TransportError "Only one of 'path' or 'abstract' may be specified for the 'unix' transport.")
-		(transportOpen socketTransportOptions (address_ "unix" (Map.fromList
-			[ ("path", "foo")
-			, ("abstract", "bar")
-			])))
+		((transportError "Only one of 'path' or 'abstract' may be specified for the 'unix' transport.")
+			{ transportErrorAddress = Just addr
+			})
+		(transportOpen socketTransportOptions addr)
 
 test_OpenUnix_NotListening :: Suite
 test_OpenUnix_NotListening = assertions "not-listening" $ do
 	(addr, networkSocket) <- listenRandomUnixAbstract
 	liftIO (NS.sClose networkSocket)
 	$assert $ throwsEq
-		(TransportError "connect: does not exist (Connection refused)")
+		((transportError "connect: does not exist (Connection refused)")
+			{ transportErrorAddress = Just addr
+			})
 		(transportOpen socketTransportOptions addr)
 
 test_OpenTcp :: Suite
@@ -148,46 +159,61 @@ test_OpenTcp_IPv6 = assertions "ipv6" $ do
 
 test_OpenTcp_Unknown :: Suite
 test_OpenTcp_Unknown = assertions "unknown-family" $ do
+	let addr = address_ "tcp" (Map.fromList
+		[ ("family", "noexist")
+		, ("port", "1234")
+		])
 	$assert $ throwsEq
-		(TransportError "Unknown socket family for TCP transport: \"noexist\"")
-		(transportOpen socketTransportOptions (address_ "tcp" (Map.fromList
-			[ ("family", "noexist")
-			, ("port", "1234")
-			])))
+		((transportError "Unknown socket family for TCP transport: \"noexist\"")
+			{ transportErrorAddress = Just addr
+			})
+		(transportOpen socketTransportOptions addr)
 
 test_OpenTcp_NoPort :: Suite
 test_OpenTcp_NoPort = assertions "no-port" $ do
+	let addr = address_ "tcp" (Map.fromList
+		[ ("family", "ipv4")
+		])
 	$assert $ throwsEq
-		(TransportError "TCP transport requires the `port' parameter.")
-		(transportOpen socketTransportOptions (address_ "tcp" (Map.fromList
-			[ ("family", "ipv4")
-			])))
+		((transportError "TCP transport requires the `port' parameter.")
+			{ transportErrorAddress = Just addr
+			})
+		(transportOpen socketTransportOptions addr)
 
 test_OpenTcp_InvalidPort :: Suite
 test_OpenTcp_InvalidPort = assertions "invalid-port" $ do
+	let addr = address_ "tcp" (Map.fromList
+		[ ("family", "ipv4")
+		, ("port", "123456")
+		])
 	$assert $ throwsEq
-		(TransportError "Invalid socket port for TCP transport: \"123456\"")
-		(transportOpen socketTransportOptions (address_ "tcp" (Map.fromList
-			[ ("family", "ipv4")
-			, ("port", "123456")
-			])))
+		((transportError "Invalid socket port for TCP transport: \"123456\"")
+			{ transportErrorAddress = Just addr
+			})
+		(transportOpen socketTransportOptions addr)
 
 test_OpenTcp_NoUsableAddresses :: Suite
 test_OpenTcp_NoUsableAddresses = assertions "no-usable-addresses" $ do
+	let addr = address_ "tcp" (Map.fromList
+		[ ("family", "ipv4")
+		, ("port", "1234")
+		, ("host", "256.256.256.256")
+		])
 	$assert $ throws
-		(\(TransportError msg) -> "getAddrInfo: does not exist" `isPrefixOf` msg)
-		(transportOpen socketTransportOptions (address_ "tcp" (Map.fromList
-			[ ("family", "ipv4")
-			, ("port", "1234")
-			, ("host", "256.256.256.256")
-			])))
+		(\err -> and
+			[ "getAddrInfo: does not exist" `isPrefixOf` transportErrorMessage err
+			, transportErrorAddress err == Just addr
+			])
+		(transportOpen socketTransportOptions addr)
 
 test_OpenTcp_NotListening :: Suite
 test_OpenTcp_NotListening = assertions "too-many" $ do
 	(addr, networkSocket) <- listenRandomIPv4
 	liftIO (NS.sClose networkSocket)
 	$assert $ throwsEq
-		(TransportError "connect: does not exist (Connection refused)")
+		((transportError "connect: does not exist (Connection refused)")
+			{ transportErrorAddress = Just addr
+			})
 		(transportOpen socketTransportOptions addr)
 
 test_TransportSendReceive :: Suite
@@ -216,9 +242,12 @@ test_TransportSendReceive = assertions "send-receive" $ do
 
 test_ListenUnknown :: Suite
 test_ListenUnknown = assertions "unknown" $ do
+	let addr = address_ "noexist" Map.empty
 	$assert $ throwsEq
-		(TransportError "Unknown address method: \"noexist\"")
-		(transportListen socketTransportOptions (address_ "noexist" Map.empty))
+		((transportError "Unknown address method: \"noexist\"")
+			{ transportErrorAddress = Just addr
+			})
+		(transportListen socketTransportOptions addr)
 
 test_ListenUnix :: Suite
 test_ListenUnix = suite "unix"
@@ -267,18 +296,24 @@ test_ListenUnix_Tmpdir = assertions "tmpdir" $ do
 
 test_ListenUnix_TooFew :: Suite
 test_ListenUnix_TooFew = assertions "too-few" $ do
+	let addr = address_ "unix" Map.empty
 	$assert $ throwsEq
-		(TransportError "One of 'abstract', 'path', or 'tmpdir' must be specified for the 'unix' transport.")
-		(transportListen socketTransportOptions (address_ "unix" Map.empty))
+		((transportError "One of 'abstract', 'path', or 'tmpdir' must be specified for the 'unix' transport.")
+			{ transportErrorAddress = Just addr
+			})
+		(transportListen socketTransportOptions addr)
 
 test_ListenUnix_TooMany :: Suite
 test_ListenUnix_TooMany = assertions "too-many" $ do
+	let addr = address_ "unix" (Map.fromList
+		[ ("path", "foo")
+		, ("abstract", "bar")
+		])
 	$assert $ throwsEq
-		(TransportError "Only one of 'abstract', 'path', or 'tmpdir' may be specified for the 'unix' transport.")
-		(transportListen socketTransportOptions (address_ "unix" (Map.fromList
-			[ ("path", "foo")
-			, ("abstract", "bar")
-			])))
+		((transportError "Only one of 'abstract', 'path', or 'tmpdir' may be specified for the 'unix' transport.")
+			{ transportErrorAddress = Just addr
+			})
+		(transportListen socketTransportOptions addr)
 
 test_ListenTcp :: Suite
 test_ListenTcp = suite "tcp"
@@ -314,21 +349,27 @@ test_ListenTcp_IPv6 = assertions "ipv6" $ do
 
 test_ListenTcp_Unknown :: Suite
 test_ListenTcp_Unknown = assertions "unknown-family" $ do
+	let addr = address_ "tcp" (Map.fromList
+		[ ("family", "noexist")
+		, ("port", "1234")
+		])
 	$assert $ throwsEq
-		(TransportError "Unknown socket family for TCP transport: \"noexist\"")
-		(transportListen socketTransportOptions (address_ "tcp" (Map.fromList
-			[ ("family", "noexist")
-			, ("port", "1234")
-			])))
+		((transportError "Unknown socket family for TCP transport: \"noexist\"")
+			{ transportErrorAddress = Just addr
+			})
+		(transportListen socketTransportOptions addr)
 
 test_ListenTcp_InvalidPort :: Suite
 test_ListenTcp_InvalidPort = assertions "invalid-port" $ do
+	let addr = address_ "tcp" (Map.fromList
+		[ ("family", "ipv4")
+		, ("port", "123456")
+		])
 	$assert $ throwsEq
-		(TransportError "Invalid socket port for TCP transport: \"123456\"")
-		(transportListen socketTransportOptions (address_ "tcp" (Map.fromList
-			[ ("family", "ipv4")
-			, ("port", "123456")
-			])))
+		((transportError "Invalid socket port for TCP transport: \"123456\"")
+			{ transportErrorAddress = Just addr
+			})
+		(transportListen socketTransportOptions addr)
 
 test_AcceptSocket :: Suite
 test_AcceptSocket = assertions "socket" $ do
@@ -365,7 +406,9 @@ test_AcceptSocketClosed = assertions "socket-closed" $ do
 	liftIO (transportListenerClose listener)
 	
 	$assert $ throwsEq
-		(TransportError "user error (accept: can't perform accept on socket ((AF_UNIX,Stream,0)) in status Closed)")
+		((transportError "user error (accept: can't perform accept on socket ((AF_UNIX,Stream,0)) in status Closed)")
+			{ transportErrorAddress = Just addr
+			})
 		(transportAccept listener)
 
 socketTransportOptions :: TransportOptions SocketTransport
