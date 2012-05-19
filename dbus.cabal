@@ -99,7 +99,6 @@ library
 
   other-modules:
     DBus.Address
-    DBus.Client.Error
     DBus.Message
     DBus.Types
     DBus.Util

@@ -20,7 +20,6 @@ module DBus.Client
 	(
 	-- * Clients
 	  Client
-	, ClientError
 	, ClientOptions
 	, clientSocketOptions
 	, defaultClientOptions
@@ -29,6 +28,12 @@ module DBus.Client
 	, disconnect
 	, call
 	, emit
+	
+	-- * Client errors
+	, ClientError
+	, clientError
+	, clientErrorMessage
+	, clientErrorFatal
 	
 	-- * Listening for signals
 	, MatchRule(..)
@@ -43,7 +48,7 @@ module DBus.Client
 	) where
 
 import           Control.Concurrent
-import           Control.Exception (SomeException)
+import           Control.Exception (SomeException, throwIO)
 import qualified Control.Exception
 import           Control.Monad (forever, forM_)
 import           Data.IORef
@@ -57,7 +62,6 @@ import           Data.Typeable (Typeable)
 import qualified Data.Set
 
 import           DBus
-import           DBus.Client.Error
 import qualified DBus.Constants
 import           DBus.Constants ( errorFailed, errorUnknownMethod
                                 , errorInvalidParameters)
@@ -65,6 +69,17 @@ import qualified DBus.Introspection
 import qualified DBus.Socket
 import           DBus.Transport (TransportOpen, SocketTransport)
 import           DBus.Util (void)
+
+data ClientError = ClientError
+	{ clientErrorMessage :: String
+	, clientErrorFatal :: Bool
+	}
+	deriving (Eq, Show, Typeable)
+
+instance Control.Exception.Exception ClientError
+
+clientError :: String -> ClientError
+clientError msg = ClientError msg True
 
 data Client = Client
 	{ clientSocket :: DBus.Socket.Socket
@@ -144,7 +159,7 @@ connectWith :: TransportOpen t => ClientOptions t -> Address -> IO (Either Clien
 connectWith opts addr = do
 	ret <- DBus.Socket.openWith (clientSocketOptions opts) addr
 	case ret of
-		Left err -> return (Left (ClientError (show err)))
+		Left err -> return (Left (clientError (show err)))
 		Right conn -> Right `fmap` attach conn
 
 -- | TODO
@@ -181,7 +196,7 @@ mainLoop client = forever $ do
 	msg <- case received of
 		Left err -> do
 			disconnect' client
-			clientError ("Received invalid message: " ++ show err)
+			throwIO (clientError ("Received invalid message: " ++ show err))
 		Right msg -> return msg
 	
 	dispatch client msg
@@ -219,7 +234,7 @@ send_ client msg io = do
 	result <- DBus.Socket.send (clientSocket client) msg io
 	case result of
 		Right serial -> return serial
-		Left err -> clientError ("Error sending message: " ++ show err)
+		Left err -> throwIO (clientError ("Error sending message: " ++ show err))
 
 call :: Client -> MethodCall -> IO (Either MethodError MethodReturn)
 call client msg = do
@@ -241,7 +256,9 @@ call_ :: Client -> MethodCall -> IO MethodReturn
 call_ client msg = do
 	result <- call client msg
 	case result of
-		Left err -> clientError ("Call failed: " ++ Data.Text.unpack (methodErrorMessage err))
+		Left err -> throwIO (clientError ("Call failed: " ++ Data.Text.unpack (methodErrorMessage err)))
+			{ clientErrorFatal = methodErrorName err == "org.haskell.hackage.dbus.ClientError"
+			}
 		Right ret -> return ret
 
 emit :: Client -> Signal -> IO ()
