@@ -49,7 +49,6 @@ import           Data.Serialize.Put (runPut)
 
 import           DBus.Message
 import           DBus.Types
-import qualified DBus.Util.MonadError as E
 
 data Endianness = LittleEndian | BigEndian
 	deriving (Show, Eq)
@@ -540,7 +539,7 @@ encodeField' :: IsVariant a => Word8 -> a -> Value
 encodeField' code x = toValue (code, toVariant x)
 
 decodeField :: (Word8, Variant)
-            -> E.ErrorM UnmarshalError [HeaderField]
+            -> ErrorM UnmarshalError [HeaderField]
 decodeField struct = case struct of
 	(1, x) -> decodeField' x HeaderPath "path"
 	(2, x) -> decodeField' x HeaderInterface "interface"
@@ -553,10 +552,10 @@ decodeField struct = case struct of
 	_      -> return []
 
 decodeField' :: IsVariant a => Variant -> (a -> b) -> Text
-             -> E.ErrorM UnmarshalError [b]
+             -> ErrorM UnmarshalError [b]
 decodeField' x f label = case fromVariant x of
 	Just x' -> return [f x']
-	Nothing -> E.throwErrorM (UnmarshalError (Data.Text.pack (concat
+	Nothing -> throwErrorM (UnmarshalError (Data.Text.pack (concat
 		[ "Header field "
 		, show label
 		, " contains invalid value "
@@ -618,15 +617,15 @@ checkMaximumSize = do
 
 unmarshalMessageM :: Monad m => (Int -> m ByteString)
                   -> m (Either UnmarshalError ReceivedMessage)
-unmarshalMessageM getBytes' = E.runErrorT $ do
-	let getBytes = E.ErrorT . liftM Right . getBytes'
+unmarshalMessageM getBytes' = runErrorT $ do
+	let getBytes = ErrorT . liftM Right . getBytes'
 	
 
 	let fixedSig = "yyyyuuu"
 	fixedBytes <- getBytes 16
 
 	let messageVersion = Data.ByteString.index fixedBytes 3
-	when (messageVersion /= protocolVersion) (E.throwErrorT (UnmarshalError (Data.Text.pack (concat
+	when (messageVersion /= protocolVersion) (throwErrorT (UnmarshalError (Data.Text.pack (concat
 		[ "Unsupported protocol version: "
 		, show messageVersion
 		]))))
@@ -634,7 +633,7 @@ unmarshalMessageM getBytes' = E.runErrorT $ do
 	let eByte = Data.ByteString.index fixedBytes 0
 	endianness <- case decodeEndianness eByte of
 		Just x' -> return x'
-		Nothing -> E.throwErrorT (UnmarshalError (Data.Text.pack (concat
+		Nothing -> throwErrorT (UnmarshalError (Data.Text.pack (concat
 			[ "Invalid endianness: "
 			, show eByte
 			])))
@@ -642,7 +641,7 @@ unmarshalMessageM getBytes' = E.runErrorT $ do
 	let unmarshalSig = mapM unmarshal . signatureTypes
 	let unmarshal' x bytes = case unWire (unmarshalSig x) endianness (UnmarshalState bytes 0) of
 		WireRR x' _ -> return x'
-		WireRL err  -> E.throwErrorT (UnmarshalError (Data.Text.pack err))
+		WireRL err  -> throwErrorT (UnmarshalError (Data.Text.pack err))
 	fixed <- unmarshal' fixedSig fixedBytes
 	let messageType = fromJust (fromValue (fixed !! 1))
 	let flags = decodeFlags (fromJust (fromValue (fixed !! 2)))
@@ -655,7 +654,7 @@ unmarshalMessageM getBytes' = E.runErrorT $ do
 	-- Forbid messages larger than 'messageMaximumLength'
 	let messageLength = 16 + toInteger fieldByteCount + toInteger bodyPadding + toInteger bodyLength
 	when (messageLength > messageMaximumLength) $
-		E.throwErrorT (UnmarshalError (Data.Text.pack (concat
+		throwErrorT (UnmarshalError (Data.Text.pack (concat
 			[ "Message size ", show messageLength, " exceeds limit of "
 			, show messageMaximumLength
 			])))
@@ -666,16 +665,16 @@ unmarshalMessageM getBytes' = E.runErrorT $ do
 	header <- unmarshal' headerSig headerBytes
 
 	let fieldArray = Data.Vector.toList (fromJust (fromValue (header !! 6)))
-	fields <- case E.runErrorM $ concat `liftM` mapM decodeField fieldArray of
-		Left err -> E.throwErrorT err
+	fields <- case runErrorM $ concat `liftM` mapM decodeField fieldArray of
+		Left err -> throwErrorT err
 		Right x -> return x
 	_ <- getBytes (fromIntegral bodyPadding)
 	let bodySig = findBodySignature fields
 	bodyBytes <- getBytes (fromIntegral bodyLength)
 	body <- unmarshal' bodySig bodyBytes
-	y <- case E.runErrorM (buildReceivedMessage messageType fields) of
+	y <- case runErrorM (buildReceivedMessage messageType fields) of
 		Right x -> return x
-		Left err -> E.throwErrorT (UnmarshalError (Data.Text.pack (concat
+		Left err -> throwErrorT (UnmarshalError (Data.Text.pack (concat
 			[ "Header field "
 			, show err
 			, " is required, but missing"
@@ -685,7 +684,7 @@ unmarshalMessageM getBytes' = E.runErrorT $ do
 findBodySignature :: [HeaderField] -> Signature
 findBodySignature fields = fromMaybe "" (listToMaybe [x | HeaderSignature x <- fields])
 
-buildReceivedMessage :: Word8 -> [HeaderField] -> E.ErrorM Text
+buildReceivedMessage :: Word8 -> [HeaderField] -> ErrorM Text
                         (Serial -> (Set Flag) -> [Variant]
                          -> ReceivedMessage)
 buildReceivedMessage 1 fields = do
@@ -729,9 +728,9 @@ buildReceivedMessage messageType _ = return $ \serial flags body -> let
 	msg = UnknownMessage messageType flags body
 	in ReceivedUnknown serial msg
 
-require :: Text -> [a] -> E.ErrorM Text a
+require :: Text -> [a] -> ErrorM Text a
 require _     (x:_) = return x
-require label _     = E.throwErrorM label
+require label _     = throwErrorM label
 
 -- | Parse a 'ByteString' into a 'ReceivedMessage'. The result can be
 -- inspected to see what type of message was parsed. Unknown message types
@@ -751,3 +750,40 @@ untilM test comp = do
 			x <- comp
 			xs <- untilM test comp
 			return (x:xs)
+
+-------------------------------------------------------------------------------
+-- local ErrorT and MonadError, which don't have the silly Error => dependency
+-- found in the "transformers" package.
+-------------------------------------------------------------------------------
+
+newtype ErrorM e a = ErrorM { runErrorM :: Either e a }
+
+instance Functor (ErrorM e) where
+	fmap f m = ErrorM $ case runErrorM m of
+		Left err -> Left err
+		Right x -> Right $ f x
+
+instance Monad (ErrorM e) where
+	return = ErrorM . Right
+	(>>=) m k = case runErrorM m of
+		Left err -> ErrorM $ Left err
+		Right x -> k x
+
+throwErrorM :: e -> ErrorM e a
+throwErrorM = ErrorM . Left
+
+newtype ErrorT e m a = ErrorT { runErrorT :: m (Either e a) }
+
+instance Monad m => Functor (ErrorT e m) where
+	fmap = liftM
+
+instance Monad m => Monad (ErrorT e m) where
+	return = ErrorT . return . Right
+	(>>=) m k = ErrorT $ do
+		x <- runErrorT m
+		case x of
+			Left l -> return $ Left l
+			Right r -> runErrorT $ k r
+
+throwErrorT :: Monad m => e -> ErrorT e m a
+throwErrorT = ErrorT . return . Left

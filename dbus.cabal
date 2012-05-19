@@ -101,5 +101,4 @@ library
     DBus.Address
     DBus.Message
     DBus.Types
-    DBus.Util.MonadError
     DBus.Wire

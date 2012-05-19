@@ -45,7 +45,6 @@ import           DBus.Introspection ()
 import           DBus.Message ()
 import           DBus.Socket ()
 import           DBus.Types ()
-import           DBus.Util.MonadError ()
 import           DBus.Wire ()
 
 tests :: [Suite]
