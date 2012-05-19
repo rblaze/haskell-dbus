@@ -56,7 +56,6 @@ import           Test.QuickCheck hiding ((.&.))
 
 import           DBus
 import           DBus.Types
-import           DBus.Util (randomUUID)
 
 assertVariant :: (Eq a, Show a, IsVariant a) => Type -> a -> Assertions ()
 assertVariant t a = do
@@ -88,7 +87,7 @@ getTempPath :: IO String
 getTempPath = do
 	tmp <- getTemporaryDirectory
 	uuid <- randomUUID
-	return (tmp </> uuid)
+	return (tmp </> Char8.unpack (formatUUID uuid))
 
 listenRandomUnixPath :: Assertions (Address, N.Socket)
 listenRandomUnixPath = do
@@ -108,14 +107,14 @@ listenRandomUnixPath = do
 listenRandomUnixAbstract :: MonadIO m => m (Address, N.Socket)
 listenRandomUnixAbstract = liftIO $ do
 	uuid <- liftIO randomUUID
-	let sockAddr = NS.SockAddrUnix ('\x00' : uuid)
+	let sockAddr = NS.SockAddrUnix ('\x00' : Char8.unpack (formatUUID uuid))
 	
 	sock <- NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol
 	NS.bindSocket sock sockAddr
 	NS.listen sock 1
 	
 	let Just addr = address "unix" (Map.fromList
-		[ ("abstract", Char8.pack uuid)
+		[ ("abstract", formatUUID uuid)
 		])
 	return (addr, sock)
 

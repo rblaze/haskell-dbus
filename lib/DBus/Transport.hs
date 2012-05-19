@@ -48,7 +48,6 @@ import           Network.Socket.ByteString (sendAll, recv)
 import qualified System.Info
 
 import           DBus
-import           DBus.Util (randomUUID)
 
 -- | Thrown from transport methods when an error occurs.
 data TransportError = TransportError
@@ -120,6 +119,11 @@ class Transport t => TransportListen t where
 	
 	-- | Get the address to use to connect to a listener.
 	transportListenerAddress :: TransportListener t -> Address
+	
+	-- | Get the UUID allocated to this transport listener.
+	--
+	-- See 'randomUUID'.
+	transportListenerUUID :: TransportListener t -> UUID
 
 -- | Supports connecting over UNIX or TCP sockets.
 --
@@ -151,7 +155,7 @@ instance TransportOpen SocketTransport where
 			}
 
 instance TransportListen SocketTransport where
-	data TransportListener SocketTransport = SocketTransportListener Address Socket
+	data TransportListener SocketTransport = SocketTransportListener Address UUID Socket
 	transportListen opts a = do
 		uuid <- randomUUID
 		(a', sock) <- case Char8.unpack (addressMethod a) of
@@ -160,12 +164,13 @@ instance TransportListen SocketTransport where
 			method -> throwIO (transportError ("Unknown address method: " ++ show method))
 				{ transportErrorAddress = Just a
 				}
-		return (SocketTransportListener a' sock)
-	transportAccept (SocketTransportListener a s) = catchIOException (Just a) $ do
+		return (SocketTransportListener a' uuid sock)
+	transportAccept (SocketTransportListener a _ s) = catchIOException (Just a) $ do
 		(s', _) <- accept s
 		return (SocketTransport Nothing s')
-	transportListenerClose (SocketTransportListener a s) = catchIOException (Just a) (sClose s)
-	transportListenerAddress (SocketTransportListener a _) = a
+	transportListenerClose (SocketTransportListener a _ s) = catchIOException (Just a) (sClose s)
+	transportListenerAddress (SocketTransportListener a _ _) = a
+	transportListenerUUID (SocketTransportListener _ uuid _) = uuid
 
 -- | Returns the processID, userID, and groupID of the socket's peer.
 --
@@ -255,7 +260,7 @@ openTcp transportAddr = go where
 				sock <- openSocket (map (setPort port) addrs)
 				return (SocketTransport (Just transportAddr) sock)
 
-listenUnix :: String -> Address -> TransportOptions SocketTransport -> IO (Address, Socket)
+listenUnix :: UUID -> Address -> TransportOptions SocketTransport -> IO (Address, Socket)
 listenUnix uuid origAddr opts = getPath >>= go where
 	params = addressParameters origAddr
 	param key = Map.lookup (Char8.pack key) params
@@ -269,19 +274,19 @@ listenUnix uuid origAddr opts = getPath >>= go where
 		(Just x, Nothing, Nothing) -> let
 			addr = address_ "unix"
 				[ ("abstract", Char8.unpack x)
-				, ("guid", uuid)
+				, ("guid", Char8.unpack (formatUUID uuid))
 				]
 			path = '\x00' : Char8.unpack x
 			in return (Right (addr, path))
 		(Nothing, Just x, Nothing) -> let
 			addr = address_ "unix"
 				[ ("path", Char8.unpack x)
-				, ("guid", uuid)
+				, ("guid", Char8.unpack (formatUUID uuid))
 				]
 			path = Char8.unpack x
 			in return (Right (addr, path))
 		(Nothing, Nothing, Just x) -> do
-			let fileName = Char8.unpack x ++ "/haskell-dbus-" ++ uuid
+			let fileName = Char8.unpack x ++ "/haskell-dbus-" ++ Char8.unpack (formatUUID uuid)
 			
 			-- Abstract paths are supported on Linux, but not on
 			-- other UNIX-like systems.
@@ -289,7 +294,7 @@ listenUnix uuid origAddr opts = getPath >>= go where
 				then ([("abstract", fileName)], ('\x00' : fileName))
 				else ([("path", fileName)], fileName)
 			
-			let addr = address_ "unix" (addrParams ++ [("guid", uuid)])
+			let addr = address_ "unix" (addrParams ++ [("guid", Char8.unpack (formatUUID uuid))])
 			return (Right (addr, path))
 		(Nothing, Nothing, Nothing) -> return (Left tooFew)
 		_ -> return (Left tooMany)
@@ -304,7 +309,7 @@ listenUnix uuid origAddr opts = getPath >>= go where
 			Network.Socket.listen sock (socketTransportOptionBacklog opts)
 			return (addr, sock)
 
-listenTcp :: String -> Address -> TransportOptions SocketTransport -> IO (Address, Socket)
+listenTcp :: UUID -> Address -> TransportOptions SocketTransport -> IO (Address, Socket)
 listenTcp uuid origAddr opts = go where
 	params = addressParameters origAddr
 	param key = Map.lookup (Char8.pack key) params
@@ -353,7 +358,7 @@ listenTcp uuid origAddr opts = go where
 		p = baseParams ++ hostParam ++ familyParam
 		baseParams =
 			[ ("port", show port)
-			, ("guid", uuid)
+			, ("guid", Char8.unpack (formatUUID uuid))
 			]
 		hostParam = case param "host" of
 			Just x -> [("host", Char8.unpack x)]

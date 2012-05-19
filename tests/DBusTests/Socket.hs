@@ -22,14 +22,12 @@ import           Test.Chell
 
 import           Control.Concurrent
 import           Control.Monad.IO.Class (MonadIO, liftIO)
-import qualified Data.ByteString.Char8 as Char8
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
 import           DBus
 import           DBus.Socket
 import           DBus.Transport
-import           DBus.Util (randomUUID)
 
 import           DBusTests.Util (forkVar)
 
@@ -44,7 +42,7 @@ test_Listen :: Suite
 test_Listen = assertions "listen" $ do
 	uuid <- liftIO randomUUID
 	let Just addr = address "unix" (Map.fromList
-		[ ("abstract", Char8.pack uuid)
+		[ ("abstract", formatUUID uuid)
 		])
 	
 	listened <- liftIO (listen addr)
@@ -64,7 +62,7 @@ test_ListenWith_CustomAuth :: Suite
 test_ListenWith_CustomAuth = assertions "listenWith-custom-auth" $ do
 	uuid <- liftIO randomUUID
 	let Just addr = address "unix" (Map.fromList
-		[ ("abstract", Char8.pack uuid)
+		[ ("abstract", formatUUID uuid)
 		])
 	
 	listened <- liftIO (listenWith (defaultSocketOptions
@@ -89,7 +87,7 @@ test_SendReceive :: Suite
 test_SendReceive = assertions "send-receive" $ do
 	uuid <- liftIO randomUUID
 	let Just addr = address "unix" (Map.fromList
-		[ ("abstract", Char8.pack uuid)
+		[ ("abstract", formatUUID uuid)
 		])
 	
 	let msg = MethodCall
@@ -137,7 +135,7 @@ dummyAuthClient t = do
 	resp <- transportGet t 4
 	return (resp == "OK\r\n")
 
-dummyAuthServer :: Transport t => t -> String -> IO Bool
+dummyAuthServer :: Transport t => t -> UUID -> IO Bool
 dummyAuthServer t _ = do
 	c <- transportGet t 1
 	if c == "\x00"

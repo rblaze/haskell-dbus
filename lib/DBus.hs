@@ -99,7 +99,18 @@ module DBus
 	, UnmarshalError
 	, marshalMessage
 	, unmarshalMessage
+	
+	-- * D-Bus UUIDs
+	, UUID
+	, formatUUID
+	, randomUUID
 	) where
+
+import           Control.Monad (replicateM)
+import qualified Data.ByteString.Char8 as Char8
+import           Data.Word (Word16)
+import           System.Random (randomRIO)
+import           Text.Printf (printf)
 
 import           DBus.Address
 import           DBus.Message
@@ -109,3 +120,31 @@ import           DBus.Wire
 
 typeOf :: IsValue a => a -> Type
 typeOf = DBus.Types.typeOf
+
+-- | A D-Bus UUID is 128 bits of data, usually randomly generated. They are
+-- used for identifying unique server instances to clients.
+--
+-- Older versions of the D-Bus spec also called these values /GUIDs/.
+--
+-- D-Bus UUIDs are not the same as the RFC-standardized UUIDs or GUIDs.
+newtype UUID = UUID Char8.ByteString
+	deriving (Eq, Ord, Show)
+
+-- | Format a D-Bus UUID as hex-encoded ASCII.
+formatUUID :: UUID -> Char8.ByteString
+formatUUID (UUID bytes) = bytes
+
+-- | Generate a random D-Bus UUID. This value is suitable for use in a
+-- randomly-allocated address, or as a listener's socket address
+-- @\"guid\"@ parameter.
+randomUUID :: IO UUID
+randomUUID = do
+	-- The version of System.Random bundled with ghc < 7.2 doesn't define
+	-- instances for any of the fixed-length word types, so we imitate
+	-- them using the instance for Int.
+	--
+	-- 128 bits is 8 16-bit integers. We use chunks of 16 instead of 32
+	-- because Int is not guaranteed to be able to store a Word32.
+	let hexInt16 i = printf "%04x" (i :: Int)
+	int16s <- replicateM 8 (randomRIO (0, fromIntegral (maxBound :: Word16)))
+	return (UUID (Char8.pack (concatMap hexInt16 int16s)))

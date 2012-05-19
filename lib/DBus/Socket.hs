@@ -77,7 +77,6 @@ import           DBus
 import           DBus.Transport
 import           DBus.Types (Serial(..))
 import           DBus.Wire (unmarshalMessageM)
-import           DBus.Util (randomUUID)
 
 -- | Stores information about an error encountered while creating or using a
 -- 'Socket'.
@@ -115,9 +114,9 @@ data Authenticator t = Authenticator
 	-- | Defines the client-side half of an authenticator.
 	  authenticatorClient :: t -> IO Bool
 	
-	-- | Defines the server-side half of an authenticator. The string is
-	-- the listening server's UUID.
-	, authenticatorServer :: t -> String -> IO Bool
+	-- | Defines the server-side half of an authenticator. The UUID is
+	-- allocated by the socket listener.
+	, authenticatorServer :: t -> UUID -> IO Bool
 	}
 
 -- | Used with 'openWith' and 'listenWith' to provide custom authenticators or
@@ -171,7 +170,7 @@ openWith opts addr = toEither $ bracketOnError
 				writeLock <- newMVar ()
 				return (Right (Socket (SomeTransport t) serial readLock writeLock)))
 
-data SocketListener = forall t. (TransportListen t) => SocketListener String (TransportListener t) (Authenticator t)
+data SocketListener = forall t. (TransportListen t) => SocketListener (TransportListener t) (Authenticator t)
 
 -- | Begin listening at the given address.
 --
@@ -196,15 +195,15 @@ listenWith opts addr = toEither $ bracketOnError
 	(transportListen (socketTransportOptions opts) addr)
 	transportListenerClose
 	(\l -> do
-		uuid <- randomUUID
-		return (Right (SocketListener uuid l (socketAuthenticator opts))))
+		return (Right (SocketListener l (socketAuthenticator opts))))
 
 -- | Accept a new connection from a socket listener.
 accept :: SocketListener -> IO (Either SocketError Socket)
-accept (SocketListener uuid l auth) = toEither $ bracketOnError
+accept (SocketListener l auth) = toEither $ bracketOnError
 	(transportAccept l)
 	transportClose
 	(\t -> do
+		let uuid = transportListenerUUID l
 		authed <- authenticatorServer auth t uuid
 		if not authed
 			then return (Left (socketError "Authentication failed"))
@@ -222,7 +221,7 @@ close = transportClose . socketTransport
 -- | Close an open 'SocketListener'. Once closed, the listener is no longer
 -- valid and must not be used.
 closeListener :: SocketListener -> IO ()
-closeListener (SocketListener _ l _) = transportListenerClose l
+closeListener (SocketListener l _) = transportListenerClose l
 
 -- | Send a single message, with a generated 'Serial'. The second parameter
 -- exists to prevent race conditions when registering a reply handler; it
@@ -312,14 +311,14 @@ clientAuthExternal t = do
 			return True
 		Nothing -> return False
 
-serverAuthExternal :: SocketTransport -> String -> IO Bool
+serverAuthExternal :: SocketTransport -> UUID -> IO Bool
 serverAuthExternal t uuid = do
 	let checkToken token = do
 		(_, uid, _) <- socketTransportCredentials t
 		let wantToken = concatMap (printf "%02X" . ord) (show uid)
 		if token == wantToken
 			then do
-				transportPutLine t ("OK " ++ uuid)
+				transportPutLine t ("OK " ++ Char8.unpack (formatUUID uuid))
 				return True
 			else return False
 	
