@@ -28,7 +28,7 @@ import qualified System.Environment
 import           Text.Printf (printf)
 import           Text.ParserCombinators.Parsec hiding (runParser)
 
-import           DBus.Util (parseBytes)
+import           DBus.Types (maybeParseBytes)
 
 -- | When a D-Bus server must listen for connections, or a client must connect
 -- to a server, the listening socket's configuration is specified with an
@@ -95,13 +95,13 @@ instance Show Address where
 		shows (formatAddress x)
 
 parseAddress :: ByteString -> Maybe Address
-parseAddress = parseBytes $ do
+parseAddress = maybeParseBytes $ do
 	addr <- parsecAddress
 	eof
 	return addr
 
 parseAddresses :: ByteString -> Maybe [Address]
-parseAddresses = parseBytes $ do
+parseAddresses = maybeParseBytes $ do
 	addrs <- sepEndBy parsecAddress (char ';')
 	eof
 	return addrs

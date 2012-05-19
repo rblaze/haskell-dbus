@@ -25,7 +25,7 @@ import           Control.Monad (liftM, when, (>=>))
 import           Control.Exception (Exception, handle, throwIO)
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString
-import qualified Data.ByteString.Char8
+import qualified Data.ByteString.Char8 as Char8
 import qualified Data.ByteString.Lazy
 import qualified Data.ByteString.Unsafe
 import           Data.Int
@@ -106,7 +106,7 @@ instance Show Signature where
 
 signatureText :: Signature -> Text
 signatureText = Data.Text.Encoding.decodeUtf8
-              . Data.ByteString.Char8.pack
+              . Char8.pack
               . concatMap typeCode
               . signatureTypes
 
@@ -132,7 +132,7 @@ typeCode (TypeStructure ts) = concat
 	["(", concatMap typeCode ts, ")"]
 
 instance Data.String.IsString Signature where
-	fromString s = case parseSignature (Data.ByteString.Char8.pack s) of
+	fromString s = case parseSignature (Char8.pack s) of
 		Nothing -> error ("invalid signature: " ++ show s)
 		Just sig -> sig
 
@@ -580,7 +580,7 @@ objectPathText (ObjectPath text) = text
 
 objectPath :: Text -> Maybe ObjectPath
 objectPath text = do
-	runParser parseObjectPath text
+	maybeParseText parseObjectPath text
 	return (ObjectPath text)
 
 objectPath_ :: Text -> ObjectPath
@@ -617,7 +617,7 @@ interfaceNameText (InterfaceName text) = text
 interfaceName :: Text -> Maybe InterfaceName
 interfaceName text = do
 	when (Data.Text.length text > 255) Nothing
-	runParser parseInterfaceName text
+	maybeParseText parseInterfaceName text
 	return (InterfaceName text)
 
 interfaceName_ :: Text -> InterfaceName
@@ -651,7 +651,7 @@ memberNameText (MemberName text) = text
 memberName :: Text -> Maybe MemberName
 memberName text = do
 	when (Data.Text.length text > 255) Nothing
-	runParser parseMemberName text
+	maybeParseText parseMemberName text
 	return (MemberName text)
 
 memberName_ :: Text -> MemberName
@@ -681,7 +681,7 @@ errorNameText (ErrorName text) = text
 errorName :: Text -> Maybe ErrorName
 errorName text = do
 	when (Data.Text.length text > 255) Nothing
-	runParser parseInterfaceName text
+	maybeParseText parseInterfaceName text
 	return (ErrorName text)
 
 errorName_ :: Text -> ErrorName
@@ -703,7 +703,7 @@ busNameText (BusName text) = text
 busName :: Text -> Maybe BusName
 busName text = do
 	when (Data.Text.length text > 255) Nothing
-	runParser parseBusName text
+	maybeParseText parseBusName text
 	return (BusName text)
 
 busName_ :: Text -> BusName
@@ -1213,12 +1213,17 @@ skipSepBy1 p sep = do
 	_ <- p
 	Parsec.skipMany (sep >> p)
 
-runParser :: Parsec.Parser a -> Text -> Maybe a
-runParser parser text = case Parsec.parse parser "" (Data.Text.unpack text) of
-	Left _ -> Nothing
-	Right a -> Just a
-
 tryParse :: String -> (Text -> Maybe a) -> Text -> a
 tryParse label parse text = case parse text of
 	Just x -> x
 	Nothing -> error ("Invalid " ++ label ++ ": " ++ show text)
+
+maybeParseText :: Parsec.Parser a -> Text -> Maybe a
+maybeParseText parser text = case Parsec.parse parser "" (Data.Text.unpack text) of
+	Left _ -> Nothing
+	Right a -> Just a
+
+maybeParseBytes :: Parsec.Parser a -> Char8.ByteString -> Maybe a
+maybeParseBytes p bytes = case Parsec.runParser p () "" (Char8.unpack bytes) of
+	Left _ -> Nothing
+	Right a -> Just a
