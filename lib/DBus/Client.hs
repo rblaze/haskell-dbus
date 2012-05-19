@@ -235,6 +235,8 @@ send_ client msg io = do
 	case result of
 		Right serial -> return serial
 		Left err -> throwIO (clientError ("Error sending message: " ++ show err))
+			{ clientErrorFatal = DBus.Socket.socketErrorFatal err
+			}
 
 call :: Client -> MethodCall -> IO (Either MethodError MethodReturn)
 call client msg = do

@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -28,10 +27,14 @@ module DBus.Socket
 	
 	-- * Sockets
 	  Socket
-	, SocketError
-	, socketErrorMessage
 	, send
 	, receive
+	
+	-- * Socket errors
+	, SocketError
+	, socketError
+	, socketErrorMessage
+	, socketErrorFatal
 	
 	-- * Socket options
 	, SocketOptions
@@ -62,13 +65,11 @@ import           Prelude hiding (getLine)
 
 import           Control.Concurrent
 import           Control.Exception
-import           Control.Monad (when)
 import qualified Data.ByteString
 import qualified Data.ByteString.Char8 as Char8
 import           Data.Char (ord)
 import           Data.IORef
 import           Data.List (isPrefixOf)
-import           Data.Typeable (Typeable)
 import qualified System.Posix.User
 import           Text.Printf (printf)
 
@@ -80,14 +81,14 @@ import           DBus.Util (readUntil, dropEnd, randomUUID)
 
 -- | Stores information about an error encountered while creating or using a
 -- 'Socket'.
-data SocketError = SocketError String
-	deriving (Eq, Show, Typeable)
+data SocketError = SocketError
+	{ socketErrorMessage :: String
+	, socketErrorFatal :: Bool
+	}
+	deriving (Eq, Show)
 
-instance Exception SocketError
-
--- | Get an error message describing a 'SocketError'.
-socketErrorMessage :: SocketError -> String
-socketErrorMessage (SocketError msg) = msg
+socketError :: String -> SocketError
+socketError msg = SocketError msg True
 
 data SomeTransport = forall t. (Transport t) => SomeTransport t
 
@@ -162,12 +163,13 @@ openWith opts addr = toEither $ bracketOnError
 	transportClose
 	(\t -> do
 		authed <- authenticatorClient (socketAuthenticator opts) t
-		when (not authed) $ do
-			throwIO (SocketError "Authentication failed")
-		serial <- newIORef (Serial 1)
-		readLock <- newMVar ()
-		writeLock <- newMVar ()
-		return (Socket (SomeTransport t) serial readLock writeLock))
+		if not authed
+			then return (Left (socketError "Authentication failed"))
+			else do
+				serial <- newIORef (Serial 1)
+				readLock <- newMVar ()
+				writeLock <- newMVar ()
+				return (Right (Socket (SomeTransport t) serial readLock writeLock)))
 
 data SocketListener = forall t. (TransportListen t) => SocketListener String (TransportListener t) (Authenticator t)
 
@@ -195,7 +197,7 @@ listenWith opts addr = toEither $ bracketOnError
 	transportListenerClose
 	(\l -> do
 		uuid <- randomUUID
-		return (SocketListener uuid l (socketAuthenticator opts)))
+		return (Right (SocketListener uuid l (socketAuthenticator opts))))
 
 -- | Accept a new connection from a socket listener.
 accept :: SocketListener -> IO (Either SocketError Socket)
@@ -204,12 +206,13 @@ accept (SocketListener uuid l auth) = toEither $ bracketOnError
 	transportClose
 	(\t -> do
 		authed <- authenticatorServer auth t uuid
-		when (not authed) $ do
-			throwIO (SocketError "Authentication failed")
-		serial <- newIORef (Serial 1)
-		readLock <- newMVar ()
-		writeLock <- newMVar ()
-		return (Socket (SomeTransport t) serial readLock writeLock))
+		if not authed
+			then return (Left (socketError "Authentication failed"))
+			else do
+				serial <- newIORef (Serial 1)
+				readLock <- newMVar ()
+				writeLock <- newMVar ()
+				return (Right (Socket (SomeTransport t) serial readLock writeLock)))
 
 -- | Close an open 'Socket'. Once closed, the socket is no longer valid and
 -- must not be used.
@@ -237,8 +240,10 @@ send sock msg io = do
 			let t = socketTransport sock
 			a <- io serial
 			withMVar (socketWriteLock sock) (\_ -> transportPut t bytes)
-			return a
-		Left err -> return (Left (SocketError ("Message cannot be sent: " ++ show err)))
+			return (Right a)
+		Left err -> return (Left (socketError ("Message cannot be sent: " ++ show err))
+			{ socketErrorFatal = False
+			})
 
 nextSerial :: Socket -> IO Serial
 nextSerial sock = atomicModifyIORef
@@ -257,20 +262,18 @@ receive sock = toEither $ do
 	--       outside of the lock.
 	let t = socketTransport sock
 	received <- withMVar (socketReadLock sock) (\_ -> unmarshalMessageM (transportGet t))
-	case received of
-		Left err -> throwIO (SocketError ("Error reading message from socket: " ++ show err))
-		Right msg -> return msg
+	return $ case received of
+		Left err -> Left (socketError ("Error reading message from socket: " ++ show err))
+		Right msg -> Right msg
 
-toEither :: IO a -> IO (Either SocketError a)
-toEither io = catches (fmap Right io) handlers where
+toEither :: IO (Either SocketError a) -> IO (Either SocketError a)
+toEither io = catches io handlers where
 	handlers =
-		[ Handler catchSocketError
-		, Handler catchTransportError
+		[ Handler catchTransportError
 		, Handler catchIOException
 		]
-	catchSocketError exc = return (Left exc)
-	catchTransportError err = return (Left (SocketError (transportErrorMessage err)))
-	catchIOException exc = return (Left (SocketError (show (exc :: IOException))))
+	catchTransportError err = return (Left (socketError (transportErrorMessage err)))
+	catchIOException exc = return (Left (socketError (show (exc :: IOException))))
 
 -- | An empty authenticator. Use 'authenticatorClient' or 'authenticatorServer'
 -- to control how the authentication is performed.
