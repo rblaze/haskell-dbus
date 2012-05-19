@@ -17,15 +17,14 @@
 
 module DBus.Message where
 
-import           Data.Maybe (fromMaybe)
+import           Data.Maybe (fromMaybe, listToMaybe)
 import qualified Data.Set
 import           Data.Set (Set)
 import qualified Data.Text
 import           Data.Text (Text)
 import           Data.Word (Word8)
 
-import           DBus.Types hiding (errorName)
-import           DBus.Util (maybeIndex)
+import           DBus.Types
 
 class Message a where
 	messageTypeCode     :: a -> Word8
@@ -125,7 +124,7 @@ instance Message MethodError where
 
 methodErrorMessage :: MethodError -> Text
 methodErrorMessage msg = fromMaybe "(no error message)" $ do
-	field <- maybeIndex (methodErrorBody msg) 0
+	field <- listToMaybe (methodErrorBody msg)
 	text <- fromVariant field
 	if Data.Text.null text
 		then Nothing

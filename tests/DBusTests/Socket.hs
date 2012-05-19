@@ -29,7 +29,7 @@ import qualified Data.Set as Set
 import           DBus
 import           DBus.Socket
 import           DBus.Transport
-import           DBus.Util (readUntil, randomUUID)
+import           DBus.Util (randomUUID)
 
 import           DBusTests.Util (forkVar)
 
@@ -134,21 +134,14 @@ dummyAuth = authenticator
 dummyAuthClient :: Transport t => t -> IO Bool
 dummyAuthClient t = do
 	transportPut t "\x00"
-	resp <- readUntil "\r\n" (readChar8 t)
-	return (take 3 resp == "OK ")
+	resp <- transportGet t 4
+	return (resp == "OK\r\n")
 
 dummyAuthServer :: Transport t => t -> String -> IO Bool
-dummyAuthServer t uuid = do
+dummyAuthServer t _ = do
 	c <- transportGet t 1
 	if c == "\x00"
 		then do
-			transportPut t "OK "
-			transportPut t (Char8.pack uuid)
-			transportPut t "\r\n"
+			transportPut t "OK\r\n"
 			return True
 		else return False
-
-readChar8 :: Transport t => t -> IO Char
-readChar8 t = do
-	c <- transportGet t 1
-	return (Char8.head c)

@@ -48,7 +48,7 @@ import           Network.Socket.ByteString (sendAll, recv)
 import qualified System.Info
 
 import           DBus
-import           DBus.Util (readPortNumber, randomUUID)
+import           DBus.Util (randomUUID)
 
 -- | Thrown from transport methods when an error occurs.
 data TransportError = TransportError
@@ -397,3 +397,13 @@ setPort port info = case addrAddress info of
 	(SockAddrInet  _ x) -> info { addrAddress = SockAddrInet port x }
 	(SockAddrInet6 _ x y z) -> info { addrAddress = SockAddrInet6 port x y z }
 	_ -> info
+
+readPortNumber :: String -> Maybe PortNumber
+readPortNumber s = do
+	case dropWhile (\c -> c >= '0' && c <= '9') s of
+		[] -> return ()
+		_ -> Nothing
+	let word = read s :: Integer
+	if word > 0 && word <= 65535
+		then Just (fromInteger word)
+		else Nothing

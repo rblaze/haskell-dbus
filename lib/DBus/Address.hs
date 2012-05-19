@@ -21,14 +21,14 @@ import qualified Control.Exception
 import qualified Data.ByteString as ByteString
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as Char8
-import           Data.Char (ord, chr)
+import           Data.Char (digitToInt, ord, chr)
 import qualified Data.Map
 import           Data.Map (Map)
 import qualified System.Environment
 import           Text.Printf (printf)
 import           Text.ParserCombinators.Parsec hiding (runParser)
 
-import           DBus.Util (hexToInt, void, parseBytes)
+import           DBus.Util (parseBytes)
 
 -- | When a D-Bus server must listen for connections, or a client must connect
 -- to a server, the listening socket's configuration is specified with an
@@ -110,7 +110,7 @@ parsecAddress :: Parser Address
 parsecAddress = p where
 	p = do
 		method <- many (noneOf ":;")
-		void (char ':')
+		_ <- char ':'
 		params <- sepEndBy param (char ',')
 		return (Address
 			(Char8.pack method)
@@ -118,13 +118,13 @@ parsecAddress = p where
 	
 	param = do
 		key <- many1 (noneOf "=;,")
-		void (char '=')
+		_ <- char '='
 		value <- many1 valueChar
 		return (Char8.pack key, Char8.pack value)
 	
 	valueChar = encoded <|> unencoded
 	encoded = do
-		void (char '%')
+		_ <- char '%'
 		hex <- count 2 hexDigit
 		return (chr (hexToInt hex))
 	unencoded = oneOf optionallyEncoded
@@ -149,3 +149,6 @@ getenv :: String -> IO (Maybe ByteString)
 getenv name = Control.Exception.catch
 	(fmap (Just . Char8.pack) (System.Environment.getEnv name))
 	(\(Control.Exception.SomeException _) -> return Nothing)
+
+hexToInt :: String -> Int
+hexToInt = foldl ((+) . (16 *)) 0 . map digitToInt

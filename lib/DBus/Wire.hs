@@ -49,7 +49,6 @@ import           Data.Serialize.Put (runPut)
 
 import           DBus.Message
 import           DBus.Types
-import           DBus.Util (untilM)
 import qualified DBus.Util.MonadError as E
 
 data Endianness = LittleEndian | BigEndian
@@ -742,3 +741,13 @@ unmarshalMessage :: ByteString -> Either UnmarshalError ReceivedMessage
 unmarshalMessage bytes = case Get.runGet (unmarshalMessageM Get.getByteString) bytes of
 	Left err -> Left (UnmarshalError (Data.Text.pack err))
 	Right x -> x
+
+untilM :: Monad m => m Bool -> m a -> m [a]
+untilM test comp = do
+	done <- test
+	if done
+		then return []
+		else do
+			x <- comp
+			xs <- untilM test comp
+			return (x:xs)

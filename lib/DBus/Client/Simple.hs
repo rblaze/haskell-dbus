@@ -54,6 +54,7 @@ module DBus.Client.Simple
 
 import           Control.Exception (throwIO)
 import           Data.Bits ((.|.))
+import           Data.Maybe (listToMaybe)
 import qualified Data.Text -- for haddock
 import qualified Data.Set
 import           Data.Word (Word32)
@@ -62,7 +63,6 @@ import           DBus
 import           DBus.Client hiding (call, method, emit, export)
 import qualified DBus.Client
 import           DBus.Constants (errorInvalidParameters)
-import           DBus.Util (maybeIndex)
 
 -- | Connect to the bus specified in the environment variable
 -- @DBUS_SESSION_BUS_ADDRESS@, which must be set.
@@ -181,7 +181,7 @@ requestName client name flags = do
 		[ toVariant name
 		, toVariant (encodeFlags flags)
 		]
-	case (maybeIndex reply 0 >>= fromVariant :: Maybe Word32) of
+	case (listToMaybe reply >>= fromVariant :: Maybe Word32) of
 		Just 1 -> return PrimaryOwner
 		Just 2 -> return InQueue
 		Just 3 -> return Exists
@@ -196,7 +196,7 @@ releaseName client name = do
 	reply <- call bus "org.freedesktop.DBus" "ReleaseName"
 		[ toVariant name
 		]
-	case (maybeIndex reply 0 >>= fromVariant :: Maybe Word32) of
+	case (listToMaybe reply >>= fromVariant :: Maybe Word32) of
 		Just 1 -> return Released
 		Just 2 -> return NonExistent
 		Just 3 -> return NotOwner

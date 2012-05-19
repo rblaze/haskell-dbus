@@ -14,79 +14,22 @@
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 module DBus.Util
-	( hexToInt
-	, maybeIndex
-	, readUntil
-	, dropEnd
-	, void
-	, untilM
-	, parseBytes
-	, readPortNumber
+	( parseBytes
 	, randomUUID
 	) where
 
 import           Control.Monad (replicateM)
 import qualified Data.ByteString.Char8 as Char8
-import           Data.Char (digitToInt)
-import           Data.List (isPrefixOf)
 import           Data.Word (Word16)
-import           Network.Socket (PortNumber)
 import           System.Random (randomRIO)
 import           Text.Printf (printf)
 
 import           Text.ParserCombinators.Parsec (Parser, runParser)
 
-hexToInt :: String -> Int
-hexToInt = foldl ((+) . (16 *)) 0 . map digitToInt
-
-maybeIndex :: [a] -> Int -> Maybe a
-maybeIndex (x:_ ) 0         = Just x
-maybeIndex (_:xs) n | n > 0 = maybeIndex xs (n - 1)
-maybeIndex _ _ = Nothing
-
--- | Read values from a monad until a guard value is read; return all
--- values, including the guard.
---
-readUntil :: (Monad m, Eq a) => [a] -> m a -> m [a]
-readUntil guard getx = readUntil' [] where
-	guard' = reverse guard
-	step xs | isPrefixOf guard' xs = return . reverse $ xs
-	        | otherwise            = readUntil' xs
-	readUntil' xs = do
-		x <- getx
-		step $ x:xs
-
--- | Drop /n/ items from the end of a list
-dropEnd :: Int -> [a] -> [a]
-dropEnd n xs = take (length xs - n) xs
-
-void :: Monad m => m a -> m ()
-void m = m >> return ()
-
-untilM :: Monad m => m Bool -> m a -> m [a]
-untilM test comp = do
-	done <- test
-	if done
-		then return []
-		else do
-			x <- comp
-			xs <- untilM test comp
-			return (x:xs)
-
 parseBytes :: Parser a -> Char8.ByteString -> Maybe a
 parseBytes p bytes = case runParser p () "" (Char8.unpack bytes) of
 	Left _ -> Nothing
 	Right a -> Just a
-
-readPortNumber :: String -> Maybe PortNumber
-readPortNumber s = do
-	case dropWhile (\c -> c >= '0' && c <= '9') s of
-		[] -> return ()
-		_ -> Nothing
-	let word = read s :: Integer
-	if word > 0 && word <= 65535
-		then Just (fromInteger word)
-		else Nothing
 
 -- | Generate a UUID, which is 128 bits of random data hex-encoded.
 randomUUID :: IO String

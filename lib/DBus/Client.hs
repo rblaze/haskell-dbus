@@ -68,7 +68,6 @@ import           DBus.Constants ( errorFailed, errorUnknownMethod
 import qualified DBus.Introspection
 import qualified DBus.Socket
 import           DBus.Transport (TransportOpen, SocketTransport)
-import           DBus.Util (void)
 
 data ClientError = ClientError
 	{ clientErrorMessage :: String
@@ -140,7 +139,7 @@ attach sock = do
 	
 	export client "/" [introspectRoot client]
 	
-	void (call_ client (MethodCall
+	_ <- call_ client (MethodCall
 		{ methodCallPath = "/org/freedesktop/DBus"
 		, methodCallMember = "Hello"
 		, methodCallInterface = Just "org.freedesktop.DBus"
@@ -148,7 +147,7 @@ attach sock = do
 		, methodCallDestination = Just "org.freedesktop.DBus"
 		, methodCallFlags = Data.Set.empty
 		, methodCallBody = []
-		}))
+		})
 	
 	return client
 
@@ -207,7 +206,7 @@ dispatch client = go where
 	go (ReceivedMethodError _ msg) = dispatchReply (methodErrorSerial msg) (Left msg)
 	go (ReceivedSignal _ msg) = do
 		handlers <- readIORef (clientSignalHandlers client)
-		forM_ handlers (\h -> void (forkIO (h msg)))
+		forM_ handlers (\h -> forkIO (h msg) >> return ())
 	go received@(ReceivedMethodCall serial msg) = do
 		objects <- readIORef (clientObjects client)
 		let sender = methodCallSender msg
@@ -284,7 +283,7 @@ listen client rule io = do
 		Nothing -> return ()
 	
 	atomicModifyIORef (clientSignalHandlers client) (\hs -> (handler : hs, ()))
-	void (call_ client (MethodCall
+	_ <- call_ client (MethodCall
 		{ methodCallPath = DBus.Constants.dbusPath
 		, methodCallMember = "AddMatch"
 		, methodCallInterface = Just DBus.Constants.dbusInterface
@@ -292,7 +291,8 @@ listen client rule io = do
 		, methodCallDestination = Just DBus.Constants.dbusName
 		, methodCallFlags = Data.Set.empty
 		, methodCallBody = [toVariant (formatMatchRule rule)]
-		}))
+		})
+	return ()
 
 formatMatchRule :: MatchRule -> Text
 formatMatchRule rule = Data.Text.intercalate "," predicates where

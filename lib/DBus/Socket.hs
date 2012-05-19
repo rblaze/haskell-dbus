@@ -77,7 +77,7 @@ import           DBus
 import           DBus.Transport
 import           DBus.Types (Serial(..))
 import           DBus.Wire (unmarshalMessageM)
-import           DBus.Util (readUntil, dropEnd, randomUUID)
+import           DBus.Util (randomUUID)
 
 -- | Stores information about an error encountered while creating or using a
 -- 'Socket'.
@@ -347,7 +347,22 @@ transportGetLine t = do
 	raw <- readUntil "\r\n" getchr
 	return (dropEnd 2 raw)
 
+-- | Drop /n/ items from the end of a list
+dropEnd :: Int -> [a] -> [a]
+dropEnd n xs = take (length xs - n) xs
+
 splitPrefix :: String -> String -> Maybe String
 splitPrefix prefix str = if isPrefixOf prefix str
 	then Just (drop (length prefix) str)
 	else Nothing
+
+-- | Read values from a monad until a guard value is read; return all
+-- values, including the guard.
+readUntil :: (Monad m, Eq a) => [a] -> m a -> m [a]
+readUntil guard getx = readUntil' [] where
+	guard' = reverse guard
+	step xs | isPrefixOf guard' xs = return (reverse xs)
+	        | otherwise            = readUntil' xs
+	readUntil' xs = do
+		x <- getx
+		step (x:xs)

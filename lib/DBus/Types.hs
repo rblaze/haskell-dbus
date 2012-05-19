@@ -47,8 +47,6 @@ import           System.IO.Unsafe (unsafePerformIO)
 import qualified Text.ParserCombinators.Parsec as Parsec
 import           Text.ParserCombinators.Parsec ((<|>), oneOf)
 
-import           DBus.Util (void)
-
 data Type
 	= TypeBoolean
 	| TypeWord8
@@ -604,7 +602,7 @@ parseObjectPath = root <|> object where
 	
 	element = Parsec.skipMany1 (oneOf chars)
 	
-	slash = void (Parsec.char '/')
+	slash = Parsec.char '/' >> return ()
 	chars = concat [ ['a'..'z']
 	               , ['A'..'Z']
 	               , ['0'..'9']
@@ -637,11 +635,11 @@ parseInterfaceName = name >> Parsec.eof where
 	alpha = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
 	alphanum = alpha ++ ['0'..'9']
 	element = do
-		void (oneOf alpha)
+		_ <- oneOf alpha
 		Parsec.skipMany (oneOf alphanum)
 	name = do
 		element
-		void (Parsec.char '.')
+		_ <- Parsec.char '.'
 		skipSepBy1 element (Parsec.char '.')
 
 newtype MemberName = MemberName Text
@@ -671,7 +669,7 @@ parseMemberName = name >> Parsec.eof where
 	alpha = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
 	alphanum = alpha ++ ['0'..'9']
 	name = do
-		void (oneOf alpha)
+		_ <- oneOf alpha
 		Parsec.skipMany (oneOf alphanum)
 
 newtype ErrorName = ErrorName Text
@@ -725,7 +723,7 @@ parseBusName = name >> Parsec.eof where
 	
 	name = unique <|> wellKnown
 	unique = do
-		void (Parsec.char ':')
+		_ <- Parsec.char ':'
 		elements alphanum
 	
 	wellKnown = elements alpha
@@ -733,11 +731,11 @@ parseBusName = name >> Parsec.eof where
 	elements start = do
 		element start
 		Parsec.skipMany1 $ do
-			void (Parsec.char '.')
+			_ <- Parsec.char '.'
 			element start
 	
 	element start = do
-		void (oneOf start)
+		_ <- oneOf start
 		Parsec.skipMany (oneOf alphanum)
 
 newtype Structure = Structure [Value]
@@ -1212,7 +1210,7 @@ serialValue (Serial x) = x
 
 skipSepBy1 :: Parsec.Parser a -> Parsec.Parser b -> Parsec.Parser ()
 skipSepBy1 p sep = do
-	void p
+	_ <- p
 	Parsec.skipMany (sep >> p)
 
 runParser :: Parsec.Parser a -> Text -> Maybe a
