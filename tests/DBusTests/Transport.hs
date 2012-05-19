@@ -268,7 +268,10 @@ test_ListenUnix_Path = assertions "path" $ do
 	afterTest (transportListenerClose l)
 	afterTest (removeFile path)
 	
-	$expect (equal (transportListenerAddress l) addr)
+	-- listener address is random, so it can't be checked directly.
+	let addrParams = addressParameters (transportListenerAddress l)
+	$expect (sameItems (Map.keys addrParams) ["path", "guid"])
+	$expect (equal (Map.lookup "path" addrParams) (Just (Char8.pack path)))
 
 test_ListenUnix_Abstract :: Suite
 test_ListenUnix_Abstract = assertions "abstract" $ do
@@ -279,7 +282,10 @@ test_ListenUnix_Abstract = assertions "abstract" $ do
 	l <- liftIO (transportListen socketTransportOptions addr)
 	afterTest (transportListenerClose l)
 	
-	$expect (equal (transportListenerAddress l) addr)
+	-- listener address is random, so it can't be checked directly.
+	let addrParams = addressParameters (transportListenerAddress l)
+	$expect (sameItems (Map.keys addrParams) ["abstract", "guid"])
+	$expect (equal (Map.lookup "abstract" addrParams) (Just (Char8.pack path)))
 
 test_ListenUnix_Tmpdir :: Suite
 test_ListenUnix_Tmpdir = assertions "tmpdir" $ do
@@ -403,11 +409,12 @@ test_AcceptSocketClosed = assertions "socket-closed" $ do
 		[ ("abstract", Char8.pack path)
 		])
 	listener <- liftIO (transportListen socketTransportOptions addr)
+	let listeningAddr = transportListenerAddress listener
 	liftIO (transportListenerClose listener)
 	
 	$assert $ throwsEq
 		((transportError "user error (accept: can't perform accept on socket ((AF_UNIX,Stream,0)) in status Closed)")
-			{ transportErrorAddress = Just addr
+			{ transportErrorAddress = Just listeningAddr
 			})
 		(transportAccept listener)
 

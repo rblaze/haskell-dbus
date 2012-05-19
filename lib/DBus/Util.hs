@@ -40,6 +40,6 @@ randomUUID = do
 	--
 	-- 128 bits is 8 16-bit integers. We use chunks of 16 instead of 32
 	-- because Int is not guaranteed to be able to store a Word32.
-	let hexInt16 i = printf "%04X" (i :: Int)
+	let hexInt16 i = printf "%04x" (i :: Int)
 	int16s <- replicateM 8 (randomRIO (0, fromIntegral (maxBound :: Word16)))
 	return (concatMap hexInt16 int16s)

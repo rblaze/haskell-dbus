@@ -153,9 +153,10 @@ instance TransportOpen SocketTransport where
 instance TransportListen SocketTransport where
 	data TransportListener SocketTransport = SocketTransportListener Address Socket
 	transportListen opts a = do
+		uuid <- randomUUID
 		(a', sock) <- case Char8.unpack (addressMethod a) of
-			"unix" -> listenUnix a opts
-			"tcp" -> listenTcp a opts
+			"unix" -> listenUnix uuid a opts
+			"tcp" -> listenTcp uuid a opts
 			method -> throwIO (transportError ("Unknown address method: " ++ show method))
 				{ transportErrorAddress = Just a
 				}
@@ -254,8 +255,8 @@ openTcp transportAddr = go where
 				sock <- openSocket (map (setPort port) addrs)
 				return (SocketTransport (Just transportAddr) sock)
 
-listenUnix :: Address -> TransportOptions SocketTransport -> IO (Address, Socket)
-listenUnix origAddr opts = getPath >>= go where
+listenUnix :: String -> Address -> TransportOptions SocketTransport -> IO (Address, Socket)
+listenUnix uuid origAddr opts = getPath >>= go where
 	params = addressParameters origAddr
 	param key = Map.lookup (Char8.pack key) params
 	
@@ -266,15 +267,20 @@ listenUnix origAddr opts = getPath >>= go where
 	
 	getPath = case (param "abstract", param "path", param "tmpdir") of
 		(Just x, Nothing, Nothing) -> let
-			addr = address_ "unix" [("abstract", Char8.unpack x)]
+			addr = address_ "unix"
+				[ ("abstract", Char8.unpack x)
+				, ("guid", uuid)
+				]
 			path = '\x00' : Char8.unpack x
 			in return (Right (addr, path))
 		(Nothing, Just x, Nothing) -> let
-			addr = address_ "unix" [("path", Char8.unpack x)]
+			addr = address_ "unix"
+				[ ("path", Char8.unpack x)
+				, ("guid", uuid)
+				]
 			path = Char8.unpack x
 			in return (Right (addr, path))
 		(Nothing, Nothing, Just x) -> do
-			uuid <- randomUUID
 			let fileName = Char8.unpack x ++ "/haskell-dbus-" ++ uuid
 			
 			-- Abstract paths are supported on Linux, but not on
@@ -283,7 +289,7 @@ listenUnix origAddr opts = getPath >>= go where
 				then ([("abstract", fileName)], ('\x00' : fileName))
 				else ([("path", fileName)], fileName)
 			
-			let addr = address_ "unix" addrParams
+			let addr = address_ "unix" (addrParams ++ [("guid", uuid)])
 			return (Right (addr, path))
 		(Nothing, Nothing, Nothing) -> return (Left tooFew)
 		_ -> return (Left tooMany)
@@ -298,8 +304,8 @@ listenUnix origAddr opts = getPath >>= go where
 			Network.Socket.listen sock (socketTransportOptionBacklog opts)
 			return (addr, sock)
 
-listenTcp :: Address -> TransportOptions SocketTransport -> IO (Address, Socket)
-listenTcp origAddr opts = go where
+listenTcp :: String -> Address -> TransportOptions SocketTransport -> IO (Address, Socket)
+listenTcp uuid origAddr opts = go where
 	params = addressParameters origAddr
 	param key = Map.lookup (Char8.pack key) params
 	
@@ -344,7 +350,11 @@ listenTcp origAddr opts = go where
 			Right _ -> return ()
 	
 	sockAddr (PortNum port) = address_ "tcp" p where
-		p = [("port", show port)] ++ hostParam ++ familyParam
+		p = baseParams ++ hostParam ++ familyParam
+		baseParams =
+			[ ("port", show port)
+			, ("guid", uuid)
+			]
 		hostParam = case param "host" of
 			Just x -> [("host", Char8.unpack x)]
 			Nothing -> []
