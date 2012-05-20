@@ -53,6 +53,7 @@ module DBus.Socket
 	, listenWith
 	, accept
 	, closeListener
+	, socketListenerAddress
 	
 	-- * Authentication
 	, Authenticator
@@ -222,6 +223,10 @@ close = transportClose . socketTransport
 -- valid and must not be used.
 closeListener :: SocketListener -> IO ()
 closeListener (SocketListener l _) = transportListenerClose l
+
+-- | Get the address to use to connect to a listener.
+socketListenerAddress :: SocketListener -> Address
+socketListenerAddress (SocketListener l _) = transportListenerAddress l
 
 -- | Send a single message, with a generated 'Serial'. The second parameter
 -- exists to prevent race conditions when registering a reply handler; it
