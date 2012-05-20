@@ -112,16 +112,31 @@ test_SendReceive = assertions "send-receive" $ do
 	Right sock2 <- liftIO (takeMVar openedVar)
 	afterTest (close sock2)
 	
-	serialVar <- liftIO newEmptyMVar
-	sentVar <- forkVar (send sock1 msg (putMVar serialVar))
-	receivedVar <- forkVar (receive sock2)
+	-- client -> server
+	do
+		serialVar <- liftIO newEmptyMVar
+		sentVar <- forkVar (send sock2 msg (putMVar serialVar))
+		receivedVar <- forkVar (receive sock1)
+		
+		serial <- liftIO (takeMVar serialVar)
+		sent <- liftIO (takeMVar sentVar)
+		received <- liftIO (takeMVar receivedVar)
+		
+		$assert (equal sent (Right ()))
+		$assert (equal received (Right (ReceivedMethodCall serial msg)))
 	
-	serial <- liftIO (takeMVar serialVar)
-	sent <- liftIO (takeMVar sentVar)
-	received <- liftIO (takeMVar receivedVar)
-	
-	$assert (equal sent (Right ()))
-	$assert (equal received (Right (ReceivedMethodCall serial msg)))
+	-- server -> client
+	do
+		serialVar <- liftIO newEmptyMVar
+		sentVar <- forkVar (send sock1 msg (putMVar serialVar))
+		receivedVar <- forkVar (receive sock2)
+		
+		serial <- liftIO (takeMVar serialVar)
+		sent <- liftIO (takeMVar sentVar)
+		received <- liftIO (takeMVar receivedVar)
+		
+		$assert (equal sent (Right ()))
+		$assert (equal received (Right (ReceivedMethodCall serial msg)))
 
 dummyAuth :: Transport t => Authenticator t
 dummyAuth = authenticator
