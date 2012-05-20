@@ -22,6 +22,7 @@ import           Test.Chell
 
 import           DBusTests.Address
 import           DBusTests.BusName
+import           DBusTests.Client
 import           DBusTests.ErrorName
 import           DBusTests.Integration
 import           DBusTests.InterfaceName
@@ -51,6 +52,7 @@ tests :: [Suite]
 tests =
 	[ test_Address
 	, test_BusName
+	, test_Client
 	, test_ErrorName
 	, test_Integration
 	, test_InterfaceName

@@ -28,6 +28,7 @@ module DBusTests.Util
 	, listenRandomIPv6
 	, noIPv6
 	, forkVar
+	, withEnv
 	
 	, halfSized
 	, clampedSize
@@ -36,7 +37,7 @@ module DBusTests.Util
 	) where
 
 import           Control.Concurrent
-import           Control.Exception (IOException, try)
+import           Control.Exception (IOException, try, bracket_)
 import           Control.Monad.IO.Class (MonadIO, liftIO)
 import           Data.Bits ((.&.))
 import qualified Data.ByteString
@@ -49,6 +50,7 @@ import qualified Data.Text as T
 import qualified Network as N
 import qualified Network.Socket as NS
 import           System.Directory (getTemporaryDirectory, removeFile)
+import qualified System.Posix.Env
 import           System.FilePath ((</>))
 
 import           Test.Chell
@@ -166,6 +168,14 @@ forkVar io = liftIO $ do
 	var <- newEmptyMVar
 	_ <- forkIO (io >>= putMVar var)
 	return var
+
+withEnv :: MonadIO m => String -> Maybe String -> IO a -> m a
+withEnv name value io = liftIO $ do
+	let set val = case val of
+		Just x -> System.Posix.Env.setEnv name x True
+		Nothing -> System.Posix.Env.unsetEnv name
+	old <- System.Posix.Env.getEnv name
+	bracket_ (set value) (set old) io
 
 instance (Arbitrary a, Ord a) => Arbitrary (Data.Set.Set a) where
 	arbitrary = fmap Data.Set.fromList arbitrary

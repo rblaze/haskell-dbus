@@ -22,20 +22,17 @@ import           Test.Chell
 import           Test.Chell.QuickCheck
 import           Test.QuickCheck hiding (property)
 
-import qualified Control.Exception
-import           Control.Monad.IO.Class (MonadIO, liftIO)
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as Char8
 import           Data.Char (ord)
 import           Data.List (intercalate)
 import           Data.Map (Map)
 import qualified Data.Map
-import qualified System.Posix.Env
 import           Text.Printf (printf)
 
 import           DBus
 
-import           DBusTests.Util (smallListOf, smallListOf1)
+import           DBusTests.Util (smallListOf, smallListOf1, withEnv)
 
 test_Address :: Suite
 test_Address = suite "Address"
@@ -220,11 +217,3 @@ gen_AddressesBytes = do
 	let bytes = [b | (b, _, _) <- addrs]
 	let expected = [(m, p) | (_, m, p) <- addrs]
 	return (Char8.intercalate ";" bytes, expected)
-
-withEnv :: MonadIO m => String -> Maybe String -> IO a -> m a
-withEnv name value io = liftIO $ do
-	let set val = case val of
-		Just x -> System.Posix.Env.setEnv name x True
-		Nothing -> System.Posix.Env.unsetEnv name
-	old <- System.Posix.Env.getEnv name
-	Control.Exception.bracket_ (set value) (set old) io
