@@ -260,7 +260,10 @@ receive sock = toEither $ do
 	--       handle, then return a closure to perform the parse
 	--       outside of the lock.
 	let t = socketTransport sock
-	received <- withMVar (socketReadLock sock) (\_ -> unmarshalMessageM (transportGet t))
+	let get n = if n == 0
+		then return Data.ByteString.empty
+		else transportGet t n
+	received <- withMVar (socketReadLock sock) (\_ -> unmarshalMessageM get)
 	return $ case received of
 		Left err -> Left (socketError ("Error reading message from socket: " ++ show err))
 		Right msg -> Right msg
