@@ -29,18 +29,12 @@ import           Data.Text (Text)
 
 import           DBus
 import qualified DBus.Client
-import qualified DBus.Client.Simple
 import qualified DBus.Socket
 
 import           DBusTests.Util (forkVar, withEnv)
 
 test_Client :: Suite
 test_Client = suite "Client"
-	[ test_Simple
-	]
-
-test_Simple :: Suite
-test_Simple = suite "Simple"
 	[ test_ConnectSystem
 	, test_ConnectSession
 	, test_ConnectStarter
@@ -76,21 +70,21 @@ test_ConnectSystem = test_Connect "connectSystem" $ \addr -> do
 	let addrEnv = Char8.unpack (formatAddress addr)
 	withEnv "DBUS_SYSTEM_BUS_ADDRESS"
 		(Just addrEnv)
-		DBus.Client.Simple.connectSystem
+		DBus.Client.connectSystem
 
 test_ConnectSession :: Suite
 test_ConnectSession = test_Connect "connectSession" $ \addr -> do
 	let addrEnv = Char8.unpack (formatAddress addr)
 	withEnv "DBUS_SESSION_BUS_ADDRESS"
 		(Just addrEnv)
-		DBus.Client.Simple.connectSession
+		DBus.Client.connectSession
 
 test_ConnectStarter :: Suite
 test_ConnectStarter = test_Connect "connectStarter" $ \addr -> do
 	let addrEnv = Char8.unpack (formatAddress addr)
 	withEnv "DBUS_STARTER_ADDRESS"
 		(Just addrEnv)
-		DBus.Client.Simple.connectStarter
+		DBus.Client.connectStarter
 
 startDummyBus :: Assertions (Address, MVar DBus.Socket.Socket)
 startDummyBus = do

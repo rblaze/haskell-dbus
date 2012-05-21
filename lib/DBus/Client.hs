@@ -20,20 +20,29 @@ module DBus.Client
 	(
 	-- * Clients
 	  Client
-	, ClientOptions
-	, clientSocketOptions
-	, defaultClientOptions
+	
+	-- * Connecting to a bus
 	, connect
-	, connectWith
-	, disconnect
-	, call
-	, emit
+	, connectSystem
+	, connectSession
+	, connectStarter
 	
 	-- * Client errors
 	, ClientError
 	, clientError
 	, clientErrorMessage
 	, clientErrorFatal
+	
+	-- * TODO: section docs
+	, disconnect
+	, call
+	, emit
+	
+	-- * Advanced connection options
+	, ClientOptions
+	, clientSocketOptions
+	, defaultClientOptions
+	, connectWith
 	
 	-- * Listening for signals
 	, MatchRule(..)
@@ -116,6 +125,56 @@ type InterfaceInfo = Map MemberName MemberInfo
 data MemberInfo
 	= MemberMethod Signature Signature Callback
 	| MemberSignal Signature
+
+-- | Connect to the bus specified in the environment variable
+-- @DBUS_SYSTEM_BUS_ADDRESS@, or to
+-- @unix:path=\/var\/run\/dbus\/system_bus_socket@ if @DBUS_SYSTEM_BUS_ADDRESS@
+-- is not set.
+--
+-- Throws a 'ClientError' if @DBUS_SYSTEM_BUS_ADDRESS@ contains an invalid
+-- address, or if connecting to the bus failed.
+connectSystem :: IO Client
+connectSystem = do
+	env <- getSystemAddress
+	case env of
+		Nothing -> throwIO (clientError "connectSession: DBUS_SYSTEM_BUS_ADDRESS is invalid.")
+		Just addr -> do
+			ret <- connect addr
+			case ret of
+				Left err -> throwIO err
+				Right client -> return client
+
+-- | Connect to the bus specified in the environment variable
+-- @DBUS_SESSION_BUS_ADDRESS@, which must be set.
+--
+-- Throws a 'ClientError' if @DBUS_SESSION_BUS_ADDRESS@ is unset, contains an
+-- invalid address, or if connecting to the bus failed.
+connectSession :: IO Client
+connectSession = do
+	env <- getSessionAddress
+	case env of
+		Nothing -> throwIO (clientError "connectSession: DBUS_SESSION_BUS_ADDRESS is missing or invalid.")
+		Just addr -> do
+			ret <- connect addr
+			case ret of
+				Left err -> throwIO err
+				Right client -> return client
+
+-- | Connect to the bus specified in the environment variable
+-- @DBUS_STARTER_ADDRESS@, which must be set.
+--
+-- Throws a 'ClientError' if @DBUS_STARTER_ADDRESS@ is unset, contains an
+-- invalid address, or if connecting to the bus failed.
+connectStarter :: IO Client
+connectStarter = do
+	env <- getStarterAddress
+	case env of
+		Nothing -> throwIO (clientError "connectSession: DBUS_STARTER_ADDRESS is missing or invalid.")
+		Just addr -> do
+			ret <- connect addr
+			case ret of
+				Left err -> throwIO err
+				Right client -> return client
 
 attach :: DBus.Socket.Socket -> IO Client
 attach sock = do

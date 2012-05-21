@@ -24,9 +24,6 @@ module DBus.Client.Simple
 	
 	-- * Clients
 	, Client
-	, connectSystem
-	, connectSession
-	, connectStarter
 	, disconnect
 	, emit
 	
@@ -63,47 +60,6 @@ import           DBus
 import           DBus.Client hiding (call, method, emit, export)
 import qualified DBus.Client
 import           DBus.Constants (errorInvalidParameters)
-
--- | Connect to the bus specified in the environment variable
--- @DBUS_SESSION_BUS_ADDRESS@, which must be set.
-connectSession :: IO Client
-connectSession = do
-	env <- getSessionAddress
-	case env of
-		Nothing -> throwIO (clientError "connectSession: DBUS_SESSION_BUS_ADDRESS is missing or invalid.")
-		Just addr -> do
-			ret <- DBus.Client.connect addr
-			case ret of
-				Left err -> throwIO err
-				Right client -> return client
-
--- | Connect to the bus specified in the environment variable
--- @DBUS_SYSTEM_BUS_ADDRESS@, or to
--- @unix:path=\/var\/run\/dbus\/system_bus_socket@ if @DBUS_SYSTEM_BUS_ADDRESS@
--- is not set.
-connectSystem :: IO Client
-connectSystem = do
-	env <- getSystemAddress
-	case env of
-		Nothing -> throwIO (clientError "connectSession: DBUS_SYSTEM_BUS_ADDRESS is invalid.")
-		Just addr -> do
-			ret <- DBus.Client.connect addr
-			case ret of
-				Left err -> throwIO err
-				Right client -> return client
-
--- | Connect to the bus specified in the environment variable
--- @DBUS_STARTER_ADDRESS@, which must be set.
-connectStarter :: IO Client
-connectStarter = do
-	env <- getStarterAddress
-	case env of
-		Nothing -> throwIO (clientError "connectSession: DBUS_STARTER_ADDRESS is missing or invalid.")
-		Just addr -> do
-			ret <- DBus.Client.connect addr
-			case ret of
-				Left err -> throwIO err
-				Right client -> return client
 
 data Proxy = Proxy Client BusName ObjectPath
 
