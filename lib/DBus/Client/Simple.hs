@@ -33,13 +33,6 @@ module DBus.Client.Simple
 	, call
 	, DBus.Client.Simple.listen
 	
-	-- * Name reservation
-	, RequestNameFlag(..)
-	, RequestNameReply(..)
-	, ReleaseNameReply(..)
-	, requestName
-	, releaseName
-	
 	-- * Exporting objects
 	, Method
 	, AutoSignature
@@ -50,11 +43,8 @@ module DBus.Client.Simple
 	) where
 
 import           Control.Exception (throwIO)
-import           Data.Bits ((.|.))
-import           Data.Maybe (listToMaybe)
 import qualified Data.Text -- for haddock
 import qualified Data.Set
-import           Data.Word (Word32)
 
 import           DBus
 import           DBus.Client hiding (call, method, emit, export)
@@ -104,61 +94,6 @@ listen (Proxy client dest path) iface member = DBus.Client.listen client (MatchR
 	, matchPath = Just path
 	, matchDestination = Nothing
 	})
-
-data RequestNameFlag
-	= AllowReplacement
-	| ReplaceExisting
-	| DoNotQueue
-	deriving (Show)
-
-data RequestNameReply
-	= PrimaryOwner
-	| InQueue
-	| Exists
-	| AlreadyOwner
-	deriving (Show)
-
-data ReleaseNameReply
-	= Released
-	| NonExistent
-	| NotOwner
-	deriving (Show)
-
-encodeFlags :: [RequestNameFlag] -> Word32
-encodeFlags = foldr (.|.) 0 . map flagValue where
-	flagValue AllowReplacement = 0x1
-	flagValue ReplaceExisting  = 0x2
-	flagValue DoNotQueue       = 0x4
-
-requestName :: Client -> BusName -> [RequestNameFlag] -> IO RequestNameReply
-requestName client name flags = do
-	bus <- proxy client "org.freedesktop.DBus" "/org/freedesktop/DBus"
-	reply <- call bus "org.freedesktop.DBus" "RequestName"
-		[ toVariant name
-		, toVariant (encodeFlags flags)
-		]
-	case (listToMaybe reply >>= fromVariant :: Maybe Word32) of
-		Just 1 -> return PrimaryOwner
-		Just 2 -> return InQueue
-		Just 3 -> return Exists
-		Just 4 -> return AlreadyOwner
-		_ -> throwIO (clientError "Call failed: received invalid reply")
-			{ clientErrorFatal = False
-			}
-
-releaseName :: Client -> BusName -> IO ReleaseNameReply
-releaseName client name = do
-	bus <- proxy client "org.freedesktop.DBus" "/org/freedesktop/DBus"
-	reply <- call bus "org.freedesktop.DBus" "ReleaseName"
-		[ toVariant name
-		]
-	case (listToMaybe reply >>= fromVariant :: Maybe Word32) of
-		Just 1 -> return Released
-		Just 2 -> return NonExistent
-		Just 3 -> return NotOwner
-		_ -> throwIO (clientError "Call failed: received invalid reply")
-			{ clientErrorFatal = False
-			}
 
 -- | Used to automatically generate method signatures for introspection
 -- documents. To support automatic signatures, a method#8217;s parameters and

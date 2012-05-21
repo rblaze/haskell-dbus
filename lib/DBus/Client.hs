@@ -33,6 +33,13 @@ module DBus.Client
 	, clientErrorMessage
 	, clientErrorFatal
 	
+	-- * Name reservation
+	, RequestNameFlag(..)
+	, RequestNameReply(..)
+	, ReleaseNameReply(..)
+	, requestName
+	, releaseName
+	
 	-- * TODO: section docs
 	, disconnect
 	, call
@@ -60,15 +67,17 @@ import           Control.Concurrent
 import           Control.Exception (SomeException, throwIO)
 import qualified Control.Exception
 import           Control.Monad (forever, forM_)
+import           Data.Bits ((.|.))
 import           Data.IORef
 import           Data.List (foldl')
 import qualified Data.Map
 import           Data.Map (Map)
-import           Data.Maybe (catMaybes)
+import           Data.Maybe (catMaybes, listToMaybe)
+import qualified Data.Set
 import           Data.Text (Text)
 import qualified Data.Text
 import           Data.Typeable (Typeable)
-import qualified Data.Set
+import           Data.Word (Word32)
 
 import           DBus
 import qualified DBus.Constants
@@ -286,6 +295,72 @@ dispatch client = go where
 		case pending of
 			Just mvar -> putMVar mvar result
 			Nothing -> return ()
+
+data RequestNameFlag
+	= AllowReplacement
+	| ReplaceExisting
+	| DoNotQueue
+	deriving (Show)
+
+data RequestNameReply
+	= PrimaryOwner
+	| InQueue
+	| Exists
+	| AlreadyOwner
+	deriving (Show)
+
+data ReleaseNameReply
+	= Released
+	| NonExistent
+	| NotOwner
+	deriving (Show)
+
+encodeFlags :: [RequestNameFlag] -> Word32
+encodeFlags = foldr (.|.) 0 . map flagValue where
+	flagValue AllowReplacement = 0x1
+	flagValue ReplaceExisting  = 0x2
+	flagValue DoNotQueue       = 0x4
+
+-- | TODO
+requestName :: Client -> BusName -> [RequestNameFlag] -> IO RequestNameReply
+requestName client name flags = do
+	reply <- call_ client $ MethodCall
+		{ methodCallPath = "/org/freedesktop/DBus"
+		, methodCallInterface = Just "org.freedesktop.DBus"
+		, methodCallMember = "RequestName"
+		, methodCallSender = Nothing
+		, methodCallDestination = Just "org.freedesktop.DBus"
+		, methodCallFlags = Data.Set.empty
+		, methodCallBody = [toVariant name, toVariant (encodeFlags flags)]
+		}
+	case (listToMaybe (methodReturnBody reply) >>= fromVariant :: Maybe Word32) of
+		Just 1 -> return PrimaryOwner
+		Just 2 -> return InQueue
+		Just 3 -> return Exists
+		Just 4 -> return AlreadyOwner
+		_ -> throwIO (clientError "Call failed: received invalid reply")
+			{ clientErrorFatal = False
+			}
+
+-- | TODO
+releaseName :: Client -> BusName -> IO ReleaseNameReply
+releaseName client name = do
+	reply <- call_ client $ MethodCall
+		{ methodCallPath = "/org/freedesktop/DBus"
+		, methodCallInterface = Just "org.freedesktop.DBus"
+		, methodCallMember = "ReleaseName"
+		, methodCallSender = Nothing
+		, methodCallDestination = Just "org.freedesktop.DBus"
+		, methodCallFlags = Data.Set.empty
+		, methodCallBody = [toVariant name]
+		}
+	case (listToMaybe (methodReturnBody reply) >>= fromVariant :: Maybe Word32) of
+		Just 1 -> return Released
+		Just 2 -> return NonExistent
+		Just 3 -> return NotOwner
+		_ -> throwIO (clientError "Call failed: received invalid reply")
+			{ clientErrorFatal = False
+			}
 
 send_ :: Message msg => Client -> msg -> (Serial -> IO a) -> IO a
 send_ client msg io = do
