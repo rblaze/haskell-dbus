@@ -1,5 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE OverlappingInstances #-}
 
 -- Copyright (C) 2009-2012 John Millikin <jmillikin@gmail.com>
 --
@@ -58,9 +60,14 @@ module DBus.Client
 	-- * Exporting objects
 	, Method
 	, Reply(..)
+	, export
 	, throwError
 	, method
-	, export
+	
+	-- ** Automatic method signatures
+	, AutoSignature
+	, AutoReply
+	, autoMethod
 	) where
 
 import           Control.Concurrent
@@ -484,6 +491,21 @@ method iface name inSig outSig io = Method iface name inSig outSig
 		(\exc -> return (ReplyError errorFailed
 			[toVariant (Data.Text.pack (show (exc :: SomeException)))])))
 
+-- | Export the given functions under the given 'ObjectPath' and
+-- 'InterfaceName'. 
+--
+-- The functions may accept/return any types that are
+-- instances of 'IsValue'; see 'AutoSignature'.
+--
+-- @
+--sayHello :: Text -> IO Text
+--sayHello name = return ('Data.Text.concat' [\"Hello \", name, \"!\"])
+--
+--export client \"/hello_world\"
+--    [ 'method'
+--    , 'autoMethod' \"com.example.HelloWorld\" \"Hello\" sayHello
+--    ]
+-- @
 export :: Client -> ObjectPath -> [Method] -> IO ()
 export client path methods = atomicModifyIORef (clientObjects client) addObject where
 	addObject objs = (Data.Map.insert path info objs, ())
@@ -572,3 +594,92 @@ introspect path obj = DBus.Introspection.Object path interfaces [] where
 	introspectSignal _ = []
 	
 	introspectParam = DBus.Introspection.Parameter ""
+
+-- | Used to automatically generate method signatures for introspection
+-- documents. To support automatic signatures, a method's parameters and
+-- return value must all be instances of 'IsValue'.
+--
+-- This class maps Haskell idioms to D-Bus; it is therefore unable to
+-- generate some signatures. In particular, it does not support methods
+-- which accept/return a single structure, or single-element structures.
+-- It also cannot generate signatures for methods with parameters or return
+-- values which are only instances of 'IsVariant'. For these cases, please
+-- use 'DBus.Client.method'.
+--
+-- To match common Haskell use, if the return value is a tuple, it will be
+-- converted to a list of return values.
+class AutoSignature a where
+	funTypes :: a -> ([Type], [Type])
+
+instance AutoSignature (IO ()) where
+	funTypes _ = ([], [])
+
+instance IsValue a => AutoSignature (IO a) where
+	funTypes io = ([], case ioT io undefined of
+		(_, t) -> case t of
+			TypeStructure ts -> ts
+			_ -> [t])
+
+ioT :: IsValue a => IO a -> a -> (a, Type)
+ioT _ a = (a, typeOf a)
+
+instance (IsValue a, AutoSignature fun) => AutoSignature (a -> fun) where
+	funTypes fn = case valueT undefined of
+		(a, t) -> case funTypes (fn a) of
+			(ts, ts') -> (t : ts, ts')
+
+valueT :: IsValue a => a -> (a, Type)
+valueT a = (a, typeOf a)
+
+-- | Used to automatically generate a 'Reply' from a return value. See
+-- 'AutoSignature' for some caveats about supported signatures.
+--
+-- To match common Haskell use, if the return value is a tuple, it will be
+-- converted to a list of return values.
+class AutoReply fun where
+	apply :: fun -> [Variant] -> Maybe (IO [Variant])
+
+instance AutoReply (IO ()) where
+	apply io [] = Just (io >> return [])
+	apply _ _ = Nothing
+
+instance IsVariant a => AutoReply (IO a) where
+	apply io [] = Just (do
+		var <- fmap toVariant io
+		case fromVariant var of
+			Just struct -> return (structureItems struct)
+			Nothing -> return [var])
+	apply _ _ = Nothing
+
+instance (IsVariant a, AutoReply fun) => AutoReply (a -> fun) where
+	apply _ [] = Nothing
+	apply fn (v:vs) = case fromVariant v of
+		Just v' -> apply (fn v') vs
+		Nothing -> Nothing
+
+-- | Prepare a Haskell function for export. This automatically detects the
+-- function's type signature; see 'AutoSignature' and 'AutoReply'.
+--
+-- To manage the type signature and marshaling yourself, use
+-- 'DBus.Client.method' instead.
+autoMethod:: (AutoSignature fun, AutoReply fun) => InterfaceName -> MemberName -> fun -> Method
+autoMethod iface name fun = DBus.Client.method iface name inSig outSig io where
+	(typesIn, typesOut) = funTypes fun
+	inSig = case signature typesIn of
+		Just sig -> sig
+		Nothing -> invalid "input"
+	outSig = case signature typesOut of
+		Just sig -> sig
+		Nothing -> invalid "output"
+	io vs = case apply fun vs of
+		Nothing -> return (ReplyError errorInvalidParameters [])
+		Just io' -> fmap ReplyReturn io'
+	
+	invalid label = error (concat
+		[ "Method "
+		, Data.Text.unpack (interfaceNameText iface)
+		, "."
+		, Data.Text.unpack (memberNameText name)
+		, " has an invalid "
+		, label
+		, " signature."])

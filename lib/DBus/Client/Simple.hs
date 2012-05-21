@@ -1,6 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE OverlappingInstances #-}
 
 -- Copyright (C) 2009-2012 John Millikin <jmillikin@gmail.com>
 --
@@ -32,14 +30,6 @@ module DBus.Client.Simple
 	, proxy
 	, call
 	, DBus.Client.Simple.listen
-	
-	-- * Exporting objects
-	, Method
-	, AutoSignature
-	, AutoReply
-	, method
-	, export
-	, throwError
 	) where
 
 import           Control.Exception (throwIO)
@@ -49,7 +39,6 @@ import qualified Data.Set
 import           DBus
 import           DBus.Client hiding (call, method, emit, export)
 import qualified DBus.Client
-import           DBus.Constants (errorInvalidParameters)
 
 data Proxy = Proxy Client BusName ObjectPath
 
@@ -94,107 +83,3 @@ listen (Proxy client dest path) iface member = DBus.Client.listen client (MatchR
 	, matchPath = Just path
 	, matchDestination = Nothing
 	})
-
--- | Used to automatically generate method signatures for introspection
--- documents. To support automatic signatures, a method#8217;s parameters and
--- return value must all be instances of 'IsValue'.
---
--- This class maps Haskell idioms to D&#8208;Bus; it is therefore unable to
--- generate some signatures. In particular, it does not support methods
--- which accept/return a single structure, or single&#8208;element structures.
--- It also cannot generate signatures for methods with parameters or return
--- values which are only instances of 'IsVariant'. For these cases, please
--- use 'DBus.Client.method'.
---
--- To match common Haskell use, if the return value is a tuple, it will be
--- converted to a list of return values.
-class AutoSignature a where
-	funTypes :: a -> ([Type], [Type])
-
-instance AutoSignature (IO ()) where
-	funTypes _ = ([], [])
-
-instance IsValue a => AutoSignature (IO a) where
-	funTypes io = ([], case ioT io undefined of
-		(_, t) -> case t of
-			TypeStructure ts -> ts
-			_ -> [t])
-
-ioT :: IsValue a => IO a -> a -> (a, Type)
-ioT _ a = (a, typeOf a)
-
-instance (IsValue a, AutoSignature fun) => AutoSignature (a -> fun) where
-	funTypes fn = case valueT undefined of
-		(a, t) -> case funTypes (fn a) of
-			(ts, ts') -> (t : ts, ts')
-
-valueT :: IsValue a => a -> (a, Type)
-valueT a = (a, typeOf a)
-
--- | Used to automatically generate a 'Reply' from a return value. See
--- 'AutoSignature' for some caveats about supported signatures.
---
--- To match common Haskell use, if the return value is a tuple, it will be
--- converted to a list of return values.
-class AutoReply fun where
-	apply :: fun -> [Variant] -> Maybe (IO [Variant])
-
-instance AutoReply (IO ()) where
-	apply io [] = Just (io >> return [])
-	apply _ _ = Nothing
-
-instance IsVariant a => AutoReply (IO a) where
-	apply io [] = Just (do
-		var <- fmap toVariant io
-		case fromVariant var of
-			Just struct -> return (structureItems struct)
-			Nothing -> return [var])
-	apply _ _ = Nothing
-
-instance (IsVariant a, AutoReply fun) => AutoReply (a -> fun) where
-	apply _ [] = Nothing
-	apply fn (v:vs) = case fromVariant v of
-		Just v' -> apply (fn v') vs
-		Nothing -> Nothing
-
--- | Prepare a Haskell function for export. This automatically detects the
--- function#8217;s type signature; see 'AutoSignature' and 'AutoReply'.
---
--- To manage the type signature and marshaling yourself, use
--- 'DBus.Client.method' instead.
-method :: (AutoSignature fun, AutoReply fun) => InterfaceName -> MemberName -> fun -> Method
-method iface name fun = DBus.Client.method iface name inSig outSig io where
-	(typesIn, typesOut) = funTypes fun
-	inSig = case signature typesIn of
-		Just sig -> sig
-		Nothing -> invalid "input"
-	outSig = case signature typesOut of
-		Just sig -> sig
-		Nothing -> invalid "output"
-	io vs = case apply fun vs of
-		Nothing -> return (ReplyError errorInvalidParameters [])
-		Just io' -> fmap ReplyReturn io'
-	
-	invalid label = error (concat
-		[ "Method "
-		, Data.Text.unpack (interfaceNameText iface)
-		, "."
-		, Data.Text.unpack (memberNameText name)
-		, " has an invalid "
-		, label
-		, " signature."])
-
--- | Export the given functions under the given 'ObjectPath' and
--- 'InterfaceName'. The functions may accept/return any types that are
--- instances of 'IsValue'; see 'AutoSignature'.
---
--- @
---sayHello :: Text -> IO Text
---sayHello name = return ('Data.Text.concat' [\"Hello \", name, \"!\"])
---
---export client \"/hello_world\"
---    [ 'method' \"com.example.HelloWorld\" \"Hello\" sayHello
---    ]
--- @
-export :: Client -> ObjectPath -> [Method] -> IO ()
-export = DBus.Client.export
