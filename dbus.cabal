@@ -91,7 +91,6 @@ library
   exposed-modules:
     DBus
     DBus.Client
-    DBus.Client.Simple
     DBus.Constants
     DBus.Introspection
     DBus.Socket

@@ -40,7 +40,6 @@ import           DBusTests.Variant
 import           DBus ()
 import           DBus.Address ()
 import           DBus.Client ()
-import           DBus.Client.Simple ()
 import           DBus.Constants ()
 import           DBus.Introspection ()
 import           DBus.Message ()

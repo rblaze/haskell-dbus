@@ -23,41 +23,23 @@ module DBus.Client
 	-- * Clients
 	  Client
 	
-	-- * Connecting to a bus
-	, connect
-	, connectSystem
-	, connectSession
-	, connectStarter
-	
 	-- * Client errors
 	, ClientError
 	, clientError
 	, clientErrorMessage
 	, clientErrorFatal
 	
-	-- * Name reservation
-	, RequestNameFlag(..)
-	, RequestNameReply(..)
-	, ReleaseNameReply(..)
-	, requestName
-	, releaseName
-	
-	-- * TODO: section docs
+	-- * Connecting to a bus
+	, connect
+	, connectSystem
+	, connectSession
+	, connectStarter
 	, disconnect
+	
+	-- * Sending method calls
 	, call
-	, emit
 	
-	-- * Advanced connection options
-	, ClientOptions
-	, clientSocketOptions
-	, defaultClientOptions
-	, connectWith
-	
-	-- * Listening for signals
-	, MatchRule(..)
-	, listen
-	
-	-- * Exporting objects
+	-- * Receiving method calls
 	, Method
 	, Reply(..)
 	, export
@@ -68,6 +50,30 @@ module DBus.Client
 	, AutoSignature
 	, AutoReply
 	, autoMethod
+	
+	-- * Signals
+	, MatchRule(..)
+	, listen
+	, emit
+	
+	-- * Name reservation
+	, RequestNameFlag(..)
+	, RequestNameReply(..)
+	, ReleaseNameReply(..)
+	, requestName
+	, releaseName
+	
+	-- * Advanced connection options
+	, ClientOptions
+	, clientSocketOptions
+	, defaultClientOptions
+	, connectWith
+	
+	-- * Object proxies
+	, Proxy
+	, proxy
+	, proxyCall
+	, proxyListen
 	) where
 
 import           Control.Concurrent
@@ -683,3 +689,30 @@ autoMethod iface name fun = DBus.Client.method iface name inSig outSig io where
 		, " has an invalid "
 		, label
 		, " signature."])
+
+data Proxy = Proxy Client BusName ObjectPath
+
+proxy :: Client -> BusName -> ObjectPath -> IO Proxy
+proxy client dest path = return (Proxy client dest path)
+
+proxyCall :: Proxy -> InterfaceName -> MemberName -> [Variant] -> IO [Variant]
+proxyCall (Proxy client dest path) iface member body = do
+	reply <- call_ client $ MethodCall
+		{ methodCallPath = path
+		, methodCallMember = member
+		, methodCallInterface = Just iface
+		, methodCallSender = Nothing
+		, methodCallDestination = Just dest
+		, methodCallFlags = Data.Set.empty
+		, methodCallBody = body
+		}
+	return (methodReturnBody reply)
+
+proxyListen :: Proxy -> InterfaceName -> MemberName -> (BusName -> Signal -> IO ()) -> IO ()
+proxyListen (Proxy client dest path) iface member = DBus.Client.listen client (MatchRule
+	{ matchSender = Just dest
+	, matchInterface = Just iface
+	, matchMember = Just member
+	, matchPath = Just path
+	, matchDestination = Nothing
+	})
