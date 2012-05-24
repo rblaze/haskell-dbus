@@ -39,33 +39,29 @@ import           DBusTests.Util
 
 test_Transport :: Suite
 test_Transport = suite "Transport"
-	[ test_TransportOpen
-	, test_TransportListen
-	, test_TransportAccept
-	, test_TransportSendReceive
-	]
+	test_TransportOpen
+	test_TransportListen
+	test_TransportAccept
+	test_TransportSendReceive
 
 test_TransportOpen :: Suite
 test_TransportOpen = suite "transportOpen"
-	[ test_OpenUnknown
-	, test_OpenUnix
-	, test_OpenTcp
-	]
+	test_OpenUnknown
+	test_OpenUnix
+	test_OpenTcp
 
 test_TransportListen :: Suite
 test_TransportListen = suite "transportListen"
-	[ test_ListenUnknown
-	, test_ListenUnix
-	, test_ListenTcp
-	]
+	test_ListenUnknown
+	test_ListenUnix
+	test_ListenTcp
 
 test_TransportAccept :: Suite
 test_TransportAccept = suite "transportAccept"
-	[ test_AcceptSocket
-	, test_AcceptSocketClosed
-	]
+	test_AcceptSocket
+	test_AcceptSocketClosed
 
-test_OpenUnknown :: Suite
+test_OpenUnknown :: Test
 test_OpenUnknown = assertions "unknown" $ do
 	let addr = address_ "noexist" Map.empty
 	$assert $ throwsEq
@@ -76,14 +72,13 @@ test_OpenUnknown = assertions "unknown" $ do
 
 test_OpenUnix :: Suite
 test_OpenUnix = suite "unix"
-	[ test_OpenUnix_Path
-	, test_OpenUnix_Abstract
-	, test_OpenUnix_TooFew
-	, test_OpenUnix_TooMany
-	, test_OpenUnix_NotListening
-	]
+	test_OpenUnix_Path
+	test_OpenUnix_Abstract
+	test_OpenUnix_TooFew
+	test_OpenUnix_TooMany
+	test_OpenUnix_NotListening
 
-test_OpenUnix_Path :: Suite
+test_OpenUnix_Path :: Test
 test_OpenUnix_Path = assertions "path" $ do
 	(addr, networkSocket) <- listenRandomUnixPath
 	afterTest (N.sClose networkSocket)
@@ -91,7 +86,7 @@ test_OpenUnix_Path = assertions "path" $ do
 	t <- liftIO (transportOpen socketTransportOptions addr)
 	afterTest (transportClose t)
 
-test_OpenUnix_Abstract :: Suite
+test_OpenUnix_Abstract :: Test
 test_OpenUnix_Abstract = assertions "abstract" $ do
 	(addr, networkSocket) <- listenRandomUnixAbstract
 	afterTest (N.sClose networkSocket)
@@ -99,7 +94,7 @@ test_OpenUnix_Abstract = assertions "abstract" $ do
 	t <- liftIO (transportOpen socketTransportOptions addr)
 	afterTest (transportClose t)
 
-test_OpenUnix_TooFew :: Suite
+test_OpenUnix_TooFew :: Test
 test_OpenUnix_TooFew = assertions "too-few" $ do
 	let addr = address_ "unix" Map.empty
 	$assert $ throwsEq
@@ -108,7 +103,7 @@ test_OpenUnix_TooFew = assertions "too-few" $ do
 			})
 		(transportOpen socketTransportOptions addr)
 
-test_OpenUnix_TooMany :: Suite
+test_OpenUnix_TooMany :: Test
 test_OpenUnix_TooMany = assertions "too-many" $ do
 	let addr = address_ "unix" (Map.fromList
 		[ ("path", "foo")
@@ -120,7 +115,7 @@ test_OpenUnix_TooMany = assertions "too-many" $ do
 			})
 		(transportOpen socketTransportOptions addr)
 
-test_OpenUnix_NotListening :: Suite
+test_OpenUnix_NotListening :: Test
 test_OpenUnix_NotListening = assertions "not-listening" $ do
 	(addr, networkSocket) <- listenRandomUnixAbstract
 	liftIO (NS.sClose networkSocket)
@@ -132,16 +127,15 @@ test_OpenUnix_NotListening = assertions "not-listening" $ do
 
 test_OpenTcp :: Suite
 test_OpenTcp = suite "tcp"
-	[ test_OpenTcp_IPv4
-	, skipWhen noIPv6 test_OpenTcp_IPv6
-	, test_OpenTcp_Unknown
-	, test_OpenTcp_NoPort
-	, test_OpenTcp_InvalidPort
-	, test_OpenTcp_NoUsableAddresses
-	, test_OpenTcp_NotListening
-	]
+	test_OpenTcp_IPv4
+	(skipWhen noIPv6 test_OpenTcp_IPv6)
+	test_OpenTcp_Unknown
+	test_OpenTcp_NoPort
+	test_OpenTcp_InvalidPort
+	test_OpenTcp_NoUsableAddresses
+	test_OpenTcp_NotListening
 
-test_OpenTcp_IPv4 :: Suite
+test_OpenTcp_IPv4 :: Test
 test_OpenTcp_IPv4 = assertions "ipv4" $ do
 	(addr, networkSocket) <- listenRandomIPv4
 	afterTest (N.sClose networkSocket)
@@ -149,7 +143,7 @@ test_OpenTcp_IPv4 = assertions "ipv4" $ do
 	t <- liftIO (transportOpen socketTransportOptions addr)
 	afterTest (transportClose t)
 
-test_OpenTcp_IPv6 :: Suite
+test_OpenTcp_IPv6 :: Test
 test_OpenTcp_IPv6 = assertions "ipv6" $ do
 	(addr, networkSocket) <- listenRandomIPv6
 	afterTest (N.sClose networkSocket)
@@ -157,7 +151,7 @@ test_OpenTcp_IPv6 = assertions "ipv6" $ do
 	t <- liftIO (transportOpen socketTransportOptions addr)
 	afterTest (transportClose t)
 
-test_OpenTcp_Unknown :: Suite
+test_OpenTcp_Unknown :: Test
 test_OpenTcp_Unknown = assertions "unknown-family" $ do
 	let addr = address_ "tcp" (Map.fromList
 		[ ("family", "noexist")
@@ -169,7 +163,7 @@ test_OpenTcp_Unknown = assertions "unknown-family" $ do
 			})
 		(transportOpen socketTransportOptions addr)
 
-test_OpenTcp_NoPort :: Suite
+test_OpenTcp_NoPort :: Test
 test_OpenTcp_NoPort = assertions "no-port" $ do
 	let addr = address_ "tcp" (Map.fromList
 		[ ("family", "ipv4")
@@ -180,7 +174,7 @@ test_OpenTcp_NoPort = assertions "no-port" $ do
 			})
 		(transportOpen socketTransportOptions addr)
 
-test_OpenTcp_InvalidPort :: Suite
+test_OpenTcp_InvalidPort :: Test
 test_OpenTcp_InvalidPort = assertions "invalid-port" $ do
 	let addr = address_ "tcp" (Map.fromList
 		[ ("family", "ipv4")
@@ -192,7 +186,7 @@ test_OpenTcp_InvalidPort = assertions "invalid-port" $ do
 			})
 		(transportOpen socketTransportOptions addr)
 
-test_OpenTcp_NoUsableAddresses :: Suite
+test_OpenTcp_NoUsableAddresses :: Test
 test_OpenTcp_NoUsableAddresses = assertions "no-usable-addresses" $ do
 	let addr = address_ "tcp" (Map.fromList
 		[ ("family", "ipv4")
@@ -206,7 +200,7 @@ test_OpenTcp_NoUsableAddresses = assertions "no-usable-addresses" $ do
 			])
 		(transportOpen socketTransportOptions addr)
 
-test_OpenTcp_NotListening :: Suite
+test_OpenTcp_NotListening :: Test
 test_OpenTcp_NotListening = assertions "too-many" $ do
 	(addr, networkSocket) <- listenRandomIPv4
 	liftIO (NS.sClose networkSocket)
@@ -216,7 +210,7 @@ test_OpenTcp_NotListening = assertions "too-many" $ do
 			})
 		(transportOpen socketTransportOptions addr)
 
-test_TransportSendReceive :: Suite
+test_TransportSendReceive :: Test
 test_TransportSendReceive = assertions "send-receive" $ do
 	(addr, networkSocket) <- listenRandomIPv4
 	afterTest (N.sClose networkSocket)
@@ -240,7 +234,7 @@ test_TransportSendReceive = assertions "send-receive" $ do
 	$expect (equal bytes1 "te")
 	$expect (equal bytes2 "sting")
 
-test_ListenUnknown :: Suite
+test_ListenUnknown :: Test
 test_ListenUnknown = assertions "unknown" $ do
 	let addr = address_ "noexist" Map.empty
 	$assert $ throwsEq
@@ -251,14 +245,13 @@ test_ListenUnknown = assertions "unknown" $ do
 
 test_ListenUnix :: Suite
 test_ListenUnix = suite "unix"
-	[ test_ListenUnix_Path
-	, test_ListenUnix_Abstract
-	, test_ListenUnix_Tmpdir
-	, test_ListenUnix_TooFew
-	, test_ListenUnix_TooMany
-	]
+	test_ListenUnix_Path
+	test_ListenUnix_Abstract
+	test_ListenUnix_Tmpdir
+	test_ListenUnix_TooFew
+	test_ListenUnix_TooMany
 
-test_ListenUnix_Path :: Suite
+test_ListenUnix_Path :: Test
 test_ListenUnix_Path = assertions "path" $ do
 	path <- liftIO getTempPath
 	let addr = address_ "unix" (Map.fromList
@@ -273,7 +266,7 @@ test_ListenUnix_Path = assertions "path" $ do
 	$expect (sameItems (Map.keys addrParams) ["path", "guid"])
 	$expect (equal (Map.lookup "path" addrParams) (Just (Char8.pack path)))
 
-test_ListenUnix_Abstract :: Suite
+test_ListenUnix_Abstract :: Test
 test_ListenUnix_Abstract = assertions "abstract" $ do
 	path <- liftIO getTempPath
 	let addr = address_ "unix" (Map.fromList
@@ -287,7 +280,7 @@ test_ListenUnix_Abstract = assertions "abstract" $ do
 	$expect (sameItems (Map.keys addrParams) ["abstract", "guid"])
 	$expect (equal (Map.lookup "abstract" addrParams) (Just (Char8.pack path)))
 
-test_ListenUnix_Tmpdir :: Suite
+test_ListenUnix_Tmpdir :: Test
 test_ListenUnix_Tmpdir = assertions "tmpdir" $ do
 	tmpdir <- liftIO getTemporaryDirectory
 	let addr = address_ "unix" (Map.fromList
@@ -300,7 +293,7 @@ test_ListenUnix_Tmpdir = assertions "tmpdir" $ do
 	let addrKeys = Map.keys (addressParameters (transportListenerAddress l))
 	$expect ("path" `elem` addrKeys || "abstract" `elem` addrKeys)
 
-test_ListenUnix_TooFew :: Suite
+test_ListenUnix_TooFew :: Test
 test_ListenUnix_TooFew = assertions "too-few" $ do
 	let addr = address_ "unix" Map.empty
 	$assert $ throwsEq
@@ -309,7 +302,7 @@ test_ListenUnix_TooFew = assertions "too-few" $ do
 			})
 		(transportListen socketTransportOptions addr)
 
-test_ListenUnix_TooMany :: Suite
+test_ListenUnix_TooMany :: Test
 test_ListenUnix_TooMany = assertions "too-many" $ do
 	let addr = address_ "unix" (Map.fromList
 		[ ("path", "foo")
@@ -323,13 +316,12 @@ test_ListenUnix_TooMany = assertions "too-many" $ do
 
 test_ListenTcp :: Suite
 test_ListenTcp = suite "tcp"
-	[ test_ListenTcp_IPv4
-	, skipWhen noIPv6 test_ListenTcp_IPv6
-	, test_ListenTcp_Unknown
-	, test_ListenTcp_InvalidPort
-	]
+	test_ListenTcp_IPv4
+	(skipWhen noIPv6 test_ListenTcp_IPv6)
+	test_ListenTcp_Unknown
+	test_ListenTcp_InvalidPort
 
-test_ListenTcp_IPv4 :: Suite
+test_ListenTcp_IPv4 :: Test
 test_ListenTcp_IPv4 = assertions "ipv4" $ do
 	let addr = address_ "tcp" (Map.fromList
 		[ ("family", "ipv4")
@@ -341,7 +333,7 @@ test_ListenTcp_IPv4 = assertions "ipv4" $ do
 	$expect (equal (Map.lookup "family" params) (Just "ipv4"))
 	$expect ("port" `elem` Map.keys params)
 
-test_ListenTcp_IPv6 :: Suite
+test_ListenTcp_IPv6 :: Test
 test_ListenTcp_IPv6 = assertions "ipv6" $ do
 	let addr = address_ "tcp" (Map.fromList
 		[ ("family", "ipv6")
@@ -353,7 +345,7 @@ test_ListenTcp_IPv6 = assertions "ipv6" $ do
 	$expect (equal (Map.lookup "family" params) (Just "ipv6"))
 	$expect ("port" `elem` Map.keys params)
 
-test_ListenTcp_Unknown :: Suite
+test_ListenTcp_Unknown :: Test
 test_ListenTcp_Unknown = assertions "unknown-family" $ do
 	let addr = address_ "tcp" (Map.fromList
 		[ ("family", "noexist")
@@ -365,7 +357,7 @@ test_ListenTcp_Unknown = assertions "unknown-family" $ do
 			})
 		(transportListen socketTransportOptions addr)
 
-test_ListenTcp_InvalidPort :: Suite
+test_ListenTcp_InvalidPort :: Test
 test_ListenTcp_InvalidPort = assertions "invalid-port" $ do
 	let addr = address_ "tcp" (Map.fromList
 		[ ("family", "ipv4")
@@ -377,7 +369,7 @@ test_ListenTcp_InvalidPort = assertions "invalid-port" $ do
 			})
 		(transportListen socketTransportOptions addr)
 
-test_AcceptSocket :: Suite
+test_AcceptSocket :: Test
 test_AcceptSocket = assertions "socket" $ do
 	path <- liftIO getTempPath
 	let addr = address_ "unix" (Map.fromList
@@ -402,7 +394,7 @@ test_AcceptSocket = assertions "socket" $ do
 	$expect (equal bytes1 "te")
 	$expect (equal bytes2 "sting")
 
-test_AcceptSocketClosed :: Suite
+test_AcceptSocketClosed :: Test
 test_AcceptSocketClosed = assertions "socket-closed" $ do
 	path <- liftIO getTempPath
 	let addr = address_ "unix" (Map.fromList

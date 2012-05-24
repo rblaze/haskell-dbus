@@ -32,19 +32,18 @@ import           DBusTests.Util
 
 test_ErrorName :: Suite
 test_ErrorName = suite "ErrorName"
-	[ test_Parse
-	, test_ParseInvalid
-	, test_IsVariant
-	]
+	test_Parse
+	test_ParseInvalid
+	test_IsVariant
 
-test_Parse :: Suite
+test_Parse :: Test
 test_Parse = property "parse" prop where
 	prop = forAll gen_ErrorName check
 	check x = case errorName x of
 		Nothing -> False
 		Just parsed -> errorNameText parsed == x
 
-test_ParseInvalid :: Suite
+test_ParseInvalid :: Test
 test_ParseInvalid = assertions "parse-invalid" $ do
 	-- empty
 	$expect (nothing (errorName ""))
@@ -63,7 +62,7 @@ test_ParseInvalid = assertions "parse-invalid" $ do
 	$expect (just (errorName ("f." `T.append` T.replicate 253 "y")))
 	$expect (nothing (errorName ("f." `T.append` T.replicate 254 "y")))
 
-test_IsVariant :: Suite
+test_IsVariant :: Test
 test_IsVariant = assertions "IsVariant" $ do
 	assertVariant TypeString (errorName_ "foo.bar")
 

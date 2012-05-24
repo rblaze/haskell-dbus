@@ -30,18 +30,17 @@ import           DBus
 
 test_ObjectPath :: Suite
 test_ObjectPath = suite "ObjectPath"
-	[ test_Parse
-	, test_ParseInvalid
-	]
+	test_Parse
+	test_ParseInvalid
 
-test_Parse :: Suite
+test_Parse :: Test
 test_Parse = property "parse" prop where
 	prop = forAll gen_ObjectPath check
 	check x = case objectPath x of
 		Nothing -> False
 		Just parsed -> objectPathText parsed == x
 
-test_ParseInvalid :: Suite
+test_ParseInvalid :: Test
 test_ParseInvalid = assertions "parse-invalid" $ do
 	-- empty
 	$expect (nothing (objectPath ""))

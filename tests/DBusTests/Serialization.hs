@@ -44,13 +44,12 @@ import           DBusTests.Util (smallListOf)
 
 test_Serialization :: Suite
 test_Serialization = suite "Serialization"
-	[ test_MethodCall
-	, test_MethodReturn
-	, test_MethodError
-	, test_Signal
-	]
+	test_MethodCall
+	test_MethodReturn
+	test_MethodError
+	test_Signal
 
-test_MethodCall :: Suite
+test_MethodCall :: Test
 test_MethodCall = property "MethodCall" prop where
 	prop = forAll gen_MethodCall check
 	check msg endianness serial = let
@@ -58,7 +57,7 @@ test_MethodCall = property "MethodCall" prop where
 		Right received = unmarshalMessage bytes
 		in ReceivedMethodCall serial msg == received
 
-test_MethodReturn :: Suite
+test_MethodReturn :: Test
 test_MethodReturn = property "MethodReturn" prop where
 	prop = forAll gen_MethodReturn check
 	check msg endianness serial = let
@@ -66,7 +65,7 @@ test_MethodReturn = property "MethodReturn" prop where
 		Right received = unmarshalMessage bytes
 		in ReceivedMethodReturn serial msg == received
 
-test_MethodError :: Suite
+test_MethodError :: Test
 test_MethodError = property "MethodError" prop where
 	prop = forAll gen_MethodError check
 	check msg endianness serial = let
@@ -74,7 +73,7 @@ test_MethodError = property "MethodError" prop where
 		Right received = unmarshalMessage bytes
 		in ReceivedMethodError serial msg == received
 
-test_Signal :: Suite
+test_Signal :: Test
 test_Signal = property "Signal" prop where
 	prop = forAll gen_Signal check
 	check msg endianness serial = let

@@ -33,12 +33,11 @@ import           DBusTests.Util (forkVar)
 
 test_Socket :: Suite
 test_Socket = suite "Socket"
-	[ test_Listen
-	, test_ListenWith_CustomAuth
-	, test_SendReceive
-	]
+	test_Listen
+	test_ListenWith_CustomAuth
+	test_SendReceive
 
-test_Listen :: Suite
+test_Listen :: Test
 test_Listen = assertions "listen" $ do
 	uuid <- liftIO randomUUID
 	let Just addr = address "unix" (Map.fromList
@@ -58,7 +57,7 @@ test_Listen = assertions "listen" $ do
 	let Right sock = accepted
 	afterTest (close sock)
 
-test_ListenWith_CustomAuth :: Suite
+test_ListenWith_CustomAuth :: Test
 test_ListenWith_CustomAuth = assertions "listenWith-custom-auth" $ do
 	uuid <- liftIO randomUUID
 	let Just addr = address "unix" (Map.fromList
@@ -83,7 +82,7 @@ test_ListenWith_CustomAuth = assertions "listenWith-custom-auth" $ do
 	afterTest (close sock)
 	return ()
 
-test_SendReceive :: Suite
+test_SendReceive :: Test
 test_SendReceive = assertions "send-receive" $ do
 	uuid <- liftIO randomUUID
 	let Just addr = address "unix" (Map.fromList

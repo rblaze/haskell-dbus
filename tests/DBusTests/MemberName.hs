@@ -31,19 +31,18 @@ import           DBusTests.Util
 
 test_MemberName :: Suite
 test_MemberName = suite "MemberName"
-	[ test_Parse
-	, test_ParseInvalid
-	, test_IsVariant
-	]
+	test_Parse
+	test_ParseInvalid
+	test_IsVariant
 
-test_Parse :: Suite
+test_Parse :: Test
 test_Parse = property "parse" prop where
 	prop = forAll gen_MemberName check
 	check x = case memberName x of
 		Nothing -> False
 		Just parsed -> memberNameText parsed == x
 
-test_ParseInvalid :: Suite
+test_ParseInvalid :: Test
 test_ParseInvalid = assertions "parse-invalid" $ do
 	-- empty
 	$expect (nothing (memberName ""))
@@ -59,7 +58,7 @@ test_ParseInvalid = assertions "parse-invalid" $ do
 	$expect (just (memberName (T.replicate 255 "y")))
 	$expect (nothing (memberName (T.replicate 256 "y")))
 
-test_IsVariant :: Suite
+test_IsVariant :: Test
 test_IsVariant = assertions "IsVariant" $ do
 	assertVariant TypeString (memberName_ "foo")
 

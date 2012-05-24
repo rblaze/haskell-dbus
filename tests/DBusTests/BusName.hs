@@ -32,19 +32,18 @@ import           DBusTests.Util
 
 test_BusName :: Suite
 test_BusName = suite "BusName"
-	[ test_Parse
-	, test_ParseInvalid
-	, test_IsVariant
-	]
+	test_Parse
+	test_ParseInvalid
+	test_IsVariant
 
-test_Parse :: Suite
+test_Parse :: Test
 test_Parse = property "parse" prop where
 	prop = forAll gen_BusName check
 	check x = case busName x of
 		Nothing -> False
 		Just parsed -> busNameText parsed == x
 
-test_ParseInvalid :: Suite
+test_ParseInvalid :: Test
 test_ParseInvalid = assertions "parse-invalid" $ do
 	-- empty
 	$expect (nothing (busName ""))
@@ -66,7 +65,7 @@ test_ParseInvalid = assertions "parse-invalid" $ do
 	$expect (just (busName (":0." `T.append` T.replicate 252 "y")))
 	$expect (nothing (busName (":0." `T.append` T.replicate 253 "y")))
 
-test_IsVariant :: Suite
+test_IsVariant :: Test
 test_IsVariant = assertions "IsVariant" $ do
 	assertVariant TypeString (busName_ "foo.bar")
 

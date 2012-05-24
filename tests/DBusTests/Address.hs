@@ -36,18 +36,17 @@ import           DBusTests.Util (smallListOf, smallListOf1, withEnv)
 
 test_Address :: Suite
 test_Address = suite "Address"
-	[ test_BuildAddress
-	, test_ParseAddress
-	, test_ParseAddresses
-	, test_ParseInvalid
-	, test_FormatAddress
-	, test_FormatAddresses
-	, test_GetSystemAddress
-	, test_GetSessionAddress
-	, test_GetStarterAddress
-	]
+	test_BuildAddress
+	test_ParseAddress
+	test_ParseAddresses
+	test_ParseInvalid
+	test_FormatAddress
+	test_FormatAddresses
+	test_GetSystemAddress
+	test_GetSessionAddress
+	test_GetStarterAddress
 
-test_BuildAddress :: Suite
+test_BuildAddress :: Test
 test_BuildAddress = property "address" prop where
 	prop = forAll gen_Address check
 	check (method, params) = case address method params of
@@ -57,7 +56,7 @@ test_BuildAddress = property "address" prop where
 			, addressParameters addr == params
 			]
 
-test_ParseAddress :: Suite
+test_ParseAddress :: Test
 test_ParseAddress = property "parseAddress" prop where
 	prop = forAll gen_AddressBytes check
 	check (bytes, method, params) = case parseAddress bytes of
@@ -67,7 +66,7 @@ test_ParseAddress = property "parseAddress" prop where
 			, addressParameters addr == params
 			]
 
-test_ParseAddresses :: Suite
+test_ParseAddresses :: Test
 test_ParseAddresses = property "parseAddresses" prop where
 	prop = forAll gen_AddressesBytes checkMany
 	checkMany (bytes, expectedAddrs) = case parseAddresses bytes of
@@ -81,7 +80,7 @@ test_ParseAddresses = property "parseAddresses" prop where
 		, addressParameters addr == params
 		]
 
-test_ParseInvalid :: Suite
+test_ParseInvalid :: Test
 test_ParseInvalid = assertions "parse-invalid" $ do
 	-- empty
 	$expect (nothing (address "" Data.Map.empty))
@@ -105,7 +104,7 @@ test_ParseInvalid = assertions "parse-invalid" $ do
 	$expect (nothing (address "" (Data.Map.fromList [("b", "")])))
 	$expect (nothing (parseAddress "a:b="))
 
-test_FormatAddress :: Suite
+test_FormatAddress :: Test
 test_FormatAddress = property "formatAddress" prop where
 	prop = forAll gen_Address check where
 	check (method, params) = let
@@ -118,7 +117,7 @@ test_FormatAddress = property "formatAddress" prop where
 			, shown == "Address " ++ show bytes
 			]
 
-test_FormatAddresses :: Suite
+test_FormatAddresses :: Test
 test_FormatAddresses = property "formatAddresses" prop where
 	prop = forAll (smallListOf1 gen_Address) check where
 	check pairs = let
@@ -130,7 +129,7 @@ test_FormatAddresses = property "formatAddresses" prop where
 		parsed = parseAddresses bytes
 		in parsed == Just addrs
 
-test_GetSystemAddress :: Suite
+test_GetSystemAddress :: Test
 test_GetSystemAddress = assertions "getSystemAddress" $ do
 	do
 		addr <- withEnv "DBUS_SYSTEM_BUS_ADDRESS" Nothing getSystemAddress
@@ -141,13 +140,13 @@ test_GetSystemAddress = assertions "getSystemAddress" $ do
 		$expect (just addr)
 		$assert (equal addr (address "a" (Data.Map.fromList [("b", "c")])))
 
-test_GetSessionAddress :: Suite
+test_GetSessionAddress :: Test
 test_GetSessionAddress = assertions "getSessionAddress" $ do
 	addr <- withEnv "DBUS_SESSION_BUS_ADDRESS" (Just "a:b=c") getSessionAddress
 	$expect (just addr)
 	$assert (equal addr (address "a" (Data.Map.fromList [("b", "c")])))
 
-test_GetStarterAddress :: Suite
+test_GetStarterAddress :: Test
 test_GetStarterAddress = assertions "getStarterAddress" $ do
 	addr <- withEnv "DBUS_STARTER_ADDRESS" (Just "a:b=c") getStarterAddress
 	$expect (just addr)

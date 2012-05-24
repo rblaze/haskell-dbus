@@ -24,7 +24,6 @@ import           Control.Exception (finally)
 import           Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString as ByteString
 import qualified Data.Set
-import qualified Data.Text as T
 import           System.Exit
 import           System.Process
 
@@ -36,11 +35,10 @@ import           Paths_haskell_dbus_tests (getDataFileName)
 
 test_Integration :: Suite
 test_Integration = suite "integration"
-	[ test_Socket
-	, test_Client
-	]
+	test_Socket
+	test_Client
 
-test_Socket :: Suite
+test_Socket :: Test
 test_Socket = withDaemon "socket" $ \addr -> do
 	let hello = MethodCall
 		{ methodCallPath = "/org/freedesktop/DBus"
@@ -63,7 +61,7 @@ test_Socket = withDaemon "socket" $ \addr -> do
 	
 	liftIO (close sock)
 
-test_Client :: Suite
+test_Client :: Test
 test_Client = withDaemon "client" $ \addr -> do
 	Right clientA <- liftIO (connect addr)
 	Right clientB <- liftIO (connect addr)
@@ -111,8 +109,8 @@ test_Client = withDaemon "client" $ \addr -> do
 	liftIO (disconnect clientA)
 	liftIO (disconnect clientB)
 
-withDaemon :: T.Text -> (Address -> Assertions ()) -> Suite
-withDaemon name io = test $ Test name $ \opts -> do
+withDaemon :: String -> (Address -> Assertions ()) -> Test
+withDaemon name io = test name $ \opts -> do
 	(versionExit, _, _) <- readProcessWithExitCode "dbus-daemon" ["--version"] ""
 	case versionExit of
 		ExitFailure _ -> return TestSkipped
@@ -127,10 +125,8 @@ withDaemon name io = test $ Test name $ \opts -> do
 				(do
 					addrString <- ByteString.hGetLine daemonStdout
 					case parseAddress addrString of
-						Nothing -> return (TestAborted [] (T.pack ("dbus-daemon returned invalid address: " ++ show addrString)))
-						Just addr -> case suiteTests (assertions name (io addr)) of
-							[t] -> runTest t opts
-							_ -> return (TestAborted [] (T.pack ("withDaemon: only one test expected" ++ show addrString))))
+						Nothing -> return (TestAborted [] ("dbus-daemon returned invalid address: " ++ show addrString))
+						Just addr -> runTest (assertions name (io addr)) opts)
 				(do
 					terminateProcess daemonProc
 					_ <- waitForProcess daemonProc

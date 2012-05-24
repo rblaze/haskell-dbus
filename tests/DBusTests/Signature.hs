@@ -32,29 +32,28 @@ import           DBusTests.Util
 
 test_Signature :: Suite
 test_Signature = suite "Signature"
-	[ test_BuildSignature
-	, test_ParseSignature
-	, test_ParseInvalid
-	, test_FormatSignature
-	, test_IsAtom
-	, test_ShowType
-	]
+	test_BuildSignature
+	test_ParseSignature
+	test_ParseInvalid
+	test_FormatSignature
+	test_IsAtom
+	test_ShowType
 
-test_BuildSignature :: Suite
+test_BuildSignature :: Test
 test_BuildSignature = property "signature" prop where
 	prop = forAll gen_SignatureTypes check
 	check types = case signature types of
 		Nothing -> False
 		Just sig -> signatureTypes sig == types
 
-test_ParseSignature :: Suite
+test_ParseSignature :: Test
 test_ParseSignature = property "parseSignature" prop where
 	prop = forAll gen_SignatureBytes check
 	check (bytes, types) = case parseSignature bytes of
 		Nothing -> False
 		Just sig -> signatureTypes sig == types
 
-test_ParseInvalid :: Suite
+test_ParseInvalid :: Test
 test_ParseInvalid = assertions "parse-invalid" $ do
 	-- struct code
 	$expect (nothing (parseSignature "r"))
@@ -80,19 +79,19 @@ test_ParseInvalid = assertions "parse-invalid" $ do
 	$expect (just (signature (replicate 255 TypeWord8)))
 	$expect (nothing (signature (replicate 256 TypeWord8)))
 
-test_FormatSignature :: Suite
+test_FormatSignature :: Test
 test_FormatSignature = property "formatSignature" prop where
 	prop = forAll gen_SignatureBytes check
 	check (bytes, _) = let
 		Just sig = parseSignature bytes
 		in T.unpack (signatureText sig) == Char8.unpack bytes
 
-test_IsAtom :: Suite
+test_IsAtom :: Test
 test_IsAtom = assertions "IsAtom" $ do
 	let Just sig = signature []
 	assertAtom TypeSignature sig
 
-test_ShowType :: Suite
+test_ShowType :: Test
 test_ShowType = assertions "show-type" $ do
 	$expect (equal "Bool" (show TypeBoolean))
 	$expect (equal "Bool" (show TypeBoolean))

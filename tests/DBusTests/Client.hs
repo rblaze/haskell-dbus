@@ -25,8 +25,6 @@ import qualified Data.Map as Map
 
 import           Test.Chell
 
-import           Data.Text (Text)
-
 import           DBus
 import qualified DBus.Client
 import qualified DBus.Socket
@@ -35,12 +33,11 @@ import           DBusTests.Util (forkVar, withEnv)
 
 test_Client :: Suite
 test_Client = suite "Client"
-	[ test_ConnectSystem
-	, test_ConnectSession
-	, test_ConnectStarter
-	]
+	test_ConnectSystem
+	test_ConnectSession
+	test_ConnectStarter
 
-test_Connect :: Text -> (Address -> IO DBus.Client.Client) -> Suite
+test_Connect :: String -> (Address -> IO DBus.Client.Client) -> Test
 test_Connect name connect = assertions name $ do
 	(addr, sockVar) <- startDummyBus
 	clientVar <- forkVar (connect addr)
@@ -65,21 +62,21 @@ test_Connect name connect = assertions name $ do
 	client <- liftIO (readMVar clientVar)
 	liftIO (DBus.Client.disconnect client)
 
-test_ConnectSystem :: Suite
+test_ConnectSystem :: Test
 test_ConnectSystem = test_Connect "connectSystem" $ \addr -> do
 	let addrEnv = Char8.unpack (formatAddress addr)
 	withEnv "DBUS_SYSTEM_BUS_ADDRESS"
 		(Just addrEnv)
 		DBus.Client.connectSystem
 
-test_ConnectSession :: Suite
+test_ConnectSession :: Test
 test_ConnectSession = test_Connect "connectSession" $ \addr -> do
 	let addrEnv = Char8.unpack (formatAddress addr)
 	withEnv "DBUS_SESSION_BUS_ADDRESS"
 		(Just addrEnv)
 		DBus.Client.connectSession
 
-test_ConnectStarter :: Suite
+test_ConnectStarter :: Test
 test_ConnectStarter = test_Connect "connectStarter" $ \addr -> do
 	let addrEnv = Char8.unpack (formatAddress addr)
 	withEnv "DBUS_STARTER_ADDRESS"

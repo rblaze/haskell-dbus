@@ -37,10 +37,9 @@ import           DBusTests.Util (halfSized)
 
 test_Introspection :: Suite
 test_Introspection = suite "Introspection"
-	[ test_XmlPassthrough
-	]
+	test_XmlPassthrough
 
-test_XmlPassthrough :: Suite
+test_XmlPassthrough :: Test
 test_XmlPassthrough = property "xml-passthrough" $ \obj -> let
 	(Introspection.Object path _ _) = obj
 	Just xml = Introspection.toXML obj

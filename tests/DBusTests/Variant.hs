@@ -39,13 +39,12 @@ import           DBusTests.Util
 
 test_Variant :: Suite
 test_Variant = suite "Variant"
-	[ test_IsAtom
-	, test_IsValue
-	, test_Show
-	, test_ByteStorage
-	]
+	test_IsAtom
+	test_IsValue
+	test_Show
+	test_ByteStorage
 
-test_IsAtom :: Suite
+test_IsAtom :: Test
 test_IsAtom = assertions "IsAtom" $ do
 	assertAtom TypeBoolean True
 	assertAtom TypeWord8 (0 :: Word8)
@@ -62,7 +61,7 @@ test_IsAtom = assertions "IsAtom" $ do
 	assertAtom TypeObjectPath (objectPath_ "/")
 	assertAtom TypeSignature (signature_ [])
 
-test_IsValue :: Suite
+test_IsValue :: Test
 test_IsValue = assertions "IsValue" $ do
 	assertValue TypeVariant (toVariant True)
 	assertValue (TypeArray TypeBoolean) [True]
@@ -85,7 +84,7 @@ test_IsValue = assertions "IsValue" $ do
 	assertValue (TypeStructure (replicate 14 TypeBoolean)) (True, True, True, True, True, True, True, True, True, True, True, True, True, True)
 	assertValue (TypeStructure (replicate 15 TypeBoolean)) (True, True, True, True, True, True, True, True, True, True, True, True, True, True, True)
 
-test_Show :: Suite
+test_Show :: Test
 test_Show = assertions "show" $ do
 	$expect $ equal "Variant True" (show (toVariant True))
 	$expect $ equal "Variant 0" (show (toVariant (0 :: Word8)))
@@ -109,7 +108,7 @@ test_Show = assertions "show" $ do
 	$expect $ equal "(Variant {False: True, True: False})" (showsPrec 11 (toVariant (Data.Map.fromList [(True, False), (False, True)])) "")
 	$expect $ equal "(Variant (True, False))" (showsPrec 11 (toVariant (True, False)) "")
 
-test_ByteStorage :: Suite
+test_ByteStorage :: Test
 test_ByteStorage = assertions "byte-storage" $ do
 	-- Vector Word8 -> Vector Word8
 	$assert $ equal

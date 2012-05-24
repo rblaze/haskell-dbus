@@ -32,19 +32,18 @@ import           DBusTests.Util
 
 test_InterfaceName :: Suite
 test_InterfaceName = suite "InterfaceName"
-	[ test_Parse
-	, test_ParseInvalid
-	, test_IsVariant
-	]
+	test_Parse
+	test_ParseInvalid
+	test_IsVariant
 
-test_Parse :: Suite
+test_Parse :: Test
 test_Parse = property "parse" prop where
 	prop = forAll gen_InterfaceName check
 	check x = case interfaceName x of
 		Nothing -> False
 		Just parsed -> interfaceNameText parsed == x
 
-test_ParseInvalid :: Suite
+test_ParseInvalid :: Test
 test_ParseInvalid = assertions "parse-invalid" $ do
 	-- empty
 	$expect (nothing (interfaceName ""))
@@ -63,7 +62,7 @@ test_ParseInvalid = assertions "parse-invalid" $ do
 	$expect (just (interfaceName ("f." `T.append` T.replicate 253 "y")))
 	$expect (nothing (interfaceName ("f." `T.append` T.replicate 254 "y")))
 
-test_IsVariant :: Suite
+test_IsVariant :: Test
 test_IsVariant = assertions "IsVariant" $ do
 	assertVariant TypeString (interfaceName_ "foo.bar")
 
