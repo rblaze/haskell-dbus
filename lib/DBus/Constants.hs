@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 -- Copyright (C) 2009-2012 John Millikin <jmillikin@gmail.com>
 --
 -- This program is free software: you can redistribute it and/or modify
@@ -17,151 +15,151 @@
 
 module DBus.Constants where
 
-import           DBus.Types
+import           DBus
 
 dbusName :: BusName
-dbusName = "org.freedesktop.DBus"
+dbusName = busName_ "org.freedesktop.DBus"
 
 dbusPath :: ObjectPath
-dbusPath = "/org/freedesktop/DBus"
+dbusPath = objectPath_ "/org/freedesktop/DBus"
 
 dbusInterface :: InterfaceName
-dbusInterface = "org.freedesktop.DBus"
+dbusInterface = interfaceName_ "org.freedesktop.DBus"
 
 interfaceIntrospectable :: InterfaceName
-interfaceIntrospectable = "org.freedesktop.DBus.Introspectable"
+interfaceIntrospectable = interfaceName_ "org.freedesktop.DBus.Introspectable"
 
 interfacePeer :: InterfaceName
-interfacePeer = "org.freedesktop.DBus.Peer"
+interfacePeer = interfaceName_ "org.freedesktop.DBus.Peer"
 
 interfaceProperties :: InterfaceName
-interfaceProperties = "org.freedesktop.DBus.Properties"
+interfaceProperties = interfaceName_ "org.freedesktop.DBus.Properties"
 
 errorAccessDenied :: ErrorName
-errorAccessDenied = "org.freedesktop.DBus.Error.AccessDenied"
+errorAccessDenied = errorName_ "org.freedesktop.DBus.Error.AccessDenied"
 
 errorAuthFailed :: ErrorName
-errorAuthFailed = "org.freedesktop.DBus.Error.AuthFailed"
+errorAuthFailed = errorName_ "org.freedesktop.DBus.Error.AuthFailed"
 
 errorDisconnected :: ErrorName
-errorDisconnected = "org.freedesktop.DBus.Error.Disconnected"
+errorDisconnected = errorName_ "org.freedesktop.DBus.Error.Disconnected"
 
 errorFailed :: ErrorName
-errorFailed = "org.freedesktop.DBus.Error.Failed"
+errorFailed = errorName_ "org.freedesktop.DBus.Error.Failed"
 
 errorNoReply :: ErrorName
-errorNoReply = "org.freedesktop.DBus.Error.NoReply"
+errorNoReply = errorName_ "org.freedesktop.DBus.Error.NoReply"
 
 errorNoServer :: ErrorName
-errorNoServer = "org.freedesktop.DBus.Error.NoServer"
+errorNoServer = errorName_ "org.freedesktop.DBus.Error.NoServer"
 
 errorTimedOut :: ErrorName
-errorTimedOut = "org.freedesktop.DBus.Error.TimedOut"
+errorTimedOut = errorName_ "org.freedesktop.DBus.Error.TimedOut"
 
 errorTimeout :: ErrorName
-errorTimeout = "org.freedesktop.DBus.Error.Timeout"
+errorTimeout = errorName_ "org.freedesktop.DBus.Error.Timeout"
 
 errorServiceUnknown :: ErrorName
-errorServiceUnknown = "org.freedesktop.DBus.Error.ServiceUnknown"
+errorServiceUnknown = errorName_ "org.freedesktop.DBus.Error.ServiceUnknown"
 
 errorUnknownObject :: ErrorName
-errorUnknownObject = "org.freedesktop.DBus.Error.UnknownObject"
+errorUnknownObject = errorName_ "org.freedesktop.DBus.Error.UnknownObject"
 
 errorUnknownInterface :: ErrorName
-errorUnknownInterface = "org.freedesktop.DBus.Error.UnknownInterface"
+errorUnknownInterface = errorName_ "org.freedesktop.DBus.Error.UnknownInterface"
 
 errorUnknownMethod :: ErrorName
-errorUnknownMethod = "org.freedesktop.DBus.Error.UnknownMethod"
+errorUnknownMethod = errorName_ "org.freedesktop.DBus.Error.UnknownMethod"
 
 errorInvalidParameters :: ErrorName
-errorInvalidParameters = "org.freedesktop.DBus.Error.InvalidParameters"
+errorInvalidParameters = errorName_ "org.freedesktop.DBus.Error.InvalidParameters"
 
 errorSpawnChildExited :: ErrorName
-errorSpawnChildExited = "org.freedesktop.DBus.Error.Spawn.ChildExited"
+errorSpawnChildExited = errorName_ "org.freedesktop.DBus.Error.Spawn.ChildExited"
 
 errorSpawnChildSignaled :: ErrorName
-errorSpawnChildSignaled = "org.freedesktop.DBus.Error.Spawn.ChildSignaled"
+errorSpawnChildSignaled = errorName_ "org.freedesktop.DBus.Error.Spawn.ChildSignaled"
 
 errorSpawnConfigInvalid :: ErrorName
-errorSpawnConfigInvalid = "org.freedesktop.DBus.Error.Spawn.ConfigInvalid"
+errorSpawnConfigInvalid = errorName_ "org.freedesktop.DBus.Error.Spawn.ConfigInvalid"
 
 errorSpawnExecFailed :: ErrorName
-errorSpawnExecFailed = "org.freedesktop.DBus.Error.Spawn.ExecFailed"
+errorSpawnExecFailed = errorName_ "org.freedesktop.DBus.Error.Spawn.ExecFailed"
 
 errorSpawnForkFailed :: ErrorName
-errorSpawnForkFailed = "org.freedesktop.DBus.Error.Spawn.ForkFailed"
+errorSpawnForkFailed = errorName_ "org.freedesktop.DBus.Error.Spawn.ForkFailed"
 
 errorSpawnFailed :: ErrorName
-errorSpawnFailed = "org.freedesktop.DBus.Error.Spawn.Failed"
+errorSpawnFailed = errorName_ "org.freedesktop.DBus.Error.Spawn.Failed"
 
 errorSpawnFailedToSetup :: ErrorName
-errorSpawnFailedToSetup = "org.freedesktop.DBus.Error.Spawn.FailedToSetup"
+errorSpawnFailedToSetup = errorName_ "org.freedesktop.DBus.Error.Spawn.FailedToSetup"
 
 errorSpawnFileInvalid :: ErrorName
-errorSpawnFileInvalid = "org.freedesktop.DBus.Error.Spawn.FileInvalid"
+errorSpawnFileInvalid = errorName_ "org.freedesktop.DBus.Error.Spawn.FileInvalid"
 
 errorSpawnNoMemory :: ErrorName
-errorSpawnNoMemory = "org.freedesktop.DBus.Error.Spawn.NoMemory"
+errorSpawnNoMemory = errorName_ "org.freedesktop.DBus.Error.Spawn.NoMemory"
 
 errorSpawnPermissionsInvalid :: ErrorName
-errorSpawnPermissionsInvalid = "org.freedesktop.DBus.Error.Spawn.PermissionsInvalid"
+errorSpawnPermissionsInvalid = errorName_ "org.freedesktop.DBus.Error.Spawn.PermissionsInvalid"
 
 errorSpawnServiceNotFound :: ErrorName
-errorSpawnServiceNotFound = "org.freedesktop.DBus.Error.Spawn.ServiceNotFound"
+errorSpawnServiceNotFound = errorName_ "org.freedesktop.DBus.Error.Spawn.ServiceNotFound"
 
 errorSpawnServiceNotValid :: ErrorName
-errorSpawnServiceNotValid = "org.freedesktop.DBus.Error.Spawn.ServiceNotValid"
+errorSpawnServiceNotValid = errorName_ "org.freedesktop.DBus.Error.Spawn.ServiceNotValid"
 
 errorAddressInUse :: ErrorName
-errorAddressInUse = "org.freedesktop.DBus.Error.AddressInUse"
+errorAddressInUse = errorName_ "org.freedesktop.DBus.Error.AddressInUse"
 
 errorAdtAuditDataUnknown :: ErrorName
-errorAdtAuditDataUnknown = "org.freedesktop.DBus.Error.AdtAuditDataUnknown"
+errorAdtAuditDataUnknown = errorName_ "org.freedesktop.DBus.Error.AdtAuditDataUnknown"
 
 errorBadAddress :: ErrorName
-errorBadAddress = "org.freedesktop.DBus.Error.BadAddress"
+errorBadAddress = errorName_ "org.freedesktop.DBus.Error.BadAddress"
 
 errorFileExists :: ErrorName
-errorFileExists = "org.freedesktop.DBus.Error.FileExists"
+errorFileExists = errorName_ "org.freedesktop.DBus.Error.FileExists"
 
 errorFileNotFound :: ErrorName
-errorFileNotFound = "org.freedesktop.DBus.Error.FileNotFound"
+errorFileNotFound = errorName_ "org.freedesktop.DBus.Error.FileNotFound"
 
 errorInconsistentMessage :: ErrorName
-errorInconsistentMessage = "org.freedesktop.DBus.Error.InconsistentMessage"
+errorInconsistentMessage = errorName_ "org.freedesktop.DBus.Error.InconsistentMessage"
 
 errorInvalidFileContent :: ErrorName
-errorInvalidFileContent = "org.freedesktop.DBus.Error.InvalidFileContent"
+errorInvalidFileContent = errorName_ "org.freedesktop.DBus.Error.InvalidFileContent"
 
 errorIOError :: ErrorName
-errorIOError = "org.freedesktop.DBus.Error.IOError"
+errorIOError = errorName_ "org.freedesktop.DBus.Error.IOError"
 
 errorLimitsExceeded :: ErrorName
-errorLimitsExceeded = "org.freedesktop.DBus.Error.LimitsExceeded"
+errorLimitsExceeded = errorName_ "org.freedesktop.DBus.Error.LimitsExceeded"
 
 errorMatchRuleInvalid :: ErrorName
-errorMatchRuleInvalid = "org.freedesktop.DBus.Error.MatchRuleInvalid"
+errorMatchRuleInvalid = errorName_ "org.freedesktop.DBus.Error.MatchRuleInvalid"
 
 errorMatchRuleNotFound :: ErrorName
-errorMatchRuleNotFound = "org.freedesktop.DBus.Error.MatchRuleNotFound"
+errorMatchRuleNotFound = errorName_ "org.freedesktop.DBus.Error.MatchRuleNotFound"
 
 errorNameHasNoOwner :: ErrorName
-errorNameHasNoOwner = "org.freedesktop.DBus.Error.NameHasNoOwner"
+errorNameHasNoOwner = errorName_ "org.freedesktop.DBus.Error.NameHasNoOwner"
 
 errorNoMemory :: ErrorName
-errorNoMemory = "org.freedesktop.DBus.Error.NoMemory"
+errorNoMemory = errorName_ "org.freedesktop.DBus.Error.NoMemory"
 
 errorNoNetwork :: ErrorName
-errorNoNetwork = "org.freedesktop.DBus.Error.NoNetwork"
+errorNoNetwork = errorName_ "org.freedesktop.DBus.Error.NoNetwork"
 
 errorNotSupported :: ErrorName
-errorNotSupported = "org.freedesktop.DBus.Error.NotSupported"
+errorNotSupported = errorName_ "org.freedesktop.DBus.Error.NotSupported"
 
 errorObjectPathInUse :: ErrorName
-errorObjectPathInUse = "org.freedesktop.DBus.Error.ObjectPathInUse"
+errorObjectPathInUse = errorName_ "org.freedesktop.DBus.Error.ObjectPathInUse"
 
 errorSELinuxSecurityContextUnknown :: ErrorName
-errorSELinuxSecurityContextUnknown = "org.freedesktop.DBus.Error.SELinuxSecurityContextUnknown"
+errorSELinuxSecurityContextUnknown = errorName_ "org.freedesktop.DBus.Error.SELinuxSecurityContextUnknown"
 
 errorUnixProcessIdUnknown :: ErrorName
-errorUnixProcessIdUnknown = "org.freedesktop.DBus.Error.UnixProcessIdUnknown"
+errorUnixProcessIdUnknown = errorName_ "org.freedesktop.DBus.Error.UnixProcessIdUnknown"
