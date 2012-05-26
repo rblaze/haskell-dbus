@@ -583,11 +583,11 @@ objectPath text = do
 	maybeParseText parseObjectPath text
 	return (ObjectPath text)
 
-objectPath_ :: Text -> ObjectPath
+objectPath_ :: String -> ObjectPath
 objectPath_ = tryParse "object path" objectPath
 
 instance Data.String.IsString ObjectPath where
-	fromString = objectPath_ . Data.Text.pack
+	fromString = objectPath_
 
 parseObjectPath :: Parsec.Parser ()
 parseObjectPath = root <|> object where
@@ -620,11 +620,11 @@ interfaceName text = do
 	maybeParseText parseInterfaceName text
 	return (InterfaceName text)
 
-interfaceName_ :: Text -> InterfaceName
+interfaceName_ :: String -> InterfaceName
 interfaceName_ = tryParse "interface name" interfaceName
 
 instance Data.String.IsString InterfaceName where
-	fromString = interfaceName_ . Data.Text.pack
+	fromString = interfaceName_
 
 instance IsVariant InterfaceName where
 	toVariant = toVariant . interfaceNameText
@@ -654,11 +654,11 @@ memberName text = do
 	maybeParseText parseMemberName text
 	return (MemberName text)
 
-memberName_ :: Text -> MemberName
+memberName_ :: String -> MemberName
 memberName_ = tryParse "member name" memberName
 
 instance Data.String.IsString MemberName where
-	fromString = memberName_ . Data.Text.pack
+	fromString = memberName_
 
 instance IsVariant MemberName where
 	toVariant = toVariant . memberNameText
@@ -684,11 +684,11 @@ errorName text = do
 	maybeParseText parseInterfaceName text
 	return (ErrorName text)
 
-errorName_ :: Text -> ErrorName
+errorName_ :: String -> ErrorName
 errorName_ = tryParse "error name" errorName
 
 instance Data.String.IsString ErrorName where
-	fromString = errorName_ . Data.Text.pack
+	fromString = errorName_
 
 instance IsVariant ErrorName where
 	toVariant = toVariant . errorNameText
@@ -706,11 +706,11 @@ busName text = do
 	maybeParseText parseBusName text
 	return (BusName text)
 
-busName_ :: Text -> BusName
+busName_ :: String -> BusName
 busName_ = tryParse "bus name" busName
 
 instance Data.String.IsString BusName where
-	fromString = busName_ . Data.Text.pack
+	fromString = busName_
 
 instance IsVariant BusName where
 	toVariant = toVariant . busNameText
@@ -1213,8 +1213,8 @@ skipSepBy1 p sep = do
 	_ <- p
 	Parsec.skipMany (sep >> p)
 
-tryParse :: String -> (Text -> Maybe a) -> Text -> a
-tryParse label parse text = case parse text of
+tryParse :: String -> (Text -> Maybe a) -> String -> a
+tryParse label parse text = case parse (Data.Text.pack text) of
 	Just x -> x
 	Nothing -> error ("Invalid " ++ label ++ ": " ++ show text)
 
