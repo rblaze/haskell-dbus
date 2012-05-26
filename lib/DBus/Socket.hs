@@ -75,7 +75,6 @@ import           Text.Printf (printf)
 
 import           DBus
 import           DBus.Transport
-import           DBus.Types (Serial(..))
 import           DBus.Wire (unmarshalMessageM)
 
 -- | Stores information about an error encountered while creating or using a
@@ -165,7 +164,7 @@ openWith opts addr = toEither $ bracketOnError
 		if not authed
 			then return (Left (socketError "Authentication failed"))
 			else do
-				serial <- newIORef (Serial 1)
+				serial <- newIORef firstSerial
 				readLock <- newMVar ()
 				writeLock <- newMVar ()
 				return (Right (Socket (SomeTransport t) serial readLock writeLock)))
@@ -208,7 +207,7 @@ accept (SocketListener l auth) = toEither $ bracketOnError
 		if not authed
 			then return (Left (socketError "Authentication failed"))
 			else do
-				serial <- newIORef (Serial 1)
+				serial <- newIORef firstSerial
 				readLock <- newMVar ()
 				writeLock <- newMVar ()
 				return (Right (Socket (SomeTransport t) serial readLock writeLock)))
@@ -237,7 +236,7 @@ socketListenerAddress (SocketListener l _) = transportListenerAddress l
 -- until after the other has finished.
 send :: Message msg => Socket -> msg -> (Serial -> IO a) -> IO (Either SocketError a)
 send sock msg io = do
-	serial <- nextSerial sock
+	serial <- nextSocketSerial sock
 	case marshalMessage LittleEndian serial msg of
 		Right bytes -> toEither $ do
 			let t = socketTransport sock
@@ -248,10 +247,8 @@ send sock msg io = do
 			{ socketErrorFatal = False
 			})
 
-nextSerial :: Socket -> IO Serial
-nextSerial sock = atomicModifyIORef
-	(socketSerial sock)
-	(\serial@(Serial x) -> (Serial (x + 1), serial))
+nextSocketSerial :: Socket -> IO Serial
+nextSocketSerial sock = atomicModifyIORef (socketSerial sock) (\x -> (nextSerial x, x))
 
 -- | Receive the next message from the socket , blocking until one is available.
 --

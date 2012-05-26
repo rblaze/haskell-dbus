@@ -1208,6 +1208,12 @@ instance IsVariant Serial where
 serialValue :: Serial -> Word32
 serialValue (Serial x) = x
 
+firstSerial :: Serial
+firstSerial = Serial 1
+
+nextSerial :: Serial -> Serial
+nextSerial (Serial x) = Serial (x + 1)
+
 skipSepBy1 :: Parsec.Parser a -> Parsec.Parser b -> Parsec.Parser ()
 skipSepBy1 p sep = do
 	_ <- p

@@ -22,6 +22,8 @@ module DBus
 	, Flag (..)
 	, Serial
 	, serialValue
+	, firstSerial
+	, nextSerial
 	, UnknownMessage (..)
 	, MethodCall (..)
 	, MethodReturn (..)
