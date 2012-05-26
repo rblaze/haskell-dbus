@@ -52,9 +52,18 @@ module DBus.Client
 	, autoMethod
 	
 	-- * Signals
-	, MatchRule(..)
 	, listen
 	, emit
+	
+	-- ** Match rules
+	, MatchRule
+	, formatMatchRule
+	, matchAny
+	, matchSender
+	, matchDestination
+	, matchPath
+	, matchInterface
+	, matchMember
 	
 	-- * Name reservation
 	, RequestNameFlag(..)
@@ -82,7 +91,7 @@ import qualified Control.Exception
 import           Control.Monad (forever, forM_)
 import           Data.Bits ((.|.))
 import           Data.IORef
-import           Data.List (foldl')
+import           Data.List (foldl', intercalate)
 import qualified Data.Map
 import           Data.Map (Map)
 import           Data.Maybe (catMaybes, listToMaybe)
@@ -409,18 +418,6 @@ call_ client msg = do
 			}
 		Right ret -> return ret
 
-emit :: Client -> Signal -> IO ()
-emit client msg = send_ client msg (\_ -> return ())
-
-data MatchRule = MatchRule
-	{ matchSender      :: Maybe BusName
-	, matchDestination :: Maybe BusName
-	, matchPath        :: Maybe ObjectPath
-	, matchInterface   :: Maybe InterfaceName
-	, matchMember      :: Maybe MemberName
-	}
-	deriving (Show)
-
 listen :: Client -> MatchRule -> (BusName -> Signal -> IO ()) -> IO ()
 listen client rule io = do
 	let handler msg = case signalSender msg of
@@ -441,8 +438,22 @@ listen client rule io = do
 		})
 	return ()
 
-formatMatchRule :: MatchRule -> Text
-formatMatchRule rule = Data.Text.intercalate "," predicates where
+emit :: Client -> Signal -> IO ()
+emit client msg = send_ client msg (\_ -> return ())
+
+data MatchRule = MatchRule
+	{ matchSender      :: Maybe BusName
+	, matchDestination :: Maybe BusName
+	, matchPath        :: Maybe ObjectPath
+	, matchInterface   :: Maybe InterfaceName
+	, matchMember      :: Maybe MemberName
+	}
+
+instance Show MatchRule where
+	showsPrec d rule = showParen (d > 10) (showString (matchRuleString rule))
+
+matchRuleString :: MatchRule -> String
+matchRuleString rule = intercalate "," predicates where
 	predicates = catMaybes
 		[ f "sender" matchSender busNameText
 		, f "destination" matchDestination busNameText
@@ -451,10 +462,16 @@ formatMatchRule rule = Data.Text.intercalate "," predicates where
 		, f "member" matchMember memberNameText
 		]
 	
-	f :: Text -> (MatchRule -> Maybe a) -> (a -> Text) -> Maybe Text
+	f :: String -> (MatchRule -> Maybe a) -> (a -> Text) -> Maybe String
 	f key get text = do
 		val <- fmap text (get rule)
-		return (Data.Text.concat [key, "='", val, "'"])
+		return (concat [key, "='", Data.Text.unpack val, "'"])
+
+formatMatchRule :: MatchRule -> Text
+formatMatchRule = Data.Text.pack . matchRuleString
+
+matchAny :: MatchRule
+matchAny = MatchRule Nothing Nothing Nothing Nothing Nothing
 
 checkMatchRule :: MatchRule -> BusName -> Signal -> Bool
 checkMatchRule rule sender msg = and
