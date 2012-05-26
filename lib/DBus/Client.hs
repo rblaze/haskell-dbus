@@ -450,7 +450,7 @@ data MatchRule = MatchRule
 	}
 
 instance Show MatchRule where
-	showsPrec d rule = showParen (d > 10) (showString (matchRuleString rule))
+	showsPrec d rule = showParen (d > 10) (showString "MatchRule " . shows (matchRuleString rule))
 
 matchRuleString :: MatchRule -> String
 matchRuleString rule = intercalate "," predicates where
