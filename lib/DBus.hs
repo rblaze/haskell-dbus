@@ -20,10 +20,6 @@ module DBus
 	          , messageBody
 	          )
 	, Flag (..)
-	, Serial
-	, serialValue
-	, firstSerial
-	, nextSerial
 	, UnknownMessage (..)
 	, MethodCall (..)
 	, MethodReturn (..)
@@ -32,49 +28,55 @@ module DBus
 	, Signal (..)
 	, ReceivedMessage (..)
 	
-	-- * Values
-	, Type(..)
+	-- * Variants
+	, Variant
+	, IsVariant(..)
+	, variantType
 	
+	, IsAtom
+	, IsValue
+	, typeOf
+	
+	-- * Signatures
 	, Signature
+	, Type(..)
 	, signature
 	, signature_
 	, signatureText
 	, signatureTypes
 	, parseSignature
 	
-	, IsValue
-	, IsAtom
-	, typeOf
-	
-	, Variant
-	, IsVariant(..)
-	, variantType
-	
+	-- * Object paths
 	, ObjectPath
 	, objectPath
 	, objectPath_
 	, objectPathText
 	
+	-- * Interface names
 	, InterfaceName
 	, interfaceName
 	, interfaceName_
 	, interfaceNameText
 	
+	-- * Member names
 	, MemberName
 	, memberName
 	, memberName_
 	, memberNameText
 	
+	-- * Error names
 	, ErrorName
 	, errorName
 	, errorName_
 	, errorNameText
 	
+	-- * Bus names
 	, BusName
 	, busName
 	, busName_
 	, busNameText
 	
+	-- * Heterogenous containers
 	, Structure
 	, Array
 	, Dictionary
@@ -101,6 +103,12 @@ module DBus
 	, UnmarshalError
 	, marshalMessage
 	, unmarshalMessage
+	
+	-- ** Message serials
+	, Serial
+	, serialValue
+	, firstSerial
+	, nextSerial
 	
 	-- * D-Bus UUIDs
 	, UUID
