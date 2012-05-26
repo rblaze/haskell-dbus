@@ -313,20 +313,20 @@ data RequestNameFlag
 	= AllowReplacement
 	| ReplaceExisting
 	| DoNotQueue
-	deriving (Show)
+	deriving (Eq, Show)
 
 data RequestNameReply
 	= PrimaryOwner
 	| InQueue
 	| Exists
 	| AlreadyOwner
-	deriving (Show)
+	deriving (Eq, Show)
 
 data ReleaseNameReply
 	= Released
 	| NonExistent
 	| NotOwner
-	deriving (Show)
+	deriving (Eq, Show)
 
 encodeFlags :: [RequestNameFlag] -> Word32
 encodeFlags = foldr (.|.) 0 . map flagValue where
