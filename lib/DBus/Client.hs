@@ -38,6 +38,7 @@ module DBus.Client
 	
 	-- * Sending method calls
 	, call
+	, call_
 	
 	-- * Receiving method calls
 	, Method
