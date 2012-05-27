@@ -677,7 +677,7 @@ require label _     = throwErrorM label
 -- | Parse a 'ByteString' into a 'ReceivedMessage'. The result can be
 -- inspected to see what type of message was parsed. Unknown message types
 -- can still be parsed successfully, as long as they otherwise conform to
--- the D&#8208;Bus standard.
+-- the D-Bus standard.
 unmarshalMessage :: ByteString -> Either UnmarshalError ReceivedMessage
 unmarshalMessage bytes = case Get.runGet (unmarshalMessageM Get.getByteString) bytes of
 	Left err -> Left (UnmarshalError (Data.Text.pack err))

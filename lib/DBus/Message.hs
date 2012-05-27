@@ -154,8 +154,8 @@ instance Message Signal where
 		]
 
 -- | Not an actual message type, but a wrapper around messages received from
--- the bus. Each value contains the message&#8217;s 'Serial' and possibly the
--- origin&#8217;s 'BusName'
+-- the bus. Each value contains the message's 'Serial' and possibly the
+-- origin's 'BusName'
 data ReceivedMessage
 	= ReceivedMethodCall Serial MethodCall
 	| ReceivedMethodReturn Serial MethodReturn

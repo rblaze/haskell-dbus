@@ -247,7 +247,7 @@ socketListenerAddress (SocketListener l _) = transportListenerAddress l
 
 -- | Send a single message, with a generated 'Serial'. The second parameter
 -- exists to prevent race conditions when registering a reply handler; it
--- receives the serial the message /will/ be sent with, before it&#8217;s
+-- receives the serial the message /will/ be sent with, before it's
 -- actually sent.
 --
 -- Sockets are thread-safe. Only one message may be sent at a time; if

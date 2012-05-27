@@ -295,8 +295,8 @@ class IsValue a => IsAtom a where
 	toAtom :: a -> Atom
 	fromAtom :: Atom -> Maybe a
 
--- | 'Variant's may contain any other built&#8208;in D&#8208;Bus value. Besides
--- representing native @VARIANT@ values, they allow type&#8208;safe storage and
+-- | 'Variant's may contain any other built-in D-Bus value. Besides
+-- representing native @VARIANT@ values, they allow type-safe storage and
 -- deconstruction of heterogeneous collections.
 newtype Variant = Variant Value
 	deriving (Eq)
@@ -379,7 +379,7 @@ instance Show Variant where
 	showsPrec d (Variant x) = showParen (d > 10) $
 		showString "Variant " .  showString (showValue True x)
 
--- | Every variant is strongly&#8208;typed; that is, the type of its contained
+-- | Every variant is strongly-typed; that is, the type of its contained
 -- value is known at all times. This function retrieves that type, so that
 -- the correct cast can be used to retrieve the value.
 variantType :: Variant -> Type
@@ -1197,7 +1197,7 @@ instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, 
 	fromVariant _ = Nothing
 
 -- | A value used to uniquely identify a particular message within a session.
--- 'Serial's are 32&#8208;bit unsigned integers, and eventually wrap.
+-- 'Serial's are 32-bit unsigned integers, and eventually wrap.
 newtype Serial = Serial Word32
 	deriving (Eq, Ord, Show)
 
