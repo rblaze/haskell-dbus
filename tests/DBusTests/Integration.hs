@@ -50,11 +50,11 @@ test_Socket = withDaemon "socket" $ \addr -> do
 		, methodCallBody = []
 		}
 	
-	Right sock <- liftIO (open addr)
-	Right serial <- liftIO (send sock hello return)
+	sock <- liftIO (open addr)
+	serial <- liftIO (send sock hello return)
 	$expect (greaterEqual (serialValue serial) 1)
 	
-	Right received <- liftIO (receive sock)
+	received <- liftIO (receive sock)
 	let ReceivedMethodReturn _ ret = received
 	$expect (equal (methodReturnSerial ret) serial)
 	$expect (equal (methodReturnSender ret) (Just "org.freedesktop.DBus"))
@@ -63,8 +63,8 @@ test_Socket = withDaemon "socket" $ \addr -> do
 
 test_Client :: Test
 test_Client = withDaemon "client" $ \addr -> do
-	Right clientA <- liftIO (connect addr)
-	Right clientB <- liftIO (connect addr)
+	clientA <- liftIO (connect addr)
+	clientB <- liftIO (connect addr)
 	
 	liftIO (export clientA "/"
 		[ method "com.example.Echo" "Echo" (signature_ [TypeString]) (signature_ []) (\vs -> if map variantType vs == [TypeString]
@@ -86,8 +86,7 @@ test_Client = withDaemon "client" $ \addr -> do
 		, methodCallFlags = Data.Set.empty
 		, methodCallBody = bodyGood
 		}))
-	$assert (right retGood)
-	let Right ret = retGood
+	ret <- $requireRight retGood
 	$expect (equal (methodReturnBody ret) bodyGood)
 	
 	-- Failed call
@@ -101,8 +100,7 @@ test_Client = withDaemon "client" $ \addr -> do
 		, methodCallFlags = Data.Set.empty
 		, methodCallBody = bodyBad
 		}))
-	$assert (left retBad)
-	let Left err = retBad
+	err <- $requireLeft retBad
 	$expect (equal (methodErrorName err) "com.example.Error")
 	$expect (equal (methodErrorBody err) [toVariant ("bad body: [Variant True]" :: String)])
 	

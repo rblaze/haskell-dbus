@@ -169,11 +169,7 @@ connectSystem = do
 	env <- getSystemAddress
 	case env of
 		Nothing -> throwIO (clientError "connectSession: DBUS_SYSTEM_BUS_ADDRESS is invalid.")
-		Just addr -> do
-			ret <- connect addr
-			case ret of
-				Left err -> throwIO err
-				Right client -> return client
+		Just addr -> connect addr
 
 -- | Connect to the bus specified in the environment variable
 -- @DBUS_SESSION_BUS_ADDRESS@, which must be set.
@@ -185,11 +181,7 @@ connectSession = do
 	env <- getSessionAddress
 	case env of
 		Nothing -> throwIO (clientError "connectSession: DBUS_SESSION_BUS_ADDRESS is missing or invalid.")
-		Just addr -> do
-			ret <- connect addr
-			case ret of
-				Left err -> throwIO err
-				Right client -> return client
+		Just addr -> connect addr
 
 -- | Connect to the bus specified in the environment variable
 -- @DBUS_STARTER_ADDRESS@, which must be set.
@@ -201,14 +193,15 @@ connectStarter = do
 	env <- getStarterAddress
 	case env of
 		Nothing -> throwIO (clientError "connectSession: DBUS_STARTER_ADDRESS is missing or invalid.")
-		Just addr -> do
-			ret <- connect addr
-			case ret of
-				Left err -> throwIO err
-				Right client -> return client
+		Just addr -> connect addr
 
-attach :: DBus.Socket.Socket -> IO Client
-attach sock = do
+connect :: Address -> IO Client
+connect = connectWith defaultClientOptions
+
+connectWith :: TransportOpen t => ClientOptions t -> Address -> IO Client
+connectWith opts addr = do
+	sock <- DBus.Socket.openWith (clientSocketOptions opts) addr
+	
 	pendingCalls <- newIORef Data.Map.empty
 	signalHandlers <- newIORef []
 	objects <- newIORef Data.Map.empty
@@ -241,16 +234,6 @@ attach sock = do
 	
 	return client
 
-connect :: Address -> IO (Either ClientError Client)
-connect = connectWith defaultClientOptions
-
-connectWith :: TransportOpen t => ClientOptions t -> Address -> IO (Either ClientError Client)
-connectWith opts addr = do
-	ret <- DBus.Socket.openWith (clientSocketOptions opts) addr
-	case ret of
-		Left err -> return (Left (clientError (show err)))
-		Right conn -> Right `fmap` attach conn
-
 -- | TODO
 defaultClientOptions :: ClientOptions SocketTransport
 defaultClientOptions = ClientOptions
@@ -281,11 +264,11 @@ mainLoop :: Client -> IO ()
 mainLoop client = forever $ do
 	let sock = clientSocket client
 	
-	received <- DBus.Socket.receive sock
+	received <- Control.Exception.try (DBus.Socket.receive sock)
 	msg <- case received of
 		Left err -> do
 			disconnect' client
-			throwIO (clientError ("Received invalid message: " ++ show err))
+			throwIO (clientError (DBus.Socket.socketErrorMessage err))
 		Right msg -> return msg
 	
 	dispatch client msg
@@ -386,10 +369,10 @@ releaseName client name = do
 
 send_ :: Message msg => Client -> msg -> (Serial -> IO a) -> IO a
 send_ client msg io = do
-	result <- DBus.Socket.send (clientSocket client) msg io
+	result <- Control.Exception.try (DBus.Socket.send (clientSocket client) msg io)
 	case result of
 		Right serial -> return serial
-		Left err -> throwIO (clientError ("Error sending message: " ++ show err))
+		Left err -> throwIO (clientError (DBus.Socket.socketErrorMessage err))
 			{ clientErrorFatal = DBus.Socket.socketErrorFatal err
 			}
 

@@ -46,18 +46,14 @@ test_Connect name connect = assertions name $ do
 	-- send a properly formatted reply.
 	sock <- liftIO (readMVar sockVar)
 	receivedHello <- liftIO (DBus.Socket.receive sock)
-	case receivedHello of
-		Left err -> error (show err)
-		Right _ -> return ()
-	let Right (ReceivedMethodCall helloSerial helloMsg) = receivedHello
+	let (ReceivedMethodCall helloSerial _) = receivedHello
 	
-	sent <- liftIO (DBus.Socket.send sock (MethodReturn
+	liftIO (DBus.Socket.send sock (MethodReturn
 		{ methodReturnSerial = helloSerial
 		, methodReturnSender = Nothing
 		, methodReturnDestination = Nothing
 		, methodReturnBody = []
 		}) (\_ -> return ()))
-	$assert (right sent)
 	
 	client <- liftIO (readMVar clientVar)
 	liftIO (DBus.Client.disconnect client)
@@ -87,8 +83,6 @@ startDummyBus :: Assertions (Address, MVar DBus.Socket.Socket)
 startDummyBus = do
 	uuid <- liftIO randomUUID
 	let Just addr = address "unix" (Map.fromList [("abstract", formatUUID uuid)])
-	Right listener <- liftIO (DBus.Socket.listen addr)
-	sockVar <- forkVar (do
-		Right sock <- DBus.Socket.accept listener
-		return sock)
+	listener <- liftIO (DBus.Socket.listen addr)
+	sockVar <- forkVar (DBus.Socket.accept listener)
 	return (DBus.Socket.socketListenerAddress listener, sockVar)

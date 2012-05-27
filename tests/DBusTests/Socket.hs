@@ -44,18 +44,17 @@ test_Listen = assertions "listen" $ do
 		[ ("abstract", formatUUID uuid)
 		])
 	
-	listened <- liftIO (listen addr)
-	$assert (right listened)
-	let Right listener = listened
+	listener <- liftIO (listen addr)
 	afterTest (closeListener listener)
 	
 	acceptedVar <- forkVar (accept listener)
 	openedVar <- forkVar (open addr)
 	
-	accepted <- liftIO (takeMVar acceptedVar)
-	$assert (right accepted)
-	let Right sock = accepted
-	afterTest (close sock)
+	sock1 <- liftIO (takeMVar acceptedVar)
+	afterTest (close sock1)
+	
+	sock2 <- liftIO (takeMVar openedVar)
+	afterTest (close sock2)
 
 test_ListenWith_CustomAuth :: Test
 test_ListenWith_CustomAuth = assertions "listenWith-custom-auth" $ do
@@ -64,11 +63,9 @@ test_ListenWith_CustomAuth = assertions "listenWith-custom-auth" $ do
 		[ ("abstract", formatUUID uuid)
 		])
 	
-	listened <- liftIO (listenWith (defaultSocketOptions
+	listener <- liftIO (listenWith (defaultSocketOptions
 		{ socketAuthenticator = dummyAuth
 		}) addr)
-	$assert (right listened)
-	let Right listener = listened
 	afterTest (closeListener listener)
 	
 	acceptedVar <- forkVar (accept listener)
@@ -76,11 +73,11 @@ test_ListenWith_CustomAuth = assertions "listenWith-custom-auth" $ do
 		{ socketAuthenticator = dummyAuth
 		}) addr)
 	
-	accepted <- liftIO (takeMVar acceptedVar)
-	$assert (right accepted)
-	let Right sock = accepted
-	afterTest (close sock)
-	return ()
+	sock1 <- liftIO (takeMVar acceptedVar)
+	afterTest (close sock1)
+	
+	sock2 <- liftIO (takeMVar openedVar)
+	afterTest (close sock2)
 
 test_SendReceive :: Test
 test_SendReceive = assertions "send-receive" $ do
@@ -99,16 +96,16 @@ test_SendReceive = assertions "send-receive" $ do
 		, methodCallBody = [toVariant True]
 		}
 	
-	Right listener <- liftIO (listen addr)
+	listener <- liftIO (listen addr)
 	afterTest (closeListener listener)
 	
 	acceptedVar <- forkVar (accept listener)
 	openedVar <- forkVar (open addr)
 	
-	Right sock1 <- liftIO (takeMVar acceptedVar)
+	sock1 <- liftIO (takeMVar acceptedVar)
 	afterTest (close sock1)
 	
-	Right sock2 <- liftIO (takeMVar openedVar)
+	sock2 <- liftIO (takeMVar openedVar)
 	afterTest (close sock2)
 	
 	-- client -> server
@@ -121,8 +118,8 @@ test_SendReceive = assertions "send-receive" $ do
 		sent <- liftIO (takeMVar sentVar)
 		received <- liftIO (takeMVar receivedVar)
 		
-		$assert (equal sent (Right ()))
-		$assert (equal received (Right (ReceivedMethodCall serial msg)))
+		$assert (equal sent ())
+		$assert (equal received (ReceivedMethodCall serial msg))
 	
 	-- server -> client
 	do
@@ -134,8 +131,8 @@ test_SendReceive = assertions "send-receive" $ do
 		sent <- liftIO (takeMVar sentVar)
 		received <- liftIO (takeMVar receivedVar)
 		
-		$assert (equal sent (Right ()))
-		$assert (equal received (Right (ReceivedMethodCall serial msg)))
+		$assert (equal sent ())
+		$assert (equal received (ReceivedMethodCall serial msg))
 
 dummyAuth :: Transport t => Authenticator t
 dummyAuth = authenticator

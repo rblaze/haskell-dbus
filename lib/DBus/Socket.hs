@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -34,6 +35,7 @@ module DBus.Socket
 	, socketError
 	, socketErrorMessage
 	, socketErrorFatal
+	, socketErrorAddress
 	
 	-- * Socket options
 	, SocketOptions
@@ -65,11 +67,13 @@ import           Prelude hiding (getLine)
 
 import           Control.Concurrent
 import           Control.Exception
+import           Control.Monad (mplus)
 import qualified Data.ByteString
 import qualified Data.ByteString.Char8 as Char8
 import           Data.Char (ord)
 import           Data.IORef
 import           Data.List (isPrefixOf)
+import           Data.Typeable (Typeable)
 import qualified System.Posix.User
 import           Text.Printf (printf)
 
@@ -82,11 +86,14 @@ import           DBus.Wire (unmarshalMessageM)
 data SocketError = SocketError
 	{ socketErrorMessage :: String
 	, socketErrorFatal :: Bool
+	, socketErrorAddress :: Maybe Address
 	}
-	deriving (Eq, Show)
+	deriving (Eq, Show, Typeable)
+
+instance Exception SocketError
 
 socketError :: String -> SocketError
-socketError msg = SocketError msg True
+socketError msg = SocketError msg True Nothing
 
 data SomeTransport = forall t. (Transport t) => SomeTransport t
 
@@ -101,6 +108,7 @@ instance Transport SomeTransport where
 -- peer using 'send', or received using 'receive'.
 data Socket = Socket
 	{ socketTransport :: SomeTransport
+	, socketAddress :: Maybe Address
 	, socketSerial :: IORef Serial
 	, socketReadLock :: MVar ()
 	, socketWriteLock :: MVar ()
@@ -148,26 +156,32 @@ defaultSocketOptions = SocketOptions
 -- @
 --open = 'openWith' 'defaultSocketOptions'
 -- @
-open :: Address -> IO (Either SocketError Socket)
+--
+-- Throws 'SocketError' on failure.
+open :: Address -> IO Socket
 open = openWith defaultSocketOptions
 
 -- | Open a socket to a remote peer listening at the given address.
 --
 -- Most users should use 'open'. This function is for users who need to define
 -- custom authenticators or transports.
-openWith :: TransportOpen t => SocketOptions t -> Address -> IO (Either SocketError Socket)
-openWith opts addr = toEither $ bracketOnError
+--
+-- Throws 'SocketError' on failure.
+openWith :: TransportOpen t => SocketOptions t -> Address -> IO Socket
+openWith opts addr = toSocketError (Just addr) $ bracketOnError
 	(transportOpen (socketTransportOptions opts) addr)
 	transportClose
 	(\t -> do
 		authed <- authenticatorClient (socketAuthenticator opts) t
 		if not authed
-			then return (Left (socketError "Authentication failed"))
+			then throwIO (socketError "Authentication failed")
+				{ socketErrorAddress = Just addr
+				}
 			else do
 				serial <- newIORef firstSerial
 				readLock <- newMVar ()
 				writeLock <- newMVar ()
-				return (Right (Socket (SomeTransport t) serial readLock writeLock)))
+				return (Socket (SomeTransport t) (Just addr) serial readLock writeLock))
 
 data SocketListener = forall t. (TransportListen t) => SocketListener (TransportListener t) (Authenticator t)
 
@@ -177,7 +191,9 @@ data SocketListener = forall t. (TransportListen t) => SocketListener (Transport
 --
 -- Use 'closeListener' to stop listening, and to free underlying transport
 -- resources such as file descriptors.
-listen :: Address -> IO (Either SocketError SocketListener)
+--
+-- Throws 'SocketError' on failure.
+listen :: Address -> IO SocketListener
 listen = listenWith defaultSocketOptions
 
 -- | Begin listening at the given address.
@@ -189,28 +205,31 @@ listen = listenWith defaultSocketOptions
 --
 -- This function is for users who need to define custom authenticators
 -- or transports.
-listenWith :: TransportListen t => SocketOptions t -> Address -> IO (Either SocketError SocketListener)
-listenWith opts addr = toEither $ bracketOnError
+--
+-- Throws 'SocketError' on failure.
+listenWith :: TransportListen t => SocketOptions t -> Address -> IO SocketListener
+listenWith opts addr = toSocketError (Just addr) $ bracketOnError
 	(transportListen (socketTransportOptions opts) addr)
 	transportListenerClose
-	(\l -> do
-		return (Right (SocketListener l (socketAuthenticator opts))))
+	(\l -> return (SocketListener l (socketAuthenticator opts)))
 
 -- | Accept a new connection from a socket listener.
-accept :: SocketListener -> IO (Either SocketError Socket)
-accept (SocketListener l auth) = toEither $ bracketOnError
+--
+-- Throws 'SocketError' on failure.
+accept :: SocketListener -> IO Socket
+accept (SocketListener l auth) = toSocketError Nothing $ bracketOnError
 	(transportAccept l)
 	transportClose
 	(\t -> do
 		let uuid = transportListenerUUID l
 		authed <- authenticatorServer auth t uuid
 		if not authed
-			then return (Left (socketError "Authentication failed"))
+			then throwIO (socketError "Authentication failed")
 			else do
 				serial <- newIORef firstSerial
 				readLock <- newMVar ()
 				writeLock <- newMVar ()
-				return (Right (Socket (SomeTransport t) serial readLock writeLock)))
+				return (Socket (SomeTransport t) Nothing serial readLock writeLock))
 
 -- | Close an open 'Socket'. Once closed, the socket is no longer valid and
 -- must not be used.
@@ -234,18 +253,20 @@ socketListenerAddress (SocketListener l _) = transportListenerAddress l
 -- Sockets are thread-safe. Only one message may be sent at a time; if
 -- multiple threads attempt to send messages concurrently, one will block
 -- until after the other has finished.
-send :: Message msg => Socket -> msg -> (Serial -> IO a) -> IO (Either SocketError a)
-send sock msg io = do
+--
+-- Throws 'SocketError' on failure.
+send :: Message msg => Socket -> msg -> (Serial -> IO a) -> IO a
+send sock msg io = toSocketError (socketAddress sock) $ do
 	serial <- nextSocketSerial sock
 	case marshalMessage LittleEndian serial msg of
-		Right bytes -> toEither $ do
+		Right bytes -> do
 			let t = socketTransport sock
 			a <- io serial
 			withMVar (socketWriteLock sock) (\_ -> transportPut t bytes)
-			return (Right a)
-		Left err -> return (Left (socketError ("Message cannot be sent: " ++ show err))
+			return a
+		Left err -> throwIO (socketError ("Message cannot be sent: " ++ show err))
 			{ socketErrorFatal = False
-			})
+			}
 
 nextSocketSerial :: Socket -> IO Serial
 nextSocketSerial sock = atomicModifyIORef (socketSerial sock) (\x -> (nextSerial x, x))
@@ -255,8 +276,10 @@ nextSocketSerial sock = atomicModifyIORef (socketSerial sock) (\x -> (nextSerial
 -- Sockets are thread-safe. Only one message may be received at a time; if
 -- multiple threads attempt to receive messages concurrently, one will block
 -- until after the other has finished.
-receive :: Socket -> IO (Either SocketError ReceivedMessage)
-receive sock = toEither $ do
+--
+-- Throws 'SocketError' on failure.
+receive :: Socket -> IO ReceivedMessage
+receive sock = toSocketError (socketAddress sock) $ do
 	-- TODO: after reading the length, read all bytes from the
 	--       handle, then return a closure to perform the parse
 	--       outside of the lock.
@@ -265,18 +288,26 @@ receive sock = toEither $ do
 		then return Data.ByteString.empty
 		else transportGet t n
 	received <- withMVar (socketReadLock sock) (\_ -> unmarshalMessageM get)
-	return $ case received of
-		Left err -> Left (socketError ("Error reading message from socket: " ++ show err))
-		Right msg -> Right msg
+	case received of
+		Left err -> throwIO (socketError ("Error reading message from socket: " ++ show err))
+		Right msg -> return msg
 
-toEither :: IO (Either SocketError a) -> IO (Either SocketError a)
-toEither io = catches io handlers where
+toSocketError :: Maybe Address -> IO a -> IO a
+toSocketError addr io = catches io handlers where
 	handlers =
 		[ Handler catchTransportError
+		, Handler updateSocketError
 		, Handler catchIOException
 		]
-	catchTransportError err = return (Left (socketError (transportErrorMessage err)))
-	catchIOException exc = return (Left (socketError (show (exc :: IOException))))
+	catchTransportError err = throwIO (socketError (transportErrorMessage err))
+		{ socketErrorAddress = addr
+		}
+	updateSocketError err = throwIO err
+		{ socketErrorAddress = mplus (socketErrorAddress err) addr
+		}
+	catchIOException exc = throwIO (socketError (show (exc :: IOException)))
+		{ socketErrorAddress = addr
+		}
 
 -- | An empty authenticator. Use 'authenticatorClient' or 'authenticatorServer'
 -- to control how the authentication is performed.
