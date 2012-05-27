@@ -87,4 +87,4 @@ gen_ErrorName = trim chunks where
 		return (x:xs)
 
 instance Arbitrary ErrorName where
-	arbitrary = fmap errorName_ gen_ErrorName
+	arbitrary = fmap (errorName_ . T.unpack) gen_ErrorName

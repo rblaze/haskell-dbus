@@ -87,4 +87,4 @@ gen_InterfaceName = trim chunks where
 		return (x:xs)
 
 instance Arbitrary InterfaceName where
-	arbitrary = fmap interfaceName_ gen_InterfaceName
+	arbitrary = fmap (interfaceName_ . T.unpack) gen_InterfaceName

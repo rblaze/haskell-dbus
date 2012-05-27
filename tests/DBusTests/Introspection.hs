@@ -83,7 +83,7 @@ subObject parentPath = sized $ \n -> resize (min n 4) $ do
 	let path' = case objectPathText parentPath of
 		"/" -> thisPath
 		x   -> T.append x thisPath
-	let path = objectPath_ path'
+	let Just path = objectPath path'
 	ifaces <- arbitrary
 	children <- halfSized (listOf (subObject path))
 	return (Introspection.Object path ifaces children)

@@ -66,4 +66,4 @@ gen_ObjectPath = gen where
 		return (T.pack ("/" ++ intercalate "/" xs))
 
 instance Arbitrary ObjectPath where
-	arbitrary = fmap objectPath_ gen_ObjectPath
+	arbitrary = fmap (objectPath_ . T.unpack) gen_ObjectPath

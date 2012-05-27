@@ -73,4 +73,4 @@ gen_MemberName = gen where
 		return (T.pack (x:xs))
 
 instance Arbitrary MemberName where
-	arbitrary = fmap memberName_ gen_MemberName
+	arbitrary = fmap (memberName_ . T.unpack) gen_MemberName

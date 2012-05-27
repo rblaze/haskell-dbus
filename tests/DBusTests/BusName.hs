@@ -95,4 +95,4 @@ gen_BusName = oneof [unique, wellKnown] where
 		return (x:xs)
 
 instance Arbitrary BusName where
-	arbitrary = fmap busName_ gen_BusName
+	arbitrary = fmap (busName_ . T.unpack) gen_BusName
