@@ -224,19 +224,14 @@ consume count = do
 		then do
 			putState (UnmarshalState bytes' (offset + count))
 			return x
-		else throwError (concat
-			[ "Unexpected EOF at offset "
-			, show (offset + fromIntegral lenConsumed)
-			])
+		else throwError ("Unexpected EOF at offset " ++ show (offset + fromIntegral lenConsumed))
 
 skipPadding :: Word8 -> Unmarshal ()
 skipPadding count = do
 	(UnmarshalState _ offset) <- getState
 	bytes <- consume (padding offset count)
-	unless (Data.ByteString.all (== 0) bytes) (throwError (concat
-		[ "Value padding ", show bytes
-		, " contains invalid bytes."
-		]))
+	unless (Data.ByteString.all (== 0) bytes)
+		(throwError ("Value padding " ++ show bytes ++ " contains invalid bytes."))
 
 skipTerminator :: Unmarshal ()
 skipTerminator = do
@@ -246,7 +241,7 @@ skipTerminator = do
 fromMaybeU :: Show a => String -> (a -> Maybe b) -> a -> Unmarshal b
 fromMaybeU label f x = case f x of
 	Just x' -> return x'
-	Nothing -> throwError (concat ["Invalid ", label, ": ", show x])
+	Nothing -> throwError ("Invalid " ++ label ++ ": " ++ show x)
 
 unmarshalGet :: Word8 -> Get.Get a -> Get.Get a -> Unmarshal a
 unmarshalGet count be le = do
@@ -331,19 +326,13 @@ unmarshalBool = do
 	case word of
 		0 -> return False
 		1 -> return True
-		_ -> throwError (concat
-			[ "Invalid boolean: "
-			, show word
-			])
+		_ -> throwError ("Invalid boolean: " ++ show word)
 
 marshalText :: Text -> Marshal ()
 marshalText text = do
 	let bytes = Data.Text.Encoding.encodeUtf8 text
-	when (Data.ByteString.any (== 0) bytes) (throwError (concat
-		[ "String "
-		, show text
-		, " contained forbidden character: '\\x00'"
-		]))
+	when (Data.ByteString.any (== 0) bytes)
+		(throwError ("String " ++ show text ++ " contained forbidden character: '\\x00'"))
 	marshalWord32 (fromIntegral (Data.ByteString.length bytes))
 	appendS bytes
 	marshalWord8 0
@@ -392,13 +381,7 @@ marshalVector :: Type -> Vector Value -> Marshal ()
 marshalVector t x = do
 	(arrayPadding, arrayBytes) <- getArrayBytes t x
 	let arrayLen = Data.ByteString.length arrayBytes
-	when (arrayLen > arrayMaximumLength) (throwError (concat
-		[ "Marshaled array size ("
-		, show arrayLen
-		, " bytes) exceeds maximum limit of ("
-		, show arrayMaximumLength
-		, " bytes)."
-		]))
+	when (arrayLen > arrayMaximumLength) (throwError ("Marshaled array size (" ++ show arrayLen ++ " bytes) exceeds maximum limit of (" ++ show arrayMaximumLength ++ " bytes)."))
 	marshalWord32 (fromIntegral arrayLen)
 	appendS (Data.ByteString.replicate arrayPadding 0)
 	appendS arrayBytes
@@ -406,13 +389,7 @@ marshalVector t x = do
 marshalStrictBytes :: ByteString -> Marshal ()
 marshalStrictBytes bytes = do
 	let arrayLen = Data.ByteString.length bytes
-	when (fromIntegral arrayLen > arrayMaximumLength) (throwError (concat
-		[ "Marshaled array size ("
-		, show arrayLen
-		, " bytes) exceeds maximum limit of ("
-		, show arrayMaximumLength
-		, " bytes)."
-		]))
+	when (fromIntegral arrayLen > arrayMaximumLength) (throwError ("Marshaled array size (" ++ show arrayLen ++ " bytes) exceeds maximum limit of (" ++ show arrayMaximumLength ++ " bytes)."))
 	marshalWord32 (fromIntegral arrayLen)
 	appendS bytes
 
@@ -447,10 +424,7 @@ unmarshalArray itemType = do
 	let end = start + fromIntegral byteCount
 	vs <- untilM (liftM (>= end) getOffset) (unmarshal itemType)
 	end' <- getOffset
-	when (end' > end) (throwError (concat
-		[ "Array data size exeeds array size of "
-		, show end
-		]))
+	when (end' > end) (throwError ("Array data size exeeds array size of " ++ show end))
 	return (Data.Vector.fromList vs)
 
 dictionaryToArray :: Map Atom Value -> Vector Value
@@ -488,13 +462,7 @@ marshalVariant :: Variant -> Marshal ()
 marshalVariant var@(Variant val) = do
 	sig <- case signature [valueType val] of
 		Just x' -> return x'
-		Nothing -> throwError (concat
-			[ "Signature "
-			, show (typeCode (valueType val))
-			, " for variant "
-			, show var
-			, " is malformed or too large."
-			])
+		Nothing -> throwError ("Signature " ++ show (typeCode (valueType val)) ++ " for variant " ++ show var ++ " is malformed or too large.")
 	marshalSignature sig
 	marshal val
 
@@ -555,12 +523,7 @@ decodeField' :: IsVariant a => Variant -> (a -> b) -> Text
              -> ErrorM UnmarshalError [b]
 decodeField' x f label = case fromVariant x of
 	Just x' -> return [f x']
-	Nothing -> throwErrorM (UnmarshalError (Data.Text.pack (concat
-		[ "Header field "
-		, show label
-		, " contains invalid value "
-		, show x
-		])))
+	Nothing -> throwErrorM (UnmarshalError (Data.Text.pack ("Header field " ++ show label ++ " contains invalid value " ++ show x)))
 
 -- | Convert a 'Message' into a 'ByteString'. Although unusual, it is
 -- possible for marshaling to fail; if this occurs, an error will be
@@ -589,10 +552,7 @@ marshalMessage e serial msg = runMarshal where
 checkBodySig :: [Variant] -> Marshal Signature
 checkBodySig vs = case signature (map variantType vs) of
 	Just x -> return x
-	Nothing -> throwError (concat
-		[ "Message body ", show vs
-		, " has too many items"
-		])
+	Nothing -> throwError ("Message body " ++ show vs ++ " has too many items")
 
 marshalHeader :: Message a => a -> Serial -> Signature -> Word32
               -> Marshal ()
@@ -609,11 +569,8 @@ marshalHeader msg serial bodySig bodyLength = do
 checkMaximumSize :: Marshal ()
 checkMaximumSize = do
 	(MarshalState _ messageLength) <- getState
-	when (toInteger messageLength > messageMaximumLength) (throwError (concat
-		[ "Marshaled message size (", show messageLength
-		, " bytes) exeeds maximum limit of ("
-		, show messageMaximumLength, " bytes)."
-		]))
+	when (toInteger messageLength > messageMaximumLength)
+		(throwError ("Marshaled message size (" ++ show messageLength ++ " bytes) exeeds maximum limit of (" ++ show messageMaximumLength ++ " bytes)."))
 
 unmarshalMessageM :: Monad m => (Int -> m ByteString)
                   -> m (Either UnmarshalError ReceivedMessage)
@@ -625,18 +582,12 @@ unmarshalMessageM getBytes' = runErrorT $ do
 	fixedBytes <- getBytes 16
 
 	let messageVersion = Data.ByteString.index fixedBytes 3
-	when (messageVersion /= protocolVersion) (throwErrorT (UnmarshalError (Data.Text.pack (concat
-		[ "Unsupported protocol version: "
-		, show messageVersion
-		]))))
+	when (messageVersion /= protocolVersion) (throwErrorT (UnmarshalError (Data.Text.pack ("Unsupported protocol version: " ++ show messageVersion))))
 
 	let eByte = Data.ByteString.index fixedBytes 0
 	endianness <- case decodeEndianness eByte of
 		Just x' -> return x'
-		Nothing -> throwErrorT (UnmarshalError (Data.Text.pack (concat
-			[ "Invalid endianness: "
-			, show eByte
-			])))
+		Nothing -> throwErrorT (UnmarshalError (Data.Text.pack ("Invalid endianness: " ++ show eByte)))
 
 	let unmarshalSig = mapM unmarshal . signatureTypes
 	let unmarshal' x bytes = case unWire (unmarshalSig x) endianness (UnmarshalState bytes 0) of
@@ -654,10 +605,7 @@ unmarshalMessageM getBytes' = runErrorT $ do
 	-- Forbid messages larger than 'messageMaximumLength'
 	let messageLength = 16 + toInteger fieldByteCount + toInteger bodyPadding + toInteger bodyLength
 	when (messageLength > messageMaximumLength) $
-		throwErrorT (UnmarshalError (Data.Text.pack (concat
-			[ "Message size ", show messageLength, " exceeds limit of "
-			, show messageMaximumLength
-			])))
+		throwErrorT (UnmarshalError (Data.Text.pack ("Message size " ++ show messageLength ++ " exceeds limit of " ++ show messageMaximumLength)))
 
 	let headerSig  = "yyyyuua(yv)"
 	fieldBytes <- getBytes (fromIntegral fieldByteCount)
@@ -674,19 +622,13 @@ unmarshalMessageM getBytes' = runErrorT $ do
 	body <- unmarshal' bodySig bodyBytes
 	y <- case runErrorM (buildReceivedMessage messageType fields) of
 		Right x -> return x
-		Left err -> throwErrorT (UnmarshalError (Data.Text.pack (concat
-			[ "Header field "
-			, show err
-			, " is required, but missing"
-			])))
+		Left err -> throwErrorT (UnmarshalError (Data.Text.pack ("Header field " ++ show err ++ " is required, but missing")))
 	return (y serial flags (map Variant body))
 
 findBodySignature :: [HeaderField] -> Signature
 findBodySignature fields = fromMaybe "" (listToMaybe [x | HeaderSignature x <- fields])
 
-buildReceivedMessage :: Word8 -> [HeaderField] -> ErrorM Text
-                        (Serial -> (Set Flag) -> [Variant]
-                         -> ReceivedMessage)
+buildReceivedMessage :: Word8 -> [HeaderField] -> ErrorM Text (Serial -> Set Flag -> [Variant] -> ReceivedMessage)
 buildReceivedMessage 1 fields = do
 	path <- require "path" [x | HeaderPath x <- fields]
 	member <- require "member name" [x | HeaderMember x <- fields]

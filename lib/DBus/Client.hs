@@ -88,7 +88,7 @@ module DBus.Client
 import           Control.Concurrent
 import           Control.Exception (SomeException, throwIO)
 import qualified Control.Exception
-import           Control.Monad (forever, forM_)
+import           Control.Monad (forever, forM_, when)
 import           Data.Bits ((.|.))
 import           Data.IORef
 import           Data.List (foldl', intercalate)
@@ -222,7 +222,7 @@ connectWith opts addr = do
 	
 	export client "/" [introspectRoot client]
 	
-	_ <- call_ client (MethodCall
+	_ <- call_ client MethodCall
 		{ methodCallPath = "/org/freedesktop/DBus"
 		, methodCallMember = "Hello"
 		, methodCallInterface = Just "org.freedesktop.DBus"
@@ -230,7 +230,7 @@ connectWith opts addr = do
 		, methodCallDestination = Just "org.freedesktop.DBus"
 		, methodCallFlags = Data.Set.empty
 		, methodCallBody = []
-		})
+		}
 	
 	return client
 
@@ -329,7 +329,7 @@ encodeFlags = foldr (.|.) 0 . map flagValue where
 -- | TODO
 requestName :: Client -> BusName -> [RequestNameFlag] -> IO RequestNameReply
 requestName client name flags = do
-	reply <- call_ client $ MethodCall
+	reply <- call_ client MethodCall
 		{ methodCallPath = "/org/freedesktop/DBus"
 		, methodCallInterface = Just "org.freedesktop.DBus"
 		, methodCallMember = "RequestName"
@@ -350,7 +350,7 @@ requestName client name flags = do
 -- | TODO
 releaseName :: Client -> BusName -> IO ReleaseNameReply
 releaseName client name = do
-	reply <- call_ client $ MethodCall
+	reply <- call_ client MethodCall
 		{ methodCallPath = "/org/freedesktop/DBus"
 		, methodCallInterface = Just "org.freedesktop.DBus"
 		, methodCallMember = "ReleaseName"
@@ -404,13 +404,11 @@ call_ client msg = do
 listen :: Client -> MatchRule -> (BusName -> Signal -> IO ()) -> IO ()
 listen client rule io = do
 	let handler msg = case signalSender msg of
-		Just sender -> if checkMatchRule rule sender msg
-			then io sender msg
-			else return ()
+		Just sender -> when (checkMatchRule rule sender msg) (io sender msg)
 		Nothing -> return ()
 	
 	atomicModifyIORef (clientSignalHandlers client) (\hs -> (handler : hs, ()))
-	_ <- call_ client (MethodCall
+	_ <- call_ client MethodCall
 		{ methodCallPath = DBus.Constants.dbusPath
 		, methodCallMember = "AddMatch"
 		, methodCallInterface = Just DBus.Constants.dbusInterface
@@ -418,7 +416,7 @@ listen client rule io = do
 		, methodCallDestination = Just DBus.Constants.dbusName
 		, methodCallFlags = Data.Set.empty
 		, methodCallBody = [toVariant (formatMatchRule rule)]
-		})
+		}
 	return ()
 
 emit :: Client -> Signal -> IO ()
@@ -588,13 +586,13 @@ introspect path obj = DBus.Introspection.Object path interfaces [] where
 		signals = concatMap introspectSignal members
 		in DBus.Introspection.Interface name methods signals []
 	
-	introspectMethod (name, (MemberMethod inSig outSig _)) =
+	introspectMethod (name, MemberMethod inSig outSig _) =
 		[DBus.Introspection.Method name
 			(map introspectParam (signatureTypes inSig))
 			(map introspectParam (signatureTypes outSig))]
 	introspectMethod _ = []
 	
-	introspectSignal (name, (MemberSignal sig)) =
+	introspectSignal (name, MemberSignal sig) =
 		[DBus.Introspection.Signal name
 			(map introspectParam (signatureTypes sig))]
 	introspectSignal _ = []
@@ -697,7 +695,7 @@ proxy client dest path = return (Proxy client dest path)
 
 proxyCall :: Proxy -> InterfaceName -> MemberName -> [Variant] -> IO [Variant]
 proxyCall (Proxy client dest path) iface member body = do
-	reply <- call_ client $ MethodCall
+	reply <- call_ client MethodCall
 		{ methodCallPath = path
 		, methodCallMember = member
 		, methodCallInterface = Just iface
@@ -709,10 +707,10 @@ proxyCall (Proxy client dest path) iface member body = do
 	return (methodReturnBody reply)
 
 proxyListen :: Proxy -> InterfaceName -> MemberName -> (BusName -> Signal -> IO ()) -> IO ()
-proxyListen (Proxy client dest path) iface member = DBus.Client.listen client (MatchRule
+proxyListen (Proxy client dest path) iface member = DBus.Client.listen client matchAny
 	{ matchSender = Just dest
 	, matchInterface = Just iface
 	, matchMember = Just member
 	, matchPath = Just path
 	, matchDestination = Nothing
-	})
+	}

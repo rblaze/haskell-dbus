@@ -223,9 +223,9 @@ openTcp transportAddr = go where
 			Just port -> Right port
 			Nothing -> Left (badPort x)
 	
-	getAddresses family = getAddrInfo (Just (defaultHints
+	getAddresses family_ = getAddrInfo (Just (defaultHints
 		{ addrFlags = [AI_ADDRCONFIG]
-		, addrFamily = family
+		, addrFamily = family_
 		, addrSocketType = Stream
 		})) (Just hostname) Nothing
 	
@@ -255,8 +255,8 @@ openTcp transportAddr = go where
 			Left err -> throwIO (transportError err)
 				{ transportErrorAddress = Just transportAddr
 				}
-			Right family -> catchIOException (Just transportAddr) $ do
-				addrs <- getAddresses family
+			Right family_ -> catchIOException (Just transportAddr) $ do
+				addrs <- getAddresses family_
 				sock <- openSocket (map (setPort port) addrs)
 				return (SocketTransport (Just transportAddr) sock)
 
@@ -291,7 +291,7 @@ listenUnix uuid origAddr opts = getPath >>= go where
 			-- Abstract paths are supported on Linux, but not on
 			-- other UNIX-like systems.
 			let (addrParams, path) = if System.Info.os == "linux"
-				then ([("abstract", fileName)], ('\x00' : fileName))
+				then ([("abstract", fileName)], '\x00' : fileName)
 				else ([("path", fileName)], fileName)
 			
 			let addr = address_ "unix" (addrParams ++ [("guid", Char8.unpack (formatUUID uuid))])
@@ -335,9 +335,9 @@ listenTcp uuid origAddr opts = go where
 			Just x -> Just (Char8.unpack x)
 			Nothing -> Just "localhost"
 	
-	getAddresses family = getAddrInfo (Just (defaultHints
+	getAddresses family_ = getAddrInfo (Just (defaultHints
 		{ addrFlags = [AI_ADDRCONFIG, AI_PASSIVE]
-		, addrFamily = family
+		, addrFamily = family_
 		, addrSocketType = Stream
 		})) paramBind Nothing
 	
@@ -375,12 +375,12 @@ listenTcp uuid origAddr opts = go where
 			Left err -> throwIO (transportError err)
 				{ transportErrorAddress = Just origAddr
 				}
-			Right family -> catchIOException (Just origAddr) $ do
-				sockAddrs <- getAddresses family
+			Right family_ -> catchIOException (Just origAddr) $ do
+				sockAddrs <- getAddresses family_
 				
 				sock <- (bracketOnError
 					(do
-						sock <- socket family Stream defaultProtocol
+						sock <- socket family_ Stream defaultProtocol
 						setSocketOption sock ReuseAddr 1
 						return sock)
 					sClose
