@@ -39,6 +39,7 @@ module DBus.Client
 	-- * Sending method calls
 	, call
 	, call_
+	, callNoReply
 	
 	-- * Receiving method calls
 	, Method
@@ -379,7 +380,7 @@ send_ client msg io = do
 
 call :: Client -> MethodCall -> IO (Either MethodError MethodReturn)
 call client msg = do
-	-- remove some fields that should not be set:
+	-- Remove some fields that should not be set:
 	--
 	-- methodCallSender: not used in client/bus mode.
 	-- NoReplyExpected: can cause this function to block indefinitely.
@@ -401,6 +402,15 @@ call_ client msg = do
 			{ clientErrorFatal = methodErrorName err == "org.haskell.hackage.dbus.ClientError"
 			}
 		Right ret -> return ret
+
+callNoReply :: Client -> MethodCall -> IO ()
+callNoReply client msg = do
+	-- Ensure that NoReplyExpected is always set.
+	let safeMsg = msg
+		{ methodCallSender = Nothing
+		, methodCallFlags = Data.Set.insert NoReplyExpected (methodCallFlags msg)
+		}
+	send_ client safeMsg (\_ -> return ())
 
 listen :: Client -> MatchRule -> (BusName -> Signal -> IO ()) -> IO ()
 listen client rule io = do
