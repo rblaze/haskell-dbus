@@ -378,7 +378,7 @@ unmarshalSignature = do
 	byteCount <- unmarshalWord8
 	bytes <- consume (fromIntegral byteCount)
 	skipTerminator
-	fromMaybeU "signature" parseSignature bytes
+	fromMaybeU "signature" parseSignatureBytes bytes
 
 arrayMaximumLength :: Int
 arrayMaximumLength = 67108864

@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 -- Copyright (C) 2010-2012 John Millikin <jmillikin@gmail.com>
@@ -22,9 +21,6 @@ import           Test.Chell
 import           Test.Chell.QuickCheck
 import           Test.QuickCheck hiding ((.&.), property)
 
-import           Data.ByteString (ByteString)
-import qualified Data.ByteString.Char8 as Char8
-
 import           DBus
 
 import           DBusTests.Util
@@ -47,8 +43,8 @@ test_BuildSignature = property "signature" prop where
 
 test_ParseSignature :: Test
 test_ParseSignature = property "parseSignature" prop where
-	prop = forAll gen_SignatureBytes check
-	check (bytes, types) = case parseSignature bytes of
+	prop = forAll gen_SignatureString check
+	check (s, types) = case parseSignature s of
 		Nothing -> False
 		Just sig -> signatureTypes sig == types
 
@@ -70,9 +66,9 @@ test_ParseInvalid = assertions "parse-invalid" $ do
 	$expect (nothing (parseSignature "h"))
 	
 	-- at most 255 characters
-	$expect (just (parseSignature (Char8.replicate 254 'y')))
-	$expect (just (parseSignature (Char8.replicate 255 'y')))
-	$expect (nothing (parseSignature (Char8.replicate 256 'y')))
+	$expect (just (parseSignature (replicate 254 'y')))
+	$expect (just (parseSignature (replicate 255 'y')))
+	$expect (nothing (parseSignature (replicate 256 'y')))
 	
 	-- length also enforced by 'signature'
 	$expect (just (signature (replicate 255 TypeWord8)))
@@ -80,10 +76,10 @@ test_ParseInvalid = assertions "parse-invalid" $ do
 
 test_FormatSignature :: Test
 test_FormatSignature = property "formatSignature" prop where
-	prop = forAll gen_SignatureBytes check
-	check (bytes, _) = let
-		Just sig = parseSignature bytes
-		in formatSignature sig == Char8.unpack bytes
+	prop = forAll gen_SignatureString check
+	check (s, _) = let
+		Just sig = parseSignature s
+		in formatSignature sig == s
 
 test_IsAtom :: Test
 test_IsAtom = assertions "IsAtom" $ do
@@ -112,11 +108,11 @@ test_ShowType = assertions "show-type" $ do
 
 gen_SignatureTypes :: Gen [Type]
 gen_SignatureTypes = do
-	(_, ts) <- gen_SignatureBytes
+	(_, ts) <- gen_SignatureString
 	return ts
 
-gen_SignatureBytes :: Gen (ByteString, [Type])
-gen_SignatureBytes = gen where
+gen_SignatureString :: Gen (String, [Type])
+gen_SignatureString = gen where
 	anyType = oneof [atom, container]
 	atom = elements
 		[ ("b", TypeBoolean)
@@ -155,7 +151,7 @@ gen_SignatureBytes = gen where
 		let chars = concat codes
 		if length chars > 255
 			then halfSized gen
-			else return (Char8.pack chars, enums)
+			else return (chars, enums)
 
 instance Arbitrary Signature where
 	arbitrary = do

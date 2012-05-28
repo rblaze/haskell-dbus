@@ -141,9 +141,8 @@ parseSignal e = do
 
 parseType :: X.Element -> Maybe T.Signature
 parseType e = do
-	txt <- X.attributeText "type" e
-	let bytes = Data.Text.Encoding.encodeUtf8 txt
-	T.parseSignature bytes
+	s <- attributeString "type" e
+	T.parseSignature s
 
 parseParameter :: X.Element -> Maybe Parameter
 parseParameter e = do

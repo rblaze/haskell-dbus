@@ -28,6 +28,7 @@ import qualified Data.ByteString
 import qualified Data.ByteString.Char8 as Char8
 import qualified Data.ByteString.Lazy
 import qualified Data.ByteString.Unsafe
+import           Data.Char (ord)
 import           Data.Int
 import           Data.List (intercalate)
 import qualified Data.Map
@@ -128,9 +129,7 @@ typeCode (TypeStructure ts) = concat
 	["(", concatMap typeCode ts, ")"]
 
 instance Data.String.IsString Signature where
-	fromString s = case parseSignature (Char8.pack s) of
-		Nothing -> error ("invalid signature: " ++ show s)
-		Just sig -> sig
+	fromString = forceParse "signature" parseSignature
 
 signature :: [Type] -> Maybe Signature
 signature = check where
@@ -150,8 +149,14 @@ signature_ ts = case signature ts of
 	Just sig -> sig
 	Nothing -> error ("invalid signature: " ++ show ts)
 
-parseSignature :: ByteString -> Maybe Signature
-parseSignature bytes =
+parseSignature :: String -> Maybe Signature
+parseSignature s = do
+	when (length s > 255) Nothing
+	when (any (\c -> ord c > 0x7F) s) Nothing
+	parseSignatureBytes (Char8.pack s)
+
+parseSignatureBytes :: ByteString -> Maybe Signature
+parseSignatureBytes bytes =
 	case Data.ByteString.length bytes of
 		0 -> Just (Signature [])
 		1 -> parseSigFast bytes
