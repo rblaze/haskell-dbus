@@ -68,8 +68,8 @@ test_Client = withDaemon "client" $ \addr -> do
 	
 	liftIO (export clientA "/"
 		[ method "com.example.Echo" "Echo" (signature_ [TypeString]) (signature_ []) (\vs -> if map variantType vs == [TypeString]
-			then return (ReplyReturn vs)
-			else return (ReplyError "com.example.Error" [toVariant ("bad body: " ++ show vs)]))
+			then return (replyReturn vs)
+			else return (replyError "com.example.Error" [toVariant ("bad body: " ++ show vs)]))
 		])
 	
 	-- TODO: get bus address of clientA with a function
