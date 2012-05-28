@@ -1,6 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- Copyright (C) 2009-2012 John Millikin <jmillikin@gmail.com>
@@ -365,7 +364,7 @@ serverAuthExternal t uuid = do
 			else return False
 	
 	c <- transportGet t 1
-	if c /= "\x00"
+	if c /= Char8.pack "\x00"
 		then return False
 		else do
 			line <- transportGetLine t

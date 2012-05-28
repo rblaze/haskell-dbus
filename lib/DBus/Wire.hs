@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 -- Copyright (C) 2009-2012 John Millikin <jmillikin@gmail.com>
 --
 -- This program is free software: you can redistribute it and/or modify
@@ -535,7 +533,7 @@ decodeField struct = case struct of
 	(8, x) -> decodeField' x HeaderSignature "signature"
 	_      -> return []
 
-decodeField' :: IsVariant a => Variant -> (a -> b) -> Text
+decodeField' :: IsVariant a => Variant -> (a -> b) -> String
              -> ErrorM UnmarshalError [b]
 decodeField' x f label = case fromVariant x of
 	Just x' -> return [f x']
@@ -594,7 +592,7 @@ unmarshalMessageM getBytes' = runErrorT $ do
 	let getBytes = ErrorT . liftM Right . getBytes'
 	
 
-	let fixedSig = "yyyyuuu"
+	let Just fixedSig = parseSignature "yyyyuuu"
 	fixedBytes <- getBytes 16
 
 	let messageVersion = Data.ByteString.index fixedBytes 3
@@ -623,7 +621,7 @@ unmarshalMessageM getBytes' = runErrorT $ do
 	when (messageLength > messageMaximumLength) $
 		throwErrorT (UnmarshalError ("Message size " ++ show messageLength ++ " exceeds limit of " ++ show messageMaximumLength))
 
-	let headerSig  = "yyyyuua(yv)"
+	let Just headerSig  = parseSignature "yyyyuua(yv)"
 	fieldBytes <- getBytes (fromIntegral fieldByteCount)
 	let headerBytes = Data.ByteString.append fixedBytes fieldBytes
 	header <- unmarshal' headerSig headerBytes
@@ -642,9 +640,9 @@ unmarshalMessageM getBytes' = runErrorT $ do
 	return (y serial flags (map Variant body))
 
 findBodySignature :: [HeaderField] -> Signature
-findBodySignature fields = fromMaybe "" (listToMaybe [x | HeaderSignature x <- fields])
+findBodySignature fields = fromMaybe (signature_ []) (listToMaybe [x | HeaderSignature x <- fields])
 
-buildReceivedMessage :: Word8 -> [HeaderField] -> ErrorM Text (Serial -> Set Flag -> [Variant] -> ReceivedMessage)
+buildReceivedMessage :: Word8 -> [HeaderField] -> ErrorM String (Serial -> Set Flag -> [Variant] -> ReceivedMessage)
 buildReceivedMessage 1 fields = do
 	path <- require "path" [x | HeaderPath x <- fields]
 	member <- require "member name" [x | HeaderMember x <- fields]
@@ -686,7 +684,7 @@ buildReceivedMessage messageType _ = return $ \serial flags body -> let
 	msg = UnknownMessage messageType flags body
 	in ReceivedUnknown serial msg
 
-require :: Text -> [a] -> ErrorM Text a
+require :: String -> [a] -> ErrorM String a
 require _     (x:_) = return x
 require label _     = throwErrorM label
 
