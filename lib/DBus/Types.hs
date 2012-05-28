@@ -138,11 +138,20 @@ signature = check where
 		else Just (Signature ts)
 	sumLen :: [Type] -> Int
 	sumLen = sum . map len
-
+	
 	len (TypeArray t) = 1 + len t
-	len (TypeDictionary kt vt) = 3 + len kt + len vt
+	len (TypeDictionary kt vt)
+		| typeIsAtomic kt = 3 + len kt + len vt
+		| otherwise = 256
+	len (TypeStructure []) = 256
 	len (TypeStructure ts) = 2 + sumLen ts
 	len _ = 1
+	
+	typeIsAtomic TypeVariant = False
+	typeIsAtomic TypeArray{} = False
+	typeIsAtomic TypeDictionary{} = False
+	typeIsAtomic TypeStructure{} = False
+	typeIsAtomic _ = True
 
 signature_ :: [Type] -> Signature
 signature_ ts = case signature ts of

@@ -50,21 +50,6 @@ test_ParseSignature = property "parseSignature" prop where
 
 test_ParseInvalid :: Test
 test_ParseInvalid = assertions "parse-invalid" $ do
-	-- struct code
-	$expect (nothing (parseSignature "r"))
-	
-	-- empty struct
-	$expect (nothing (parseSignature "()"))
-	
-	-- dict code
-	$expect (nothing (parseSignature "e"))
-	
-	-- non-atomic dict key
-	$expect (nothing (parseSignature "a{vy}"))
-	
-	-- unix fd (intentionally not supported in haskell-dbus)
-	$expect (nothing (parseSignature "h"))
-	
 	-- at most 255 characters
 	$expect (just (parseSignature (replicate 254 'y')))
 	$expect (just (parseSignature (replicate 255 'y')))
@@ -73,6 +58,23 @@ test_ParseInvalid = assertions "parse-invalid" $ do
 	-- length also enforced by 'signature'
 	$expect (just (signature (replicate 255 TypeWord8)))
 	$expect (nothing (signature (replicate 256 TypeWord8)))
+	
+	-- struct code
+	$expect (nothing (parseSignature "r"))
+	
+	-- empty struct
+	$expect (nothing (parseSignature "()"))
+	$expect (nothing (signature [TypeStructure []]))
+	
+	-- dict code
+	$expect (nothing (parseSignature "e"))
+	
+	-- non-atomic dict key
+	$expect (nothing (parseSignature "a{vy}"))
+	$expect (nothing (signature [TypeDictionary TypeVariant TypeVariant]))
+	
+	-- unix fd (intentionally not supported in haskell-dbus)
+	$expect (nothing (parseSignature "h"))
 
 test_FormatSignature :: Test
 test_FormatSignature = property "formatSignature" prop where
