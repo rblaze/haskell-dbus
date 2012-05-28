@@ -28,6 +28,7 @@ import           DBusTests.Integration
 import           DBusTests.InterfaceName
 import           DBusTests.Introspection
 import           DBusTests.MemberName
+import           DBusTests.Message
 import           DBusTests.ObjectPath
 import           DBusTests.Serialization
 import           DBusTests.Socket
@@ -57,6 +58,7 @@ tests =
 	, test_InterfaceName
 	, test_Introspection
 	, test_MemberName
+	, test_Message
 	, test_ObjectPath
 	, test_Serialization
 	, test_Signature
