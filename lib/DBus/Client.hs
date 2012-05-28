@@ -43,7 +43,9 @@ module DBus.Client
 	
 	-- * Receiving method calls
 	, Method
-	, Reply(..)
+	, Reply
+	, replyReturn
+	, replyError
 	, export
 	, throwError
 	, method
@@ -150,6 +152,12 @@ type Callback = (ReceivedMessage -> IO ())
 data Reply
 	= ReplyReturn [Variant]
 	| ReplyError ErrorName [Variant]
+
+replyReturn :: [Variant] -> Reply
+replyReturn = ReplyReturn
+
+replyError :: ErrorName -> [Variant] -> Reply
+replyError = ReplyError
 
 data Method = Method InterfaceName MemberName Signature Signature ([Variant] -> IO Reply)
 
