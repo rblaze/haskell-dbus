@@ -42,8 +42,8 @@ module DBus
 	, Type(..)
 	, signature
 	, signature_
-	, signatureText
 	, signatureTypes
+	, formatSignature
 	, parseSignature
 	
 	-- * Object paths

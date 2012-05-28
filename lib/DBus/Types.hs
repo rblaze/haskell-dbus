@@ -35,7 +35,6 @@ import           Data.Map (Map)
 import qualified Data.String
 import qualified Data.Text
 import           Data.Text (Text)
-import qualified Data.Text.Encoding
 import qualified Data.Text.Lazy
 import           Data.Typeable (Typeable)
 import qualified Data.Vector
@@ -102,13 +101,10 @@ signatureTypes (Signature types) = types
 instance Show Signature where
 	showsPrec d sig = showParen (d > 10) $
 		showString "Signature " .
-		shows (signatureText sig)
+		shows (formatSignature sig)
 
-signatureText :: Signature -> Text
-signatureText = Data.Text.Encoding.decodeUtf8
-              . Char8.pack
-              . concatMap typeCode
-              . signatureTypes
+formatSignature :: Signature -> String
+formatSignature = concatMap typeCode . signatureTypes
 
 typeCode :: Type -> String
 typeCode TypeBoolean    = "b"

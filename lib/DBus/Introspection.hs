@@ -238,14 +238,14 @@ writeSignal (Signal name params) = writeElement "signal"
 writeParameter :: Text -> Parameter -> XmlWriter ()
 writeParameter direction (Parameter name t) = writeEmptyElement "arg"
 	[ ("name", name)
-	, ("type", T.signatureText (T.signature_ [t]))
+	, ("type", Data.Text.pack (T.formatSignature (T.signature_ [t])))
 	, ("direction", direction)
 	]
 
 writeProperty :: Property -> XmlWriter ()
 writeProperty (Property name sig access) = writeEmptyElement "property"
 	[ ("name", name)
-	, ("type", T.signatureText sig)
+	, ("type", Data.Text.pack (T.formatSignature sig))
 	, ("access", strAccess access)
 	]
 

@@ -24,7 +24,6 @@ import           Test.QuickCheck hiding ((.&.), property)
 
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as Char8
-import qualified Data.Text as T
 
 import           DBus
 
@@ -84,7 +83,7 @@ test_FormatSignature = property "formatSignature" prop where
 	prop = forAll gen_SignatureBytes check
 	check (bytes, _) = let
 		Just sig = parseSignature bytes
-		in T.unpack (signatureText sig) == Char8.unpack bytes
+		in formatSignature sig == Char8.unpack bytes
 
 test_IsAtom :: Test
 test_IsAtom = assertions "IsAtom" $ do
