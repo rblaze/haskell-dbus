@@ -100,7 +100,11 @@ module DBus
 	-- * Message marshaling
 	, Endianness (..)
 	, MarshalError
+	, marshalErrorMessage
+	
 	, UnmarshalError
+	, unmarshalErrorMessage
+	
 	, marshalMessage
 	, unmarshalMessage
 	

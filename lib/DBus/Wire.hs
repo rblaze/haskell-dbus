@@ -18,7 +18,11 @@
 module DBus.Wire
 	( Endianness(..)
 	, MarshalError
+	, marshalErrorMessage
+	
 	, UnmarshalError
+	, unmarshalErrorMessage
+	
 	, marshalMessage
 	, unmarshalMessage
 	, unmarshalMessageM
@@ -130,8 +134,11 @@ chooseEndian big little = Wire (\e s -> case e of
 
 type Marshal = Wire MarshalState
 
-newtype MarshalError = MarshalError Text
+newtype MarshalError = MarshalError String
 	deriving (Show, Eq)
+
+marshalErrorMessage :: MarshalError -> String
+marshalErrorMessage (MarshalError s) = s
 
 data MarshalState = MarshalState
 	!Builder.Builder
@@ -187,8 +194,11 @@ marshalBuilder size be le x = do
 
 type Unmarshal = Wire UnmarshalState
 
-newtype UnmarshalError = UnmarshalError Text
+newtype UnmarshalError = UnmarshalError String
 	deriving (Show, Eq)
+
+unmarshalErrorMessage :: UnmarshalError -> String
+unmarshalErrorMessage (UnmarshalError s) = s
 
 data UnmarshalState = UnmarshalState
 	{-# UNPACK #-} !ByteString
@@ -529,7 +539,7 @@ decodeField' :: IsVariant a => Variant -> (a -> b) -> Text
              -> ErrorM UnmarshalError [b]
 decodeField' x f label = case fromVariant x of
 	Just x' -> return [f x']
-	Nothing -> throwErrorM (UnmarshalError (Data.Text.pack ("Header field " ++ show label ++ " contains invalid value " ++ show x)))
+	Nothing -> throwErrorM (UnmarshalError ("Header field " ++ show label ++ " contains invalid value " ++ show x))
 
 -- | Convert a 'Message' into a 'ByteString'. Although unusual, it is
 -- possible for marshaling to fail; if this occurs, an error will be
@@ -552,7 +562,7 @@ marshalMessage e serial msg = runMarshal where
 		checkMaximumSize
 	emptyState = MarshalState Builder.empty 0
 	runMarshal = case unWire marshaler e emptyState of
-		WireRL err -> Left (MarshalError (Data.Text.pack err))
+		WireRL err -> Left (MarshalError err)
 		WireRR _ (MarshalState builder _) -> Right (Builder.toByteString builder)
 
 checkBodySig :: [Variant] -> Marshal Signature
@@ -588,17 +598,17 @@ unmarshalMessageM getBytes' = runErrorT $ do
 	fixedBytes <- getBytes 16
 
 	let messageVersion = Data.ByteString.index fixedBytes 3
-	when (messageVersion /= protocolVersion) (throwErrorT (UnmarshalError (Data.Text.pack ("Unsupported protocol version: " ++ show messageVersion))))
+	when (messageVersion /= protocolVersion) (throwErrorT (UnmarshalError ("Unsupported protocol version: " ++ show messageVersion)))
 
 	let eByte = Data.ByteString.index fixedBytes 0
 	endianness <- case decodeEndianness eByte of
 		Just x' -> return x'
-		Nothing -> throwErrorT (UnmarshalError (Data.Text.pack ("Invalid endianness: " ++ show eByte)))
+		Nothing -> throwErrorT (UnmarshalError ("Invalid endianness: " ++ show eByte))
 
 	let unmarshalSig = mapM unmarshal . signatureTypes
 	let unmarshal' x bytes = case unWire (unmarshalSig x) endianness (UnmarshalState bytes 0) of
 		WireRR x' _ -> return x'
-		WireRL err  -> throwErrorT (UnmarshalError (Data.Text.pack err))
+		WireRL err  -> throwErrorT (UnmarshalError err)
 	fixed <- unmarshal' fixedSig fixedBytes
 	let messageType = fromJust (fromValue (fixed !! 1))
 	let flags = decodeFlags (fromJust (fromValue (fixed !! 2)))
@@ -611,7 +621,7 @@ unmarshalMessageM getBytes' = runErrorT $ do
 	-- Forbid messages larger than 'messageMaximumLength'
 	let messageLength = 16 + toInteger fieldByteCount + toInteger bodyPadding + toInteger bodyLength
 	when (messageLength > messageMaximumLength) $
-		throwErrorT (UnmarshalError (Data.Text.pack ("Message size " ++ show messageLength ++ " exceeds limit of " ++ show messageMaximumLength)))
+		throwErrorT (UnmarshalError ("Message size " ++ show messageLength ++ " exceeds limit of " ++ show messageMaximumLength))
 
 	let headerSig  = "yyyyuua(yv)"
 	fieldBytes <- getBytes (fromIntegral fieldByteCount)
@@ -628,7 +638,7 @@ unmarshalMessageM getBytes' = runErrorT $ do
 	body <- unmarshal' bodySig bodyBytes
 	y <- case runErrorM (buildReceivedMessage messageType fields) of
 		Right x -> return x
-		Left err -> throwErrorT (UnmarshalError (Data.Text.pack ("Header field " ++ show err ++ " is required, but missing")))
+		Left err -> throwErrorT (UnmarshalError ("Header field " ++ show err ++ " is required, but missing"))
 	return (y serial flags (map Variant body))
 
 findBodySignature :: [HeaderField] -> Signature
@@ -686,7 +696,7 @@ require label _     = throwErrorM label
 -- the D-Bus standard.
 unmarshalMessage :: ByteString -> Either UnmarshalError ReceivedMessage
 unmarshalMessage bytes = case Get.runGet (unmarshalMessageM Get.getByteString) bytes of
-	Left err -> Left (UnmarshalError (Data.Text.pack err))
+	Left err -> Left (UnmarshalError err)
 	Right x -> x
 
 untilM :: Monad m => m Bool -> m a -> m [a]
