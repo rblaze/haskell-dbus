@@ -30,6 +30,8 @@ module DBusTests.Util
 	, forkVar
 	, withEnv
 	
+	, dropWhileEnd
+	
 	, halfSized
 	, clampedSize
 	, smallListOf
@@ -249,3 +251,6 @@ instance Arbitrary Data.ByteString.ByteString where
 
 instance Arbitrary Data.ByteString.Lazy.ByteString where
 	arbitrary = fmap Data.ByteString.Lazy.fromChunks arbitrary
+
+dropWhileEnd :: (Char -> Bool) -> String -> String
+dropWhileEnd p = T.unpack . T.dropWhileEnd p . T.pack

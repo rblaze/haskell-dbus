@@ -75,15 +75,15 @@ subObject :: ObjectPath -> Gen Introspection.Object
 subObject parentPath = sized $ \n -> resize (min n 4) $ do
 	let nonRoot = do
 		x <- resize 10 arbitrary
-		case objectPathText x of
+		case formatObjectPath x of
 			"/" -> nonRoot
 			x'  -> return x'
 	
 	thisPath <- nonRoot
-	let path' = case objectPathText parentPath of
+	let path' = case formatObjectPath parentPath of
 		"/" -> thisPath
-		x   -> T.append x thisPath
-	let Just path = objectPath path'
+		x   -> x ++ thisPath
+	let path = objectPath_ path'
 	ifaces <- arbitrary
 	children <- halfSized (listOf (subObject path))
 	return (Introspection.Object path ifaces children)

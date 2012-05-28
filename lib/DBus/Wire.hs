@@ -337,6 +337,9 @@ marshalText text = do
 	appendS bytes
 	marshalWord8 0
 
+marshalString :: String -> Marshal ()
+marshalString = marshalText . Data.Text.pack
+
 unmarshalText :: Unmarshal Text
 unmarshalText = do
 	byteCount <- unmarshalWord32
@@ -344,18 +347,21 @@ unmarshalText = do
 	skipTerminator
 	fromMaybeU "text" maybeDecodeUtf8 bytes
 
+unmarshalString :: Unmarshal String
+unmarshalString = liftM Data.Text.unpack unmarshalText
+
 maybeDecodeUtf8 :: ByteString -> Maybe Text
 maybeDecodeUtf8 bs = case Data.Text.Encoding.decodeUtf8' bs of
 	Right text -> Just text
 	_ -> Nothing
 
 marshalObjectPath :: ObjectPath -> Marshal ()
-marshalObjectPath = marshalText . objectPathText
+marshalObjectPath = marshalString . formatObjectPath
 
 unmarshalObjectPath :: Unmarshal ObjectPath
 unmarshalObjectPath = do
-	text <- unmarshalText
-	fromMaybeU "object path" objectPath text
+	s <- unmarshalString
+	fromMaybeU "object path" parseObjectPath s
 
 signatureBytes :: Signature -> ByteString
 signatureBytes (Signature ts) = Data.ByteString.Char8.pack (concatMap typeCode ts)

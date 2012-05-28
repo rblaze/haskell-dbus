@@ -447,17 +447,17 @@ instance Show MatchRule where
 matchRuleString :: MatchRule -> String
 matchRuleString rule = intercalate "," predicates where
 	predicates = catMaybes
-		[ f "sender" matchSender busNameText
-		, f "destination" matchDestination busNameText
-		, f "path" matchPath objectPathText
-		, f "interface" matchInterface interfaceNameText
-		, f "member" matchMember memberNameText
+		[ f "sender" matchSender formatBusName
+		, f "destination" matchDestination formatBusName
+		, f "path" matchPath formatObjectPath
+		, f "interface" matchInterface formatInterfaceName
+		, f "member" matchMember formatMemberName
 		]
 	
-	f :: String -> (MatchRule -> Maybe a) -> (a -> Text) -> Maybe String
+	f :: String -> (MatchRule -> Maybe a) -> (a -> String) -> Maybe String
 	f key get text = do
 		val <- fmap text (get rule)
-		return (concat [key, "='", Data.Text.unpack val, "'"])
+		return (concat [key, "='", val, "'"])
 
 formatMatchRule :: MatchRule -> Text
 formatMatchRule = Data.Text.pack . matchRuleString
@@ -692,9 +692,9 @@ autoMethod iface name fun = DBus.Client.method iface name inSig outSig io where
 	
 	invalid label = error (concat
 		[ "Method "
-		, Data.Text.unpack (interfaceNameText iface)
+		, formatInterfaceName iface
 		, "."
-		, Data.Text.unpack (memberNameText name)
+		, formatMemberName name
 		, " has an invalid "
 		, label
 		, " signature."])

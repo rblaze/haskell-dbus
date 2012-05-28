@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 -- Copyright (C) 2010-2012 John Millikin <jmillikin@gmail.com>
@@ -22,9 +21,6 @@ import           Test.Chell
 import           Test.Chell.QuickCheck
 import           Test.QuickCheck hiding (property)
 
-import           Data.Text (Text)
-import qualified Data.Text as T
-
 import           DBus
 
 import           DBusTests.Util
@@ -38,31 +34,31 @@ test_MemberName = suite "MemberName"
 test_Parse :: Test
 test_Parse = property "parse" prop where
 	prop = forAll gen_MemberName check
-	check x = case memberName x of
+	check x = case parseMemberName x of
 		Nothing -> False
-		Just parsed -> memberNameText parsed == x
+		Just parsed -> formatMemberName parsed == x
 
 test_ParseInvalid :: Test
 test_ParseInvalid = assertions "parse-invalid" $ do
 	-- empty
-	$expect (nothing (memberName ""))
+	$expect (nothing (parseMemberName ""))
 	
 	-- starts with a digit
-	$expect (nothing (memberName "@foo"))
+	$expect (nothing (parseMemberName "@foo"))
 	
 	-- trailing chars
-	$expect (nothing (memberName "foo!"))
+	$expect (nothing (parseMemberName "foo!"))
 	
 	-- at most 255 characters
-	$expect (just (memberName (T.replicate 254 "y")))
-	$expect (just (memberName (T.replicate 255 "y")))
-	$expect (nothing (memberName (T.replicate 256 "y")))
+	$expect (just (parseMemberName (replicate 254 'y')))
+	$expect (just (parseMemberName (replicate 255 'y')))
+	$expect (nothing (parseMemberName (replicate 256 'y')))
 
 test_IsVariant :: Test
 test_IsVariant = assertions "IsVariant" $ do
 	assertVariant TypeString (memberName_ "foo")
 
-gen_MemberName :: Gen Text
+gen_MemberName :: Gen String
 gen_MemberName = gen where
 	alpha = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
 	alphanum = alpha ++ ['0'..'9']
@@ -70,7 +66,7 @@ gen_MemberName = gen where
 	gen = do
 		x <- elements alpha
 		xs <- listOf (elements alphanum)
-		return (T.pack (x:xs))
+		return (x:xs)
 
 instance Arbitrary MemberName where
-	arbitrary = fmap (memberName_ . T.unpack) gen_MemberName
+	arbitrary = fmap memberName_ gen_MemberName

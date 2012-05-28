@@ -48,33 +48,33 @@ module DBus
 	
 	-- * Object paths
 	, ObjectPath
-	, objectPath
 	, objectPath_
-	, objectPathText
+	, formatObjectPath
+	, parseObjectPath
 	
 	-- * Interface names
 	, InterfaceName
-	, interfaceName
 	, interfaceName_
-	, interfaceNameText
+	, formatInterfaceName
+	, parseInterfaceName
 	
 	-- * Member names
 	, MemberName
-	, memberName
 	, memberName_
-	, memberNameText
+	, formatMemberName
+	, parseMemberName
 	
 	-- * Error names
 	, ErrorName
-	, errorName
 	, errorName_
-	, errorNameText
+	, formatErrorName
+	, parseErrorName
 	
 	-- * Bus names
 	, BusName
-	, busName
 	, busName_
-	, busNameText
+	, formatBusName
+	, parseBusName
 	
 	-- * Heterogenous containers
 	, Structure

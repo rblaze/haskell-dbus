@@ -29,6 +29,7 @@ module DBus.Introspection
 
 import           Control.Monad ((>=>))
 import           Control.Monad.ST (runST)
+import           Data.List (isPrefixOf)
 import           Data.Maybe (fromMaybe)
 import qualified Data.STRef as ST
 import qualified Data.Text
@@ -98,16 +99,16 @@ parseRoot :: T.ObjectPath -> X.Element -> Maybe Object
 parseRoot defaultPath e = do
 	path <- case X.attributeText "name" e of
 		Nothing -> Just defaultPath
-		Just x  -> T.objectPath x
+		Just x  -> T.parseObjectPath (Data.Text.unpack x)
 	parseObject path e
 
 parseChild :: T.ObjectPath -> X.Element -> Maybe Object
 parseChild parentPath e = do
-	let parentPath' = case T.objectPathText parentPath of
+	let parentPath' = case T.formatObjectPath parentPath of
 		"/" -> "/"
-		x   -> Data.Text.append x "/"
+		x   -> x ++ "/"
 	pathSegment <- X.attributeText "name" e
-	path <- T.objectPath $ Data.Text.append parentPath' pathSegment
+	path <- T.parseObjectPath (parentPath' ++ Data.Text.unpack pathSegment)
 	parseObject path e
 
 parseObject :: T.ObjectPath -> X.Element -> Maybe Object
@@ -119,7 +120,7 @@ parseObject _ _ = Nothing
 
 parseInterface :: X.Element -> Maybe Interface
 parseInterface e = do
-	name <- T.interfaceName =<< X.attributeText "name" e
+	name <- T.parseInterfaceName =<< attributeString "name" e
 	methods <- children parseMethod (X.isNamed "method") e
 	signals <- children parseSignal (X.isNamed "signal") e
 	properties <- children parseProperty (X.isNamed "property") e
@@ -127,14 +128,14 @@ parseInterface e = do
 
 parseMethod :: X.Element -> Maybe Method
 parseMethod e = do
-	name <- T.memberName =<< X.attributeText "name" e
+	name <- T.parseMemberName =<< attributeString "name" e
 	paramsIn <- children parseParameter (isParam ["in", ""]) e
 	paramsOut <- children parseParameter (isParam ["out"]) e
 	return $ Method name paramsIn paramsOut
 
 parseSignal :: X.Element -> Maybe Signal
 parseSignal e = do
-	name <- T.memberName =<< X.attributeText "name" e
+	name <- T.parseMemberName =<< attributeString "name" e
 	params <- children parseParameter (isParam ["out", ""]) e
 	return $ Signal name params
 
@@ -195,44 +196,44 @@ writeRoot :: Object -> XmlWriter ()
 writeRoot obj@(Object path _ _) = do
 	tell "<!DOCTYPE node PUBLIC '-//freedesktop//DTD D-BUS Object Introspection 1.0//EN'"
 	tell " 'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>\n"
-	writeObject (T.objectPathText path) obj
+	writeObject (T.formatObjectPath path) obj
 
 writeChild :: T.ObjectPath -> Object -> XmlWriter ()
 writeChild parentPath obj@(Object path _ _) = write where
-	path' = T.objectPathText path
-	parent' = T.objectPathText parentPath
-	relpathM = if Data.Text.isPrefixOf parent' path'
+	path' = T.formatObjectPath path
+	parent' = T.formatObjectPath  parentPath
+	relpathM = if parent' `isPrefixOf` path'
 		then Just $ if parent' == "/"
-			then Data.Text.drop 1 path'
-			else Data.Text.drop (Data.Text.length parent' + 1) path'
+			then drop 1 path'
+			else drop (length parent' + 1) path'
 		else Nothing
 	
 	write = case relpathM of
 		Just relpath -> writeObject relpath obj
 		Nothing -> XmlWriter Nothing
 
-writeObject :: Text -> Object -> XmlWriter ()
+writeObject :: String -> Object -> XmlWriter ()
 writeObject path (Object fullPath interfaces children') = writeElement "node"
-	[("name", path)] $ do
+	[("name", Data.Text.pack path)] $ do
 		mapM_ writeInterface interfaces
 		mapM_ (writeChild fullPath) children'
 
 writeInterface :: Interface -> XmlWriter ()
 writeInterface (Interface name methods signals properties) = writeElement "interface"
-	[("name", T.interfaceNameText name)] $ do
+	[("name", Data.Text.pack (T.formatInterfaceName name))] $ do
 		mapM_ writeMethod methods
 		mapM_ writeSignal signals
 		mapM_ writeProperty properties
 
 writeMethod :: Method -> XmlWriter ()
 writeMethod (Method name inParams outParams) = writeElement "method"
-	[("name", T.memberNameText name)] $ do
+	[("name", Data.Text.pack (T.formatMemberName name))] $ do
 		mapM_ (writeParameter "in") inParams
 		mapM_ (writeParameter "out") outParams
 
 writeSignal :: Signal -> XmlWriter ()
 writeSignal (Signal name params) = writeElement "signal"
-	[("name", T.memberNameText name)] $ do
+	[("name", Data.Text.pack (T.formatMemberName name))] $ do
 		mapM_ (writeParameter "out") params
 
 writeParameter :: Text -> Parameter -> XmlWriter ()
@@ -253,6 +254,9 @@ strAccess :: [PropertyAccess] -> Text
 strAccess access = Data.Text.append readS writeS where
 	readS = if elem Read access then "read" else ""
 	writeS = if elem Write access then "write" else ""
+
+attributeString :: X.Name -> X.Element -> Maybe String
+attributeString name e = fmap Data.Text.unpack (X.attributeText name e)
 
 writeElement :: Text -> [(Text, Text)] -> XmlWriter () -> XmlWriter ()
 writeElement name attrs content = do

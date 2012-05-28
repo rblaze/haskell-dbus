@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 -- Copyright (C) 2010-2012 John Millikin <jmillikin@gmail.com>
@@ -23,8 +22,6 @@ import           Test.Chell.QuickCheck
 import           Test.QuickCheck hiding (property)
 
 import           Data.List (intercalate)
-import           Data.Text (Text)
-import qualified Data.Text as T
 
 import           DBus
 
@@ -36,34 +33,34 @@ test_ObjectPath = suite "ObjectPath"
 test_Parse :: Test
 test_Parse = property "parse" prop where
 	prop = forAll gen_ObjectPath check
-	check x = case objectPath x of
+	check x = case parseObjectPath x of
 		Nothing -> False
-		Just parsed -> objectPathText parsed == x
+		Just parsed -> formatObjectPath parsed == x
 
 test_ParseInvalid :: Test
 test_ParseInvalid = assertions "parse-invalid" $ do
 	-- empty
-	$expect (nothing (objectPath ""))
+	$expect (nothing (parseObjectPath ""))
 	
 	-- bad char
-	$expect (nothing (objectPath "/f!oo"))
+	$expect (nothing (parseObjectPath "/f!oo"))
 	
 	-- ends with a slash
-	$expect (nothing (objectPath "/foo/"))
+	$expect (nothing (parseObjectPath "/foo/"))
 	
 	-- empty element
-	$expect (nothing (objectPath "/foo//bar"))
+	$expect (nothing (parseObjectPath "/foo//bar"))
 	
 	-- trailing chars
-	$expect (nothing (objectPath "/foo!"))
+	$expect (nothing (parseObjectPath "/foo!"))
 
-gen_ObjectPath :: Gen Text
+gen_ObjectPath :: Gen String
 gen_ObjectPath = gen where
 	chars = ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_"
 	
 	gen = do
 		xs <- listOf (listOf1 (elements chars))
-		return (T.pack ("/" ++ intercalate "/" xs))
+		return ("/" ++ intercalate "/" xs)
 
 instance Arbitrary ObjectPath where
-	arbitrary = fmap (objectPath_ . T.unpack) gen_ObjectPath
+	arbitrary = fmap objectPath_ gen_ObjectPath

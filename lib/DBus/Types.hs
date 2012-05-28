@@ -568,25 +568,25 @@ varToVal :: IsVariant a => a -> Value
 varToVal a = case toVariant a of
 	Variant val -> val
 
-newtype ObjectPath = ObjectPath Text
+newtype ObjectPath = ObjectPath String
 	deriving (Eq, Ord, Show)
 
-objectPathText :: ObjectPath -> Text
-objectPathText (ObjectPath text) = text
+formatObjectPath :: ObjectPath -> String
+formatObjectPath (ObjectPath s) = s
 
-objectPath :: Text -> Maybe ObjectPath
-objectPath text = do
-	maybeParseText parseObjectPath text
-	return (ObjectPath text)
+parseObjectPath :: String -> Maybe ObjectPath
+parseObjectPath s = do
+	maybeParseString parserObjectPath s
+	return (ObjectPath s)
 
 objectPath_ :: String -> ObjectPath
-objectPath_ = tryParse "object path" objectPath
+objectPath_ = forceParse "object path" parseObjectPath
 
 instance Data.String.IsString ObjectPath where
 	fromString = objectPath_
 
-parseObjectPath :: Parsec.Parser ()
-parseObjectPath = root <|> object where
+parserObjectPath :: Parsec.Parser ()
+parserObjectPath = root <|> object where
 	root = Parsec.try $ do
 		slash
 		Parsec.eof
@@ -604,30 +604,30 @@ parseObjectPath = root <|> object where
 	               , ['0'..'9']
 	               , "_"]
 
-newtype InterfaceName = InterfaceName Text
+newtype InterfaceName = InterfaceName String
 	deriving (Eq, Ord, Show)
 
-interfaceNameText :: InterfaceName -> Text
-interfaceNameText (InterfaceName text) = text
+formatInterfaceName :: InterfaceName -> String
+formatInterfaceName (InterfaceName s) = s
 
-interfaceName :: Text -> Maybe InterfaceName
-interfaceName text = do
-	when (Data.Text.length text > 255) Nothing
-	maybeParseText parseInterfaceName text
-	return (InterfaceName text)
+parseInterfaceName :: String -> Maybe InterfaceName
+parseInterfaceName s = do
+	when (length s > 255) Nothing
+	maybeParseString parserInterfaceName s
+	return (InterfaceName s)
 
 interfaceName_ :: String -> InterfaceName
-interfaceName_ = tryParse "interface name" interfaceName
+interfaceName_ = forceParse "interface name" parseInterfaceName
 
 instance Data.String.IsString InterfaceName where
 	fromString = interfaceName_
 
 instance IsVariant InterfaceName where
-	toVariant = toVariant . interfaceNameText
-	fromVariant = fromVariant >=> interfaceName
+	toVariant = toVariant . formatInterfaceName
+	fromVariant = fromVariant >=> parseInterfaceName
 
-parseInterfaceName :: Parsec.Parser ()
-parseInterfaceName = name >> Parsec.eof where
+parserInterfaceName :: Parsec.Parser ()
+parserInterfaceName = name >> Parsec.eof where
 	alpha = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
 	alphanum = alpha ++ ['0'..'9']
 	element = do
@@ -638,82 +638,82 @@ parseInterfaceName = name >> Parsec.eof where
 		_ <- Parsec.char '.'
 		skipSepBy1 element (Parsec.char '.')
 
-newtype MemberName = MemberName Text
+newtype MemberName = MemberName String
 	deriving (Eq, Ord, Show)
 
-memberNameText :: MemberName -> Text
-memberNameText (MemberName text) = text
+formatMemberName :: MemberName -> String
+formatMemberName (MemberName s) = s
 
-memberName :: Text -> Maybe MemberName
-memberName text = do
-	when (Data.Text.length text > 255) Nothing
-	maybeParseText parseMemberName text
-	return (MemberName text)
+parseMemberName :: String -> Maybe MemberName
+parseMemberName s = do
+	when (length s > 255) Nothing
+	maybeParseString parserMemberName s
+	return (MemberName s)
 
 memberName_ :: String -> MemberName
-memberName_ = tryParse "member name" memberName
+memberName_ = forceParse "member name" parseMemberName
 
 instance Data.String.IsString MemberName where
 	fromString = memberName_
 
 instance IsVariant MemberName where
-	toVariant = toVariant . memberNameText
-	fromVariant = fromVariant >=> memberName
+	toVariant = toVariant . formatMemberName
+	fromVariant = fromVariant >=> parseMemberName
 
-parseMemberName :: Parsec.Parser ()
-parseMemberName = name >> Parsec.eof where
+parserMemberName :: Parsec.Parser ()
+parserMemberName = name >> Parsec.eof where
 	alpha = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
 	alphanum = alpha ++ ['0'..'9']
 	name = do
 		_ <- oneOf alpha
 		Parsec.skipMany (oneOf alphanum)
 
-newtype ErrorName = ErrorName Text
+newtype ErrorName = ErrorName String
 	deriving (Eq, Ord, Show)
 
-errorNameText :: ErrorName -> Text
-errorNameText (ErrorName text) = text
+formatErrorName :: ErrorName -> String
+formatErrorName (ErrorName s) = s
 
-errorName :: Text -> Maybe ErrorName
-errorName text = do
-	when (Data.Text.length text > 255) Nothing
-	maybeParseText parseInterfaceName text
-	return (ErrorName text)
+parseErrorName :: String -> Maybe ErrorName
+parseErrorName s = do
+	when (length s > 255) Nothing
+	maybeParseString parserInterfaceName s
+	return (ErrorName s)
 
 errorName_ :: String -> ErrorName
-errorName_ = tryParse "error name" errorName
+errorName_ = forceParse "error name" parseErrorName
 
 instance Data.String.IsString ErrorName where
 	fromString = errorName_
 
 instance IsVariant ErrorName where
-	toVariant = toVariant . errorNameText
-	fromVariant = fromVariant >=> errorName
+	toVariant = toVariant . formatErrorName
+	fromVariant = fromVariant >=> parseErrorName
 
-newtype BusName = BusName Text
+newtype BusName = BusName String
 	deriving (Eq, Ord, Show)
 
-busNameText :: BusName -> Text
-busNameText (BusName text) = text
+formatBusName :: BusName -> String
+formatBusName (BusName s) = s
 
-busName :: Text -> Maybe BusName
-busName text = do
-	when (Data.Text.length text > 255) Nothing
-	maybeParseText parseBusName text
-	return (BusName text)
+parseBusName :: String -> Maybe BusName
+parseBusName s = do
+	when (length s > 255) Nothing
+	maybeParseString parserBusName s
+	return (BusName s)
 
 busName_ :: String -> BusName
-busName_ = tryParse "bus name" busName
+busName_ = forceParse "bus name" parseBusName
 
 instance Data.String.IsString BusName where
 	fromString = busName_
 
 instance IsVariant BusName where
-	toVariant = toVariant . busNameText
-	fromVariant = fromVariant >=> busName
+	toVariant = toVariant . formatBusName
+	fromVariant = fromVariant >=> parseBusName
 
-parseBusName :: Parsec.Parser ()
-parseBusName = name >> Parsec.eof where
+parserBusName :: Parsec.Parser ()
+parserBusName = name >> Parsec.eof where
 	alpha = ['a'..'z'] ++ ['A'..'Z'] ++ "_-"
 	alphanum = alpha ++ ['0'..'9']
 	
@@ -1215,12 +1215,15 @@ skipSepBy1 p sep = do
 	_ <- p
 	Parsec.skipMany (sep >> p)
 
-tryParse :: String -> (Text -> Maybe a) -> String -> a
-tryParse label parse text = case parse (Data.Text.pack text) of
+forceParse :: String -> (String -> Maybe a) -> String -> a
+forceParse label parse str = case parse str of
 	Just x -> x
-	Nothing -> error ("Invalid " ++ label ++ ": " ++ show text)
+	Nothing -> error ("Invalid " ++ label ++ ": " ++ show str)
 
-maybeParseText :: Parsec.Parser a -> Text -> Maybe a
-maybeParseText parser text = case Parsec.parse parser "" (Data.Text.unpack text) of
+maybeParseString :: Parsec.Parser a -> String -> Maybe a
+maybeParseString parser s = case Parsec.parse parser "" s of
 	Left _ -> Nothing
 	Right a -> Just a
+
+maybeParseText :: Parsec.Parser a -> Text -> Maybe a
+maybeParseText parser text = maybeParseString parser (Data.Text.unpack text)

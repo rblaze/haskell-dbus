@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 -- Copyright (C) 2010-2012 John Millikin <jmillikin@gmail.com>
@@ -23,8 +22,6 @@ import           Test.Chell.QuickCheck
 import           Test.QuickCheck hiding (property)
 
 import           Data.List (intercalate)
-import           Data.Text (Text)
-import qualified Data.Text as T
 
 import           DBus
 
@@ -39,52 +36,52 @@ test_InterfaceName = suite "InterfaceName"
 test_Parse :: Test
 test_Parse = property "parse" prop where
 	prop = forAll gen_InterfaceName check
-	check x = case interfaceName x of
+	check x = case parseInterfaceName x of
 		Nothing -> False
-		Just parsed -> interfaceNameText parsed == x
+		Just parsed -> formatInterfaceName parsed == x
 
 test_ParseInvalid :: Test
 test_ParseInvalid = assertions "parse-invalid" $ do
 	-- empty
-	$expect (nothing (interfaceName ""))
+	$expect (nothing (parseInterfaceName ""))
 	
 	-- one element
-	$expect (nothing (interfaceName "foo"))
+	$expect (nothing (parseInterfaceName "foo"))
 	
 	-- element starting with a digit
-	$expect (nothing (interfaceName "foo.0bar"))
+	$expect (nothing (parseInterfaceName "foo.0bar"))
 	
 	-- trailing characters
-	$expect (nothing (interfaceName "foo.bar!"))
+	$expect (nothing (parseInterfaceName "foo.bar!"))
 	
 	-- at most 255 characters
-	$expect (just (interfaceName ("f." `T.append` T.replicate 252 "y")))
-	$expect (just (interfaceName ("f." `T.append` T.replicate 253 "y")))
-	$expect (nothing (interfaceName ("f." `T.append` T.replicate 254 "y")))
+	$expect (just (parseInterfaceName ("f." ++ replicate 252 'y')))
+	$expect (just (parseInterfaceName ("f." ++ replicate 253 'y')))
+	$expect (nothing (parseInterfaceName ("f." ++ replicate 254 'y')))
 
 test_IsVariant :: Test
 test_IsVariant = assertions "IsVariant" $ do
 	assertVariant TypeString (interfaceName_ "foo.bar")
 
-gen_InterfaceName :: Gen Text
+gen_InterfaceName :: Gen String
 gen_InterfaceName = trim chunks where
 	alpha = ['a'..'z'] ++ ['A'..'Z'] ++ "_"
 	alphanum = alpha ++ ['0'..'9']
 	
 	trim gen = do
 		x <- gen
-		if T.length x > 255
-			then return (T.dropWhileEnd (== '.') (T.take 255 x))
+		if length x > 255
+			then return (dropWhileEnd (== '.') (take 255 x))
 			else return x
 	
 	chunks = do
 		x <- chunk
 		xs <- listOf1 chunk
-		return (T.pack (intercalate "." (x:xs)))
+		return (intercalate "." (x:xs))
 	chunk = do
 		x <- elements alpha
 		xs <- listOf (elements alphanum)
 		return (x:xs)
 
 instance Arbitrary InterfaceName where
-	arbitrary = fmap (interfaceName_ . T.unpack) gen_InterfaceName
+	arbitrary = fmap interfaceName_ gen_InterfaceName
