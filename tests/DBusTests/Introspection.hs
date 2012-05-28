@@ -37,12 +37,18 @@ import           DBusTests.Util (halfSized)
 test_Introspection :: Suite
 test_Introspection = suite "Introspection"
 	test_XmlPassthrough
+	test_XmlParseFailed
 
 test_XmlPassthrough :: Test
 test_XmlPassthrough = property "xml-passthrough" $ \obj -> let
 	(Introspection.Object path _ _) = obj
 	Just xml = Introspection.toXML obj
 	in Introspection.fromXML path xml == Just obj
+
+test_XmlParseFailed :: Test
+test_XmlParseFailed = assertions "xml-parse-failed" $ do
+	$expect (nothing (Introspection.fromXML (objectPath_ "/") (T.pack "<invalid>")))
+	$expect (nothing (Introspection.fromXML (objectPath_ "/") (T.pack "<invalid/>")))
 
 instance Arbitrary Type where
 	arbitrary = oneof [atom, container] where
