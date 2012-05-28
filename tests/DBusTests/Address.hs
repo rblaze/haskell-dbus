@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 -- Copyright (C) 2010-2012 John Millikin <jmillikin@gmail.com>
