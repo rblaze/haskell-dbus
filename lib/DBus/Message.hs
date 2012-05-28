@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 -- Copyright (C) 2009-2012 John Millikin <jmillikin@gmail.com>
 --
 -- This program is free software: you can redistribute it and/or modify
@@ -20,8 +18,6 @@ module DBus.Message where
 import           Data.Maybe (fromMaybe, listToMaybe)
 import qualified Data.Set
 import           Data.Set (Set)
-import qualified Data.Text
-import           Data.Text (Text)
 import           Data.Word (Word8)
 
 import           DBus.Types
@@ -122,13 +118,13 @@ instance Message MethodError where
 		, maybe' HeaderDestination (methodErrorDestination m)
 		]
 
-methodErrorMessage :: MethodError -> Text
-methodErrorMessage msg = fromMaybe "(no error message)" $ do
-	field <- listToMaybe (methodErrorBody msg)
-	text <- fromVariant field
-	if Data.Text.null text
+methodErrorMessage :: MethodError -> String
+methodErrorMessage err = fromMaybe "(no error message)" $ do
+	field <- listToMaybe (methodErrorBody err)
+	msg <- fromVariant field
+	if null msg
 		then Nothing
-		else return text
+		else return msg
 
 data Signal = Signal
 	{ signalPath        :: ObjectPath

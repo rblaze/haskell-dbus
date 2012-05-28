@@ -398,7 +398,7 @@ call_ :: Client -> MethodCall -> IO MethodReturn
 call_ client msg = do
 	result <- call client msg
 	case result of
-		Left err -> throwIO (clientError ("Call failed: " ++ Data.Text.unpack (methodErrorMessage err)))
+		Left err -> throwIO (clientError ("Call failed: " ++ methodErrorMessage err))
 			{ clientErrorFatal = methodErrorName err == "org.haskell.hackage.dbus.ClientError"
 			}
 		Right ret -> return ret
@@ -641,6 +641,7 @@ ioT _ a = (a, typeOf a)
 instance (IsValue a, AutoSignature fun) => AutoSignature (a -> fun) where
 	funTypes fn = case valueT undefined of
 		(a, t) -> case funTypes (fn a) of
+
 			(ts, ts') -> (t : ts, ts')
 
 valueT :: IsValue a => a -> (a, Type)
