@@ -42,7 +42,6 @@ import           Control.Monad.IO.Class (MonadIO, liftIO)
 import           Data.Bits ((.&.))
 import qualified Data.ByteString
 import qualified Data.ByteString.Lazy
-import qualified Data.ByteString.Char8 as Char8
 import           Data.Char (chr)
 import qualified Data.Map as Map
 import qualified Data.Set
@@ -89,7 +88,7 @@ getTempPath :: IO String
 getTempPath = do
 	tmp <- getTemporaryDirectory
 	uuid <- randomUUID
-	return (tmp </> Char8.unpack (formatUUID uuid))
+	return (tmp </> formatUUID uuid)
 
 listenRandomUnixPath :: Assertions (Address, N.Socket)
 listenRandomUnixPath = do
@@ -102,14 +101,14 @@ listenRandomUnixPath = do
 	afterTest (removeFile path)
 	
 	let Just addr = address "unix" (Map.fromList
-		[ ("path", Char8.pack path)
+		[ ("path", path)
 		])
 	return (addr, sock)
 
 listenRandomUnixAbstract :: MonadIO m => m (Address, N.Socket)
 listenRandomUnixAbstract = liftIO $ do
 	uuid <- liftIO randomUUID
-	let sockAddr = NS.SockAddrUnix ('\x00' : Char8.unpack (formatUUID uuid))
+	let sockAddr = NS.SockAddrUnix ('\x00' : formatUUID uuid)
 	
 	sock <- NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol
 	NS.bindSocket sock sockAddr
@@ -133,7 +132,7 @@ listenRandomIPv4 = liftIO $ do
 	let Just addr = address "tcp" (Map.fromList
 		[ ("family", "ipv4")
 		, ("host", "localhost")
-		, ("port", Char8.pack (show (toInteger sockPort)))
+		, ("port", show (toInteger sockPort))
 		])
 	return (addr, sock)
 
@@ -152,7 +151,7 @@ listenRandomIPv6 = liftIO $ do
 	let Just addr = address "tcp" (Map.fromList
 		[ ("family", "ipv6")
 		, ("host", "localhost")
-		, ("port", Char8.pack (show (toInteger sockPort)))
+		, ("port", show (toInteger sockPort))
 		])
 	return (addr, sock)
 

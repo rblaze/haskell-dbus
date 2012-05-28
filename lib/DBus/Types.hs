@@ -1228,8 +1228,3 @@ maybeParseText :: Parsec.Parser a -> Text -> Maybe a
 maybeParseText parser text = case Parsec.parse parser "" (Data.Text.unpack text) of
 	Left _ -> Nothing
 	Right a -> Just a
-
-maybeParseBytes :: Parsec.Parser a -> Char8.ByteString -> Maybe a
-maybeParseBytes p bytes = case Parsec.runParser p () "" (Char8.unpack bytes) of
-	Left _ -> Nothing
-	Right a -> Just a

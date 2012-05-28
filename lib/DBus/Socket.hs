@@ -359,7 +359,7 @@ serverAuthExternal t uuid = do
 		let wantToken = concatMap (printf "%02X" . ord) (show uid)
 		if token == wantToken
 			then do
-				transportPutLine t ("OK " ++ Char8.unpack (formatUUID uuid))
+				transportPutLine t ("OK " ++ formatUUID uuid)
 				waitForBegin
 				return True
 			else return False

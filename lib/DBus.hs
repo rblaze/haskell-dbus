@@ -141,8 +141,8 @@ newtype UUID = UUID Char8.ByteString
 	deriving (Eq, Ord, Show)
 
 -- | Format a D-Bus UUID as hex-encoded ASCII.
-formatUUID :: UUID -> Char8.ByteString
-formatUUID (UUID bytes) = bytes
+formatUUID :: UUID -> String
+formatUUID (UUID bytes) = Char8.unpack bytes
 
 -- | Generate a random D-Bus UUID. This value is suitable for use in a
 -- randomly-allocated address, or as a listener's socket address

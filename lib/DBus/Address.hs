@@ -18,51 +18,46 @@
 module DBus.Address where
 
 import qualified Control.Exception
-import qualified Data.ByteString as ByteString
-import           Data.ByteString (ByteString)
-import qualified Data.ByteString.Char8 as Char8
 import           Data.Char (digitToInt, ord, chr)
+import           Data.List (intercalate)
 import qualified Data.Map
 import           Data.Map (Map)
 import qualified System.Environment
 import           Text.Printf (printf)
-import           Text.ParserCombinators.Parsec hiding (runParser)
 
-import           DBus.Types (maybeParseBytes)
+import           Text.ParserCombinators.Parsec
 
 -- | When a D-Bus server must listen for connections, or a client must connect
 -- to a server, the listening socket's configuration is specified with an
 -- /address/. An address contains the /method/, which determines the
 -- protocol and transport mechanism, and /parameters/, which provide
 -- additional method-specific information about the address.
-data Address = Address ByteString (Map ByteString ByteString)
+data Address = Address String (Map String String)
 	deriving (Eq)
 
-addressMethod :: Address -> ByteString
+addressMethod :: Address -> String
 addressMethod (Address x _ ) = x
 
-addressParameters :: Address -> Map ByteString ByteString
+addressParameters :: Address -> Map String String
 addressParameters (Address _ x) = x
 
-address :: ByteString -> Map ByteString ByteString -> Maybe Address
+address :: String -> Map String String -> Maybe Address
 address method params = if validMethod method && validParams params
-	then if ByteString.null method && Data.Map.null params
+	then if null method && Data.Map.null params
 		then Nothing
 		else Just (Address method params)
 	else Nothing
 
-validMethod :: ByteString -> Bool
-validMethod = Char8.all validChar where
+validMethod :: String -> Bool
+validMethod = all validChar where
 	validChar c = c /= ';' && c /= ':'
 
-validParams :: Map ByteString ByteString -> Bool
+validParams :: Map String String -> Bool
 validParams = all validItem . Data.Map.toList where
 	validItem (k, v) = notNull k && notNull v && validKey k
-	validKey = Char8.all validChar
+	validKey = all validChar
 	validChar c = c /= ';' && c /= ',' && c /= '='
-
-notNull :: ByteString -> Bool
-notNull = not . ByteString.null
+	notNull = not . null
 
 optionallyEncoded :: [Char]
 optionallyEncoded = concat
@@ -72,36 +67,33 @@ optionallyEncoded = concat
 	, ['-', '_', '/', '\\', '*', '.']
 	]
 
-formatAddress :: Address -> ByteString
-formatAddress (Address method params) = bytes where
-	bytes = ByteString.concat
-		[ method, ":", csvParams]
-	
-	csvParams = ByteString.intercalate "," $ do
+formatAddress :: Address -> String
+formatAddress (Address method params) = concat [method, ":", csvParams] where
+	csvParams = intercalate "," $ do
 		(k, v) <- Data.Map.toList params
-		let v' = Char8.concatMap escape v
-		return (ByteString.concat [k, "=", v'])
+		let v' = concatMap escape v
+		return (concat [k, "=", v'])
 	
-	escape c = Char8.pack $ if elem c optionallyEncoded
+	escape c = if elem c optionallyEncoded
 		then [c]
 		else printf "%%%02X" (ord c)
 
-formatAddresses :: [Address] -> ByteString
-formatAddresses = ByteString.intercalate ";" . map formatAddress
+formatAddresses :: [Address] -> String
+formatAddresses = intercalate ";" . map formatAddress
 
 instance Show Address where
 	showsPrec d x = showParen (d > 10) $
 		showString "Address " .
 		shows (formatAddress x)
 
-parseAddress :: ByteString -> Maybe Address
-parseAddress = maybeParseBytes $ do
+parseAddress :: String -> Maybe Address
+parseAddress = maybeParseString $ do
 	addr <- parsecAddress
 	eof
 	return addr
 
-parseAddresses :: ByteString -> Maybe [Address]
-parseAddresses = maybeParseBytes $ do
+parseAddresses :: String -> Maybe [Address]
+parseAddresses = maybeParseString $ do
 	addrs <- sepEndBy parsecAddress (char ';')
 	eof
 	return addrs
@@ -112,15 +104,13 @@ parsecAddress = p where
 		method <- many (noneOf ":;")
 		_ <- char ':'
 		params <- sepEndBy param (char ',')
-		return (Address
-			(Char8.pack method)
-			(Data.Map.fromList params))
+		return (Address method (Data.Map.fromList params))
 	
 	param = do
 		key <- many1 (noneOf "=;,")
 		_ <- char '='
 		value <- many1 valueChar
-		return (Char8.pack key, Char8.pack value)
+		return (key, value)
 	
 	valueChar = encoded <|> unencoded
 	encoded = do
@@ -145,10 +135,15 @@ getStarterAddress = do
 	env <- getenv "DBUS_STARTER_ADDRESS"
 	return (env >>= parseAddress)
 
-getenv :: String -> IO (Maybe ByteString)
+getenv :: String -> IO (Maybe String)
 getenv name = Control.Exception.catch
-	(fmap (Just . Char8.pack) (System.Environment.getEnv name))
+	(fmap Just (System.Environment.getEnv name))
 	(\(Control.Exception.SomeException _) -> return Nothing)
 
 hexToInt :: String -> Int
 hexToInt = foldl ((+) . (16 *)) 0 . map digitToInt
+
+maybeParseString :: Parser a -> String -> Maybe a
+maybeParseString p str = case runParser p () "" str of
+	Left _ -> Nothing
+	Right a -> Just a

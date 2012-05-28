@@ -22,8 +22,6 @@ import           Test.Chell
 import           Test.Chell.QuickCheck
 import           Test.QuickCheck hiding (property)
 
-import           Data.ByteString (ByteString)
-import qualified Data.ByteString.Char8 as Char8
 import           Data.Char (ord)
 import           Data.List (intercalate)
 import           Data.Map (Map)
@@ -152,7 +150,7 @@ test_GetStarterAddress = assertions "getStarterAddress" $ do
 	$expect (just addr)
 	$assert (equal addr (address "a" (Data.Map.fromList [("b", "c")])))
 
-gen_Address :: Gen (ByteString, Map ByteString ByteString)
+gen_Address :: Gen (String, Map String String)
 gen_Address = gen where
 	methodChars = filter (`notElem` ":;") ['!'..'~']
 	keyChars = filter (`notElem` "=;,") ['!'..'~']
@@ -160,7 +158,7 @@ gen_Address = gen where
 	param = do
 		key <- smallListOf1 (elements keyChars)
 		value <- smallListOf1 (elements ['\x00'..'\xFF'])
-		return (Char8.pack key, Char8.pack value)
+		return (key, value)
 	
 	gen = do
 		params <- smallListOf param
@@ -168,9 +166,9 @@ gen_Address = gen where
 			then smallListOf1 (elements methodChars)
 			else smallListOf (elements methodChars)
 		
-		return (Char8.pack method, Data.Map.fromList params)
+		return (method, Data.Map.fromList params)
 
-gen_AddressBytes :: Gen (ByteString, ByteString, Map ByteString ByteString)
+gen_AddressBytes :: Gen (String, String, Map String String)
 gen_AddressBytes = gen where
 	methodChars = filter (`notElem` ":;") ['!'..'~']
 	keyChars = filter (`notElem` "=;,") ['!'..'~']
@@ -195,7 +193,7 @@ gen_AddressBytes = gen where
 		let (valueChunks, valueChars) = unzip value
 		
 		let str = key ++ "=" ++ concat (valueChunks)
-		return (str, Char8.pack key, Char8.pack valueChars)
+		return (str, key, valueChars)
 	
 	gen = do
 		params <- smallListOf param
@@ -206,13 +204,13 @@ gen_AddressBytes = gen where
 		let paramStrs = [s | (s, _, _) <- params]
 		let mapItems = [(k, v) | (_, k, v) <- params]
 		
-		let bytes = Char8.pack (method ++ ":" ++ (intercalate "," paramStrs))
+		let str = method ++ ":" ++ (intercalate "," paramStrs)
 		
-		return (bytes, Char8.pack method, Data.Map.fromList mapItems)
+		return (str, method, Data.Map.fromList mapItems)
 
-gen_AddressesBytes :: Gen (ByteString, [(ByteString, Map ByteString ByteString)])
+gen_AddressesBytes :: Gen (String, [(String, Map String String)])
 gen_AddressesBytes = do
 	addrs <- smallListOf1 gen_AddressBytes
 	let bytes = [b | (b, _, _) <- addrs]
 	let expected = [(m, p) | (_, m, p) <- addrs]
-	return (Char8.intercalate ";" bytes, expected)
+	return (intercalate ";" bytes, expected)

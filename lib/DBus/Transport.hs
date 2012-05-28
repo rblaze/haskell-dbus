@@ -39,7 +39,6 @@ module DBus.Transport
 
 import           Control.Exception
 import           Data.ByteString (ByteString)
-import qualified Data.ByteString.Char8 as Char8
 import qualified Data.Map as Map
 import           Data.Typeable (Typeable)
 import           Foreign.C (CUInt)
@@ -147,7 +146,7 @@ instance Transport SocketTransport where
 	transportClose (SocketTransport addr s) = catchIOException addr (sClose s)
 
 instance TransportOpen SocketTransport where
-	transportOpen _ a = case Char8.unpack (addressMethod a) of
+	transportOpen _ a = case addressMethod a of
 		"unix" -> openUnix a
 		"tcp" -> openTcp a
 		method -> throwIO (transportError ("Unknown address method: " ++ show method))
@@ -158,7 +157,7 @@ instance TransportListen SocketTransport where
 	data TransportListener SocketTransport = SocketTransportListener Address UUID Socket
 	transportListen opts a = do
 		uuid <- randomUUID
-		(a', sock) <- case Char8.unpack (addressMethod a) of
+		(a', sock) <- case addressMethod a of
 			"unix" -> listenUnix uuid a opts
 			"tcp" -> listenTcp uuid a opts
 			method -> throwIO (transportError ("Unknown address method: " ++ show method))
@@ -181,7 +180,7 @@ socketTransportCredentials (SocketTransport a s) = catchIOException a (getPeerCr
 openUnix :: Address -> IO SocketTransport
 openUnix transportAddr = go where
 	params = addressParameters transportAddr
-	param key = Map.lookup (Char8.pack key) params
+	param key = Map.lookup key params
 	
 	tooMany = "Only one of 'path' or 'abstract' may be specified for the\
 	          \ 'unix' transport."
@@ -189,8 +188,8 @@ openUnix transportAddr = go where
 	         \ 'unix' transport."
 	
 	path = case (param "path", param "abstract") of
-		(Just x, Nothing) -> Right (Char8.unpack x)
-		(Nothing, Just x) -> Right ('\x00' : Char8.unpack x)
+		(Just x, Nothing) -> Right x
+		(Nothing, Just x) -> Right ('\x00' : x)
 		(Nothing, Nothing) -> Left tooFew
 		_ -> Left tooMany
 	
@@ -206,11 +205,11 @@ openUnix transportAddr = go where
 openTcp :: Address -> IO SocketTransport
 openTcp transportAddr = go where
 	params = addressParameters transportAddr
-	param key = Map.lookup (Char8.pack key) params
+	param key = Map.lookup key params
 	
-	hostname = maybe "localhost" Char8.unpack (param "host")
+	hostname = maybe "localhost" id (param "host")
 	unknownFamily x = "Unknown socket family for TCP transport: " ++ show x
-	getFamily = case fmap Char8.unpack (param "family") of
+	getFamily = case param "family" of
 		Just "ipv4" -> Right AF_INET
 		Just "ipv6" -> Right AF_INET6
 		Nothing     -> Right AF_UNSPEC
@@ -219,7 +218,7 @@ openTcp transportAddr = go where
 	badPort x = "Invalid socket port for TCP transport: " ++ show x
 	getPort = case param "port" of
 		Nothing -> Left missingPort
-		Just x -> case readPortNumber (Char8.unpack x) of
+		Just x -> case readPortNumber x of
 			Just port -> Right port
 			Nothing -> Left (badPort x)
 	
@@ -263,7 +262,7 @@ openTcp transportAddr = go where
 listenUnix :: UUID -> Address -> TransportOptions SocketTransport -> IO (Address, Socket)
 listenUnix uuid origAddr opts = getPath >>= go where
 	params = addressParameters origAddr
-	param key = Map.lookup (Char8.pack key) params
+	param key = Map.lookup key params
 	
 	tooMany = "Only one of 'abstract', 'path', or 'tmpdir' may be\
 	          \ specified for the 'unix' transport."
@@ -271,22 +270,20 @@ listenUnix uuid origAddr opts = getPath >>= go where
 	         \ for the 'unix' transport."
 	
 	getPath = case (param "abstract", param "path", param "tmpdir") of
-		(Just x, Nothing, Nothing) -> let
+		(Just path, Nothing, Nothing) -> let
 			addr = address_ "unix"
-				[ ("abstract", Char8.unpack x)
-				, ("guid", Char8.unpack (formatUUID uuid))
+				[ ("abstract", path)
+				, ("guid", formatUUID uuid)
 				]
-			path = '\x00' : Char8.unpack x
-			in return (Right (addr, path))
-		(Nothing, Just x, Nothing) -> let
+			in return (Right (addr, '\x00' : path))
+		(Nothing, Just path, Nothing) -> let
 			addr = address_ "unix"
-				[ ("path", Char8.unpack x)
-				, ("guid", Char8.unpack (formatUUID uuid))
+				[ ("path", path)
+				, ("guid", formatUUID uuid)
 				]
-			path = Char8.unpack x
 			in return (Right (addr, path))
 		(Nothing, Nothing, Just x) -> do
-			let fileName = Char8.unpack x ++ "/haskell-dbus-" ++ Char8.unpack (formatUUID uuid)
+			let fileName = x ++ "/haskell-dbus-" ++ formatUUID uuid
 			
 			-- Abstract paths are supported on Linux, but not on
 			-- other UNIX-like systems.
@@ -294,7 +291,7 @@ listenUnix uuid origAddr opts = getPath >>= go where
 				then ([("abstract", fileName)], '\x00' : fileName)
 				else ([("path", fileName)], fileName)
 			
-			let addr = address_ "unix" (addrParams ++ [("guid", Char8.unpack (formatUUID uuid))])
+			let addr = address_ "unix" (addrParams ++ [("guid", formatUUID uuid)])
 			return (Right (addr, path))
 		(Nothing, Nothing, Nothing) -> return (Left tooFew)
 		_ -> return (Left tooMany)
@@ -312,10 +309,10 @@ listenUnix uuid origAddr opts = getPath >>= go where
 listenTcp :: UUID -> Address -> TransportOptions SocketTransport -> IO (Address, Socket)
 listenTcp uuid origAddr opts = go where
 	params = addressParameters origAddr
-	param key = Map.lookup (Char8.pack key) params
+	param key = Map.lookup key params
 	
 	unknownFamily x = "Unknown socket family for TCP transport: " ++ show x
-	getFamily = case fmap Char8.unpack (param "family") of
+	getFamily = case param "family" of
 		Just "ipv4" -> Right AF_INET
 		Just "ipv6" -> Right AF_INET6
 		Nothing     -> Right AF_UNSPEC
@@ -324,15 +321,15 @@ listenTcp uuid origAddr opts = go where
 	badPort x = "Invalid socket port for TCP transport: " ++ show x
 	getPort = case param "port" of
 		Nothing -> Right 0
-		Just x -> case readPortNumber (Char8.unpack x) of
+		Just x -> case readPortNumber x of
 			Just port -> Right port
 			Nothing -> Left (badPort x)
 	
 	paramBind = case param "bind" of
-		Just x | Char8.unpack x == "*" -> Nothing
-		Just x -> Just (Char8.unpack x)
+		Just "*" -> Nothing
+		Just x -> Just x
 		Nothing -> case param "host" of
-			Just x -> Just (Char8.unpack x)
+			Just x -> Just x
 			Nothing -> Just "localhost"
 	
 	getAddresses family_ = getAddrInfo (Just (defaultHints
@@ -358,13 +355,13 @@ listenTcp uuid origAddr opts = go where
 		p = baseParams ++ hostParam ++ familyParam
 		baseParams =
 			[ ("port", show port)
-			, ("guid", Char8.unpack (formatUUID uuid))
+			, ("guid", formatUUID uuid)
 			]
 		hostParam = case param "host" of
-			Just x -> [("host", Char8.unpack x)]
+			Just x -> [("host", x)]
 			Nothing -> []
 		familyParam = case param "family" of
-			Just x -> [("family", Char8.unpack x)]
+			Just x -> [("family", x)]
 			Nothing -> []
 	
 	go = case getPort of
@@ -403,9 +400,7 @@ catchIOException addr io = do
 
 address_ :: String -> [(String, String)] -> Address
 address_ method params = addr where
-	Just addr = address (Char8.pack method) (Map.fromList (do
-		(key, val) <- params
-		return (Char8.pack key, Char8.pack val)))
+	Just addr = address method (Map.fromList params)
 
 setPort :: PortNumber -> AddrInfo -> AddrInfo
 setPort port info = case addrAddress info of

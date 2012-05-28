@@ -22,9 +22,9 @@ import           Test.Chell
 
 import           Control.Exception (finally)
 import           Control.Monad.IO.Class (liftIO)
-import qualified Data.ByteString as ByteString
 import qualified Data.Set
 import           System.Exit
+import           System.IO (hGetLine)
 import           System.Process
 
 import           DBus
@@ -121,7 +121,7 @@ withDaemon name io = test name $ \opts -> do
 			let (_, Just daemonStdout, _, daemonProc) = daemon
 			finally
 				(do
-					addrString <- ByteString.hGetLine daemonStdout
+					addrString <- hGetLine daemonStdout
 					case parseAddress addrString of
 						Nothing -> return (TestAborted [] ("dbus-daemon returned invalid address: " ++ show addrString))
 						Just addr -> runTest (assertions name (io addr)) opts)

@@ -23,8 +23,6 @@ import           Test.Chell
 import           Control.Concurrent
 import           Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.ByteString
-import           Data.ByteString (ByteString)
-import qualified Data.ByteString.Char8 as Char8
 import           Data.List (isPrefixOf)
 import qualified Data.Map as Map
 import qualified Network as N
@@ -63,7 +61,7 @@ test_TransportAccept = suite "transportAccept"
 
 test_OpenUnknown :: Test
 test_OpenUnknown = assertions "unknown" $ do
-	let addr = address_ "noexist" Map.empty
+	let Just addr = address "noexist" Map.empty
 	$assert $ throwsEq
 		((transportError "Unknown address method: \"noexist\"")
 			{ transportErrorAddress = Just addr
@@ -96,7 +94,7 @@ test_OpenUnix_Abstract = assertions "abstract" $ do
 
 test_OpenUnix_TooFew :: Test
 test_OpenUnix_TooFew = assertions "too-few" $ do
-	let addr = address_ "unix" Map.empty
+	let Just addr = address "unix" Map.empty
 	$assert $ throwsEq
 		((transportError "One of 'path' or 'abstract' must be specified for the 'unix' transport.")
 			{ transportErrorAddress = Just addr
@@ -105,7 +103,7 @@ test_OpenUnix_TooFew = assertions "too-few" $ do
 
 test_OpenUnix_TooMany :: Test
 test_OpenUnix_TooMany = assertions "too-many" $ do
-	let addr = address_ "unix" (Map.fromList
+	let Just addr = address "unix" (Map.fromList
 		[ ("path", "foo")
 		, ("abstract", "bar")
 		])
@@ -153,7 +151,7 @@ test_OpenTcp_IPv6 = assertions "ipv6" $ do
 
 test_OpenTcp_Unknown :: Test
 test_OpenTcp_Unknown = assertions "unknown-family" $ do
-	let addr = address_ "tcp" (Map.fromList
+	let Just addr = address "tcp" (Map.fromList
 		[ ("family", "noexist")
 		, ("port", "1234")
 		])
@@ -165,7 +163,7 @@ test_OpenTcp_Unknown = assertions "unknown-family" $ do
 
 test_OpenTcp_NoPort :: Test
 test_OpenTcp_NoPort = assertions "no-port" $ do
-	let addr = address_ "tcp" (Map.fromList
+	let Just addr = address "tcp" (Map.fromList
 		[ ("family", "ipv4")
 		])
 	$assert $ throwsEq
@@ -176,7 +174,7 @@ test_OpenTcp_NoPort = assertions "no-port" $ do
 
 test_OpenTcp_InvalidPort :: Test
 test_OpenTcp_InvalidPort = assertions "invalid-port" $ do
-	let addr = address_ "tcp" (Map.fromList
+	let Just addr = address "tcp" (Map.fromList
 		[ ("family", "ipv4")
 		, ("port", "123456")
 		])
@@ -188,7 +186,7 @@ test_OpenTcp_InvalidPort = assertions "invalid-port" $ do
 
 test_OpenTcp_NoUsableAddresses :: Test
 test_OpenTcp_NoUsableAddresses = assertions "no-usable-addresses" $ do
-	let addr = address_ "tcp" (Map.fromList
+	let Just addr = address "tcp" (Map.fromList
 		[ ("family", "ipv4")
 		, ("port", "1234")
 		, ("host", "256.256.256.256")
@@ -236,7 +234,7 @@ test_TransportSendReceive = assertions "send-receive" $ do
 
 test_ListenUnknown :: Test
 test_ListenUnknown = assertions "unknown" $ do
-	let addr = address_ "noexist" Map.empty
+	let Just addr = address "noexist" Map.empty
 	$assert $ throwsEq
 		((transportError "Unknown address method: \"noexist\"")
 			{ transportErrorAddress = Just addr
@@ -254,8 +252,8 @@ test_ListenUnix = suite "unix"
 test_ListenUnix_Path :: Test
 test_ListenUnix_Path = assertions "path" $ do
 	path <- liftIO getTempPath
-	let addr = address_ "unix" (Map.fromList
-		[ ("path", Char8.pack path)
+	let Just addr = address "unix" (Map.fromList
+		[ ("path", path)
 		])
 	l <- liftIO (transportListen socketTransportOptions addr)
 	afterTest (transportListenerClose l)
@@ -264,13 +262,13 @@ test_ListenUnix_Path = assertions "path" $ do
 	-- listener address is random, so it can't be checked directly.
 	let addrParams = addressParameters (transportListenerAddress l)
 	$expect (sameItems (Map.keys addrParams) ["path", "guid"])
-	$expect (equal (Map.lookup "path" addrParams) (Just (Char8.pack path)))
+	$expect (equal (Map.lookup "path" addrParams) (Just path))
 
 test_ListenUnix_Abstract :: Test
 test_ListenUnix_Abstract = assertions "abstract" $ do
 	path <- liftIO getTempPath
-	let addr = address_ "unix" (Map.fromList
-		[ ("abstract", Char8.pack path)
+	let Just addr = address "unix" (Map.fromList
+		[ ("abstract", path)
 		])
 	l <- liftIO (transportListen socketTransportOptions addr)
 	afterTest (transportListenerClose l)
@@ -278,13 +276,13 @@ test_ListenUnix_Abstract = assertions "abstract" $ do
 	-- listener address is random, so it can't be checked directly.
 	let addrParams = addressParameters (transportListenerAddress l)
 	$expect (sameItems (Map.keys addrParams) ["abstract", "guid"])
-	$expect (equal (Map.lookup "abstract" addrParams) (Just (Char8.pack path)))
+	$expect (equal (Map.lookup "abstract" addrParams) (Just path))
 
 test_ListenUnix_Tmpdir :: Test
 test_ListenUnix_Tmpdir = assertions "tmpdir" $ do
 	tmpdir <- liftIO getTemporaryDirectory
-	let addr = address_ "unix" (Map.fromList
-		[ ("tmpdir", Char8.pack tmpdir)
+	let Just addr = address "unix" (Map.fromList
+		[ ("tmpdir", tmpdir)
 		])
 	l <- liftIO (transportListen socketTransportOptions addr)
 	afterTest (transportListenerClose l)
@@ -295,7 +293,7 @@ test_ListenUnix_Tmpdir = assertions "tmpdir" $ do
 
 test_ListenUnix_TooFew :: Test
 test_ListenUnix_TooFew = assertions "too-few" $ do
-	let addr = address_ "unix" Map.empty
+	let Just addr = address "unix" Map.empty
 	$assert $ throwsEq
 		((transportError "One of 'abstract', 'path', or 'tmpdir' must be specified for the 'unix' transport.")
 			{ transportErrorAddress = Just addr
@@ -304,7 +302,7 @@ test_ListenUnix_TooFew = assertions "too-few" $ do
 
 test_ListenUnix_TooMany :: Test
 test_ListenUnix_TooMany = assertions "too-many" $ do
-	let addr = address_ "unix" (Map.fromList
+	let Just addr = address "unix" (Map.fromList
 		[ ("path", "foo")
 		, ("abstract", "bar")
 		])
@@ -323,7 +321,7 @@ test_ListenTcp = suite "tcp"
 
 test_ListenTcp_IPv4 :: Test
 test_ListenTcp_IPv4 = assertions "ipv4" $ do
-	let addr = address_ "tcp" (Map.fromList
+	let Just addr = address "tcp" (Map.fromList
 		[ ("family", "ipv4")
 		])
 	l <- liftIO (transportListen socketTransportOptions addr)
@@ -335,7 +333,7 @@ test_ListenTcp_IPv4 = assertions "ipv4" $ do
 
 test_ListenTcp_IPv6 :: Test
 test_ListenTcp_IPv6 = assertions "ipv6" $ do
-	let addr = address_ "tcp" (Map.fromList
+	let Just addr = address "tcp" (Map.fromList
 		[ ("family", "ipv6")
 		])
 	l <- liftIO (transportListen socketTransportOptions addr)
@@ -347,7 +345,7 @@ test_ListenTcp_IPv6 = assertions "ipv6" $ do
 
 test_ListenTcp_Unknown :: Test
 test_ListenTcp_Unknown = assertions "unknown-family" $ do
-	let addr = address_ "tcp" (Map.fromList
+	let Just addr = address "tcp" (Map.fromList
 		[ ("family", "noexist")
 		, ("port", "1234")
 		])
@@ -359,7 +357,7 @@ test_ListenTcp_Unknown = assertions "unknown-family" $ do
 
 test_ListenTcp_InvalidPort :: Test
 test_ListenTcp_InvalidPort = assertions "invalid-port" $ do
-	let addr = address_ "tcp" (Map.fromList
+	let Just addr = address "tcp" (Map.fromList
 		[ ("family", "ipv4")
 		, ("port", "123456")
 		])
@@ -372,8 +370,8 @@ test_ListenTcp_InvalidPort = assertions "invalid-port" $ do
 test_AcceptSocket :: Test
 test_AcceptSocket = assertions "socket" $ do
 	path <- liftIO getTempPath
-	let addr = address_ "unix" (Map.fromList
-		[ ("abstract", Char8.pack path)
+	let Just addr = address "unix" (Map.fromList
+		[ ("abstract", path)
 		])
 	listener <- liftIO (transportListen socketTransportOptions addr)
 	afterTest (transportListenerClose listener)
@@ -397,8 +395,8 @@ test_AcceptSocket = assertions "socket" $ do
 test_AcceptSocketClosed :: Test
 test_AcceptSocketClosed = assertions "socket-closed" $ do
 	path <- liftIO getTempPath
-	let addr = address_ "unix" (Map.fromList
-		[ ("abstract", Char8.pack path)
+	let Just addr = address "unix" (Map.fromList
+		[ ("abstract", path)
 		])
 	listener <- liftIO (transportListen socketTransportOptions addr)
 	let listeningAddr = transportListenerAddress listener
@@ -412,8 +410,3 @@ test_AcceptSocketClosed = assertions "socket-closed" $ do
 
 socketTransportOptions :: TransportOptions SocketTransport
 socketTransportOptions = transportDefaultOptions
-
-address_ :: ByteString -> Map.Map ByteString ByteString -> Address
-address_ method params = case address method params of
-	Just addr -> addr
-	Nothing -> error "address_: invalid address"
