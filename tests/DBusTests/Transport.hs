@@ -318,6 +318,7 @@ test_ListenTcp = suite "tcp"
 	(skipWhen noIPv6 test_ListenTcp_IPv6)
 	test_ListenTcp_Unknown
 	test_ListenTcp_InvalidPort
+	test_ListenTcp_InvalidBind
 
 test_ListenTcp_IPv4 :: Test
 test_ListenTcp_IPv4 = assertions "ipv4" $ do
@@ -363,6 +364,18 @@ test_ListenTcp_InvalidPort = assertions "invalid-port" $ do
 		])
 	$assert $ throwsEq
 		((transportError "Invalid socket port for TCP transport: \"123456\"")
+			{ transportErrorAddress = Just addr
+			})
+		(transportListen socketTransportOptions addr)
+
+test_ListenTcp_InvalidBind :: Test
+test_ListenTcp_InvalidBind = assertions "invalid-bind" $ do
+	let Just addr = address "tcp" (Map.fromList
+		[ ("family", "ipv4")
+		, ("port", "1")
+		])
+	$assert $ throwsEq
+		((transportError "bind: permission denied (Permission denied)")
 			{ transportErrorAddress = Just addr
 			})
 		(transportListen socketTransportOptions addr)
