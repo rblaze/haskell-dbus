@@ -41,7 +41,6 @@ import           DBusTests.Variant
 import           DBus ()
 import           DBus.Address ()
 import           DBus.Client ()
-import           DBus.Constants ()
 import           DBus.Introspection ()
 import           DBus.Message ()
 import           DBus.Socket ()

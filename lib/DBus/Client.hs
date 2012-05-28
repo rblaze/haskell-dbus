@@ -106,9 +106,6 @@ import           Data.Typeable (Typeable)
 import           Data.Word (Word32)
 
 import           DBus
-import qualified DBus.Constants
-import           DBus.Constants ( errorFailed, errorUnknownMethod
-                                , errorInvalidParameters)
 import qualified DBus.Introspection
 import qualified DBus.Socket
 import           DBus.Transport (TransportOpen, SocketTransport)
@@ -262,8 +259,13 @@ disconnect' :: Client -> IO ()
 disconnect' client = do
 	pendingCalls <- atomicModifyIORef (clientPendingCalls client) (\p -> (Data.Map.empty, p))
 	forM_ (Data.Map.toList pendingCalls) $ \(k, v) -> do
-		let err = MethodError "org.haskell.hackage.dbus.ClientError" k Nothing Nothing [toVariant ("connection closed during call" :: String)]
-		putMVar v (Left err)
+		putMVar v (Left MethodError
+			{ methodErrorName = errorDisconnected
+			, methodErrorSerial = k
+			, methodErrorSender = Nothing
+			, methodErrorDestination = Nothing
+			, methodErrorBody = []
+			})
 	
 	atomicModifyIORef (clientSignalHandlers client) (\_ -> ([], ()))
 	atomicModifyIORef (clientObjects client) (\_ -> (Data.Map.empty, ()))
@@ -294,9 +296,9 @@ dispatch client = go where
 		objects <- readIORef (clientObjects client)
 		let sender = methodCallSender msg
 		_ <- forkIO $ case findMethod objects msg of
-			Just io -> io received
-			Nothing -> send_ client
-				(MethodError errorUnknownMethod serial Nothing sender [])
+			Right io -> io received
+			Left errName -> send_ client
+				(MethodError errName serial Nothing sender [])
 				(\_ -> return ())
 		return ()
 	go (ReceivedUnknown _ _) = return ()
@@ -428,11 +430,11 @@ listen client rule io = do
 	
 	atomicModifyIORef (clientSignalHandlers client) (\hs -> (handler : hs, ()))
 	_ <- call_ client MethodCall
-		{ methodCallPath = DBus.Constants.dbusPath
+		{ methodCallPath = dbusPath
 		, methodCallMember = "AddMatch"
-		, methodCallInterface = Just DBus.Constants.dbusInterface
+		, methodCallInterface = Just dbusInterface
 		, methodCallSender = Nothing
-		, methodCallDestination = Just DBus.Constants.dbusName
+		, methodCallDestination = Just dbusName
 		, methodCallFlags = Data.Set.empty
 		, methodCallBody = [toVariant (formatMatchRule rule)]
 		}
@@ -551,10 +553,10 @@ export client path methods = atomicModifyIORef (clientObjects client) addObject 
 		let Just obj = Data.Map.lookup path objects
 		return (introspect path obj)
 
-findMethod :: Map ObjectPath ObjectInfo -> MethodCall -> Maybe Callback
-findMethod objects msg = do
-	obj <- Data.Map.lookup (methodCallPath msg) objects
-	case methodCallInterface msg of
+findMethod :: Map ObjectPath ObjectInfo -> MethodCall -> Either ErrorName Callback
+findMethod objects msg = case Data.Map.lookup (methodCallPath msg) objects of
+	Nothing -> Left errorUnknownObject
+	Just obj -> case methodCallInterface msg of
 		Nothing -> let
 			members = do
 				iface <- Data.Map.elems obj
@@ -562,33 +564,28 @@ findMethod objects msg = do
 					Just member -> [member]
 					Nothing -> []
 			in case members of
-				[MemberMethod _ _ io] -> Just io
-				_ -> Nothing
-		Just ifaceName -> do
-			iface <- Data.Map.lookup ifaceName obj
-			member <- Data.Map.lookup (methodCallMember msg) iface
-			case member of
-				MemberMethod _ _ io -> Just io
-				_ -> Nothing
+				[MemberMethod _ _ io] -> Right io
+				_ -> Left errorUnknownMethod
+		Just ifaceName -> case Data.Map.lookup ifaceName obj of
+			Nothing -> Left errorUnknownInterface
+			Just iface -> case Data.Map.lookup (methodCallMember msg) iface of
+				Just (MemberMethod _ _ io) -> Right io
+				_ -> Left errorUnknownMethod
 
 introspectRoot :: Client -> Method
 introspectRoot client = methodIntrospect $ do
 	objects <- readIORef (clientObjects client)
 	let paths = filter (/= "/") (Data.Map.keys objects)
-	let iface = "org.freedesktop.DBus.Introspectable"
-	let name = "Introspect"
 	return (DBus.Introspection.Object "/"
-		[DBus.Introspection.Interface iface
-			[DBus.Introspection.Method name
+		[DBus.Introspection.Interface interfaceIntrospectable
+			[DBus.Introspection.Method "Introspect"
 				[]
 				[DBus.Introspection.Parameter "" TypeString]]
 			[] []]
 		[DBus.Introspection.Object p [] [] | p <- paths])
 
 methodIntrospect :: IO DBus.Introspection.Object -> Method
-methodIntrospect get = method iface name "" "s" impl where
-	iface = "org.freedesktop.DBus.Introspectable"
-	name = "Introspect"
+methodIntrospect get = method interfaceIntrospectable "Introspect" "" "s" impl where
 	impl [] = do
 		obj <- get
 		let Just xml = DBus.Introspection.toXML obj
@@ -734,3 +731,33 @@ proxyListen (Proxy client dest path) iface member = DBus.Client.listen client ma
 	, matchPath = Just path
 	, matchDestination = Nothing
 	}
+
+errorFailed :: ErrorName
+errorFailed = errorName_ "org.freedesktop.DBus.Error.Failed"
+
+errorDisconnected :: ErrorName
+errorDisconnected = errorName_ "org.freedesktop.DBus.Error.Disconnected"
+
+errorUnknownObject :: ErrorName
+errorUnknownObject = errorName_ "org.freedesktop.DBus.Error.UnknownObject"
+
+errorUnknownInterface :: ErrorName
+errorUnknownInterface = errorName_ "org.freedesktop.DBus.Error.UnknownInterface"
+
+errorUnknownMethod :: ErrorName
+errorUnknownMethod = errorName_ "org.freedesktop.DBus.Error.UnknownMethod"
+
+errorInvalidParameters :: ErrorName
+errorInvalidParameters = errorName_ "org.freedesktop.DBus.Error.InvalidParameters"
+
+dbusName :: BusName
+dbusName = busName_ "org.freedesktop.DBus"
+
+dbusPath :: ObjectPath
+dbusPath = objectPath_ "/org/freedesktop/DBus"
+
+dbusInterface :: InterfaceName
+dbusInterface = interfaceName_ "org.freedesktop.DBus"
+
+interfaceIntrospectable :: InterfaceName
+interfaceIntrospectable = interfaceName_ "org.freedesktop.DBus.Introspectable"
