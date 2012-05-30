@@ -399,9 +399,16 @@ call client msg = do
 		, methodCallFlags = Data.Set.delete NoReplyExpected (methodCallFlags msg)
 		}
 	mvar <- newEmptyMVar
-	send_ client safeMsg (\serial -> atomicModifyIORef
-		(clientPendingCalls client)
-		(\p -> (Data.Map.insert serial mvar p, ())))
+	send_ client safeMsg (\serial -> do
+		let ref = clientPendingCalls client
+		
+		-- If the mvar is finalized, remove its serial from the pending
+		-- call map. This allows calls to be canceled, by using
+		-- something like 'timeout' to make 'call' return early, and
+		-- having the finalizer clear out the map.
+		addMVarFinalizer mvar (atomicModifyIORef ref (\p -> (Data.Map.delete serial p, ())))
+		
+		atomicModifyIORef ref (\p -> (Data.Map.insert serial mvar p, ())))
 	takeMVar mvar
 
 call_ :: Client -> MethodCall -> IO MethodReturn
