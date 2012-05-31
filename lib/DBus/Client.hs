@@ -436,7 +436,7 @@ call_ client msg = do
 	result <- call client msg
 	case result of
 		Left err -> throwIO (clientError ("Call failed: " ++ methodErrorMessage err))
-			{ clientErrorFatal = methodErrorName err == "org.haskell.hackage.dbus.ClientError"
+			{ clientErrorFatal = methodErrorName err == errorDisconnected
 			}
 		Right ret -> return ret
 
