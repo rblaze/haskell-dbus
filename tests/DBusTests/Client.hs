@@ -40,6 +40,7 @@ test_Client = suite "Client"
 	test_Call
 	test_CallNoReply
 	test_Listen
+	test_AutoMethod
 
 test_Connect :: String -> (Address -> IO DBus.Client.Client) -> Test
 test_Connect name connect = assertions name $ do
@@ -413,6 +414,50 @@ test_Listen = assertions "listen" $ do
 	received <- liftIO (takeMVar signalVar)
 	$expect (equal received (busName_ "com.example.Foo", matchedSignal))
 
+test_AutoMethod :: Test
+test_AutoMethod = assertions "autoMethod" $ do
+	(sock, client) <- startConnectedClient
+	
+	let methodMax = (\x y -> return (max x y)) :: Word32 -> Word32 -> IO Word32
+	
+	let methodPair = (\x y -> return (x, y)) :: String -> String -> IO (String, String)
+	
+	liftIO (DBus.Client.export client (objectPath_ "/")
+		[ DBus.Client.autoMethod (interfaceName_ "com.example.Foo") (memberName_ "Max") methodMax
+		, DBus.Client.autoMethod (interfaceName_ "com.example.Foo") (memberName_ "Pair") methodPair
+		])
+	
+	-- valid call to com.example.Foo.Max
+	do
+		(serial, response) <- callClientMethod sock "/" "com.example.Foo" "Max" [toVariant (2 :: Word32), toVariant (1 :: Word32)]
+		$expect (equal response (Right (MethodReturn
+			{ methodReturnSerial = serial
+			, methodReturnSender = Nothing
+			, methodReturnDestination = Nothing
+			, methodReturnBody = [toVariant (2 :: Word32)]
+			})))
+	
+	-- valid call to com.example.Foo.Pair
+	do
+		(serial, response) <- callClientMethod sock "/" "com.example.Foo" "Pair" [toVariant "x", toVariant "y"]
+		$expect (equal response (Right (MethodReturn
+			{ methodReturnSerial = serial
+			, methodReturnSender = Nothing
+			, methodReturnDestination = Nothing
+			, methodReturnBody = [toVariant "x", toVariant "y"]
+			})))
+	
+	-- invalid call to com.example.Foo.Max
+	do
+		(serial, response) <- callClientMethod sock "/" "com.example.Foo" "Max" [toVariant "x", toVariant "y"]
+		$expect (equal response (Left (MethodError
+			{ methodErrorName = errorName_ "org.freedesktop.DBus.Error.InvalidParameters"
+			, methodErrorSerial = serial
+			, methodErrorSender = Nothing
+			, methodErrorDestination = Nothing
+			, methodErrorBody = []
+			})))
+
 startDummyBus :: Assertions (Address, MVar DBus.Socket.Socket)
 startDummyBus = do
 	uuid <- liftIO randomUUID
@@ -455,3 +500,21 @@ stubMethodCall sock io expectedCall respond = do
 	liftIO (DBus.Socket.send sock (respond callSerial) (\_ -> return ()))
 	
 	liftIO (takeMVar var)
+
+callClientMethod :: DBus.Socket.Socket -> String -> String -> String -> [Variant] -> Assertions (Serial, Either MethodError MethodReturn)
+callClientMethod sock path iface name body = do
+	let call = MethodCall
+		{ methodCallPath = objectPath_ path
+		, methodCallInterface = Just (interfaceName_ iface)
+		, methodCallMember = memberName_ name
+		, methodCallSender = Nothing
+		, methodCallDestination = Nothing
+		, methodCallFlags = Data.Set.empty
+		, methodCallBody = body
+		}
+	serial <- liftIO (DBus.Socket.send sock call return)
+	resp <- liftIO (DBus.Socket.receive sock)
+	case resp of
+		ReceivedMethodReturn _ ret -> return (serial, Right ret)
+		ReceivedMethodError _ err -> return (serial, Left err)
+		_ -> $die "callClientMethod: unexpected response to method call"
