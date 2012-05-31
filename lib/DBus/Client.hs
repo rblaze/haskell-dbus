@@ -175,7 +175,7 @@ connectSystem :: IO Client
 connectSystem = do
 	env <- getSystemAddress
 	case env of
-		Nothing -> throwIO (clientError "connectSession: DBUS_SYSTEM_BUS_ADDRESS is invalid.")
+		Nothing -> throwIO (clientError "connectSystem: DBUS_SYSTEM_BUS_ADDRESS is invalid.")
 		Just addr -> connect addr
 
 -- | Connect to the bus specified in the environment variable
@@ -199,7 +199,7 @@ connectStarter :: IO Client
 connectStarter = do
 	env <- getStarterAddress
 	case env of
-		Nothing -> throwIO (clientError "connectSession: DBUS_STARTER_ADDRESS is missing or invalid.")
+		Nothing -> throwIO (clientError "connectStarter: DBUS_STARTER_ADDRESS is missing or invalid.")
 		Just addr -> connect addr
 
 connect :: Address -> IO Client

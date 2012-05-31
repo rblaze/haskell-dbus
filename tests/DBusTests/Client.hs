@@ -32,8 +32,11 @@ import           DBusTests.Util (forkVar, withEnv)
 test_Client :: Suite
 test_Client = suite "Client"
 	test_ConnectSystem
+	test_ConnectSystem_NoAddress
 	test_ConnectSession
+	test_ConnectSession_NoAddress
 	test_ConnectStarter
+	test_ConnectStarter_NoAddress
 
 test_Connect :: String -> (Address -> IO DBus.Client.Client) -> Test
 test_Connect name connect = assertions name $ do
@@ -62,17 +65,41 @@ test_ConnectSystem = test_Connect "connectSystem" $ \addr -> do
 		(Just (formatAddress addr))
 		DBus.Client.connectSystem
 
+test_ConnectSystem_NoAddress :: Test
+test_ConnectSystem_NoAddress = assertions "connectSystem-no-address" $ do
+	$expect $ throwsEq
+		(DBus.Client.clientError "connectSystem: DBUS_SYSTEM_BUS_ADDRESS is invalid.")
+		(withEnv "DBUS_SYSTEM_BUS_ADDRESS"
+			(Just "invalid")
+			DBus.Client.connectSystem)
+
 test_ConnectSession :: Test
 test_ConnectSession = test_Connect "connectSession" $ \addr -> do
 	withEnv "DBUS_SESSION_BUS_ADDRESS"
 		(Just (formatAddress addr))
 		DBus.Client.connectSession
 
+test_ConnectSession_NoAddress :: Test
+test_ConnectSession_NoAddress = assertions "connectSession-no-address" $ do
+	$expect $ throwsEq
+		(DBus.Client.clientError "connectSession: DBUS_SESSION_BUS_ADDRESS is missing or invalid.")
+		(withEnv "DBUS_SESSION_BUS_ADDRESS"
+			(Just "invalid")
+			DBus.Client.connectSession)
+
 test_ConnectStarter :: Test
 test_ConnectStarter = test_Connect "connectStarter" $ \addr -> do
 	withEnv "DBUS_STARTER_ADDRESS"
 		(Just (formatAddress addr))
 		DBus.Client.connectStarter
+
+test_ConnectStarter_NoAddress :: Test
+test_ConnectStarter_NoAddress = assertions "connectStarter-no-address" $ do
+	$expect $ throwsEq
+		(DBus.Client.clientError "connectStarter: DBUS_STARTER_ADDRESS is missing or invalid.")
+		(withEnv "DBUS_STARTER_ADDRESS"
+			(Just "invalid")
+			DBus.Client.connectStarter)
 
 startDummyBus :: Assertions (Address, MVar DBus.Socket.Socket)
 startDummyBus = do
