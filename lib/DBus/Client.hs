@@ -662,22 +662,23 @@ instance AutoSignature (IO ()) where
 	funTypes _ = ([], [])
 
 instance IsValue a => AutoSignature (IO a) where
-	funTypes io = ([], case ioT io undefined of
-		(_, t) -> case t of
-			TypeStructure ts -> ts
-			_ -> [t])
-
-ioT :: IsValue a => IO a -> a -> (a, Type)
-ioT _ a = (a, typeOf a)
+	funTypes io = cased where
+		cased = ([], case ioT io undefined of
+			(_, t) -> case t of
+				TypeStructure ts -> ts
+				_ -> [t])
+		
+		ioT :: IsValue a => IO a -> a -> (a, Type)
+		ioT _ a = (a, typeOf a)
 
 instance (IsValue a, AutoSignature fun) => AutoSignature (a -> fun) where
-	funTypes fn = case valueT undefined of
-		(a, t) -> case funTypes (fn a) of
-
-			(ts, ts') -> (t : ts, ts')
-
-valueT :: IsValue a => a -> (a, Type)
-valueT a = (a, typeOf a)
+	funTypes fn = cased where
+		cased = case valueT undefined of
+			(a, t) -> case funTypes (fn a) of
+				(ts, ts') -> (t : ts, ts')
+		
+		valueT :: IsValue a => a -> (a, Type)
+		valueT a = (a, typeOf a)
 
 -- | Used to automatically generate a 'Reply' from a return value. See
 -- 'AutoSignature' for some caveats about supported signatures.
