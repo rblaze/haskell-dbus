@@ -229,7 +229,7 @@ connectWith opts addr = do
 	
 	export client "/" [introspectRoot client]
 	
-	_ <- call_ client MethodCall
+	callNoReply client MethodCall
 		{ methodCallPath = "/org/freedesktop/DBus"
 		, methodCallMember = "Hello"
 		, methodCallInterface = Just "org.freedesktop.DBus"
@@ -456,7 +456,7 @@ listen client rule io = do
 		Nothing -> return ()
 	
 	atomicModifyIORef (clientSignalHandlers client) (\hs -> (handler : hs, ()))
-	_ <- call_ client MethodCall
+	callNoReply client MethodCall
 		{ methodCallPath = dbusPath
 		, methodCallMember = "AddMatch"
 		, methodCallInterface = Just dbusInterface

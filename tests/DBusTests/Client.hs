@@ -18,7 +18,7 @@
 module DBusTests.Client (test_Client) where
 
 import           Control.Concurrent
-import           Control.Exception
+import           Control.Exception (try)
 import           Control.Monad.IO.Class (liftIO)
 import qualified Data.Map as Map
 import qualified Data.Set
@@ -37,6 +37,9 @@ test_Client = suite "Client"
 	suite_Connect
 	test_RequestName
 	test_ReleaseName
+	test_Call
+	test_CallNoReply
+	test_Listen
 
 test_Connect :: String -> (Address -> IO DBus.Client.Client) -> Test
 test_Connect name connect = assertions name $ do
@@ -278,6 +281,137 @@ test_ReleaseName = assertions "releaseName" $ do
 		$expect (equal err (DBus.Client.clientError "releaseName: received unknown response code 5")
 			{ DBus.Client.clientErrorFatal = False
 			})
+
+test_Call :: Test
+test_Call = assertions "call" $ do
+	(sock, client) <- startConnectedClient
+	
+	let requestCall = MethodCall
+		{ methodCallPath = objectPath_ "/org/freedesktop/DBus"
+		, methodCallInterface = Just (interfaceName_ "org.freedesktop.DBus")
+		, methodCallMember = memberName_ "Hello"
+		, methodCallSender = Just (busName_ "com.example.Foo")
+		, methodCallDestination = Just (busName_ "org.freedesktop.DBus")
+		, methodCallFlags = Data.Set.fromList [NoReplyExpected, NoAutoStart]
+		, methodCallBody = [toVariant "com.example.Foo"]
+		}
+	
+	let requestReply serial = MethodReturn
+		{ methodReturnSerial = serial
+		, methodReturnSender = Nothing
+		, methodReturnDestination = Nothing
+		, methodReturnBody = []
+		}
+	
+	-- NoReplyExpected and methodCallSender are removed
+	do
+		response <- stubMethodCall sock
+			(DBus.Client.call client requestCall)
+			(requestCall
+				{ methodCallSender = Nothing
+				, methodCallFlags = Data.Set.fromList [NoAutoStart]
+				})
+			requestReply
+		reply <- $requireRight response
+		
+		$expect (equal
+			(reply { methodReturnSerial = firstSerial })
+			(requestReply firstSerial))
+
+test_CallNoReply :: Test
+test_CallNoReply = assertions "callNoReply" $ do
+	(sock, client) <- startConnectedClient
+	
+	let requestCall = MethodCall
+		{ methodCallPath = objectPath_ "/org/freedesktop/DBus"
+		, methodCallInterface = Just (interfaceName_ "org.freedesktop.DBus")
+		, methodCallMember = memberName_ "Hello"
+		, methodCallSender = Just (busName_ "com.example.Foo")
+		, methodCallDestination = Just (busName_ "org.freedesktop.DBus")
+		, methodCallFlags = Data.Set.fromList [NoAutoStart]
+		, methodCallBody = [toVariant "com.example.Foo"]
+		}
+	
+	let requestReply serial = MethodReturn
+		{ methodReturnSerial = serial
+		, methodReturnSender = Nothing
+		, methodReturnDestination = Nothing
+		, methodReturnBody = []
+		}
+	
+	-- NoReplyExpected is added, methodCallSender is removed
+	do
+		stubMethodCall sock
+			(DBus.Client.callNoReply client requestCall)
+			(requestCall
+				{ methodCallSender = Nothing
+				, methodCallFlags = Data.Set.fromList [NoAutoStart, NoReplyExpected]
+				})
+			requestReply
+
+test_Listen :: Test
+test_Listen = assertions "listen" $ do
+	(sock, client) <- startConnectedClient
+	
+	let matchRule = DBus.Client.matchAny
+		{ DBus.Client.matchSender = Just (busName_ "com.example.Foo")
+		, DBus.Client.matchDestination = Just (busName_ "com.example.Bar")
+		, DBus.Client.matchPath = Just (objectPath_ "/")
+		, DBus.Client.matchInterface = Just (interfaceName_ "com.example.Baz")
+		, DBus.Client.matchMember = Just (memberName_ "Qux")
+		}
+	
+	-- might as well test this while we're at it
+	$expect (equal (show matchRule) "MatchRule \"sender='com.example.Foo',destination='com.example.Bar',path='/',interface='com.example.Baz',member='Qux'\"")
+	
+	let requestCall = MethodCall
+		{ methodCallPath = objectPath_ "/org/freedesktop/DBus"
+		, methodCallInterface = Just (interfaceName_ "org.freedesktop.DBus")
+		, methodCallMember = memberName_ "AddMatch"
+		, methodCallSender = Nothing
+		, methodCallDestination = Just (busName_ "org.freedesktop.DBus")
+		, methodCallFlags = Data.Set.fromList [NoReplyExpected]
+		, methodCallBody = [toVariant "sender='com.example.Foo',destination='com.example.Bar',path='/',interface='com.example.Baz',member='Qux'"]
+		}
+	
+	let requestReply serial = MethodReturn
+		{ methodReturnSerial = serial
+		, methodReturnSender = Nothing
+		, methodReturnDestination = Nothing
+		, methodReturnBody = []
+		}
+	
+	signalVar <- liftIO newEmptyMVar
+	
+	-- add a listener for the given signal
+	stubMethodCall sock
+		(DBus.Client.listen client matchRule (\sender sig -> putMVar signalVar (sender, sig)))
+		requestCall
+		requestReply
+	
+	-- ignored signal
+	liftIO (DBus.Socket.send sock (Signal
+		{ signalPath = objectPath_ "/"
+		, signalMember = memberName_ "Qux"
+		, signalInterface = interfaceName_ "com.example.Baz"
+		, signalSender = Nothing
+		, signalDestination = Nothing
+		, signalBody = []
+		}) (\_ -> return ()))
+	$assert (isEmptyMVar signalVar)
+	
+	-- matched signal
+	let matchedSignal = Signal
+		{ signalPath = objectPath_ "/"
+		, signalMember = memberName_ "Qux"
+		, signalInterface = interfaceName_ "com.example.Baz"
+		, signalSender = Just (busName_ "com.example.Foo")
+		, signalDestination = Just (busName_ "com.example.Bar")
+		, signalBody = []
+		}
+	liftIO (DBus.Socket.send sock matchedSignal (\_ -> return ()))
+	received <- liftIO (takeMVar signalVar)
+	$expect (equal received (busName_ "com.example.Foo", matchedSignal))
 
 startDummyBus :: Assertions (Address, MVar DBus.Socket.Socket)
 startDummyBus = do
