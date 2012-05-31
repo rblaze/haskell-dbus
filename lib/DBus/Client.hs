@@ -350,12 +350,22 @@ requestName client name flags = do
 		, methodCallFlags = Data.Set.empty
 		, methodCallBody = [toVariant name, toVariant (encodeFlags flags)]
 		}
-	case (listToMaybe (methodReturnBody reply) >>= fromVariant :: Maybe Word32) of
-		Just 1 -> return PrimaryOwner
-		Just 2 -> return InQueue
-		Just 3 -> return Exists
-		Just 4 -> return AlreadyOwner
-		_ -> throwIO (clientError "Call failed: received invalid reply")
+	var <- case listToMaybe (methodReturnBody reply) of
+		Just x -> return x
+		Nothing -> throwIO (clientError "requestName: received empty response")
+			{ clientErrorFatal = False
+			}
+	code <- case fromVariant var of
+		Just x -> return x
+		Nothing -> throwIO (clientError ("requestName: received invalid response code " ++ showsPrec 11 var ""))
+			{ clientErrorFatal = False
+			}
+	case code :: Word32 of
+		1 -> return PrimaryOwner
+		2 -> return InQueue
+		3 -> return Exists
+		4 -> return AlreadyOwner
+		_ -> throwIO (clientError ("requestName: received unknown response code " ++ show code))
 			{ clientErrorFatal = False
 			}
 
@@ -371,11 +381,21 @@ releaseName client name = do
 		, methodCallFlags = Data.Set.empty
 		, methodCallBody = [toVariant name]
 		}
-	case (listToMaybe (methodReturnBody reply) >>= fromVariant :: Maybe Word32) of
-		Just 1 -> return Released
-		Just 2 -> return NonExistent
-		Just 3 -> return NotOwner
-		_ -> throwIO (clientError "Call failed: received invalid reply")
+	var <- case listToMaybe (methodReturnBody reply) of
+		Just x -> return x
+		Nothing -> throwIO (clientError "releaseName: received empty response")
+			{ clientErrorFatal = False
+			}
+	code <- case fromVariant var of
+		Just x -> return x
+		Nothing -> throwIO (clientError ("releaseName: received invalid response code " ++ showsPrec 11 var ""))
+			{ clientErrorFatal = False
+			}
+	case code :: Word32 of
+		1 -> return Released
+		2 -> return NonExistent
+		3 -> return NotOwner
+		_ -> throwIO (clientError ("releaseName: received unknown response code " ++ show code))
 			{ clientErrorFatal = False
 			}
 

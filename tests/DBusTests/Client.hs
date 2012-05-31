@@ -18,8 +18,11 @@
 module DBusTests.Client (test_Client) where
 
 import           Control.Concurrent
+import           Control.Exception
 import           Control.Monad.IO.Class (liftIO)
 import qualified Data.Map as Map
+import qualified Data.Set
+import           Data.Word
 
 import           Test.Chell
 
@@ -31,12 +34,9 @@ import           DBusTests.Util (forkVar, withEnv)
 
 test_Client :: Suite
 test_Client = suite "Client"
-	test_ConnectSystem
-	test_ConnectSystem_NoAddress
-	test_ConnectSession
-	test_ConnectSession_NoAddress
-	test_ConnectStarter
-	test_ConnectStarter_NoAddress
+	suite_Connect
+	test_RequestName
+	test_ReleaseName
 
 test_Connect :: String -> (Address -> IO DBus.Client.Client) -> Test
 test_Connect name connect = assertions name $ do
@@ -58,6 +58,15 @@ test_Connect name connect = assertions name $ do
 	
 	client <- liftIO (readMVar clientVar)
 	liftIO (DBus.Client.disconnect client)
+
+suite_Connect :: Suite
+suite_Connect = suite "connect"
+	test_ConnectSystem
+	test_ConnectSystem_NoAddress
+	test_ConnectSession
+	test_ConnectSession_NoAddress
+	test_ConnectStarter
+	test_ConnectStarter_NoAddress
 
 test_ConnectSystem :: Test
 test_ConnectSystem = test_Connect "connectSystem" $ \addr -> do
@@ -101,6 +110,175 @@ test_ConnectStarter_NoAddress = assertions "connectStarter-no-address" $ do
 			(Just "invalid")
 			DBus.Client.connectStarter)
 
+test_RequestName :: Test
+test_RequestName = assertions "requestName" $ do
+	(sock, client) <- startConnectedClient
+	let allFlags =
+		[ DBus.Client.AllowReplacement
+		, DBus.Client.ReplaceExisting
+		, DBus.Client.DoNotQueue
+		]
+	
+	let requestCall = MethodCall
+		{ methodCallPath = objectPath_ "/org/freedesktop/DBus"
+		, methodCallInterface = Just (interfaceName_ "org.freedesktop.DBus")
+		, methodCallMember = memberName_ "RequestName"
+		, methodCallSender = Nothing
+		, methodCallDestination = Just (busName_ "org.freedesktop.DBus")
+		, methodCallFlags = Data.Set.empty
+		, methodCallBody = [toVariant "com.example.Foo", toVariant (7 :: Word32)]
+		}
+	
+	let requestReply body serial = MethodReturn
+		{ methodReturnSerial = serial
+		, methodReturnSender = Nothing
+		, methodReturnDestination = Nothing
+		, methodReturnBody = body
+		}
+	
+	-- PrimaryOwner
+	do
+		reply <- stubMethodCall sock
+			(DBus.Client.requestName client (busName_ "com.example.Foo") allFlags)
+			requestCall
+			(requestReply [toVariant (1 :: Word32)])
+		$expect (equal reply DBus.Client.PrimaryOwner)
+	
+	-- InQueue
+	do
+		reply <- stubMethodCall sock
+			(DBus.Client.requestName client (busName_ "com.example.Foo") allFlags)
+			requestCall
+			(requestReply [toVariant (2 :: Word32)])
+		$expect (equal reply DBus.Client.InQueue)
+	
+	-- Exists
+	do
+		reply <- stubMethodCall sock
+			(DBus.Client.requestName client (busName_ "com.example.Foo") allFlags)
+			requestCall
+			(requestReply [toVariant (3 :: Word32)])
+		$expect (equal reply DBus.Client.Exists)
+	
+	-- AlreadyOwner
+	do
+		reply <- stubMethodCall sock
+			(DBus.Client.requestName client (busName_ "com.example.Foo") allFlags)
+			requestCall
+			(requestReply [toVariant (4 :: Word32)])
+		$expect (equal reply DBus.Client.AlreadyOwner)
+	
+	-- response with empty body
+	do
+		tried <- stubMethodCall sock
+			(try (DBus.Client.requestName client (busName_ "com.example.Foo") allFlags))
+			requestCall
+			(requestReply [])
+		err <- $requireLeft tried
+		$expect (equal err (DBus.Client.clientError "requestName: received empty response")
+			{ DBus.Client.clientErrorFatal = False
+			})
+	
+	-- response with invalid body
+	do
+		tried <- stubMethodCall sock
+			(try (DBus.Client.requestName client (busName_ "com.example.Foo") allFlags))
+			requestCall
+			(requestReply [toVariant ""])
+		err <- $requireLeft tried
+		$expect (equal err (DBus.Client.clientError "requestName: received invalid response code (Variant \"\")")
+			{ DBus.Client.clientErrorFatal = False
+			})
+	
+	-- response with unknown result code
+	do
+		tried <- stubMethodCall sock
+			(try (DBus.Client.requestName client (busName_ "com.example.Foo") allFlags))
+			requestCall
+			(requestReply [toVariant (5 :: Word32)])
+		err <- $requireLeft tried
+		$expect (equal err (DBus.Client.clientError "requestName: received unknown response code 5")
+			{ DBus.Client.clientErrorFatal = False
+			})
+
+test_ReleaseName :: Test
+test_ReleaseName = assertions "releaseName" $ do
+	(sock, client) <- startConnectedClient
+	
+	let requestCall = MethodCall
+		{ methodCallPath = objectPath_ "/org/freedesktop/DBus"
+		, methodCallInterface = Just (interfaceName_ "org.freedesktop.DBus")
+		, methodCallMember = memberName_ "ReleaseName"
+		, methodCallSender = Nothing
+		, methodCallDestination = Just (busName_ "org.freedesktop.DBus")
+		, methodCallFlags = Data.Set.empty
+		, methodCallBody = [toVariant "com.example.Foo"]
+		}
+	
+	let requestReply body serial = MethodReturn
+		{ methodReturnSerial = serial
+		, methodReturnSender = Nothing
+		, methodReturnDestination = Nothing
+		, methodReturnBody = body
+		}
+	
+	-- Released
+	do
+		reply <- stubMethodCall sock
+			(DBus.Client.releaseName client (busName_ "com.example.Foo"))
+			requestCall
+			(requestReply [toVariant (1 :: Word32)])
+		$expect (equal reply DBus.Client.Released)
+	
+	-- NonExistent
+	do
+		reply <- stubMethodCall sock
+			(DBus.Client.releaseName client (busName_ "com.example.Foo"))
+			requestCall
+			(requestReply [toVariant (2 :: Word32)])
+		$expect (equal reply DBus.Client.NonExistent)
+	
+	-- NotOwner
+	do
+		reply <- stubMethodCall sock
+			(DBus.Client.releaseName client (busName_ "com.example.Foo"))
+			requestCall
+			(requestReply [toVariant (3 :: Word32)])
+		$expect (equal reply DBus.Client.NotOwner)
+	
+	-- response with empty body
+	do
+		tried <- stubMethodCall sock
+			(try (DBus.Client.releaseName client (busName_ "com.example.Foo")))
+			requestCall
+			(requestReply [])
+		err <- $requireLeft tried
+		$expect (equal err (DBus.Client.clientError "releaseName: received empty response")
+			{ DBus.Client.clientErrorFatal = False
+			})
+	
+	-- response with invalid body
+	do
+		tried <- stubMethodCall sock
+			(try (DBus.Client.releaseName client (busName_ "com.example.Foo")))
+			requestCall
+			(requestReply [toVariant ""])
+		err <- $requireLeft tried
+		$expect (equal err (DBus.Client.clientError "releaseName: received invalid response code (Variant \"\")")
+			{ DBus.Client.clientErrorFatal = False
+			})
+	
+	-- response with unknown result code
+	do
+		tried <- stubMethodCall sock
+			(try (DBus.Client.releaseName client (busName_ "com.example.Foo")))
+			requestCall
+			(requestReply [toVariant (5 :: Word32)])
+		err <- $requireLeft tried
+		$expect (equal err (DBus.Client.clientError "releaseName: received unknown response code 5")
+			{ DBus.Client.clientErrorFatal = False
+			})
+
 startDummyBus :: Assertions (Address, MVar DBus.Socket.Socket)
 startDummyBus = do
 	uuid <- liftIO randomUUID
@@ -108,3 +286,38 @@ startDummyBus = do
 	listener <- liftIO (DBus.Socket.listen addr)
 	sockVar <- forkVar (DBus.Socket.accept listener)
 	return (DBus.Socket.socketListenerAddress listener, sockVar)
+
+startConnectedClient :: Assertions (DBus.Socket.Socket, DBus.Client.Client)
+startConnectedClient = do
+	(addr, sockVar) <- startDummyBus
+	clientVar <- forkVar (DBus.Client.connect addr)
+	
+	-- TODO: verify that 'hello' contains expected data, and
+	-- send a properly formatted reply.
+	sock <- liftIO (readMVar sockVar)
+	receivedHello <- liftIO (DBus.Socket.receive sock)
+	let (ReceivedMethodCall helloSerial _) = receivedHello
+	
+	liftIO (DBus.Socket.send sock (MethodReturn
+		{ methodReturnSerial = helloSerial
+		, methodReturnSender = Nothing
+		, methodReturnDestination = Nothing
+		, methodReturnBody = []
+		}) (\_ -> return ()))
+	
+	client <- liftIO (readMVar clientVar)
+	afterTest (DBus.Client.disconnect client)
+	
+	return (sock, client)
+
+stubMethodCall :: DBus.Socket.Socket -> IO a -> MethodCall -> (Serial -> MethodReturn) -> Assertions a
+stubMethodCall sock io expectedCall respond = do
+	var <- forkVar io
+	
+	receivedCall <- liftIO (DBus.Socket.receive sock)
+	let ReceivedMethodCall callSerial call = receivedCall
+	$expect (equal expectedCall call)
+	
+	liftIO (DBus.Socket.send sock (respond callSerial) (\_ -> return ()))
+	
+	liftIO (takeMVar var)
