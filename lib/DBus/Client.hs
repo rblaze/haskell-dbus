@@ -99,7 +99,6 @@ import           Data.List (foldl', intercalate)
 import qualified Data.Map
 import           Data.Map (Map)
 import           Data.Maybe (catMaybes, listToMaybe)
-import qualified Data.Set
 import           Data.Text (Text)
 import qualified Data.Text
 import           Data.Typeable (Typeable)
@@ -235,7 +234,7 @@ connectWith opts addr = do
 		, methodCallInterface = Just "org.freedesktop.DBus"
 		, methodCallSender = Nothing
 		, methodCallDestination = Just "org.freedesktop.DBus"
-		, methodCallFlags = Data.Set.empty
+		, methodCallFlags = []
 		, methodCallBody = []
 		}
 	
@@ -347,7 +346,7 @@ requestName client name flags = do
 		, methodCallMember = "RequestName"
 		, methodCallSender = Nothing
 		, methodCallDestination = Just "org.freedesktop.DBus"
-		, methodCallFlags = Data.Set.empty
+		, methodCallFlags = []
 		, methodCallBody = [toVariant name, toVariant (encodeFlags flags)]
 		}
 	var <- case listToMaybe (methodReturnBody reply) of
@@ -378,7 +377,7 @@ releaseName client name = do
 		, methodCallMember = "ReleaseName"
 		, methodCallSender = Nothing
 		, methodCallDestination = Just "org.freedesktop.DBus"
-		, methodCallFlags = Data.Set.empty
+		, methodCallFlags = []
 		, methodCallBody = [toVariant name]
 		}
 	var <- case listToMaybe (methodReturnBody reply) of
@@ -416,7 +415,7 @@ call client msg = do
 	-- NoReplyExpected: can cause this function to block indefinitely.
 	let safeMsg = msg
 		{ methodCallSender = Nothing
-		, methodCallFlags = Data.Set.delete NoReplyExpected (methodCallFlags msg)
+		, methodCallFlags = filter (/= NoReplyExpected) (methodCallFlags msg)
 		}
 	mvar <- newEmptyMVar
 	send_ client safeMsg (\serial -> do
@@ -445,7 +444,7 @@ callNoReply client msg = do
 	-- Ensure that NoReplyExpected is always set.
 	let safeMsg = msg
 		{ methodCallSender = Nothing
-		, methodCallFlags = Data.Set.insert NoReplyExpected (methodCallFlags msg)
+		, methodCallFlags = NoReplyExpected : methodCallFlags msg
 		}
 	send_ client safeMsg (\_ -> return ())
 
@@ -462,7 +461,7 @@ listen client rule io = do
 		, methodCallInterface = Just dbusInterface
 		, methodCallSender = Nothing
 		, methodCallDestination = Just dbusName
-		, methodCallFlags = Data.Set.empty
+		, methodCallFlags = []
 		, methodCallBody = [toVariant (formatMatchRule rule)]
 		}
 	return ()
@@ -746,7 +745,7 @@ proxyCall (Proxy client dest path) iface member body = do
 		, methodCallInterface = Just iface
 		, methodCallSender = Nothing
 		, methodCallDestination = Just dest
-		, methodCallFlags = Data.Set.empty
+		, methodCallFlags = []
 		, methodCallBody = body
 		}
 	return (methodReturnBody reply)

@@ -22,7 +22,6 @@ import           Test.Chell
 
 import           Control.Exception (finally)
 import           Control.Monad.IO.Class (liftIO)
-import qualified Data.Set
 import           System.Exit
 import           System.IO (hGetLine)
 import           System.Process
@@ -46,7 +45,7 @@ test_Socket = withDaemon "socket" $ \addr -> do
 		, methodCallInterface = Just "org.freedesktop.DBus"
 		, methodCallSender = Nothing
 		, methodCallDestination = Just "org.freedesktop.DBus"
-		, methodCallFlags = Data.Set.empty
+		, methodCallFlags = []
 		, methodCallBody = []
 		}
 	
@@ -83,7 +82,7 @@ test_Client = withDaemon "client" $ \addr -> do
 		, methodCallInterface = Just "com.example.Echo"
 		, methodCallSender = Nothing
 		, methodCallDestination = Just busAddrA
-		, methodCallFlags = Data.Set.empty
+		, methodCallFlags = []
 		, methodCallBody = bodyGood
 		}))
 	ret <- $requireRight retGood
@@ -97,7 +96,7 @@ test_Client = withDaemon "client" $ \addr -> do
 		, methodCallInterface = Just "com.example.Echo"
 		, methodCallSender = Nothing
 		, methodCallDestination = Just busAddrA
-		, methodCallFlags = Data.Set.empty
+		, methodCallFlags = []
 		, methodCallBody = bodyBad
 		}))
 	err <- $requireLeft retBad

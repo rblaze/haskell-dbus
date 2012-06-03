@@ -23,7 +23,6 @@ import           Test.Chell
 import           Control.Concurrent
 import           Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.Map as Map
-import qualified Data.Set as Set
 
 import           DBus
 import           DBus.Socket
@@ -92,7 +91,7 @@ test_SendReceive = assertions "send-receive" $ do
 		, methodCallInterface = Just "org.example.iface"
 		, methodCallSender = Just "org.example.src"
 		, methodCallDestination = Just "org.example.dst"
-		, methodCallFlags = Set.fromList [NoReplyExpected, NoAutoStart]
+		, methodCallFlags = [NoReplyExpected, NoAutoStart]
 		, methodCallBody = [toVariant True]
 		}
 	

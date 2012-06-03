@@ -35,8 +35,6 @@ import           Data.Int (Int16, Int32, Int64)
 import qualified Data.Map
 import           Data.Map (Map)
 import           Data.Maybe (fromJust, listToMaybe, fromMaybe)
-import qualified Data.Set
-import           Data.Set (Set)
 import qualified Data.Text
 import           Data.Text (Text)
 import qualified Data.Text.Encoding
@@ -495,13 +493,13 @@ protocolVersion = 1
 messageMaximumLength :: Integer
 messageMaximumLength = 134217728
 
-encodeFlags :: Set Flag -> Word8
-encodeFlags flags = foldr (.|.) 0 (map flagValue (Data.Set.toList flags)) where
+encodeFlags :: [Flag] -> Word8
+encodeFlags = foldr (.|.) 0 . map flagValue where
 	flagValue NoReplyExpected = 0x1
 	flagValue NoAutoStart     = 0x2
 
-decodeFlags :: Word8 -> Set Flag
-decodeFlags word = Data.Set.fromList flags where
+decodeFlags :: Word8 -> [Flag]
+decodeFlags word = flags where
 	flagSet = [ (0x1, NoReplyExpected)
 	          , (0x2, NoAutoStart)
 	          ]
@@ -642,7 +640,7 @@ unmarshalMessageM getBytes' = runErrorT $ do
 findBodySignature :: [HeaderField] -> Signature
 findBodySignature fields = fromMaybe (signature_ []) (listToMaybe [x | HeaderSignature x <- fields])
 
-buildReceivedMessage :: Word8 -> [HeaderField] -> ErrorM String (Serial -> Set Flag -> [Variant] -> ReceivedMessage)
+buildReceivedMessage :: Word8 -> [HeaderField] -> ErrorM String (Serial -> [Flag] -> [Variant] -> ReceivedMessage)
 buildReceivedMessage 1 fields = do
 	path <- require "path" [x | HeaderPath x <- fields]
 	member <- require "member name" [x | HeaderMember x <- fields]

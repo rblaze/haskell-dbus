@@ -15,25 +15,26 @@
 
 module DBus.Message where
 
+import           Data.List (nub, sort)
 import           Data.Maybe (fromMaybe, listToMaybe)
-import qualified Data.Set
-import           Data.Set (Set)
 import           Data.Word (Word8)
 
 import           DBus.Types
 
 class Message a where
-	messageTypeCode     :: a -> Word8
+	messageTypeCode :: a -> Word8
 	messageHeaderFields :: a -> [HeaderField]
-	messageFlags        :: a -> Set Flag
-	messageBody         :: a -> [Variant]
+	messageBody :: a -> [Variant]
+	
+	messageFlags :: a -> [Flag]
+	messageFlags _ = []
 
 maybe' :: (a -> b) -> Maybe a -> [b]
 maybe' f = maybe [] (\x' -> [f x'])
 
 data UnknownMessage = UnknownMessage
 	{ unknownMessageType :: Word8
-	, unknownMessageFlags :: Set Flag
+	, unknownMessageFlags :: [Flag]
 	, unknownMessageBody :: [Variant]
 	}
 	deriving (Show, Eq)
@@ -60,10 +61,10 @@ data MethodCall = MethodCall
 	, methodCallMember      :: MemberName
 	, methodCallSender      :: Maybe BusName
 	, methodCallDestination :: Maybe BusName
-	, methodCallFlags       :: Set Flag
+	, methodCallFlags       :: [Flag]
 	, methodCallBody        :: [Variant]
 	}
-	deriving (Show, Eq)
+	deriving (Show)
 
 instance Message MethodCall where
 	messageTypeCode _ = 1
@@ -78,6 +79,16 @@ instance Message MethodCall where
 		, maybe' HeaderDestination (methodCallDestination m)
 		]
 
+instance Eq MethodCall where
+	x == y = let eq f = f x == f y in
+	             eq methodCallPath &&
+	             eq methodCallInterface &&
+	             eq methodCallMember &&
+	             eq methodCallSender &&
+	             eq methodCallDestination &&
+	             eq (sort . nub . methodCallFlags) &&
+	             eq methodCallBody
+
 data MethodReturn = MethodReturn
 	{ methodReturnSerial      :: Serial
 	, methodReturnSender      :: Maybe BusName
@@ -88,7 +99,6 @@ data MethodReturn = MethodReturn
 
 instance Message MethodReturn where
 	messageTypeCode _ = 2
-	messageFlags    _ = Data.Set.fromList [NoReplyExpected, NoAutoStart]
 	messageBody       = methodReturnBody
 	messageHeaderFields m = concat
 		[ [ HeaderReplySerial (methodReturnSerial m)
@@ -108,7 +118,6 @@ data MethodError = MethodError
 
 instance Message MethodError where
 	messageTypeCode _ = 3
-	messageFlags    _ = Data.Set.fromList [NoReplyExpected, NoAutoStart]
 	messageBody       = methodErrorBody
 	messageHeaderFields m = concat
 		[ [ HeaderErrorName (methodErrorName m)
@@ -138,7 +147,6 @@ data Signal = Signal
 
 instance Message Signal where
 	messageTypeCode _ = 4
-	messageFlags    _ = Data.Set.fromList [NoReplyExpected, NoAutoStart]
 	messageBody       = signalBody
 	messageHeaderFields m = concat
 		[ [ HeaderPath (signalPath m)

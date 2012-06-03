@@ -16,9 +16,7 @@
 module DBus
 	(
 	-- * Messages
-	  Message ( messageFlags
-	          , messageBody
-	          )
+	  Message
 	, Flag (..)
 	, UnknownMessage (..)
 	, MethodCall (..)

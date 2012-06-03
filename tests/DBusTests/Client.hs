@@ -21,7 +21,6 @@ import           Control.Concurrent
 import           Control.Exception (try)
 import           Control.Monad.IO.Class (liftIO)
 import qualified Data.Map as Map
-import qualified Data.Set
 import           Data.Word
 
 import           Test.Chell
@@ -129,7 +128,7 @@ test_RequestName = assertions "requestName" $ do
 		, methodCallMember = memberName_ "RequestName"
 		, methodCallSender = Nothing
 		, methodCallDestination = Just (busName_ "org.freedesktop.DBus")
-		, methodCallFlags = Data.Set.empty
+		, methodCallFlags = []
 		, methodCallBody = [toVariant "com.example.Foo", toVariant (7 :: Word32)]
 		}
 	
@@ -215,7 +214,7 @@ test_ReleaseName = assertions "releaseName" $ do
 		, methodCallMember = memberName_ "ReleaseName"
 		, methodCallSender = Nothing
 		, methodCallDestination = Just (busName_ "org.freedesktop.DBus")
-		, methodCallFlags = Data.Set.empty
+		, methodCallFlags = []
 		, methodCallBody = [toVariant "com.example.Foo"]
 		}
 	
@@ -293,7 +292,7 @@ test_Call = assertions "call" $ do
 		, methodCallMember = memberName_ "Hello"
 		, methodCallSender = Just (busName_ "com.example.Foo")
 		, methodCallDestination = Just (busName_ "org.freedesktop.DBus")
-		, methodCallFlags = Data.Set.fromList [NoReplyExpected, NoAutoStart]
+		, methodCallFlags = [NoReplyExpected, NoAutoStart]
 		, methodCallBody = [toVariant "com.example.Foo"]
 		}
 	
@@ -310,7 +309,7 @@ test_Call = assertions "call" $ do
 			(DBus.Client.call client requestCall)
 			(requestCall
 				{ methodCallSender = Nothing
-				, methodCallFlags = Data.Set.fromList [NoAutoStart]
+				, methodCallFlags = [NoAutoStart]
 				})
 			requestReply
 		reply <- $requireRight response
@@ -329,7 +328,7 @@ test_CallNoReply = assertions "callNoReply" $ do
 		, methodCallMember = memberName_ "Hello"
 		, methodCallSender = Just (busName_ "com.example.Foo")
 		, methodCallDestination = Just (busName_ "org.freedesktop.DBus")
-		, methodCallFlags = Data.Set.fromList [NoAutoStart]
+		, methodCallFlags = [NoAutoStart]
 		, methodCallBody = [toVariant "com.example.Foo"]
 		}
 	
@@ -346,7 +345,7 @@ test_CallNoReply = assertions "callNoReply" $ do
 			(DBus.Client.callNoReply client requestCall)
 			(requestCall
 				{ methodCallSender = Nothing
-				, methodCallFlags = Data.Set.fromList [NoAutoStart, NoReplyExpected]
+				, methodCallFlags = [NoAutoStart, NoReplyExpected]
 				})
 			requestReply
 
@@ -371,7 +370,7 @@ test_Listen = assertions "listen" $ do
 		, methodCallMember = memberName_ "AddMatch"
 		, methodCallSender = Nothing
 		, methodCallDestination = Just (busName_ "org.freedesktop.DBus")
-		, methodCallFlags = Data.Set.fromList [NoReplyExpected]
+		, methodCallFlags = [NoReplyExpected]
 		, methodCallBody = [toVariant "sender='com.example.Foo',destination='com.example.Bar',path='/',interface='com.example.Baz',member='Qux'"]
 		}
 	
@@ -509,7 +508,7 @@ callClientMethod sock path iface name body = do
 		, methodCallMember = memberName_ name
 		, methodCallSender = Nothing
 		, methodCallDestination = Nothing
-		, methodCallFlags = Data.Set.empty
+		, methodCallFlags = []
 		, methodCallBody = body
 		}
 	serial <- liftIO (DBus.Socket.send sock call return)
