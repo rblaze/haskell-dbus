@@ -650,7 +650,7 @@ buildReceivedMessage 1 fields = do
 		iface = listToMaybe [x | HeaderInterface x <- fields]
 		dest = listToMaybe [x | HeaderDestination x <- fields]
 		sender = listToMaybe [x | HeaderSender x <- fields]
-		msg = MethodCall path member iface sender dest flags body
+		msg = MethodCall path iface member sender dest flags body
 		in ReceivedMethodCall serial msg
 
 buildReceivedMessage 2 fields = do

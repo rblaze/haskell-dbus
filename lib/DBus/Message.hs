@@ -56,8 +56,8 @@ data Flag
 
 data MethodCall = MethodCall
 	{ methodCallPath        :: ObjectPath
-	, methodCallMember      :: MemberName
 	, methodCallInterface   :: Maybe InterfaceName
+	, methodCallMember      :: MemberName
 	, methodCallSender      :: Maybe BusName
 	, methodCallDestination :: Maybe BusName
 	, methodCallFlags       :: Set Flag
