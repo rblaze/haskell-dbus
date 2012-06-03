@@ -139,37 +139,37 @@ test_RequestName = assertions "requestName" $ do
 		, methodReturnBody = body
 		}
 	
-	-- PrimaryOwner
+	-- NamePrimaryOwner
 	do
 		reply <- stubMethodCall sock
 			(DBus.Client.requestName client (busName_ "com.example.Foo") allFlags)
 			requestCall
 			(requestReply [toVariant (1 :: Word32)])
-		$expect (equal reply DBus.Client.PrimaryOwner)
+		$expect (equal reply DBus.Client.NamePrimaryOwner)
 	
-	-- InQueue
+	-- NameInQueue
 	do
 		reply <- stubMethodCall sock
 			(DBus.Client.requestName client (busName_ "com.example.Foo") allFlags)
 			requestCall
 			(requestReply [toVariant (2 :: Word32)])
-		$expect (equal reply DBus.Client.InQueue)
+		$expect (equal reply DBus.Client.NameInQueue)
 	
-	-- Exists
+	-- NameExists
 	do
 		reply <- stubMethodCall sock
 			(DBus.Client.requestName client (busName_ "com.example.Foo") allFlags)
 			requestCall
 			(requestReply [toVariant (3 :: Word32)])
-		$expect (equal reply DBus.Client.Exists)
+		$expect (equal reply DBus.Client.NameExists)
 	
-	-- AlreadyOwner
+	-- NameAlreadyOwner
 	do
 		reply <- stubMethodCall sock
 			(DBus.Client.requestName client (busName_ "com.example.Foo") allFlags)
 			requestCall
 			(requestReply [toVariant (4 :: Word32)])
-		$expect (equal reply DBus.Client.AlreadyOwner)
+		$expect (equal reply DBus.Client.NameAlreadyOwner)
 	
 	-- response with empty body
 	do
@@ -225,29 +225,29 @@ test_ReleaseName = assertions "releaseName" $ do
 		, methodReturnBody = body
 		}
 	
-	-- Released
+	-- NameReleased
 	do
 		reply <- stubMethodCall sock
 			(DBus.Client.releaseName client (busName_ "com.example.Foo"))
 			requestCall
 			(requestReply [toVariant (1 :: Word32)])
-		$expect (equal reply DBus.Client.Released)
+		$expect (equal reply DBus.Client.NameReleased)
 	
-	-- NonExistent
+	-- NameNonExistent
 	do
 		reply <- stubMethodCall sock
 			(DBus.Client.releaseName client (busName_ "com.example.Foo"))
 			requestCall
 			(requestReply [toVariant (2 :: Word32)])
-		$expect (equal reply DBus.Client.NonExistent)
+		$expect (equal reply DBus.Client.NameNonExistent)
 	
-	-- NotOwner
+	-- NameNotOwner
 	do
 		reply <- stubMethodCall sock
 			(DBus.Client.releaseName client (busName_ "com.example.Foo"))
 			requestCall
 			(requestReply [toVariant (3 :: Word32)])
-		$expect (equal reply DBus.Client.NotOwner)
+		$expect (equal reply DBus.Client.NameNotOwner)
 	
 	-- response with empty body
 	do

@@ -319,16 +319,16 @@ data RequestNameFlag
 	deriving (Eq, Show)
 
 data RequestNameReply
-	= PrimaryOwner
-	| InQueue
-	| Exists
-	| AlreadyOwner
+	= NamePrimaryOwner
+	| NameInQueue
+	| NameExists
+	| NameAlreadyOwner
 	deriving (Eq, Show)
 
 data ReleaseNameReply
-	= Released
-	| NonExistent
-	| NotOwner
+	= NameReleased
+	| NameNonExistent
+	| NameNotOwner
 	deriving (Eq, Show)
 
 encodeFlags :: [RequestNameFlag] -> Word32
@@ -360,10 +360,10 @@ requestName client name flags = do
 			{ clientErrorFatal = False
 			}
 	case code :: Word32 of
-		1 -> return PrimaryOwner
-		2 -> return InQueue
-		3 -> return Exists
-		4 -> return AlreadyOwner
+		1 -> return NamePrimaryOwner
+		2 -> return NameInQueue
+		3 -> return NameExists
+		4 -> return NameAlreadyOwner
 		_ -> throwIO (clientError ("requestName: received unknown response code " ++ show code))
 			{ clientErrorFatal = False
 			}
@@ -391,9 +391,9 @@ releaseName client name = do
 			{ clientErrorFatal = False
 			}
 	case code :: Word32 of
-		1 -> return Released
-		2 -> return NonExistent
-		3 -> return NotOwner
+		1 -> return NameReleased
+		2 -> return NameNonExistent
+		3 -> return NameNotOwner
 		_ -> throwIO (clientError ("releaseName: received unknown response code " ++ show code))
 			{ clientErrorFatal = False
 			}
