@@ -38,6 +38,7 @@ module DBus.Transport
 	) where
 
 import           Control.Exception
+import qualified Data.ByteString
 import           Data.ByteString (ByteString)
 import qualified Data.Map as Map
 import           Data.Typeable (Typeable)
@@ -45,6 +46,8 @@ import           Foreign.C (CUInt)
 import           Network.Socket hiding (recv)
 import           Network.Socket.ByteString (sendAll, recv)
 import qualified System.Info
+
+import qualified Data.Serialize.Builder as Builder
 
 import           DBus
 
@@ -142,8 +145,23 @@ instance Transport SocketTransport where
 		}
 	transportDefaultOptions = SocketTransportOptions 30
 	transportPut (SocketTransport addr s) bytes = catchIOException addr (sendAll s bytes)
-	transportGet (SocketTransport addr s) n = catchIOException addr (recv s n)
+	transportGet (SocketTransport addr s) n = catchIOException addr (recvLoop s n)
 	transportClose (SocketTransport addr s) = catchIOException addr (sClose s)
+
+recvLoop :: Socket -> Int -> IO ByteString
+recvLoop s = loop Builder.empty where
+	chunkSize = 4096
+	loop acc n = if n > chunkSize
+		then do
+			chunk <- recv s chunkSize
+			let builder = Builder.append acc (Builder.fromByteString chunk)
+			loop builder (n - Data.ByteString.length chunk)
+		else do
+			chunk <- recv s n
+			let builder = Builder.append acc (Builder.fromByteString chunk)
+			if Data.ByteString.length chunk == n
+				then return (Builder.toByteString builder)
+				else loop builder (n - Data.ByteString.length chunk)
 
 instance TransportOpen SocketTransport where
 	transportOpen _ a = case addressMethod a of

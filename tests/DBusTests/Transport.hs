@@ -23,12 +23,13 @@ import           Test.Chell
 import           Control.Concurrent
 import           Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.ByteString
+import           Data.Function (fix)
 import           Data.List (isPrefixOf)
 import qualified Data.Map as Map
 import qualified Network as N
 import qualified Network.Socket as NS
+import           Network.Socket.ByteString (sendAll, recv)
 import           System.Directory (getTemporaryDirectory, removeFile)
-import           System.IO
 
 import           DBus
 import           DBus.Transport
@@ -212,25 +213,37 @@ test_TransportSendReceive :: Test
 test_TransportSendReceive = assertions "send-receive" $ do
 	(addr, networkSocket) <- listenRandomIPv4
 	afterTest (N.sClose networkSocket)
+	
+	-- a simple echo server, which sends back anything it receives.
 	_ <- liftIO $ forkIO $ do
-		(h, _, _) <- N.accept networkSocket
-		hSetBuffering h LineBuffering
-		
-		bytes <- Data.ByteString.hGetLine h
-		Data.ByteString.hPut h bytes
-		hFlush h
-		hClose h
-		NS.sClose networkSocket
+		(s, _) <- NS.accept networkSocket
+		fix $ \loop -> do
+			bytes <- recv s 50
+			if Data.ByteString.null bytes
+				then NS.sClose s
+				else do
+					sendAll s bytes
+					loop
 	
 	t <- liftIO (transportOpen socketTransportOptions addr)
 	afterTest (transportClose t)
 	
-	liftIO (transportPut t "testing\n")
-	bytes1 <- liftIO (transportGet t 2)
-	bytes2 <- liftIO (transportGet t 100)
+	-- small chunks of data are combined
+	do
+		var <- forkVar (transportGet t 3)
+		liftIO (transportPut t "1")
+		liftIO (transportPut t "2")
+		liftIO (transportPut t "3")
+		bytes <- liftIO (readMVar var)
+		$assert (equal bytes "123")
 	
-	$expect (equal bytes1 "te")
-	$expect (equal bytes2 "sting")
+	-- large chunks of data are read in full
+	do
+		let sentBytes = Data.ByteString.replicate (4096 * 100) 0
+		var <- forkVar (transportGet t (4096 * 100))
+		liftIO (transportPut t sentBytes)
+		bytes <- liftIO (readMVar var)
+		$assert (equal bytes sentBytes)
 
 test_ListenUnknown :: Test
 test_ListenUnknown = assertions "unknown" $ do
@@ -399,11 +412,9 @@ test_AcceptSocket = assertions "socket" $ do
 	
 	liftIO (transportPut opened "testing")
 	
-	bytes1 <- liftIO (transportGet accepted 2)
-	bytes2 <- liftIO (transportGet accepted 100)
+	bytes <- liftIO (transportGet accepted 7)
 	
-	$expect (equal bytes1 "te")
-	$expect (equal bytes2 "sting")
+	$expect (equal bytes "testing")
 
 test_AcceptSocketClosed :: Test
 test_AcceptSocketClosed = assertions "socket-closed" $ do
