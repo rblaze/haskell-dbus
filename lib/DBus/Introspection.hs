@@ -52,22 +52,22 @@ data Method = Method T.MemberName [Parameter] [Parameter]
 data Signal = Signal T.MemberName [Parameter]
 	deriving (Show, Eq)
 
-data Parameter = Parameter Text T.Type
+data Parameter = Parameter String T.Type
 	deriving (Show, Eq)
 
-data Property = Property Text T.Signature [PropertyAccess]
+data Property = Property String T.Signature [PropertyAccess]
 	deriving (Show, Eq)
 
 data PropertyAccess = Read | Write
 	deriving (Show, Eq)
 
-fromXML :: T.ObjectPath -> Text -> Maybe Object
-fromXML path text = do
-	root <- parseElement text
+fromXML :: T.ObjectPath -> String -> Maybe Object
+fromXML path xml = do
+	root <- parseElement (Data.Text.pack xml)
 	parseRoot path root
 
 parseElement :: Text -> Maybe X.Element
-parseElement text = runST $ do
+parseElement xml = runST $ do
 	stackRef <- ST.newSTRef [([], [])]
 	let onError _ = do
 		ST.writeSTRef stackRef []
@@ -88,7 +88,7 @@ parseElement text = runST $ do
 	SAX.setCallback p SAX.parsedBeginElement onBegin
 	SAX.setCallback p SAX.parsedEndElement onEnd
 	SAX.setCallback p SAX.reportError onError
-	SAX.parseBytes p (Data.Text.Encoding.encodeUtf8 text)
+	SAX.parseBytes p (Data.Text.Encoding.encodeUtf8 xml)
 	SAX.parseComplete p
 	stack <- ST.readSTRef stackRef
 	return $ case stack of
@@ -146,7 +146,7 @@ parseType e = do
 
 parseParameter :: X.Element -> Maybe Parameter
 parseParameter e = do
-	let name = getattr "name" e
+	let name = Data.Text.unpack (getattr "name" e)
 	sig <- parseType e
 	case T.signatureTypes sig of
 		[t] -> Just (Parameter name t)
@@ -154,7 +154,7 @@ parseParameter e = do
 
 parseProperty :: X.Element -> Maybe Property
 parseProperty e = do
-	let name = getattr "name" e
+	let name = Data.Text.unpack (getattr "name" e)
 	sig <- parseType e
 	access <- case getattr "access" e of
 		""          -> Just []
@@ -174,22 +174,22 @@ isParam dirs = X.isNamed "arg" >=> checkDir where
 children :: Monad m => (X.Element -> m b) -> (X.Element -> [X.Element]) -> X.Element -> m [b]
 children f p = mapM f . concatMap p . X.elementChildren
 
-newtype XmlWriter a = XmlWriter { runXmlWriter :: Maybe (a, Text) }
+newtype XmlWriter a = XmlWriter { runXmlWriter :: Maybe (a, String) }
 
 instance Monad XmlWriter where
-	return a = XmlWriter $ Just (a, Data.Text.empty)
+	return a = XmlWriter $ Just (a, "")
 	m >>= f = XmlWriter $ do
 		(a, w) <- runXmlWriter m
 		(b, w') <- runXmlWriter (f a)
-		return (b, Data.Text.append w w')
+		return (b, w ++ w')
 
-tell :: Text -> XmlWriter ()
-tell t = XmlWriter $ Just ((), t)
+tell :: String -> XmlWriter ()
+tell s = XmlWriter (Just ((), s))
 
-toXML :: Object -> Maybe Text
+toXML :: Object -> Maybe String
 toXML obj = do
-	(_, text) <- runXmlWriter (writeRoot obj)
-	return text
+	(_, xml) <- runXmlWriter (writeRoot obj)
+	return xml
 
 writeRoot :: Object -> XmlWriter ()
 writeRoot obj@(Object path _ _) = do
@@ -213,51 +213,51 @@ writeChild parentPath obj@(Object path _ _) = write where
 
 writeObject :: String -> Object -> XmlWriter ()
 writeObject path (Object fullPath interfaces children') = writeElement "node"
-	[("name", Data.Text.pack path)] $ do
+	[("name", path)] $ do
 		mapM_ writeInterface interfaces
 		mapM_ (writeChild fullPath) children'
 
 writeInterface :: Interface -> XmlWriter ()
 writeInterface (Interface name methods signals properties) = writeElement "interface"
-	[("name", Data.Text.pack (T.formatInterfaceName name))] $ do
+	[("name", T.formatInterfaceName name)] $ do
 		mapM_ writeMethod methods
 		mapM_ writeSignal signals
 		mapM_ writeProperty properties
 
 writeMethod :: Method -> XmlWriter ()
 writeMethod (Method name inParams outParams) = writeElement "method"
-	[("name", Data.Text.pack (T.formatMemberName name))] $ do
+	[("name", T.formatMemberName name)] $ do
 		mapM_ (writeParameter "in") inParams
 		mapM_ (writeParameter "out") outParams
 
 writeSignal :: Signal -> XmlWriter ()
 writeSignal (Signal name params) = writeElement "signal"
-	[("name", Data.Text.pack (T.formatMemberName name))] $ do
+	[("name", T.formatMemberName name)] $ do
 		mapM_ (writeParameter "out") params
 
-writeParameter :: Text -> Parameter -> XmlWriter ()
+writeParameter :: String -> Parameter -> XmlWriter ()
 writeParameter direction (Parameter name t) = writeEmptyElement "arg"
 	[ ("name", name)
-	, ("type", Data.Text.pack (T.formatSignature (T.signature_ [t])))
+	, ("type", T.formatSignature (T.signature_ [t]))
 	, ("direction", direction)
 	]
 
 writeProperty :: Property -> XmlWriter ()
 writeProperty (Property name sig access) = writeEmptyElement "property"
 	[ ("name", name)
-	, ("type", Data.Text.pack (T.formatSignature sig))
+	, ("type", T.formatSignature sig)
 	, ("access", strAccess access)
 	]
 
-strAccess :: [PropertyAccess] -> Text
-strAccess access = Data.Text.append readS writeS where
+strAccess :: [PropertyAccess] -> String
+strAccess access = readS ++ writeS where
 	readS = if elem Read access then "read" else ""
 	writeS = if elem Write access then "write" else ""
 
 attributeString :: X.Name -> X.Element -> Maybe String
 attributeString name e = fmap Data.Text.unpack (X.attributeText name e)
 
-writeElement :: Text -> [(Text, Text)] -> XmlWriter () -> XmlWriter ()
+writeElement :: String -> [(String, String)] -> XmlWriter () -> XmlWriter ()
 writeElement name attrs content = do
 	tell "<"
 	tell name
@@ -268,14 +268,14 @@ writeElement name attrs content = do
 	tell name
 	tell ">"
 
-writeEmptyElement :: Text -> [(Text, Text)] -> XmlWriter ()
+writeEmptyElement :: String -> [(String, String)] -> XmlWriter ()
 writeEmptyElement name attrs = do
 	tell "<"
 	tell name
 	mapM_ writeAttribute attrs
 	tell "/>"
 
-writeAttribute :: (Text, Text) -> XmlWriter ()
+writeAttribute :: (String, String) -> XmlWriter ()
 writeAttribute (name, content) = do
 	tell " "
 	tell name
@@ -283,12 +283,11 @@ writeAttribute (name, content) = do
 	tell (escape content)
 	tell "'"
 
-escape :: Text -> Text
-escape = Data.Text.concatMap escapeChar where
-	escapeChar c = case c of
-		'&' -> "&amp;"
-		'<' -> "&lt;"
-		'>' -> "&gt;"
-		'"' -> "&quot;"
-		'\'' -> "&apos;"
-		_ -> Data.Text.singleton c
+escape :: String -> String
+escape = concatMap $ \c -> case c of
+	'&' -> "&amp;"
+	'<' -> "&lt;"
+	'>' -> "&gt;"
+	'"' -> "&quot;"
+	'\'' -> "&apos;"
+	_ -> [c]

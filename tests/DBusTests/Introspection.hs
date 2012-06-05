@@ -23,7 +23,6 @@ import           Test.QuickCheck hiding (property)
 
 import           Control.Applicative ((<$>), (<*>))
 import           Control.Monad (liftM, liftM2)
-import qualified Data.Text as T
 
 import           DBus
 import qualified DBus.Introspection as Introspection
@@ -47,8 +46,8 @@ test_XmlPassthrough = property "xml-passthrough" $ \obj -> let
 
 test_XmlParseFailed :: Test
 test_XmlParseFailed = assertions "xml-parse-failed" $ do
-	$expect (nothing (Introspection.fromXML (objectPath_ "/") (T.pack "<invalid>")))
-	$expect (nothing (Introspection.fromXML (objectPath_ "/") (T.pack "<invalid/>")))
+	$expect (nothing (Introspection.fromXML (objectPath_ "/") "<invalid>"))
+	$expect (nothing (Introspection.fromXML (objectPath_ "/") "<invalid/>"))
 
 instance Arbitrary Type where
 	arbitrary = oneof [atom, container] where
@@ -113,12 +112,12 @@ instance Arbitrary Introspection.Signal where
 
 instance Arbitrary Introspection.Parameter where
 	arbitrary = Introspection.Parameter
-		<$> gen_Text
+		<$> gen_Ascii
 		<*> arbitrary
 
 instance Arbitrary Introspection.Property where
 	arbitrary = Introspection.Property
-		<$> gen_Text
+		<$> gen_Ascii
 		<*> arbitrary
 		<*> elements
 			[ []
@@ -128,5 +127,5 @@ instance Arbitrary Introspection.Property where
 			  , Introspection.Write ]
 			]
 
-gen_Text :: Gen T.Text
-gen_Text = fmap T.pack (listOf (elements ['!'..'~']))
+gen_Ascii :: Gen String
+gen_Ascii = listOf (elements ['!'..'~'])

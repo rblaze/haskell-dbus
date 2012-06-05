@@ -21,7 +21,6 @@ import           Control.Concurrent
 import           Control.Exception (try)
 import           Control.Monad.IO.Class (liftIO)
 import qualified Data.Map as Map
-import qualified Data.Text as T
 import           Data.Word
 
 import           Test.Chell
@@ -484,20 +483,20 @@ test_ExportIntrospection = assertions "exportIntrospection" $ do
 		return obj
 	
 	let ifaceIntrospectable = I.Interface (interfaceName_ "org.freedesktop.DBus.Introspectable")
-		[ I.Method (memberName_ "Introspect") [] [I.Parameter (T.pack "") TypeString]
+		[ I.Method (memberName_ "Introspect") [] [I.Parameter "" TypeString]
 		] [] []
 	
 	let ifaceFoo = I.Interface (interfaceName_ "com.example.Foo")
 		[ I.Method (memberName_ "Method1")
-			[ I.Parameter (T.pack "") TypeString ]
+			[ I.Parameter "" TypeString ]
 			[]
 		, I.Method (memberName_ "Method2")
-			[ I.Parameter (T.pack "") TypeString ]
-			[ I.Parameter (T.pack "") TypeString ]
+			[ I.Parameter "" TypeString ]
+			[ I.Parameter "" TypeString ]
 		, I.Method (memberName_ "Method3")
-			[ I.Parameter (T.pack "") TypeString ]
-			[ I.Parameter (T.pack "") TypeString
-			, I.Parameter (T.pack "") TypeString
+			[ I.Parameter "" TypeString ]
+			[ I.Parameter "" TypeString
+			, I.Parameter "" TypeString
 			]
 		] [] []
 	
@@ -514,28 +513,6 @@ test_ExportIntrospection = assertions "exportIntrospection" $ do
 			[ifaceFoo, ifaceIntrospectable]
 			[]
 		$expect (equal foo expected)
-{-
-data Object = Object T.ObjectPath [Interface] [Object]
-	deriving (Show, Eq)
-
-data Interface = Interface T.InterfaceName [Method] [Signal] [Property]
-	deriving (Show, Eq)
-
-data Method = Method T.MemberName [Parameter] [Parameter]
-	deriving (Show, Eq)
-
-data Signal = Signal T.MemberName [Parameter]
-	deriving (Show, Eq)
-
-data Parameter = Parameter Text T.Type
-	deriving (Show, Eq)
-
-data Property = Property Text T.Signature [PropertyAccess]
-	deriving (Show, Eq)
-
-data PropertyAccess = Read | Write
-	deriving (Show, Eq)
--}
 
 startDummyBus :: Assertions (Address, MVar DBus.Socket.Socket)
 startDummyBus = do
