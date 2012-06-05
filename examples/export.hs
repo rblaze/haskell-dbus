@@ -18,19 +18,20 @@
 module Main (main) where
 
 import           Control.Concurrent (threadDelay)
-import           Control.Monad (forever)
-import           Data.Text
+import           Control.Monad
+import           System.Exit
 
-import           DBus.Client.Simple
+import           DBus
+import           DBus.Client
 
-onFoo :: Text -> Text -> IO (Text, Text)
+onFoo :: String -> String -> IO (String, String)
 onFoo x y = do
-	putStrLn ("Foo " ++ unpack x ++ " " ++ unpack y)
+	putStrLn ("Foo " ++ show x ++ " " ++ show y)
 	return (x, y)
 
-onBar :: Text -> Text -> IO (Text, Text)
+onBar :: String -> String -> IO (String, String)
 onBar x y = do
-	putStrLn ("Bar " ++ unpack x ++ " " ++ unpack y)
+	putStrLn ("Bar " ++ show x ++ " " ++ show y)
 	throwError "com.example.ErrorBar" "Bar failed" []
 
 main :: IO ()
@@ -38,19 +39,23 @@ main = do
 	-- Connect to the bus
 	client <- connectSession
 	
-	-- Request a unique name on the bus. If the name is already
-	-- in use, continue without it.
-	_ <- requestName client "com.example.exporting" []
+	-- Request a unique name on the bus.
+	requestResult <- requestName client "com.example.exporting" []
+	when (requestResult /= NamePrimaryOwner) $ do
+		putStrLn "Another service owns the \"com.example.exporting\" bus name"
+		exitFailure
 	
 	-- Export two example objects
 	export client "/a"
-		[ method "test.iface_1" "Foo" (onFoo "hello" "a")
-		, method "test.iface_1" "Bar" (onBar "hello" "a")
+		[ autoMethod "test.iface_1" "Foo" (onFoo "hello" "a")
+		, autoMethod "test.iface_1" "Bar" (onBar "hello" "a")
 		]
 	export client "/b"
-		[ method "test.iface_1" "Foo" (onFoo "hello")
-		, method "test.iface_1" "Bar" (onBar "hello")
+		[ autoMethod "test.iface_1" "Foo" (onFoo "hello")
+		, autoMethod "test.iface_1" "Bar" (onBar "hello")
 		]
+	
+	putStrLn "Exported objects /a and /b to bus name com.example.exporting"
 	
 	-- Wait forever for method calls
 	forever (threadDelay 50000)

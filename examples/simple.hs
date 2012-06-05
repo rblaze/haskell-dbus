@@ -18,7 +18,8 @@
 module Main (main) where
 
 import           Data.List (sort)
-import           DBus.Client.Simple
+import           DBus
+import           DBus.Client
 
 main :: IO ()
 main = do
@@ -26,7 +27,7 @@ main = do
 	
 	-- Request a list of connected clients from the bus
 	bus <- proxy client "org.freedesktop.DBus" "/org/freedesktop/DBus"
-	reply <- call bus "org.freedesktop.DBus" "ListNames" []
+	reply <- proxyCall bus "org.freedesktop.DBus" "ListNames" []
 	
 	-- org.freedesktop.DBus.ListNames returns a single value, which is
 	-- a list of names (here represented as [String])

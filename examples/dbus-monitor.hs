@@ -19,6 +19,7 @@ module Main (main) where
 
 import           Control.Concurrent (threadDelay)
 import           Control.Monad
+import           Data.List (intercalate)
 import           Data.Maybe
 import           Data.Int
 import           Data.Word
@@ -29,10 +30,8 @@ import           System.Exit
 import           System.IO
 import           System.Console.GetOpt
 
-import           DBus.Address
-import           DBus.Client (connect, setMessageProcessor)
-import           DBus.Client.Simple
-import           DBus.Message
+import           DBus
+import           DBus.Socket
 
 data Bus = Session | System
 	deriving (Show)
@@ -53,21 +52,39 @@ optionInfo = [
 usage :: String -> String
 usage name = "Usage: " ++ name ++ " [OPTION...]"
 
-findClient :: [Option] -> IO Client
-findClient []    = connectSession
-findClient (o:_) = case o of
-	BusOption Session -> connectSession
-	BusOption System  -> connectSystem
-	AddressOption addr -> case address (Data.Text.pack addr) of
-			Just addr' -> connect addr'
-			_ -> error ("Invalid address: " ++ show addr)
+findSocket :: [Option] -> IO Socket
+findSocket opts = getAddress opts >>= open where
+	session = do
+		got <- getSessionAddress
+		case got of
+			Just addr -> return addr
+			Nothing -> error "DBUS_SESSION_BUS_ADDRESS is not a valid address"
+	
+	system = do
+		got <- getSystemAddress
+		case got of
+			Just addr -> return addr
+			Nothing -> error "DBUS_SYSTEM_BUS_ADDRESS is not a valid address"
+	
+	getAddress [] = session
+	getAddress ((BusOption Session):_) = session
+	getAddress ((BusOption System):_) = system
+	getAddress ((AddressOption addr):_) = case parseAddress addr of
+		Nothing -> error (show addr ++ " is not a valid address")
+		Just parsed -> return parsed
 
-addMatch :: Proxy -> Text -> IO ()
-addMatch bus match = do
-	_ <- call bus "org.freedesktop.DBus" "AddMatch" [toVariant match]
-	return ()
+addMatch :: Socket -> String -> IO ()
+addMatch sock match = send sock (MethodCall
+	{ methodCallPath = "/org/freedesktop/DBus"
+	, methodCallInterface = Just "org.freedesktop.DBus"
+	, methodCallMember = "AddMatch"
+	, methodCallSender = Nothing
+	, methodCallDestination = Just "org.freedesktop.DBus"
+	, methodCallFlags = []
+	, methodCallBody = [toVariant match]
+	}) (\_ -> return ())
 
-defaultFilters :: [Text]
+defaultFilters :: [String]
 defaultFilters =
 	[ "type='signal'"
 	, "type='method_call'"
@@ -85,111 +102,111 @@ main = do
 		hPutStrLn stderr (usageInfo (usage name) optionInfo)
 		exitFailure
 	
-	client <- findClient options
-	setMessageProcessor client (\msg -> do
-		putStrLn (Data.Text.unpack (formatMessage msg) ++ "\n")
-		return False)
+	sock <- findSocket options
 	
-	let filters = if null userFilters
-		then defaultFilters
-		else map Data.Text.pack userFilters
+	send sock (MethodCall
+		{ methodCallPath = "/org/freedesktop/DBus"
+		, methodCallInterface = Just "org.freedesktop.DBus"
+		, methodCallMember = "Hello"
+		, methodCallSender = Nothing
+		, methodCallDestination = Just "org.freedesktop.DBus"
+		, methodCallFlags = []
+		, methodCallBody = []
+		}) (\_ -> return ())
 	
-	bus <- proxy client "org.freedesktop.DBus" "/org/freedesktop/DBus"
-	mapM_ (addMatch bus) filters
+	mapM_ (addMatch sock) (if null userFilters then defaultFilters else userFilters)
 	
-	-- wait forever
-	forever (threadDelay 50000)
+	forever $ do
+		received <- receive sock
+		putStrLn (formatMessage received ++ "\n")
 
 -- Message formatting is verbose and mostly uninteresting, except as an
 -- excersise in string manipulation.
 
-showT :: Show a => a -> Text
-showT = Data.Text.pack . show
-
-formatMessage :: ReceivedMessage -> Text
+formatMessage :: ReceivedMessage -> String
 
 -- Method call
-formatMessage (ReceivedMethodCall serial sender msg) = Data.Text.concat
+formatMessage (ReceivedMethodCall serial msg) = concat
 	[ "method call"
 	, " sender="
-	, fromMaybe "(null)" (fmap busNameText sender)
+	, maybe "(null)" formatBusName (methodCallSender msg)
 	, " -> dest="
-	, fromMaybe "(null)" (fmap busNameText (methodCallDestination msg))
+	, maybe "(null)" formatBusName (methodCallDestination msg)
 	, " serial="
-	, showT (serialValue serial)
+	, show (serialValue serial)
 	, " path="
-	, objectPathText (methodCallPath msg)
+	, formatObjectPath (methodCallPath msg)
 	, "; interface="
-	, fromMaybe "(null)" (fmap interfaceNameText (methodCallInterface msg))
+	, maybe "(null)" formatInterfaceName (methodCallInterface msg)
 	, "; member="
-	, memberNameText (methodCallMember msg)
-	, formatBody msg
+	, formatMemberName (methodCallMember msg)
+	, formatBody (methodCallBody msg)
 	]
 
 -- Method return
-formatMessage (ReceivedMethodReturn _ sender msg) = Data.Text.concat
+formatMessage (ReceivedMethodReturn _ msg) = concat
 	[ "method return"
 	, " sender="
-	, fromMaybe "(null)" (fmap busNameText sender)
+	, maybe "(null)" formatBusName (methodReturnSender msg)
 	, " -> dest="
-	, fromMaybe "(null)" (fmap busNameText (methodReturnDestination msg))
+	, maybe "(null)" formatBusName (methodReturnDestination msg)
 	, " reply_serial="
-	, showT (serialValue (methodReturnSerial msg))
-	, formatBody msg
+	, show (serialValue (methodReturnSerial msg))
+	, formatBody (methodReturnBody msg)
 	]
 
--- Error
-formatMessage (ReceivedError _ sender msg) = Data.Text.concat
+-- Method error
+formatMessage (ReceivedMethodError _ msg) = concat
 	[ "error"
 	, " sender="
-	, fromMaybe "(null)" (fmap busNameText sender)
+	, maybe "(null)" formatBusName (methodErrorSender msg)
 	, " -> dest="
-	, fromMaybe "(null)" (fmap busNameText (errorDestination msg))
+	, maybe "(null)" formatBusName (methodErrorDestination msg)
 	, " error_name="
-	, errorNameText (DBus.Message.errorName msg)
+	, formatErrorName (methodErrorName msg)
 	, " reply_serial="
-	, showT (serialValue (errorSerial msg))
-	, formatBody msg
+	, show (serialValue (methodErrorSerial msg))
+	, formatBody (methodErrorBody msg)
 	]
 
 -- Signal
-formatMessage (ReceivedSignal serial sender msg) = Data.Text.concat
+formatMessage (ReceivedSignal serial msg) = concat
 	[ "signal"
 	, " sender="
-	, fromMaybe "(null)" (fmap busNameText sender)
+	, maybe "(null)" formatBusName (signalSender msg)
 	, " -> dest="
-	, fromMaybe "(null)" (fmap busNameText (signalDestination msg))
+	, maybe "(null)" formatBusName (signalDestination msg)
 	, " serial="
-	, showT (serialValue serial)
+	, show (serialValue serial)
 	, " path="
-	, objectPathText (signalPath msg)
+	, formatObjectPath (signalPath msg)
 	, "; interface="
-	, interfaceNameText (signalInterface msg)
+	, formatInterfaceName (signalInterface msg)
 	, "; member="
-	, memberNameText (signalMember msg)
-	, formatBody msg
+	, formatMemberName (signalMember msg)
+	, formatBody (signalBody msg)
 	]
 
-formatMessage (ReceivedUnknown serial sender _) = Data.Text.concat
+formatMessage (ReceivedUnknown serial msg) = concat
 	[ "unknown"
 	, " sender="
-	, fromMaybe "(null)" (fmap busNameText sender)
+	-- , maybe "(null)" formatBusName sender
 	, " serial="
-	, showT (serialValue serial)
+	, show (serialValue serial)
+	, formatBody (unknownMessageBody msg)
 	]
 
-formatBody :: Message a => a -> Text
-formatBody msg = formatted where
+formatBody :: [Variant] -> String
+formatBody body = formatted where
 	tree = Children (map formatVariant body)
-	body = messageBody msg
-	formatted = Data.Text.intercalate "\n" ("" : collapseTree 1 tree)
+	formatted = intercalate "\n" ("" : collapseTree 0 tree)
 
 -- A string tree allows easy indentation of nested structures
-data StringTree = Line Text | MultiLine [StringTree] | Children [StringTree]
+data StringTree = Line String | MultiLine [StringTree] | Children [StringTree]
 	deriving (Show)
 
-collapseTree :: Int -> StringTree -> [Text]
-collapseTree d (Line x)       = [Data.Text.append (Data.Text.replicate d "   ") x]
+collapseTree :: Int -> StringTree -> [String]
+collapseTree d (Line x)       = [replicate (d*3) ' ' ++ x]
 collapseTree d (MultiLine xs) = concatMap (collapseTree d) xs
 collapseTree d (Children xs)  = concatMap (collapseTree (d + 1)) xs
 
@@ -199,63 +216,51 @@ formatVariant x = case variantType x of
 	
 	TypeBoolean -> Line $ let
 		Just x' = fromVariant x
-		strX = if x' then "true" else "false"
-		in Data.Text.append "boolean " strX
+		in "boolean " ++ if x' then "true" else "false"
 	
 	TypeWord8 -> Line $ let
 		Just x' = fromVariant x
-		strX = showT (x' :: Word8)
-		in Data.Text.append "byte " strX
+		in "byte " ++ show (x' :: Word8)
 	
 	TypeWord16 -> Line $ let
 		Just x' = fromVariant x
-		strX = showT (x' :: Word16)
-		in Data.Text.append "uint16 " strX
+		in "uint16 " ++ show (x' :: Word16)
 	
 	TypeWord32 -> Line $ let
 		Just x' = fromVariant x
-		strX = showT (x' :: Word32)
-		in Data.Text.append "uint32 " strX
+		in "uint32 " ++ show (x' :: Word32)
 	
 	TypeWord64 -> Line $ let
 		Just x' = fromVariant x
-		strX = showT (x' :: Word64)
-		in Data.Text.append "uint64 " strX
+		in "uint64 " ++ show (x' :: Word64)
 	
 	TypeInt16 -> Line $ let
 		Just x' = fromVariant x
-		strX = showT (x' :: Int16)
-		in Data.Text.append "int16 " strX
+		in "int16 " ++ show (x' :: Int16)
 	
 	TypeInt32 -> Line $ let
 		Just x' = fromVariant x
-		strX = showT (x' :: Int32)
-		in Data.Text.append "int32 " strX
+		in "int32 " ++ show (x' :: Int32)
 	
 	TypeInt64 -> Line $ let
 		Just x' = fromVariant x
-		strX = showT (x' :: Int64)
-		in Data.Text.append "int64 " strX
+		in "int64 " ++ show (x' :: Int64)
 	
 	TypeDouble -> Line $ let
 		Just x' = fromVariant x
-		strX = showT (x' :: Double)
-		in Data.Text.append "double " strX
+		in "double " ++ show (x' :: Double)
 	
 	TypeString -> Line $ let
 		Just x' = fromVariant x
-		strX = showT (x' :: Text)
-		in Data.Text.append "string " strX
+		in "string " ++ show (x' :: String)
 	
 	TypeObjectPath -> Line $ let
 		Just x' = fromVariant x
-		strX = showT (objectPathText x')
-		in Data.Text.append "object path " strX
+		in "object path " ++ show (formatObjectPath x')
 	
 	TypeSignature -> Line $ let
 		Just x' = fromVariant x
-		strX = showT (signatureText x')
-		in Data.Text.append "signature " strX
+		in "signature " ++ show (formatSignature x')
 	
 	TypeArray _ -> MultiLine $ let
 		Just x' = fromVariant x
@@ -278,7 +283,7 @@ formatVariant x = case variantType x of
 			v' = collapseTree 0 (formatVariant v)
 			vHead = head v'
 			vTail = map Line (tail v')
-			firstLine = Line (Data.Text.concat [k', " -> ", vHead])
+			firstLine = Line (k' ++ " -> " ++ vHead)
 		in lines'
 	
 	TypeStructure _ -> MultiLine $ let
@@ -292,4 +297,4 @@ formatVariant x = case variantType x of
 	
 	TypeVariant -> let
 		Just x' = fromVariant x
-		in formatVariant x'
+		in MultiLine [Line "variant", Children [formatVariant x']]

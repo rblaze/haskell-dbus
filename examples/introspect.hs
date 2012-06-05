@@ -23,7 +23,8 @@ import           System.Environment (getArgs, getProgName)
 import           System.Exit (exitFailure)
 import           System.IO (hPutStrLn, stderr)
 
-import           DBus.Client.Simple
+import           DBus
+import           DBus.Client
 import qualified DBus.Introspection as I
 
 main :: IO ()
@@ -41,7 +42,7 @@ main = do
 introspect :: Client -> BusName -> ObjectPath -> IO I.Object
 introspect client service path = do
 	obj <- proxy client service path
-	reply <- call obj "org.freedesktop.DBus.Introspectable" "Introspect" []
+	reply <- proxyCall obj "org.freedesktop.DBus.Introspectable" "Introspect" []
 	let Just xml = fromVariant (reply !! 0)
 	case I.fromXML path xml of
 		Just info -> return info
@@ -52,7 +53,7 @@ introspect client service path = do
 printObj :: (ObjectPath -> IO I.Object) -> ObjectPath -> IO ()
 printObj get path = do
 	(I.Object _ interfaces children) <- get path
-	putStrLn (Data.Text.unpack (objectPathText path))
+	putStrLn (formatObjectPath path)
 	mapM_ printIface interfaces
 	putStrLn ""
 	mapM_ (printObj get) [x | (I.Object x _ _) <- children]
@@ -60,7 +61,7 @@ printObj get path = do
 printIface :: I.Interface -> IO ()
 printIface (I.Interface name methods signals properties) = do
 	putStr "    "
-	putStrLn (Data.Text.unpack (interfaceNameText name))
+	putStrLn (formatInterfaceName name)
 	
 	mapM_ printMethod methods
 	mapM_ printSignal signals
@@ -70,7 +71,7 @@ printIface (I.Interface name methods signals properties) = do
 printMethod :: I.Method -> IO ()
 printMethod (I.Method name inParams outParams) = do
 	putStr "        method "
-	putStrLn (Data.Text.unpack (memberNameText name))
+	putStrLn (formatMemberName name)
 	
 	mapM_ (printParam "IN") inParams
 	mapM_ (printParam "OUT") outParams
@@ -78,21 +79,21 @@ printMethod (I.Method name inParams outParams) = do
 printSignal :: I.Signal -> IO ()
 printSignal (I.Signal name params) = do
 	putStr "        signal "
-	putStrLn (Data.Text.unpack (memberNameText name))
+	putStrLn (formatMemberName name)
 	
 	mapM_ (printParam "OUT") params
 
 printProperty :: I.Property -> IO ()
 printProperty (I.Property name sig access) = do
 	putStr "        property "
-	putStr (show (signatureText sig) ++ " ")
+	putStr (show (formatSignature sig) ++ " ")
 	putStrLn (Data.Text.unpack name)
 	
 	putStr "            "
 	putStrLn (show access)
 	
 printParam :: String -> I.Parameter -> IO ()
-printParam label (I.Parameter name sig) = do
+printParam label (I.Parameter name t) = do
 	putStr ("            [" ++ label ++ " ")
-	putStr (show (signatureText sig) ++ "] ")
+	putStr (show (formatSignature (signature_ [t])) ++ "] ")
 	putStrLn (Data.Text.unpack name)
