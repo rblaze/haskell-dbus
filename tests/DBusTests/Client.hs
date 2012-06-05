@@ -21,12 +21,14 @@ import           Control.Concurrent
 import           Control.Exception (try)
 import           Control.Monad.IO.Class (liftIO)
 import qualified Data.Map as Map
+import qualified Data.Text as T
 import           Data.Word
 
 import           Test.Chell
 
 import           DBus
 import qualified DBus.Client
+import qualified DBus.Introspection as I
 import qualified DBus.Socket
 
 import           DBusTests.Util (forkVar, withEnv)
@@ -40,6 +42,7 @@ test_Client = suite "Client"
 	test_CallNoReply
 	test_Listen
 	test_AutoMethod
+	test_ExportIntrospection
 
 test_Connect :: String -> (Address -> IO DBus.Client.Client) -> Test
 test_Connect name connect = assertions name $ do
@@ -456,6 +459,83 @@ test_AutoMethod = assertions "autoMethod" $ do
 			, methodErrorDestination = Nothing
 			, methodErrorBody = []
 			})))
+
+test_ExportIntrospection :: Test
+test_ExportIntrospection = assertions "exportIntrospection" $ do
+	(sock, client) <- startConnectedClient
+	
+	liftIO (DBus.Client.export client (objectPath_ "/foo")
+		[ DBus.Client.autoMethod (interfaceName_ "com.example.Foo") (memberName_ "Method1")
+		  (undefined :: String -> IO ())
+		, DBus.Client.autoMethod (interfaceName_ "com.example.Foo") (memberName_ "Method2")
+		  (undefined :: String -> IO String)
+		, DBus.Client.autoMethod (interfaceName_ "com.example.Foo") (memberName_ "Method3")
+		  (undefined :: String -> IO (String, String))
+		])
+	
+	let introspect path = do
+		(_, response) <- callClientMethod sock path "org.freedesktop.DBus.Introspectable" "Introspect" []
+		ret <- $requireRight response
+		let body = methodReturnBody ret
+		
+		$assert (equal (length body) 1)
+		let Just xml = fromVariant (head body)
+		let Just obj = I.fromXML (objectPath_ "/") xml
+		return obj
+	
+	let ifaceIntrospectable = I.Interface (interfaceName_ "org.freedesktop.DBus.Introspectable")
+		[ I.Method (memberName_ "Introspect") [] [I.Parameter (T.pack "") TypeString]
+		] [] []
+	
+	let ifaceFoo = I.Interface (interfaceName_ "com.example.Foo")
+		[ I.Method (memberName_ "Method1")
+			[ I.Parameter (T.pack "") TypeString ]
+			[]
+		, I.Method (memberName_ "Method2")
+			[ I.Parameter (T.pack "") TypeString ]
+			[ I.Parameter (T.pack "") TypeString ]
+		, I.Method (memberName_ "Method3")
+			[ I.Parameter (T.pack "") TypeString ]
+			[ I.Parameter (T.pack "") TypeString
+			, I.Parameter (T.pack "") TypeString
+			]
+		] [] []
+	
+	do
+		root <- introspect "/"
+		let expected = I.Object (objectPath_ "/")
+			[ifaceIntrospectable]
+			[I.Object (objectPath_ "/foo") [] []]
+		$expect (equal root expected)
+	
+	do
+		foo <- introspect "/foo"
+		let expected = I.Object (objectPath_ "/foo")
+			[ifaceFoo, ifaceIntrospectable]
+			[]
+		$expect (equal foo expected)
+{-
+data Object = Object T.ObjectPath [Interface] [Object]
+	deriving (Show, Eq)
+
+data Interface = Interface T.InterfaceName [Method] [Signal] [Property]
+	deriving (Show, Eq)
+
+data Method = Method T.MemberName [Parameter] [Parameter]
+	deriving (Show, Eq)
+
+data Signal = Signal T.MemberName [Parameter]
+	deriving (Show, Eq)
+
+data Parameter = Parameter Text T.Type
+	deriving (Show, Eq)
+
+data Property = Property Text T.Signature [PropertyAccess]
+	deriving (Show, Eq)
+
+data PropertyAccess = Read | Write
+	deriving (Show, Eq)
+-}
 
 startDummyBus :: Assertions (Address, MVar DBus.Socket.Socket)
 startDummyBus = do
