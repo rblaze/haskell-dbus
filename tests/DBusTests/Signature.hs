@@ -105,7 +105,7 @@ test_ShowType = assertions "show-type" $ do
 	$expect (equal "ObjectPath" (show TypeObjectPath))
 	$expect (equal "Variant" (show TypeVariant))
 	$expect (equal "[Word8]" (show (TypeArray TypeWord8)))
-	$expect (equal "Map Word8 (Map Word8 Word8)" (show (TypeDictionary TypeWord8 (TypeDictionary TypeWord8 TypeWord8))))
+	$expect (equal "Dict Word8 (Dict Word8 Word8)" (show (TypeDictionary TypeWord8 (TypeDictionary TypeWord8 TypeWord8))))
 	$expect (equal "(Word8, Word16)" (show (TypeStructure [TypeWord8, TypeWord16])))
 
 gen_SignatureTypes :: Gen [Type]

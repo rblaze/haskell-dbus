@@ -86,7 +86,7 @@ showType paren t = case t of
 	TypeVariant -> "Variant"
 	TypeArray t' -> concat ["[", show t', "]"]
 	TypeDictionary kt vt -> showParen paren (
-	                        showString "Map " .
+	                        showString "Dict " .
 	                        shows kt .
 	                        showString " " .
 	                        showsPrec 11 vt) ""
