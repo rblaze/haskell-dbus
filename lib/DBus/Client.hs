@@ -51,8 +51,7 @@ module DBus.Client
 	, method
 	
 	-- ** Automatic method signatures
-	, AutoSignature
-	, AutoReply
+	, AutoMethod
 	, autoMethod
 	
 	-- * Signals
@@ -544,7 +543,7 @@ method iface name inSig outSig io = Method iface name inSig outSig
 -- 'InterfaceName'. 
 --
 -- The functions may accept/return any types that are
--- instances of 'IsValue'; see 'AutoSignature'.
+-- instances of 'IsValue'; see 'AutoMethod'.
 --
 -- @
 --sayHello :: Text -> IO Text
@@ -645,13 +644,17 @@ introspect path obj = DBus.Introspection.Object path interfaces [] where
 --
 -- To match common Haskell use, if the return value is a tuple, it will be
 -- converted to a list of return values.
-class AutoSignature a where
+class AutoMethod a where
 	funTypes :: a -> ([Type], [Type])
+	apply :: a -> [Variant] -> Maybe (IO [Variant])
 
-instance AutoSignature (IO ()) where
+instance AutoMethod (IO ()) where
 	funTypes _ = ([], [])
+	
+	apply io [] = Just (io >> return [])
+	apply _ _ = Nothing
 
-instance IsValue a => AutoSignature (IO a) where
+instance IsValue a => AutoMethod (IO a) where
 	funTypes io = cased where
 		cased = ([], case ioT io undefined of
 			(_, t) -> case t of
@@ -660,29 +663,7 @@ instance IsValue a => AutoSignature (IO a) where
 		
 		ioT :: IsValue a => IO a -> a -> (a, Type)
 		ioT _ a = (a, typeOf a)
-
-instance (IsValue a, AutoSignature fun) => AutoSignature (a -> fun) where
-	funTypes fn = cased where
-		cased = case valueT undefined of
-			(a, t) -> case funTypes (fn a) of
-				(ts, ts') -> (t : ts, ts')
-		
-		valueT :: IsValue a => a -> (a, Type)
-		valueT a = (a, typeOf a)
-
--- | Used to automatically generate a 'Reply' from a return value. See
--- 'AutoSignature' for some caveats about supported signatures.
---
--- To match common Haskell use, if the return value is a tuple, it will be
--- converted to a list of return values.
-class AutoReply fun where
-	apply :: fun -> [Variant] -> Maybe (IO [Variant])
-
-instance AutoReply (IO ()) where
-	apply io [] = Just (io >> return [])
-	apply _ _ = Nothing
-
-instance IsVariant a => AutoReply (IO a) where
+	
 	apply io [] = Just (do
 		var <- fmap toVariant io
 		case fromVariant var of
@@ -690,18 +671,26 @@ instance IsVariant a => AutoReply (IO a) where
 			Nothing -> return [var])
 	apply _ _ = Nothing
 
-instance (IsVariant a, AutoReply fun) => AutoReply (a -> fun) where
+instance (IsValue a, AutoMethod fn) => AutoMethod (a -> fn) where
+	funTypes fn = cased where
+		cased = case valueT undefined of
+			(a, t) -> case funTypes (fn a) of
+				(ts, ts') -> (t : ts, ts')
+		
+		valueT :: IsValue a => a -> (a, Type)
+		valueT a = (a, typeOf a)
+	
 	apply _ [] = Nothing
 	apply fn (v:vs) = case fromVariant v of
 		Just v' -> apply (fn v') vs
 		Nothing -> Nothing
 
 -- | Prepare a Haskell function for export. This automatically detects the
--- function's type signature; see 'AutoSignature' and 'AutoReply'.
+-- function's type signature; see 'AutoMethod'.
 --
 -- To manage the type signature and marshaling yourself, use
 -- 'DBus.Client.method' instead.
-autoMethod:: (AutoSignature fun, AutoReply fun) => InterfaceName -> MemberName -> fun -> Method
+autoMethod:: (AutoMethod fn) => InterfaceName -> MemberName -> fn -> Method
 autoMethod iface name fun = DBus.Client.method iface name inSig outSig io where
 	(typesIn, typesOut) = funTypes fun
 	inSig = case signature typesIn of
