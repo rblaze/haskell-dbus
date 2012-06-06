@@ -42,13 +42,13 @@ module DBus.Client
 	, callNoReply
 	
 	-- * Receiving method calls
+	, export
 	, Method
+	, method
 	, Reply
 	, replyReturn
 	, replyError
-	, export
 	, throwError
-	, method
 	
 	-- ** Automatic method signatures
 	, AutoMethod
@@ -98,8 +98,6 @@ import           Data.List (foldl', intercalate)
 import qualified Data.Map
 import           Data.Map (Map)
 import           Data.Maybe (catMaybes, listToMaybe)
-import           Data.Text (Text)
-import qualified Data.Text
 import           Data.Typeable (Typeable)
 import           Data.Word (Word32)
 
@@ -176,7 +174,7 @@ replyReturn = ReplyReturn
 replyError :: ErrorName -> [Variant] -> Reply
 replyError = ReplyError
 
-data Method = Method InterfaceName MemberName Signature Signature ([Variant] -> IO Reply)
+data Method = Method InterfaceName MemberName Signature Signature (MethodCall -> IO Reply)
 
 type ObjectInfo = Map InterfaceName InterfaceInfo
 type InterfaceInfo = Map MemberName MethodInfo
@@ -648,7 +646,10 @@ instance Control.Exception.Exception MethodExc
 -- 'throwError' allows the programmer to specify an error name, and provide
 -- additional information to the remote application. You may use this instead
 -- of 'Control.Exception.throwIO' to abort a method call.
-throwError :: ErrorName -> Text -> [Variant] -> IO a
+throwError :: ErrorName
+           -> String -- ^ Error message
+           -> [Variant] -- ^ Additional items of the error body
+           -> IO a
 throwError name message extra = Control.Exception.throwIO (MethodExc name (toVariant message : extra))
 
 -- | Define a method handler, which will accept method calls with the given
@@ -660,15 +661,15 @@ method :: InterfaceName
        -> MemberName
        -> Signature -- ^ Input parameter signature
        -> Signature -- ^ Output parameter signature
-       -> ([Variant] -> IO Reply)
+       -> (MethodCall -> IO Reply)
        -> Method
 method iface name inSig outSig io = Method iface name inSig outSig
-	(\vs -> Control.Exception.catch
+	(\msg -> Control.Exception.catch
 		(Control.Exception.catch
-			(io vs)
+			(io msg)
 			(\(MethodExc name' vs') -> return (ReplyError name' vs')))
 		(\exc -> return (ReplyError errorFailed
-			[toVariant (Data.Text.pack (show (exc :: SomeException)))])))
+			[toVariant (show (exc :: SomeException))])))
 
 -- | Export the given functions under the given 'ObjectPath' and
 -- 'InterfaceName'. 
@@ -677,11 +678,14 @@ method iface name inSig outSig io = Method iface name inSig outSig
 -- instances of 'IsValue'; see 'AutoMethod'.
 --
 -- @
---sayHello :: Text -> IO Text
---sayHello name = return ('Data.Text.concat' [\"Hello \", name, \"!\"])
+--ping :: MethodCall -> IO 'Reply'
+--ping _ = replyReturn []
+--
+--sayHello :: String -> IO String
+--sayHello name = return (\"Hello \" ++ name ++ \"!\")
 --
 --export client \"/hello_world\"
---    [ 'method'
+--    [ 'method' \"com.example.HelloWorld\" \"Ping\" ping
 --    , 'autoMethod' \"com.example.HelloWorld\" \"Hello\" sayHello
 --    ]
 -- @
@@ -695,7 +699,7 @@ export client path methods = atomicModifyIORef (clientObjects client) addObject 
 		(Data.Map.fromList [(name, MethodInfo inSig outSig (wrapCB cb))]) m
 	
 	wrapCB cb (ReceivedMethodCall serial msg) = do
-		reply <- cb (methodCallBody msg)
+		reply <- cb msg
 		let sender = methodCallSender msg
 		case reply of
 			ReplyReturn vs -> send_ client (MethodReturn serial Nothing sender vs) (\_ -> return ())
@@ -739,12 +743,13 @@ introspectRoot client = methodIntrospect $ do
 		[DBus.Introspection.Object p [] [] | p <- paths])
 
 methodIntrospect :: IO DBus.Introspection.Object -> Method
-methodIntrospect get = method interfaceIntrospectable "Introspect" "" "s" impl where
-	impl [] = do
-		obj <- get
-		let Just xml = DBus.Introspection.toXML obj
-		return (ReplyReturn [toVariant xml])
-	impl _ = return (ReplyError errorInvalidParameters [])
+methodIntrospect get = method interfaceIntrospectable "Introspect" "" "s" $
+	\msg -> case methodCallBody msg of
+		[] -> do
+			obj <- get
+			let Just xml = DBus.Introspection.toXML obj
+			return (replyReturn [toVariant xml])
+		_ -> return (replyError errorInvalidParameters [])
 
 introspect :: ObjectPath -> ObjectInfo -> DBus.Introspection.Object
 introspect path obj = DBus.Introspection.Object path interfaces [] where
@@ -830,7 +835,7 @@ autoMethod iface name fun = DBus.Client.method iface name inSig outSig io where
 	outSig = case signature typesOut of
 		Just sig -> sig
 		Nothing -> invalid "output"
-	io vs = case apply fun vs of
+	io msg = case apply fun (methodCallBody msg) of
 		Nothing -> return (ReplyError errorInvalidParameters [])
 		Just io' -> fmap ReplyReturn io'
 	

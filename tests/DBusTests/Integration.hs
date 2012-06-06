@@ -66,9 +66,10 @@ test_Client = withDaemon "client" $ \addr -> do
 	clientB <- liftIO (connect addr)
 	
 	liftIO (export clientA "/"
-		[ method "com.example.Echo" "Echo" (signature_ [TypeString]) (signature_ []) (\vs -> if map variantType vs == [TypeString]
-			then return (replyReturn vs)
-			else return (replyError "com.example.Error" [toVariant ("bad body: " ++ show vs)]))
+		[ method "com.example.Echo" "Echo" (signature_ [TypeString]) (signature_ []) (
+			\msg -> if map variantType (methodCallBody msg) == [TypeString]
+				then return (replyReturn (methodCallBody msg))
+				else return (replyError "com.example.Error" [toVariant ("bad body: " ++ show (methodCallBody msg))]))
 		])
 	
 	-- TODO: get bus address of clientA with a function
