@@ -127,7 +127,7 @@ clientError msg = ClientError msg True
 --
 --main = do
 --    client <- 'connectSession'
---    bus <- 'proxy' client \"org.freedesktop.DBus\" \"/org/freedesktop/DBus\"
+--    bus <- 'proxy' client \"org.freedesktop.DBus\" \"\/org\/freedesktop\/DBus\"
 --    [names] <- 'proxyCall' bus \"org.freedesktop.DBus\" \"ListNames\" []
 --    print names
 -- @
