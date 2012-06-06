@@ -373,7 +373,7 @@ test_Listen = assertions "listen" $ do
 		, methodCallSender = Nothing
 		, methodCallDestination = Just (busName_ "org.freedesktop.DBus")
 		, methodCallFlags = [NoReplyExpected]
-		, methodCallBody = [toVariant "sender='com.example.Foo',destination='com.example.Bar',path='/',interface='com.example.Baz',member='Qux'"]
+		, methodCallBody = [toVariant "type='signal',sender='com.example.Foo',destination='com.example.Bar',path='/',interface='com.example.Baz',member='Qux'"]
 		}
 	
 	let requestReply serial = MethodReturn

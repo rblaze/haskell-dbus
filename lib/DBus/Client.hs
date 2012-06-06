@@ -557,6 +557,10 @@ listen client rule io = do
 		Just sender -> when (checkMatchRule rule sender msg) (io sender msg)
 		Nothing -> return ()
 	
+	let formatted = case formatMatchRule rule of
+		"" -> "type='signal'"
+		x -> "type='signal'," ++ x
+	
 	atomicModifyIORef (clientSignalHandlers client) (\hs -> (handler : hs, ()))
 	callNoReply client MethodCall
 		{ methodCallPath = dbusPath
@@ -565,7 +569,7 @@ listen client rule io = do
 		, methodCallSender = Nothing
 		, methodCallDestination = Just dbusName
 		, methodCallFlags = []
-		, methodCallBody = [toVariant (formatMatchRule rule)]
+		, methodCallBody = [toVariant formatted]
 		}
 	return ()
 
