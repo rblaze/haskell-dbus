@@ -69,11 +69,11 @@ module DBus.Client
 	, matchMember
 	
 	-- * Name reservation
+	, requestName
+	, releaseName
 	, RequestNameFlag(..)
 	, RequestNameReply(..)
 	, ReleaseNameReply(..)
-	, requestName
-	, releaseName
 	
 	-- * Advanced connection options
 	, ClientOptions
@@ -119,6 +119,21 @@ instance Control.Exception.Exception ClientError
 clientError :: String -> ClientError
 clientError msg = ClientError msg True
 
+-- | Represents an active client session to a message bus. Clients may
+-- send or receive method calls, and listen for or emit signals.
+--
+-- Example: connect to the session bus, and get a list of active names.
+--
+-- @
+--{-\# LANGUAGE OverloadedStrings \#-}
+--
+--main = do
+--    client <- 'connectSession'
+--    bus <- 'proxy' client \"org.freedesktop.DBus\" \"/org/freedesktop/DBus\"
+--    [names] <- 'proxyCall' bus \"org.freedesktop.DBus\" \"ListNames\" []
+--    print names
+-- @
+--
 data Client = Client
 	{ clientSocket :: DBus.Socket.Socket
 	, clientPendingCalls :: IORef (Map Serial (MVar (Either MethodError MethodReturn)))
@@ -138,7 +153,8 @@ data ClientOptions t = ClientOptions
 	-- an error saying the connection was lost.
 	, clientReconnect :: Bool
 	
-	-- | Options for the underlying socket, for advanced use cases.
+	-- | Options for the underlying socket, for advanced use cases. See
+	-- the "DBus.Socket" module.
 	, clientSocketOptions :: DBus.Socket.SocketOptions t
 	}
 
@@ -148,9 +164,15 @@ data Reply
 	= ReplyReturn [Variant]
 	| ReplyError ErrorName [Variant]
 
+-- | Reply to a method call with a successful return, containing the given body.
 replyReturn :: [Variant] -> Reply
 replyReturn = ReplyReturn
 
+-- | Reply to a method call with an error, containing the given error name and
+-- body.
+--
+-- Typically, the first item of the error body is a string with a message
+-- describing the error.
 replyError :: ErrorName -> [Variant] -> Reply
 replyError = ReplyError
 
@@ -198,9 +220,16 @@ connectStarter = do
 		Nothing -> throwIO (clientError "connectStarter: DBUS_STARTER_ADDRESS is missing or invalid.")
 		Just addr -> connect addr
 
+-- | Connect to the bus at the specified address.
+--
+-- Throws a 'ClientError' on failure.
 connect :: Address -> IO Client
 connect = connectWith defaultClientOptions
 
+-- | Connect to the bus at the specified address, with the given connection
+-- options. Most users should use 'connect' instead.
+--
+-- Throws a 'ClientError' on failure.
 connectWith :: TransportOpen t => ClientOptions t -> Address -> IO Client
 connectWith opts addr = do
 	sock <- DBus.Socket.openWith (clientSocketOptions opts) addr
@@ -237,7 +266,8 @@ connectWith opts addr = do
 	
 	return client
 
--- | TODO
+-- | Default client options. Uses the built-in Socket-based transport, which
+-- supports the @tcp:@ and @unix:@ methods.
 defaultClientOptions :: ClientOptions SocketTransport
 defaultClientOptions = ClientOptions
 	{ clientTimeout = Nothing
@@ -310,21 +340,49 @@ dispatch client = go where
 			Nothing -> return ()
 
 data RequestNameFlag
+	-- | Allow this client's reservation to be replaced, if another client
+	-- requests it with the 'ReplaceExisting' flag.
+	--
+	-- If this client's reservation is replaced, this client will be added
+	-- to the wait queue unless the request also included the 'DoNotQueue'
+	-- flag.
 	= AllowReplacement
+	
+	-- | If the name being requested is already reserved, attempt to
+	-- replace it. This only works if the current owner provided the
+	-- 'AllowReplacement' flag.
 	| ReplaceExisting
+	
+	-- | If the name is already in use, do not add this client to the
+	-- queue, just return an error.
 	| DoNotQueue
 	deriving (Eq, Show)
 
 data RequestNameReply
+	-- | This client is now the primary owner of the requested name.
 	= NamePrimaryOwner
+	
+	-- | The name was already reserved by another client, and replacement
+	-- was either not attempted or not successful.
 	| NameInQueue
+	
+	-- | The name was already reserved by another client, 'DoNotQueue'
+	-- was set, and replacement was either not attempted or not
+	-- successful.
 	| NameExists
+	
+	-- | This client is already the primary owner of the requested name.
 	| NameAlreadyOwner
 	deriving (Eq, Show)
 
 data ReleaseNameReply
+	-- | This client has released the provided name.
 	= NameReleased
+	
+	-- | The provided name is not assigned to any client on the bus.
 	| NameNonExistent
+	
+	-- | The provided name is not assigned to this client.
 	| NameNotOwner
 	deriving (Eq, Show)
 
@@ -334,7 +392,29 @@ encodeFlags = foldr (.|.) 0 . map flagValue where
 	flagValue ReplaceExisting  = 0x2
 	flagValue DoNotQueue       = 0x4
 
--- | TODO
+-- | Asks the message bus to assign the given name to this client. The bus
+-- maintains a queue of possible owners, where the head of the queue is the
+-- current (\"primary\") owner.
+--
+-- There are several uses for name reservation:
+--
+-- * Clients which export methods reserve a name so users and applications
+--   can send them messages. For example, the GNOME Keyring reserves the name
+--   @\"org.gnome.keyring\"@ on the user's session bus, and NetworkManager
+--   reserves @\"org.freedesktop.NetworkManager\"@ on the system bus.
+--
+-- * When there are multiple implementations of a particular service, the
+--   service standard will ususally include a generic bus name for the
+--   service. This allows other clients to avoid depending on any particular
+--   implementation's name. For example, both the GNOME Keyring and KDE
+--   KWallet services request the @\"org.freedesktop.secrets\"@ name on the
+--   user's session bus.
+--
+-- * A process with \"single instance\" behavior can use name assignment to
+--   check whether the instance is already running, and invoke some method
+--   on it (e.g. opening a new window).
+--
+-- Throws a 'ClientError' if the call failed.
 requestName :: Client -> BusName -> [RequestNameFlag] -> IO RequestNameReply
 requestName client name flags = do
 	reply <- call_ client MethodCall
@@ -365,7 +445,10 @@ requestName client name flags = do
 			{ clientErrorFatal = False
 			}
 
--- | TODO
+-- | Release a name that this client previously requested. See 'requestName'
+-- for an explanation of name reservation.
+--
+-- Throws a 'ClientError' if the call failed.
 releaseName :: Client -> BusName -> IO ReleaseNameReply
 releaseName client name = do
 	reply <- call_ client MethodCall
@@ -404,6 +487,10 @@ send_ client msg io = do
 			{ clientErrorFatal = DBus.Socket.socketErrorFatal err
 			}
 
+-- | Send a method call to the bus, and wait for the response.
+--
+-- Throws a 'ClientError' if the method call couldn't be sent, or if the reply
+-- couldn't be parsed.
 call :: Client -> MethodCall -> IO (Either MethodError MethodReturn)
 call client msg = do
 	-- Remove some fields that should not be set:
@@ -427,6 +514,12 @@ call client msg = do
 		atomicModifyIORef ref (\p -> (Data.Map.insert serial mvar p, ())))
 	takeMVar mvar
 
+-- | Send a method call to the bus, and wait for the response.
+--
+-- Unsets the 'NoReplyExpected' message flag before sending.
+--
+-- Throws a 'ClientError' if the method call couldn't sent, if the reply
+-- couldn't be parsed, or if the reply was a 'MethodError'.
 call_ :: Client -> MethodCall -> IO MethodReturn
 call_ client msg = do
 	result <- call client msg
@@ -436,6 +529,11 @@ call_ client msg = do
 			}
 		Right ret -> return ret
 
+-- | Send a method call to the bus, and do not wait for a response.
+--
+-- Sets the 'NoReplyExpected' message flag before sending.
+--
+-- Throws a 'ClientError' if the method call couldn't be sent.
 callNoReply :: Client -> MethodCall -> IO ()
 callNoReply client msg = do
 	-- Ensure that NoReplyExpected is always set.
@@ -445,6 +543,14 @@ callNoReply client msg = do
 		}
 	send_ client safeMsg (\_ -> return ())
 
+-- | Request that the bus forward signals matching the given rule to this
+-- client, and process them in a callback.
+--
+-- A received signal might be processed by more than one callback at a time.
+-- Callbacks each run in their own thread.
+--
+-- Throws a 'ClientError' if adding the match rule couldn't be added to the
+-- bus.
 listen :: Client -> MatchRule -> (BusName -> Signal -> IO ()) -> IO ()
 listen client rule io = do
 	let handler msg = case signalSender msg of
@@ -463,22 +569,45 @@ listen client rule io = do
 		}
 	return ()
 
+-- | Emit the signal on the bus.
+--
+-- Throws a 'ClientError' if the signal message couldn't be sent.
 emit :: Client -> Signal -> IO ()
 emit client msg = send_ client msg (\_ -> return ())
 
+-- | A match rule describes which signals a particular callback is interested
+-- in. Use 'matchAny' to construct match rules.
+--
+-- Example: a match rule which matches signals sent by the root object.
+--
+-- @
+--matchFromRoot :: MatchRule
+--matchFromRoot = 'matchAny' { 'matchPath' = Just \"/\" }
+-- @
 data MatchRule = MatchRule
-	{ matchSender      :: Maybe BusName
+	{
+	-- | If set, only receives signals sent from the given bus name.
+	  matchSender :: Maybe BusName
+	
+	-- | If set, only receives signals sent to the given bus name.
 	, matchDestination :: Maybe BusName
-	, matchPath        :: Maybe ObjectPath
-	, matchInterface   :: Maybe InterfaceName
-	, matchMember      :: Maybe MemberName
+	
+	-- | If set, only receives signals sent with the given path.
+	, matchPath  :: Maybe ObjectPath
+	
+	-- | If set, only receives signals sent with the given interface name.
+	, matchInterface :: Maybe InterfaceName
+	
+	-- | If set, only receives signals sent with the given member name.
+	, matchMember :: Maybe MemberName
 	}
 
 instance Show MatchRule where
-	showsPrec d rule = showParen (d > 10) (showString "MatchRule " . shows (matchRuleString rule))
+	showsPrec d rule = showParen (d > 10) (showString "MatchRule " . shows (formatMatchRule rule))
 
-matchRuleString :: MatchRule -> String
-matchRuleString rule = intercalate "," predicates where
+-- | Convert a match rule into the textual format accepted by the bus.
+formatMatchRule :: MatchRule -> String
+formatMatchRule rule = intercalate "," predicates where
 	predicates = catMaybes
 		[ f "sender" matchSender formatBusName
 		, f "destination" matchDestination formatBusName
@@ -492,9 +621,7 @@ matchRuleString rule = intercalate "," predicates where
 		val <- fmap text (get rule)
 		return (concat [key, "='", val, "'"])
 
-formatMatchRule :: MatchRule -> Text
-formatMatchRule = Data.Text.pack . matchRuleString
-
+-- | Match any signal.
 matchAny :: MatchRule
 matchAny = MatchRule Nothing Nothing Nothing Nothing Nothing
 
