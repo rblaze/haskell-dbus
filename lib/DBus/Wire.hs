@@ -715,12 +715,12 @@ newtype ErrorM e a = ErrorM { runErrorM :: Either e a }
 instance Functor (ErrorM e) where
 	fmap f m = ErrorM $ case runErrorM m of
 		Left err -> Left err
-		Right x -> Right $ f x
+		Right x -> Right (f x)
 
 instance Monad (ErrorM e) where
 	return = ErrorM . Right
 	(>>=) m k = case runErrorM m of
-		Left err -> ErrorM $ Left err
+		Left err -> ErrorM (Left err)
 		Right x -> k x
 
 throwErrorM :: e -> ErrorM e a
@@ -736,8 +736,8 @@ instance Monad m => Monad (ErrorT e m) where
 	(>>=) m k = ErrorT $ do
 		x <- runErrorT m
 		case x of
-			Left l -> return $ Left l
-			Right r -> runErrorT $ k r
+			Left l -> return (Left l)
+			Right r -> runErrorT (k r)
 
 throwErrorT :: Monad m => e -> ErrorT e m a
 throwErrorT = ErrorT . return . Left

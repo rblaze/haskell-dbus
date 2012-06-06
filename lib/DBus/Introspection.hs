@@ -93,7 +93,7 @@ parseElement xml = runST $ do
 	stack <- ST.readSTRef stackRef
 	return $ case stack of
 		[] -> Nothing
-		(_, children'):_ -> Just $ head children'
+		(_, children'):_ -> Just (head children')
 
 parseRoot :: T.ObjectPath -> X.Element -> Maybe Object
 parseRoot defaultPath e = do
@@ -115,7 +115,7 @@ parseObject :: T.ObjectPath -> X.Element -> Maybe Object
 parseObject path e | X.elementName e == "node" = do
 	interfaces <- children parseInterface (X.isNamed "interface") e
 	children' <- children (parseChild path) (X.isNamed "node") e
-	return $ Object path interfaces children'
+	return (Object path interfaces children')
 parseObject _ _ = Nothing
 
 parseInterface :: X.Element -> Maybe Interface
@@ -124,20 +124,20 @@ parseInterface e = do
 	methods <- children parseMethod (X.isNamed "method") e
 	signals <- children parseSignal (X.isNamed "signal") e
 	properties <- children parseProperty (X.isNamed "property") e
-	return $ Interface name methods signals properties
+	return (Interface name methods signals properties)
 
 parseMethod :: X.Element -> Maybe Method
 parseMethod e = do
 	name <- T.parseMemberName =<< attributeString "name" e
 	paramsIn <- children parseParameter (isParam ["in", ""]) e
 	paramsOut <- children parseParameter (isParam ["out"]) e
-	return $ Method name paramsIn paramsOut
+	return (Method name paramsIn paramsOut)
 
 parseSignal :: X.Element -> Maybe Signal
 parseSignal e = do
 	name <- T.parseMemberName =<< attributeString "name" e
 	params <- children parseParameter (isParam ["out", ""]) e
-	return $ Signal name params
+	return (Signal name params)
 
 parseType :: X.Element -> Maybe T.Signature
 parseType e = do
@@ -162,7 +162,7 @@ parseProperty e = do
 		"write"     -> Just [Write]
 		"readwrite" -> Just [Read, Write]
 		_           -> Nothing
-	return $ Property name sig access
+	return (Property name sig access)
 
 getattr :: X.Name -> X.Element -> Text
 getattr = (fromMaybe "" .) . X.attributeText
