@@ -158,10 +158,8 @@ replyError = ReplyError
 data Method = Method InterfaceName MemberName Signature Signature ([Variant] -> IO Reply)
 
 type ObjectInfo = Map InterfaceName InterfaceInfo
-type InterfaceInfo = Map MemberName MemberInfo
-data MemberInfo
-	= MemberMethod Signature Signature Callback
-	| MemberSignal Signature
+type InterfaceInfo = Map MemberName MethodInfo
+data MethodInfo = MethodInfo Signature Signature Callback
 
 -- | Connect to the bus specified in the environment variable
 -- @DBUS_SYSTEM_BUS_ADDRESS@, or to
@@ -564,7 +562,7 @@ export client path methods = atomicModifyIORef (clientObjects client) addObject 
 	info = foldl' addMethod Data.Map.empty (defaultIntrospect : methods)
 	addMethod m (Method iface name inSig outSig cb) = Data.Map.insertWith'
 		Data.Map.union iface
-		(Data.Map.fromList [(name, MemberMethod inSig outSig (wrapCB cb))]) m
+		(Data.Map.fromList [(name, MethodInfo inSig outSig (wrapCB cb))]) m
 	
 	wrapCB cb (ReceivedMethodCall serial msg) = do
 		reply <- cb (methodCallBody msg)
@@ -590,12 +588,12 @@ findMethod objects msg = case Data.Map.lookup (methodCallPath msg) objects of
 					Just member -> [member]
 					Nothing -> []
 			in case members of
-				[MemberMethod _ _ io] -> Right io
+				[MethodInfo _ _ io] -> Right io
 				_ -> Left errorUnknownMethod
 		Just ifaceName -> case Data.Map.lookup ifaceName obj of
 			Nothing -> Left errorUnknownInterface
 			Just iface -> case Data.Map.lookup (methodCallMember msg) iface of
-				Just (MemberMethod _ _ io) -> Right io
+				Just (MethodInfo _ _ io) -> Right io
 				_ -> Left errorUnknownMethod
 
 introspectRoot :: Client -> Method
@@ -625,19 +623,12 @@ introspect path obj = DBus.Introspection.Object path interfaces [] where
 	introspectIface (name, iface) = let
 		members = Data.Map.toList iface
 		methods = concatMap introspectMethod members
-		signals = concatMap introspectSignal members
-		in DBus.Introspection.Interface name methods signals []
+		in DBus.Introspection.Interface name methods [] []
 	
-	introspectMethod (name, MemberMethod inSig outSig _) =
+	introspectMethod (name, MethodInfo inSig outSig _) =
 		[DBus.Introspection.Method name
 			(map introspectParam (signatureTypes inSig))
 			(map introspectParam (signatureTypes outSig))]
-	introspectMethod _ = []
-	
-	introspectSignal (name, MemberSignal sig) =
-		[DBus.Introspection.Signal name
-			(map introspectParam (signatureTypes sig))]
-	introspectSignal _ = []
 	
 	introspectParam = DBus.Introspection.Parameter ""
 
