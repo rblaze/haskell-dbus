@@ -16,17 +16,31 @@
 module DBus
 	(
 	-- * Messages
-	  Message
-	, MessageFlag
-	, noReplyExpected
-	, noAutoStart
-	, UnknownMessage (..)
-	, MethodCall (..)
-	, MethodReturn (..)
-	, MethodError (..)
-	, methodErrorMessage
-	, Signal (..)
-	, ReceivedMessage (..)
+	  M.Message
+	
+	-- ** Method calls
+	, M.MethodCall (..)
+	
+	, M.MessageFlag
+	, M.noReplyExpected
+	, M.noAutoStart
+	
+	-- ** Method returns
+	, M.MethodReturn (..)
+	
+	-- ** Method errors
+	, M.MethodError (..)
+	, M.methodErrorMessage
+	
+	-- ** Signals
+	, M.Signal (..)
+	
+	-- ** Received messages
+	, M.ReceivedMessage (..)
+	, M.UnknownMessage
+	, unknownMessageType
+	, unknownMessageFlags
+	, unknownMessageBody
 	
 	-- * Variants
 	, Variant
@@ -122,18 +136,27 @@ module DBus
 
 import           Control.Monad (replicateM)
 import qualified Data.ByteString.Char8 as Char8
-import           Data.Word (Word16)
+import           Data.Word (Word16, Word8)
 import           System.Random (randomRIO)
 import           Text.Printf (printf)
 
 import           DBus.Address
-import           DBus.Message
+import qualified DBus.Message as M
 import qualified DBus.Types
 import           DBus.Types hiding (typeOf)
 import           DBus.Wire
 
 typeOf :: IsValue a => a -> Type
 typeOf = DBus.Types.typeOf
+
+unknownMessageType :: M.UnknownMessage -> Word8
+unknownMessageType = M.unknownMessageType
+
+unknownMessageFlags :: M.UnknownMessage -> [M.MessageFlag]
+unknownMessageFlags = M.unknownMessageFlags
+
+unknownMessageBody :: M.UnknownMessage -> [Variant]
+unknownMessageBody = M.unknownMessageBody
 
 -- | A D-Bus UUID is 128 bits of data, usually randomly generated. They are
 -- used for identifying unique server instances to clients.
