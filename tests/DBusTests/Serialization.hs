@@ -22,7 +22,6 @@ import           Test.Chell
 import           Test.Chell.QuickCheck
 import           Test.QuickCheck hiding ((.&.), property)
 
-import           Control.Applicative ((<*>))
 import           Data.ByteString (ByteString)
 import           Data.Text (Text)
 import           Data.Int (Int16, Int32, Int64)
