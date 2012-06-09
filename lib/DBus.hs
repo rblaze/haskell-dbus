@@ -36,7 +36,7 @@ module DBus
 	-- ** Method returns
 	, M.MethodReturn
 	, methodReturn
-	, methodReturnSerial
+	, M.methodReturnSerial
 	, M.methodReturnSender
 	, M.methodReturnDestination
 	, M.methodReturnBody
@@ -45,7 +45,7 @@ module DBus
 	, M.MethodError
 	, methodError
 	, M.methodErrorName
-	, methodErrorSerial
+	, M.methodErrorSerial
 	, M.methodErrorSender
 	, M.methodErrorDestination
 	, M.methodErrorBody
@@ -181,14 +181,8 @@ methodCall path iface member = M.MethodCall path (Just iface) member Nothing Not
 methodReturn :: Serial -> M.MethodReturn
 methodReturn s = M.MethodReturn s Nothing Nothing []
 
-methodReturnSerial :: M.MethodReturn -> Serial
-methodReturnSerial = M.methodReturnSerial
-
 methodError :: Serial -> ErrorName -> M.MethodError
 methodError s name = M.MethodError name s Nothing Nothing []
-
-methodErrorSerial :: M.MethodError -> Serial
-methodErrorSerial = M.methodErrorSerial
 
 signal :: ObjectPath -> InterfaceName -> MemberName -> M.Signal
 signal path iface member = M.Signal path iface member Nothing Nothing []
