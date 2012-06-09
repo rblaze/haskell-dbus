@@ -26,10 +26,21 @@ module DBus
 	, M.noAutoStart
 	
 	-- ** Method returns
-	, M.MethodReturn (..)
+	, M.MethodReturn
+	, methodReturn
+	, methodReturnSerial
+	, M.methodReturnSender
+	, M.methodReturnDestination
+	, M.methodReturnBody
 	
 	-- ** Method errors
-	, M.MethodError (..)
+	, M.MethodError
+	, methodError
+	, M.methodErrorName
+	, methodErrorSerial
+	, M.methodErrorSender
+	, M.methodErrorDestination
+	, M.methodErrorBody
 	, M.methodErrorMessage
 	
 	-- ** Signals
@@ -148,6 +159,18 @@ import           DBus.Wire
 
 typeOf :: IsValue a => a -> Type
 typeOf = DBus.Types.typeOf
+
+methodReturn :: Serial -> M.MethodReturn
+methodReturn s = M.MethodReturn s Nothing Nothing []
+
+methodReturnSerial :: M.MethodReturn -> Serial
+methodReturnSerial = M.methodReturnSerial
+
+methodError :: Serial -> ErrorName -> M.MethodError
+methodError s name = M.MethodError name s Nothing Nothing []
+
+methodErrorSerial :: M.MethodError -> Serial
+methodErrorSerial = M.methodErrorSerial
 
 unknownMessageType :: M.UnknownMessage -> Word8
 unknownMessageType = M.unknownMessageType

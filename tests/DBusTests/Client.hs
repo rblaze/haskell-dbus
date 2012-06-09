@@ -54,12 +54,7 @@ test_Connect name connect = assertions name $ do
 	receivedHello <- liftIO (DBus.Socket.receive sock)
 	let (ReceivedMethodCall helloSerial _) = receivedHello
 	
-	liftIO (DBus.Socket.send sock (MethodReturn
-		{ methodReturnSerial = helloSerial
-		, methodReturnSender = Nothing
-		, methodReturnDestination = Nothing
-		, methodReturnBody = []
-		}) (\_ -> return ()))
+	liftIO (DBus.Socket.send sock (methodReturn helloSerial) (\_ -> return ()))
 	
 	client <- liftIO (readMVar clientVar)
 	liftIO (DBus.Client.disconnect client)
@@ -134,11 +129,8 @@ test_RequestName = assertions "requestName" $ do
 		, methodCallBody = [toVariant "com.example.Foo", toVariant (7 :: Word32)]
 		}
 	
-	let requestReply body serial = MethodReturn
-		{ methodReturnSerial = serial
-		, methodReturnSender = Nothing
-		, methodReturnDestination = Nothing
-		, methodReturnBody = body
+	let requestReply body serial = (methodReturn serial)
+		{ methodReturnBody = body
 		}
 	
 	-- NamePrimaryOwner
@@ -220,11 +212,8 @@ test_ReleaseName = assertions "releaseName" $ do
 		, methodCallBody = [toVariant "com.example.Foo"]
 		}
 	
-	let requestReply body serial = MethodReturn
-		{ methodReturnSerial = serial
-		, methodReturnSender = Nothing
-		, methodReturnDestination = Nothing
-		, methodReturnBody = body
+	let requestReply body serial = (methodReturn serial)
+		{ methodReturnBody = body
 		}
 	
 	-- NameReleased
@@ -298,13 +287,6 @@ test_Call = assertions "call" $ do
 		, methodCallBody = [toVariant "com.example.Foo"]
 		}
 	
-	let requestReply serial = MethodReturn
-		{ methodReturnSerial = serial
-		, methodReturnSender = Nothing
-		, methodReturnDestination = Nothing
-		, methodReturnBody = []
-		}
-	
 	-- noReplyExpected and methodCallSender are removed
 	do
 		response <- stubMethodCall sock
@@ -313,12 +295,10 @@ test_Call = assertions "call" $ do
 				{ methodCallSender = Nothing
 				, methodCallFlags = [noAutoStart]
 				})
-			requestReply
+			methodReturn
 		reply <- $requireRight response
 		
-		$expect (equal
-			(reply { methodReturnSerial = firstSerial })
-			(requestReply firstSerial))
+		$expect (equal reply (methodReturn (methodReturnSerial reply)))
 
 test_CallNoReply :: Test
 test_CallNoReply = assertions "callNoReply" $ do
@@ -334,13 +314,6 @@ test_CallNoReply = assertions "callNoReply" $ do
 		, methodCallBody = [toVariant "com.example.Foo"]
 		}
 	
-	let requestReply serial = MethodReturn
-		{ methodReturnSerial = serial
-		, methodReturnSender = Nothing
-		, methodReturnDestination = Nothing
-		, methodReturnBody = []
-		}
-	
 	-- noReplyExpected is added, methodCallSender is removed
 	do
 		stubMethodCall sock
@@ -349,7 +322,7 @@ test_CallNoReply = assertions "callNoReply" $ do
 				{ methodCallSender = Nothing
 				, methodCallFlags = [noAutoStart, noReplyExpected]
 				})
-			requestReply
+			methodReturn
 
 test_Listen :: Test
 test_Listen = assertions "listen" $ do
@@ -376,20 +349,13 @@ test_Listen = assertions "listen" $ do
 		, methodCallBody = [toVariant "type='signal',sender='com.example.Foo',destination='com.example.Bar',path='/',interface='com.example.Baz',member='Qux'"]
 		}
 	
-	let requestReply serial = MethodReturn
-		{ methodReturnSerial = serial
-		, methodReturnSender = Nothing
-		, methodReturnDestination = Nothing
-		, methodReturnBody = []
-		}
-	
 	signalVar <- liftIO newEmptyMVar
 	
 	-- add a listener for the given signal
 	stubMethodCall sock
 		(DBus.Client.listen client matchRule (\sender sig -> putMVar signalVar (sender, sig)))
 		requestCall
-		requestReply
+		methodReturn
 	
 	-- ignored signal
 	liftIO (DBus.Socket.send sock (Signal
@@ -431,33 +397,21 @@ test_AutoMethod = assertions "autoMethod" $ do
 	-- valid call to com.example.Foo.Max
 	do
 		(serial, response) <- callClientMethod sock "/" "com.example.Foo" "Max" [toVariant (2 :: Word32), toVariant (1 :: Word32)]
-		$expect (equal response (Right (MethodReturn
-			{ methodReturnSerial = serial
-			, methodReturnSender = Nothing
-			, methodReturnDestination = Nothing
-			, methodReturnBody = [toVariant (2 :: Word32)]
-			})))
+		$expect (equal response (Right (methodReturn serial)
+			{ methodReturnBody = [toVariant (2 :: Word32)]
+			}))
 	
 	-- valid call to com.example.Foo.Pair
 	do
 		(serial, response) <- callClientMethod sock "/" "com.example.Foo" "Pair" [toVariant "x", toVariant "y"]
-		$expect (equal response (Right (MethodReturn
-			{ methodReturnSerial = serial
-			, methodReturnSender = Nothing
-			, methodReturnDestination = Nothing
-			, methodReturnBody = [toVariant "x", toVariant "y"]
-			})))
+		$expect (equal response (Right (methodReturn serial)
+			{ methodReturnBody = [toVariant "x", toVariant "y"]
+			}))
 	
 	-- invalid call to com.example.Foo.Max
 	do
 		(serial, response) <- callClientMethod sock "/" "com.example.Foo" "Max" [toVariant "x", toVariant "y"]
-		$expect (equal response (Left (MethodError
-			{ methodErrorName = errorName_ "org.freedesktop.DBus.Error.InvalidParameters"
-			, methodErrorSerial = serial
-			, methodErrorSender = Nothing
-			, methodErrorDestination = Nothing
-			, methodErrorBody = []
-			})))
+		$expect (equal response (Left (methodError serial (errorName_ "org.freedesktop.DBus.Error.InvalidParameters"))))
 
 test_ExportIntrospection :: Test
 test_ExportIntrospection = assertions "exportIntrospection" $ do
@@ -533,12 +487,7 @@ startConnectedClient = do
 	receivedHello <- liftIO (DBus.Socket.receive sock)
 	let (ReceivedMethodCall helloSerial _) = receivedHello
 	
-	liftIO (DBus.Socket.send sock (MethodReturn
-		{ methodReturnSerial = helloSerial
-		, methodReturnSender = Nothing
-		, methodReturnDestination = Nothing
-		, methodReturnBody = []
-		}) (\_ -> return ()))
+	liftIO (DBus.Socket.send sock (methodReturn helloSerial) (\_ -> return ()))
 	
 	client <- liftIO (readMVar clientVar)
 	afterTest (DBus.Client.disconnect client)

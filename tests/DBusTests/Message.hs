@@ -27,13 +27,7 @@ test_Message = suite "Message"
 
 test_MethodErrorMessage :: Test
 test_MethodErrorMessage = assertions "methodErrorMessage" $ do
-	let emptyError = MethodError
-		{ methodErrorName = errorName_ "com.example.Error"
-		, methodErrorSerial = firstSerial
-		, methodErrorSender = Nothing
-		, methodErrorDestination = Nothing
-		, methodErrorBody = []
-		}
+	let emptyError = methodError firstSerial (errorName_ "com.example.Error")
 	
 	$expect (equal
 		"(no error message)"

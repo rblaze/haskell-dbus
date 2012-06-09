@@ -137,19 +137,29 @@ gen_MethodCall = return MethodCall
 	<*> smallListOf gen_Variant
 
 gen_MethodReturn :: Gen MethodReturn
-gen_MethodReturn = return MethodReturn
-	<*> arbitrary
-	<*> arbitrary
-	<*> arbitrary
-	<*> smallListOf gen_Variant
+gen_MethodReturn = do
+	serial <- arbitrary
+	sender <- arbitrary
+	dest <- arbitrary
+	body <- smallListOf gen_Variant
+	return (methodReturn serial)
+		{ methodReturnSender = sender
+		, methodReturnDestination = dest
+		, methodReturnBody = body
+		}
 
 gen_MethodError :: Gen MethodError
-gen_MethodError = return MethodError
-	<*> arbitrary
-	<*> arbitrary
-	<*> arbitrary
-	<*> arbitrary
-	<*> smallListOf gen_Variant
+gen_MethodError = do
+	serial <- arbitrary
+	name <- arbitrary
+	sender <- arbitrary
+	dest <- arbitrary
+	body <- smallListOf gen_Variant
+	return (methodError serial name)
+		{ methodErrorSender = sender
+		, methodErrorDestination = dest
+		, methodErrorBody = body
+		}
 
 gen_Signal :: Gen Signal
 gen_Signal = return Signal

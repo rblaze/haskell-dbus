@@ -283,13 +283,7 @@ disconnect' :: Client -> IO ()
 disconnect' client = do
 	pendingCalls <- atomicModifyIORef (clientPendingCalls client) (\p -> (Data.Map.empty, p))
 	forM_ (Data.Map.toList pendingCalls) $ \(k, v) -> do
-		putMVar v (Left MethodError
-			{ methodErrorName = errorDisconnected
-			, methodErrorSerial = k
-			, methodErrorSender = Nothing
-			, methodErrorDestination = Nothing
-			, methodErrorBody = []
-			})
+		putMVar v (Left (methodError k errorDisconnected))
 	
 	atomicModifyIORef (clientSignalHandlers client) (\_ -> ([], ()))
 	atomicModifyIORef (clientObjects client) (\_ -> (Data.Map.empty, ()))
@@ -322,7 +316,9 @@ dispatch client = go where
 		_ <- forkIO $ case findMethod objects msg of
 			Right io -> io received
 			Left errName -> send_ client
-				(MethodError errName serial Nothing sender [])
+				(methodError serial errName)
+					{ methodErrorDestination = sender
+					}
 				(\_ -> return ())
 		return ()
 	go (ReceivedUnknown _ _) = return ()
@@ -702,8 +698,14 @@ export client path methods = atomicModifyIORef (clientObjects client) addObject 
 		reply <- cb msg
 		let sender = methodCallSender msg
 		case reply of
-			ReplyReturn vs -> send_ client (MethodReturn serial Nothing sender vs) (\_ -> return ())
-			ReplyError name vs -> send_ client (MethodError name serial Nothing sender vs) (\_ -> return ())
+			ReplyReturn vs -> send_ client (methodReturn serial)
+				{ methodReturnDestination = sender
+				, methodReturnBody = vs
+				} (\_ -> return ())
+			ReplyError name vs -> send_ client (methodError serial name)
+				{ methodErrorDestination = sender
+				, methodErrorBody = vs
+				} (\_ -> return ())
 	wrapCB _ _ = return ()
 	
 	defaultIntrospect = methodIntrospect $ do
