@@ -13,7 +13,20 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-module DBus.Message where
+module DBus.Message
+	( Message(..)
+	, Flag(..)
+	, UnknownMessage(..)
+	, MethodCall(..)
+	, MethodReturn(..)
+	, MethodError(..)
+	, methodErrorMessage
+	, Signal(..)
+	, ReceivedMessage(..)
+	
+	-- for use in Wire
+	, HeaderField(..)
+	) where
 
 import           Data.List (nub, sort)
 import           Data.Maybe (fromMaybe, listToMaybe)
