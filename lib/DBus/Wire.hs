@@ -662,7 +662,7 @@ buildReceivedMessage 4 fields = do
 	return $ \serial _ body -> let
 		dest = listToMaybe [x | HeaderDestination x <- fields]
 		sender = listToMaybe [x | HeaderSender x <- fields]
-		msg = Signal path member iface sender dest body
+		msg = Signal path iface member sender dest body
 		in ReceivedSignal serial msg
 
 buildReceivedMessage messageType _ = return $ \serial flags body -> let

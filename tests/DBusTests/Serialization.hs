@@ -169,13 +169,18 @@ gen_MethodError = do
 		}
 
 gen_Signal :: Gen Signal
-gen_Signal = return Signal
-	<*> arbitrary
-	<*> arbitrary
-	<*> arbitrary
-	<*> arbitrary
-	<*> arbitrary
-	<*> smallListOf gen_Variant
+gen_Signal = do
+	path <- arbitrary
+	iface <- arbitrary
+	member <- arbitrary
+	sender <- arbitrary
+	dest <- arbitrary
+	body <- smallListOf gen_Variant
+	return (signal path iface member)
+		{ signalSender = sender
+		, signalDestination = dest
+		, signalBody = body
+		}
 
 instance Arbitrary Endianness where
 	arbitrary = elements [BigEndian, LittleEndian]

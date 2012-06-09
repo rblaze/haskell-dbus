@@ -175,8 +175,8 @@ methodErrorMessage err = fromMaybe "(no error message)" $ do
 
 data Signal = Signal
 	{ signalPath        :: ObjectPath
-	, signalMember      :: MemberName
 	, signalInterface   :: InterfaceName
+	, signalMember      :: MemberName
 	, signalSender      :: Maybe BusName
 	, signalDestination :: Maybe BusName
 	, signalBody        :: [Variant]

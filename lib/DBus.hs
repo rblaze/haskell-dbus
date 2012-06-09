@@ -52,7 +52,14 @@ module DBus
 	, M.methodErrorMessage
 	
 	-- ** Signals
-	, M.Signal (..)
+	, M.Signal
+	, signal
+	, M.signalPath
+	, M.signalMember
+	, M.signalInterface
+	, M.signalSender
+	, M.signalDestination
+	, M.signalBody
 	
 	-- ** Received messages
 	, M.ReceivedMessage (..)
@@ -182,6 +189,9 @@ methodError s name = M.MethodError name s Nothing Nothing []
 
 methodErrorSerial :: M.MethodError -> Serial
 methodErrorSerial = M.methodErrorSerial
+
+signal :: ObjectPath -> InterfaceName -> MemberName -> M.Signal
+signal path iface member = M.Signal path iface member Nothing Nothing []
 
 unknownMessageType :: M.UnknownMessage -> Word8
 unknownMessageType = M.unknownMessageType

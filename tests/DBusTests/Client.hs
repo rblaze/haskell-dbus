@@ -338,24 +338,15 @@ test_Listen = assertions "listen" $ do
 		methodReturn
 	
 	-- ignored signal
-	liftIO (DBus.Socket.send sock (Signal
-		{ signalPath = objectPath_ "/"
-		, signalMember = memberName_ "Qux"
-		, signalInterface = interfaceName_ "com.example.Baz"
-		, signalSender = Nothing
-		, signalDestination = Nothing
-		, signalBody = []
-		}) (\_ -> return ()))
+	liftIO (DBus.Socket.send sock
+		(signal (objectPath_ "/") (interfaceName_ "com.example.Baz") (memberName_ "Qux"))
+		(\_ -> return ()))
 	$assert (isEmptyMVar signalVar)
 	
 	-- matched signal
-	let matchedSignal = Signal
-		{ signalPath = objectPath_ "/"
-		, signalMember = memberName_ "Qux"
-		, signalInterface = interfaceName_ "com.example.Baz"
-		, signalSender = Just (busName_ "com.example.Foo")
+	let matchedSignal = (signal (objectPath_ "/") (interfaceName_ "com.example.Baz") (memberName_ "Qux"))
+		{ signalSender = Just (busName_ "com.example.Foo")
 		, signalDestination = Just (busName_ "com.example.Bar")
-		, signalBody = []
 		}
 	liftIO (DBus.Socket.send sock matchedSignal (\_ -> return ()))
 	received <- liftIO (takeMVar signalVar)
