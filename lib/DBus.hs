@@ -19,7 +19,15 @@ module DBus
 	  M.Message
 	
 	-- ** Method calls
-	, M.MethodCall (..)
+	, M.MethodCall
+	, methodCall
+	, M.methodCallPath
+	, M.methodCallInterface
+	, M.methodCallMember
+	, M.methodCallSender
+	, M.methodCallDestination
+	, M.methodCallFlags
+	, M.methodCallBody
 	
 	, M.MessageFlag
 	, M.noReplyExpected
@@ -159,6 +167,9 @@ import           DBus.Wire
 
 typeOf :: IsValue a => a -> Type
 typeOf = DBus.Types.typeOf
+
+methodCall :: ObjectPath -> InterfaceName -> MemberName -> M.MethodCall
+methodCall path iface member = M.MethodCall path (Just iface) member Nothing Nothing [] []
 
 methodReturn :: Serial -> M.MethodReturn
 methodReturn s = M.MethodReturn s Nothing Nothing []

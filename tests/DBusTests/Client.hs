@@ -119,13 +119,8 @@ test_RequestName = assertions "requestName" $ do
 		, DBus.Client.DoNotQueue
 		]
 	
-	let requestCall = MethodCall
-		{ methodCallPath = objectPath_ "/org/freedesktop/DBus"
-		, methodCallInterface = Just (interfaceName_ "org.freedesktop.DBus")
-		, methodCallMember = memberName_ "RequestName"
-		, methodCallSender = Nothing
-		, methodCallDestination = Just (busName_ "org.freedesktop.DBus")
-		, methodCallFlags = []
+	let requestCall = (dbusCall "RequestName")
+		{ methodCallDestination = Just (busName_ "org.freedesktop.DBus")
 		, methodCallBody = [toVariant "com.example.Foo", toVariant (7 :: Word32)]
 		}
 	
@@ -202,13 +197,8 @@ test_ReleaseName :: Test
 test_ReleaseName = assertions "releaseName" $ do
 	(sock, client) <- startConnectedClient
 	
-	let requestCall = MethodCall
-		{ methodCallPath = objectPath_ "/org/freedesktop/DBus"
-		, methodCallInterface = Just (interfaceName_ "org.freedesktop.DBus")
-		, methodCallMember = memberName_ "ReleaseName"
-		, methodCallSender = Nothing
-		, methodCallDestination = Just (busName_ "org.freedesktop.DBus")
-		, methodCallFlags = []
+	let requestCall = (dbusCall "ReleaseName")
+		{ methodCallDestination = Just (busName_ "org.freedesktop.DBus")
 		, methodCallBody = [toVariant "com.example.Foo"]
 		}
 	
@@ -277,11 +267,8 @@ test_Call :: Test
 test_Call = assertions "call" $ do
 	(sock, client) <- startConnectedClient
 	
-	let requestCall = MethodCall
-		{ methodCallPath = objectPath_ "/org/freedesktop/DBus"
-		, methodCallInterface = Just (interfaceName_ "org.freedesktop.DBus")
-		, methodCallMember = memberName_ "Hello"
-		, methodCallSender = Just (busName_ "com.example.Foo")
+	let requestCall = (dbusCall "Hello")
+		{ methodCallSender = Just (busName_ "com.example.Foo")
 		, methodCallDestination = Just (busName_ "org.freedesktop.DBus")
 		, methodCallFlags = [noReplyExpected, noAutoStart]
 		, methodCallBody = [toVariant "com.example.Foo"]
@@ -304,11 +291,8 @@ test_CallNoReply :: Test
 test_CallNoReply = assertions "callNoReply" $ do
 	(sock, client) <- startConnectedClient
 	
-	let requestCall = MethodCall
-		{ methodCallPath = objectPath_ "/org/freedesktop/DBus"
-		, methodCallInterface = Just (interfaceName_ "org.freedesktop.DBus")
-		, methodCallMember = memberName_ "Hello"
-		, methodCallSender = Just (busName_ "com.example.Foo")
+	let requestCall = (dbusCall "Hello")
+		{ methodCallSender = Just (busName_ "com.example.Foo")
 		, methodCallDestination = Just (busName_ "org.freedesktop.DBus")
 		, methodCallFlags = [noAutoStart]
 		, methodCallBody = [toVariant "com.example.Foo"]
@@ -339,12 +323,8 @@ test_Listen = assertions "listen" $ do
 	-- might as well test this while we're at it
 	$expect (equal (show matchRule) "MatchRule \"sender='com.example.Foo',destination='com.example.Bar',path='/',interface='com.example.Baz',member='Qux'\"")
 	
-	let requestCall = MethodCall
-		{ methodCallPath = objectPath_ "/org/freedesktop/DBus"
-		, methodCallInterface = Just (interfaceName_ "org.freedesktop.DBus")
-		, methodCallMember = memberName_ "AddMatch"
-		, methodCallSender = Nothing
-		, methodCallDestination = Just (busName_ "org.freedesktop.DBus")
+	let requestCall = (dbusCall "AddMatch")
+		{ methodCallDestination = Just (busName_ "org.freedesktop.DBus")
 		, methodCallFlags = [noReplyExpected]
 		, methodCallBody = [toVariant "type='signal',sender='com.example.Foo',destination='com.example.Bar',path='/',interface='com.example.Baz',member='Qux'"]
 		}
@@ -508,14 +488,8 @@ stubMethodCall sock io expectedCall respond = do
 
 callClientMethod :: DBus.Socket.Socket -> String -> String -> String -> [Variant] -> Assertions (Serial, Either MethodError MethodReturn)
 callClientMethod sock path iface name body = do
-	let call = MethodCall
-		{ methodCallPath = objectPath_ path
-		, methodCallInterface = Just (interfaceName_ iface)
-		, methodCallMember = memberName_ name
-		, methodCallSender = Nothing
-		, methodCallDestination = Nothing
-		, methodCallFlags = []
-		, methodCallBody = body
+	let call = (methodCall (objectPath_ path) (interfaceName_ iface) (memberName_ name))
+		{ methodCallBody = body
 		}
 	serial <- liftIO (DBus.Socket.send sock call return)
 	resp <- liftIO (DBus.Socket.receive sock)
@@ -523,3 +497,6 @@ callClientMethod sock path iface name body = do
 		ReceivedMethodReturn _ ret -> return (serial, Right ret)
 		ReceivedMethodError _ err -> return (serial, Left err)
 		_ -> $die "callClientMethod: unexpected response to method call"
+
+dbusCall :: String -> MethodCall
+dbusCall member = methodCall (objectPath_ "/org/freedesktop/DBus") (interfaceName_ "org.freedesktop.DBus") (memberName_ member)

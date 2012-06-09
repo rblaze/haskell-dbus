@@ -39,14 +39,8 @@ test_Integration = suite "integration"
 
 test_Socket :: Test
 test_Socket = withDaemon "socket" $ \addr -> do
-	let hello = MethodCall
-		{ methodCallPath = "/org/freedesktop/DBus"
-		, methodCallMember = "Hello"
-		, methodCallInterface = Just "org.freedesktop.DBus"
-		, methodCallSender = Nothing
-		, methodCallDestination = Just "org.freedesktop.DBus"
-		, methodCallFlags = []
-		, methodCallBody = []
+	let hello = (methodCall "/org/freedesktop/DBus" "org.freedesktop.DBus" "Hello")
+		{ methodCallDestination = Just "org.freedesktop.DBus"
 		}
 	
 	sock <- liftIO (open addr)
@@ -77,29 +71,19 @@ test_Client = withDaemon "client" $ \addr -> do
 	
 	-- Successful call
 	let bodyGood = [toVariant ("test" :: String)]
-	retGood <- liftIO (call clientB (MethodCall
-		{ methodCallPath = "/"
-		, methodCallMember = "Echo"
-		, methodCallInterface = Just "com.example.Echo"
-		, methodCallSender = Nothing
-		, methodCallDestination = Just busAddrA
-		, methodCallFlags = []
+	retGood <- liftIO (call clientB (methodCall "/" "com.example.Echo" "Echo")
+		{ methodCallDestination = Just busAddrA
 		, methodCallBody = bodyGood
-		}))
+		})
 	ret <- $requireRight retGood
 	$expect (equal (methodReturnBody ret) bodyGood)
 	
 	-- Failed call
 	let bodyBad = [toVariant True]
-	retBad <- liftIO (call clientB (MethodCall
-		{ methodCallPath = "/"
-		, methodCallMember = "Echo"
-		, methodCallInterface = Just "com.example.Echo"
-		, methodCallSender = Nothing
-		, methodCallDestination = Just busAddrA
-		, methodCallFlags = []
+	retBad <- liftIO (call clientB (methodCall "/" "com.example.Echo" "Echo")
+		{ methodCallDestination = Just busAddrA
 		, methodCallBody = bodyBad
-		}))
+		})
 	err <- $requireLeft retBad
 	$expect (equal (methodErrorName err) "com.example.Error")
 	$expect (equal (methodErrorBody err) [toVariant ("bad body: [Variant True]" :: String)])

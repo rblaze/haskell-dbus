@@ -85,11 +85,8 @@ test_SendReceive = assertions "send-receive" $ do
 		[ ("abstract", formatUUID uuid)
 		])
 	
-	let msg = MethodCall
-		{ methodCallPath = "/"
-		, methodCallMember = "Foo"
-		, methodCallInterface = Just "org.example.iface"
-		, methodCallSender = Just "org.example.src"
+	let msg = (methodCall "/" "org.example.iface" "Foo")
+		{ methodCallSender = Just "org.example.src"
 		, methodCallDestination = Just "org.example.dst"
 		, methodCallFlags = [noReplyExpected, noAutoStart]
 		, methodCallBody = [toVariant True]

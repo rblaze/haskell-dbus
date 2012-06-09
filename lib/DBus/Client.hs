@@ -252,14 +252,8 @@ connectWith opts addr = do
 	
 	export client "/" [introspectRoot client]
 	
-	callNoReply client MethodCall
-		{ methodCallPath = "/org/freedesktop/DBus"
-		, methodCallMember = "Hello"
-		, methodCallInterface = Just "org.freedesktop.DBus"
-		, methodCallSender = Nothing
-		, methodCallDestination = Just "org.freedesktop.DBus"
-		, methodCallFlags = []
-		, methodCallBody = []
+	callNoReply client (methodCall dbusPath dbusInterface "Hello")
+		{ methodCallDestination = Just dbusName
 		}
 	
 	return client
@@ -411,13 +405,8 @@ encodeFlags = foldr (.|.) 0 . map flagValue where
 -- Throws a 'ClientError' if the call failed.
 requestName :: Client -> BusName -> [RequestNameFlag] -> IO RequestNameReply
 requestName client name flags = do
-	reply <- call_ client MethodCall
-		{ methodCallPath = "/org/freedesktop/DBus"
-		, methodCallInterface = Just "org.freedesktop.DBus"
-		, methodCallMember = "RequestName"
-		, methodCallSender = Nothing
-		, methodCallDestination = Just "org.freedesktop.DBus"
-		, methodCallFlags = []
+	reply <- call_ client (methodCall dbusPath dbusInterface "RequestName")
+		{ methodCallDestination = Just dbusName
 		, methodCallBody = [toVariant name, toVariant (encodeFlags flags)]
 		}
 	var <- case listToMaybe (methodReturnBody reply) of
@@ -445,13 +434,8 @@ requestName client name flags = do
 -- Throws a 'ClientError' if the call failed.
 releaseName :: Client -> BusName -> IO ReleaseNameReply
 releaseName client name = do
-	reply <- call_ client MethodCall
-		{ methodCallPath = "/org/freedesktop/DBus"
-		, methodCallInterface = Just "org.freedesktop.DBus"
-		, methodCallMember = "ReleaseName"
-		, methodCallSender = Nothing
-		, methodCallDestination = Just "org.freedesktop.DBus"
-		, methodCallFlags = []
+	reply <- call_ client (methodCall dbusPath dbusInterface "ReleaseName")
+		{ methodCallDestination = Just dbusName
 		, methodCallBody = [toVariant name]
 		}
 	var <- case listToMaybe (methodReturnBody reply) of
@@ -556,13 +540,8 @@ listen client rule io = do
 		x -> "type='signal'," ++ x
 	
 	atomicModifyIORef (clientSignalHandlers client) (\hs -> (handler : hs, ()))
-	callNoReply client MethodCall
-		{ methodCallPath = dbusPath
-		, methodCallMember = "AddMatch"
-		, methodCallInterface = Just dbusInterface
-		, methodCallSender = Nothing
-		, methodCallDestination = Just dbusName
-		, methodCallFlags = []
+	callNoReply client (methodCall dbusPath dbusInterface "AddMatch")
+		{ methodCallDestination = Just dbusName
 		, methodCallBody = [toVariant formatted]
 		}
 	return ()
@@ -857,13 +836,8 @@ proxy client dest path = return (Proxy client dest path)
 
 proxyCall :: Proxy -> InterfaceName -> MemberName -> [Variant] -> IO [Variant]
 proxyCall (Proxy client dest path) iface member body = do
-	reply <- call_ client MethodCall
-		{ methodCallPath = path
-		, methodCallMember = member
-		, methodCallInterface = Just iface
-		, methodCallSender = Nothing
-		, methodCallDestination = Just dest
-		, methodCallFlags = []
+	reply <- call_ client (methodCall path iface member)
+		{ methodCallDestination = Just dest
 		, methodCallBody = body
 		}
 	return (methodReturnBody reply)

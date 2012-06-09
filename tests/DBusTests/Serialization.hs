@@ -127,14 +127,21 @@ gen_Variant = oneof
 	]
 
 gen_MethodCall :: Gen MethodCall
-gen_MethodCall = return MethodCall
-	<*> arbitrary
-	<*> arbitrary
-	<*> arbitrary
-	<*> arbitrary
-	<*> arbitrary
-	<*> arbitrary
-	<*> smallListOf gen_Variant
+gen_MethodCall = do
+	path <- arbitrary
+	iface <- arbitrary
+	member <- arbitrary
+	sender <- arbitrary
+	dest <- arbitrary
+	flags <- arbitrary
+	body <- smallListOf gen_Variant
+	return (methodCall path "com.example.ignored" member)
+		{ methodCallInterface = iface
+		, methodCallSender = sender
+		, methodCallDestination = dest
+		, methodCallFlags = flags
+		, methodCallBody = body
+		}
 
 gen_MethodReturn :: Gen MethodReturn
 gen_MethodReturn = do
