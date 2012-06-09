@@ -27,7 +27,6 @@ module DBus.Wire
 	) where
 
 import           Control.Monad (liftM, when, unless)
-import           Data.Bits ((.&.), (.|.))
 import qualified Data.ByteString
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8
@@ -493,18 +492,6 @@ protocolVersion = 1
 messageMaximumLength :: Integer
 messageMaximumLength = 134217728
 
-encodeFlags :: [Flag] -> Word8
-encodeFlags = foldr (.|.) 0 . map flagValue where
-	flagValue NoReplyExpected = 0x1
-	flagValue NoAutoStart     = 0x2
-
-decodeFlags :: Word8 -> [Flag]
-decodeFlags word = flags where
-	flagSet = [ (0x1, NoReplyExpected)
-	          , (0x2, NoAutoStart)
-	          ]
-	flags = flagSet >>= \(x, y) -> [y | word .&. x > 0]
-
 encodeField :: HeaderField -> Value
 encodeField (HeaderPath x)        = encodeField' 1 x
 encodeField (HeaderInterface x)   = encodeField' 2 x
@@ -640,7 +627,7 @@ unmarshalMessageM getBytes' = runErrorT $ do
 findBodySignature :: [HeaderField] -> Signature
 findBodySignature fields = fromMaybe (signature_ []) (listToMaybe [x | HeaderSignature x <- fields])
 
-buildReceivedMessage :: Word8 -> [HeaderField] -> ErrorM String (Serial -> [Flag] -> [Variant] -> ReceivedMessage)
+buildReceivedMessage :: Word8 -> [HeaderField] -> ErrorM String (Serial -> [MessageFlag] -> [Variant] -> ReceivedMessage)
 buildReceivedMessage 1 fields = do
 	path <- require "path" [x | HeaderPath x <- fields]
 	member <- require "member name" [x | HeaderMember x <- fields]

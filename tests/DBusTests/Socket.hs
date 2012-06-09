@@ -91,7 +91,7 @@ test_SendReceive = assertions "send-receive" $ do
 		, methodCallInterface = Just "org.example.iface"
 		, methodCallSender = Just "org.example.src"
 		, methodCallDestination = Just "org.example.dst"
-		, methodCallFlags = [NoReplyExpected, NoAutoStart]
+		, methodCallFlags = [noReplyExpected, noAutoStart]
 		, methodCallBody = [toVariant True]
 		}
 	

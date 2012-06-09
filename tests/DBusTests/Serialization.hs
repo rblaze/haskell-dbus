@@ -166,5 +166,5 @@ instance Arbitrary Endianness where
 instance Arbitrary Serial where
 	arbitrary = fmap DBus.Types.Serial arbitrary
 
-instance Arbitrary Flag where
-	arbitrary = elements [NoReplyExpected, NoAutoStart]
+instance Arbitrary MessageFlag where
+	arbitrary = elements [noReplyExpected, noAutoStart]

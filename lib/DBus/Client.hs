@@ -494,10 +494,10 @@ call client msg = do
 	-- Remove some fields that should not be set:
 	--
 	-- methodCallSender: not used in client/bus mode.
-	-- NoReplyExpected: can cause this function to block indefinitely.
+	-- noReplyExpected: can cause this function to block indefinitely.
 	let safeMsg = msg
 		{ methodCallSender = Nothing
-		, methodCallFlags = filter (/= NoReplyExpected) (methodCallFlags msg)
+		, methodCallFlags = filter (/= noReplyExpected) (methodCallFlags msg)
 		}
 	mvar <- newEmptyMVar
 	send_ client safeMsg (\serial -> do
@@ -514,7 +514,7 @@ call client msg = do
 
 -- | Send a method call to the bus, and wait for the response.
 --
--- Unsets the 'NoReplyExpected' message flag before sending.
+-- Unsets the 'noReplyExpected' message flag before sending.
 --
 -- Throws a 'ClientError' if the method call couldn't sent, if the reply
 -- couldn't be parsed, or if the reply was a 'MethodError'.
@@ -529,15 +529,15 @@ call_ client msg = do
 
 -- | Send a method call to the bus, and do not wait for a response.
 --
--- Sets the 'NoReplyExpected' message flag before sending.
+-- Sets the 'noReplyExpected' message flag before sending.
 --
 -- Throws a 'ClientError' if the method call couldn't be sent.
 callNoReply :: Client -> MethodCall -> IO ()
 callNoReply client msg = do
-	-- Ensure that NoReplyExpected is always set.
+	-- Ensure that noReplyExpected is always set.
 	let safeMsg = msg
 		{ methodCallSender = Nothing
-		, methodCallFlags = NoReplyExpected : methodCallFlags msg
+		, methodCallFlags = noReplyExpected : methodCallFlags msg
 		}
 	send_ client safeMsg (\_ -> return ())
 

@@ -17,7 +17,9 @@ module DBus
 	(
 	-- * Messages
 	  Message
-	, Flag (..)
+	, MessageFlag
+	, noReplyExpected
+	, noAutoStart
 	, UnknownMessage (..)
 	, MethodCall (..)
 	, MethodReturn (..)

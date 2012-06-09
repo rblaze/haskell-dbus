@@ -294,7 +294,7 @@ test_Call = assertions "call" $ do
 		, methodCallMember = memberName_ "Hello"
 		, methodCallSender = Just (busName_ "com.example.Foo")
 		, methodCallDestination = Just (busName_ "org.freedesktop.DBus")
-		, methodCallFlags = [NoReplyExpected, NoAutoStart]
+		, methodCallFlags = [noReplyExpected, noAutoStart]
 		, methodCallBody = [toVariant "com.example.Foo"]
 		}
 	
@@ -305,13 +305,13 @@ test_Call = assertions "call" $ do
 		, methodReturnBody = []
 		}
 	
-	-- NoReplyExpected and methodCallSender are removed
+	-- noReplyExpected and methodCallSender are removed
 	do
 		response <- stubMethodCall sock
 			(DBus.Client.call client requestCall)
 			(requestCall
 				{ methodCallSender = Nothing
-				, methodCallFlags = [NoAutoStart]
+				, methodCallFlags = [noAutoStart]
 				})
 			requestReply
 		reply <- $requireRight response
@@ -330,7 +330,7 @@ test_CallNoReply = assertions "callNoReply" $ do
 		, methodCallMember = memberName_ "Hello"
 		, methodCallSender = Just (busName_ "com.example.Foo")
 		, methodCallDestination = Just (busName_ "org.freedesktop.DBus")
-		, methodCallFlags = [NoAutoStart]
+		, methodCallFlags = [noAutoStart]
 		, methodCallBody = [toVariant "com.example.Foo"]
 		}
 	
@@ -341,13 +341,13 @@ test_CallNoReply = assertions "callNoReply" $ do
 		, methodReturnBody = []
 		}
 	
-	-- NoReplyExpected is added, methodCallSender is removed
+	-- noReplyExpected is added, methodCallSender is removed
 	do
 		stubMethodCall sock
 			(DBus.Client.callNoReply client requestCall)
 			(requestCall
 				{ methodCallSender = Nothing
-				, methodCallFlags = [NoAutoStart, NoReplyExpected]
+				, methodCallFlags = [noAutoStart, noReplyExpected]
 				})
 			requestReply
 
@@ -372,7 +372,7 @@ test_Listen = assertions "listen" $ do
 		, methodCallMember = memberName_ "AddMatch"
 		, methodCallSender = Nothing
 		, methodCallDestination = Just (busName_ "org.freedesktop.DBus")
-		, methodCallFlags = [NoReplyExpected]
+		, methodCallFlags = [noReplyExpected]
 		, methodCallBody = [toVariant "type='signal',sender='com.example.Foo',destination='com.example.Bar',path='/',interface='com.example.Baz',member='Qux'"]
 		}
 	

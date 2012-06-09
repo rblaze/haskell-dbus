@@ -15,7 +15,11 @@
 
 module DBus.Message
 	( Message(..)
-	, Flag(..)
+	
+	, MessageFlag
+	, noReplyExpected
+	, noAutoStart
+	
 	, UnknownMessage(..)
 	, MethodCall(..)
 	, MethodReturn(..)
@@ -26,8 +30,11 @@ module DBus.Message
 	
 	-- for use in Wire
 	, HeaderField(..)
+	, encodeFlags
+	, decodeFlags
 	) where
 
+import           Data.Bits ((.|.), (.&.))
 import           Data.List (nub, sort)
 import           Data.Maybe (fromMaybe, listToMaybe)
 import           Data.Word (Word8)
@@ -39,7 +46,7 @@ class Message a where
 	messageHeaderFields :: a -> [HeaderField]
 	messageBody :: a -> [Variant]
 	
-	messageFlags :: a -> [Flag]
+	messageFlags :: a -> [MessageFlag]
 	messageFlags _ = []
 
 maybe' :: (a -> b) -> Maybe a -> [b]
@@ -47,7 +54,7 @@ maybe' f = maybe [] (\x' -> [f x'])
 
 data UnknownMessage = UnknownMessage
 	{ unknownMessageType :: Word8
-	, unknownMessageFlags :: [Flag]
+	, unknownMessageFlags :: [MessageFlag]
 	, unknownMessageBody :: [Variant]
 	}
 	deriving (Show, Eq)
@@ -63,10 +70,28 @@ data HeaderField
 	| HeaderSignature   Signature
 	deriving (Show, Eq)
 
-data Flag
+data MessageFlag
 	= NoReplyExpected
 	| NoAutoStart
 	deriving (Show, Eq, Ord)
+
+noReplyExpected :: MessageFlag
+noReplyExpected = NoReplyExpected
+
+noAutoStart :: MessageFlag
+noAutoStart = NoAutoStart
+
+encodeFlags :: [MessageFlag] -> Word8
+encodeFlags = foldr (.|.) 0 . map flagValue where
+	flagValue NoReplyExpected = 0x1
+	flagValue NoAutoStart     = 0x2
+
+decodeFlags :: Word8 -> [MessageFlag]
+decodeFlags word = flags where
+	flagSet = [ (0x1, NoReplyExpected)
+	          , (0x2, NoAutoStart)
+	          ]
+	flags = flagSet >>= \(x, y) -> [y | word .&. x > 0]
 
 data MethodCall = MethodCall
 	{ methodCallPath        :: ObjectPath
@@ -74,7 +99,7 @@ data MethodCall = MethodCall
 	, methodCallMember      :: MemberName
 	, methodCallSender      :: Maybe BusName
 	, methodCallDestination :: Maybe BusName
-	, methodCallFlags       :: [Flag]
+	, methodCallFlags       :: [MessageFlag]
 	, methodCallBody        :: [Variant]
 	}
 	deriving (Show)
