@@ -74,15 +74,10 @@ findSocket opts = getAddress opts >>= open where
 		Just parsed -> return parsed
 
 addMatch :: Socket -> String -> IO ()
-addMatch sock match = send sock (MethodCall
-	{ methodCallPath = "/org/freedesktop/DBus"
-	, methodCallInterface = Just "org.freedesktop.DBus"
-	, methodCallMember = "AddMatch"
-	, methodCallSender = Nothing
-	, methodCallDestination = Just "org.freedesktop.DBus"
-	, methodCallFlags = []
+addMatch sock match = send sock (methodCall "/org/freedesktop/DBus" "org.freedesktop.DBus" "AddMatch")
+	{ methodCallDestination = Just "org.freedesktop.DBus"
 	, methodCallBody = [toVariant match]
-	}) (\_ -> return ())
+	} (\_ -> return ())
 
 defaultFilters :: [String]
 defaultFilters =
@@ -104,15 +99,9 @@ main = do
 	
 	sock <- findSocket options
 	
-	send sock (MethodCall
-		{ methodCallPath = "/org/freedesktop/DBus"
-		, methodCallInterface = Just "org.freedesktop.DBus"
-		, methodCallMember = "Hello"
-		, methodCallSender = Nothing
-		, methodCallDestination = Just "org.freedesktop.DBus"
-		, methodCallFlags = []
-		, methodCallBody = []
-		}) (\_ -> return ())
+	send sock (methodCall "/org/freedesktop/DBus" "org.freedesktop.DBus" "Hello")
+		{ methodCallDestination = Just "org.freedesktop.DBus"
+		} (\_ -> return ())
 	
 	mapM_ (addMatch sock) (if null userFilters then defaultFilters else userFilters)
 	
@@ -187,13 +176,13 @@ formatMessage (ReceivedSignal serial msg) = concat
 	, formatBody (signalBody msg)
 	]
 
-formatMessage (ReceivedUnknown serial msg) = concat
+formatMessage msg = concat
 	[ "unknown"
 	, " sender="
-	-- , maybe "(null)" formatBusName sender
+	, maybe "(null)" formatBusName (receivedMessageSender msg)
 	, " serial="
-	, show (serialValue serial)
-	, formatBody (unknownMessageBody msg)
+	, show (serialValue (receivedMessageSerial msg))
+	, formatBody (receivedMessageBody msg)
 	]
 
 formatBody :: [Variant] -> String

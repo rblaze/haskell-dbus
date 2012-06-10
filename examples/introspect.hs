@@ -87,7 +87,7 @@ printProperty :: I.Property -> IO ()
 printProperty (I.Property name sig access) = do
 	putStr "        property "
 	putStr (show (formatSignature sig) ++ " ")
-	putStrLn (Data.Text.unpack name)
+	putStrLn name
 	
 	putStr "            "
 	putStrLn (show access)
@@ -96,4 +96,4 @@ printParam :: String -> I.Parameter -> IO ()
 printParam label (I.Parameter name t) = do
 	putStr ("            [" ++ label ++ " ")
 	putStr (show (formatSignature (signature_ [t])) ++ "] ")
-	putStrLn (Data.Text.unpack name)
+	putStrLn name
