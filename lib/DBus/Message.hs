@@ -20,6 +20,7 @@ module DBus.Message
 	, noReplyExpected
 	, noAutoStart
 	
+	, UnknownMessage(..)
 	, MethodCall(..)
 	, MethodReturn(..)
 	, MethodError(..)
@@ -50,6 +51,13 @@ class Message a where
 
 maybe' :: (a -> b) -> Maybe a -> [b]
 maybe' f = maybe [] (\x' -> [f x'])
+
+data UnknownMessage = UnknownMessage
+	{ unknownMessageType :: Word8
+	, unknownMessageSender :: Maybe BusName
+	, unknownMessageBody :: [Variant]
+	}
+	deriving (Show, Eq)
 
 data HeaderField
 	= HeaderPath        ObjectPath
@@ -194,5 +202,5 @@ data ReceivedMessage
 	| ReceivedMethodReturn Serial MethodReturn
 	| ReceivedMethodError Serial MethodError
 	| ReceivedSignal Serial Signal
-	| ReceivedUnknown
+	| ReceivedUnknown Serial UnknownMessage
 	deriving (Show, Eq)

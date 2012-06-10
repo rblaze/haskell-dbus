@@ -63,6 +63,9 @@ module DBus
 	
 	-- ** Received messages
 	, ReceivedMessage(ReceivedMethodCall, ReceivedMethodReturn, ReceivedMethodError, ReceivedSignal)
+	, receivedMessageSerial
+	, receivedMessageSender
+	, receivedMessageBody
 	
 	-- * Variants
 	, Variant
@@ -182,6 +185,27 @@ methodError s name = MethodError name s Nothing Nothing []
 
 signal :: ObjectPath -> InterfaceName -> MemberName -> Signal
 signal path iface member = Signal path iface member Nothing Nothing []
+
+receivedMessageSerial :: ReceivedMessage -> Serial
+receivedMessageSerial (ReceivedMethodCall s _) = s
+receivedMessageSerial (ReceivedMethodReturn s _) = s
+receivedMessageSerial (ReceivedMethodError s _) = s
+receivedMessageSerial (ReceivedSignal s _) = s
+receivedMessageSerial (ReceivedUnknown s _) = s
+
+receivedMessageSender :: ReceivedMessage -> Maybe BusName
+receivedMessageSender (ReceivedMethodCall _ msg) = methodCallSender msg
+receivedMessageSender (ReceivedMethodReturn _ msg) = methodReturnSender msg
+receivedMessageSender (ReceivedMethodError _ msg) = methodErrorSender msg
+receivedMessageSender (ReceivedSignal _ msg) = signalSender msg
+receivedMessageSender (ReceivedUnknown _ msg) = unknownMessageSender msg
+
+receivedMessageBody :: ReceivedMessage -> [Variant]
+receivedMessageBody (ReceivedMethodCall _ msg) = methodCallBody msg
+receivedMessageBody (ReceivedMethodReturn _ msg) = methodReturnBody msg
+receivedMessageBody (ReceivedMethodError _ msg) = methodErrorBody msg
+receivedMessageBody (ReceivedSignal _ msg) = signalBody msg
+receivedMessageBody (ReceivedUnknown _ msg) = unknownMessageBody msg
 
 -- | A D-Bus UUID is 128 bits of data, usually randomly generated. They are
 -- used for identifying unique server instances to clients.
