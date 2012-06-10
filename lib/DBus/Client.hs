@@ -71,9 +71,14 @@ module DBus.Client
 	-- * Name reservation
 	, requestName
 	, releaseName
-	, RequestNameFlag(..)
-	, RequestNameReply(..)
-	, ReleaseNameReply(..)
+	
+	, RequestNameFlag
+	, nameAllowReplacement
+	, nameReplaceExisting
+	, nameDoNotQueue
+	
+	, RequestNameReply(NamePrimaryOwner, NameInQueue, NameExists, NameAlreadyOwner)
+	, ReleaseNameReply(NameReleased, NameNonExistent, NameNotOwner)
 	
 	-- * Advanced connection options
 	, ClientOptions
@@ -328,23 +333,29 @@ dispatch client = go where
 			Nothing -> return ()
 
 data RequestNameFlag
-	-- | Allow this client's reservation to be replaced, if another client
-	-- requests it with the 'ReplaceExisting' flag.
-	--
-	-- If this client's reservation is replaced, this client will be added
-	-- to the wait queue unless the request also included the 'DoNotQueue'
-	-- flag.
 	= AllowReplacement
-	
-	-- | If the name being requested is already reserved, attempt to
-	-- replace it. This only works if the current owner provided the
-	-- 'AllowReplacement' flag.
 	| ReplaceExisting
-	
-	-- | If the name is already in use, do not add this client to the
-	-- queue, just return an error.
 	| DoNotQueue
 	deriving (Eq, Show)
+
+-- | Allow this client's reservation to be replaced, if another client
+-- requests it with the 'nameReplaceExisting' flag.
+--
+-- If this client's reservation is replaced, this client will be added to the
+-- wait queue unless the request also included the 'nameDoNotQueue' flag.
+nameAllowReplacement :: RequestNameFlag
+nameAllowReplacement = AllowReplacement
+
+-- | If the name being requested is already reserved, attempt to replace it.
+-- This only works if the current owner provided the 'nameAllowReplacement'
+-- flag.
+nameReplaceExisting :: RequestNameFlag
+nameReplaceExisting = ReplaceExisting
+
+-- | If the name is already in use, do not add this client to the queue, just
+-- return an error.
+nameDoNotQueue :: RequestNameFlag
+nameDoNotQueue = DoNotQueue
 
 data RequestNameReply
 	-- | This client is now the primary owner of the requested name.
@@ -361,6 +372,10 @@ data RequestNameReply
 	
 	-- | This client is already the primary owner of the requested name.
 	| NameAlreadyOwner
+	
+	-- | Not exported; exists to generate a compiler warning if users
+	-- case on the reply and forget to include a default case.
+	| UnknownRequestNameReply Word32
 	deriving (Eq, Show)
 
 data ReleaseNameReply
@@ -372,6 +387,10 @@ data ReleaseNameReply
 	
 	-- | The provided name is not assigned to this client.
 	| NameNotOwner
+	
+	-- | Not exported; exists to generate a compiler warning if users
+	-- case on the reply and forget to include a default case.
+	| UnknownReleaseNameReply Word32
 	deriving (Eq, Show)
 
 encodeFlags :: [RequestNameFlag] -> Word32
@@ -419,14 +438,12 @@ requestName client name flags = do
 		Nothing -> throwIO (clientError ("requestName: received invalid response code " ++ showsPrec 11 var ""))
 			{ clientErrorFatal = False
 			}
-	case code :: Word32 of
-		1 -> return NamePrimaryOwner
-		2 -> return NameInQueue
-		3 -> return NameExists
-		4 -> return NameAlreadyOwner
-		_ -> throwIO (clientError ("requestName: received unknown response code " ++ show code))
-			{ clientErrorFatal = False
-			}
+	return $ case code :: Word32 of
+		1 -> NamePrimaryOwner
+		2 -> NameInQueue
+		3 -> NameExists
+		4 -> NameAlreadyOwner
+		_ -> UnknownRequestNameReply code
 
 -- | Release a name that this client previously requested. See 'requestName'
 -- for an explanation of name reservation.
@@ -448,13 +465,11 @@ releaseName client name = do
 		Nothing -> throwIO (clientError ("releaseName: received invalid response code " ++ showsPrec 11 var ""))
 			{ clientErrorFatal = False
 			}
-	case code :: Word32 of
-		1 -> return NameReleased
-		2 -> return NameNonExistent
-		3 -> return NameNotOwner
-		_ -> throwIO (clientError ("releaseName: received unknown response code " ++ show code))
-			{ clientErrorFatal = False
-			}
+	return $ case code :: Word32 of
+		1 -> NameReleased
+		2 -> NameNonExistent
+		3 -> NameNotOwner
+		_ -> UnknownReleaseNameReply code
 
 send_ :: Message msg => Client -> msg -> (Serial -> IO a) -> IO a
 send_ client msg io = do

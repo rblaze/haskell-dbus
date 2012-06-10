@@ -114,9 +114,9 @@ test_RequestName :: Test
 test_RequestName = assertions "requestName" $ do
 	(sock, client) <- startConnectedClient
 	let allFlags =
-		[ DBus.Client.AllowReplacement
-		, DBus.Client.ReplaceExisting
-		, DBus.Client.DoNotQueue
+		[ DBus.Client.nameAllowReplacement
+		, DBus.Client.nameReplaceExisting
+		, DBus.Client.nameDoNotQueue
 		]
 	
 	let requestCall = (dbusCall "RequestName")
@@ -184,14 +184,11 @@ test_RequestName = assertions "requestName" $ do
 	
 	-- response with unknown result code
 	do
-		tried <- stubMethodCall sock
-			(try (DBus.Client.requestName client (busName_ "com.example.Foo") allFlags))
+		reply <- stubMethodCall sock
+			(DBus.Client.requestName client (busName_ "com.example.Foo") allFlags)
 			requestCall
 			(requestReply [toVariant (5 :: Word32)])
-		err <- $requireLeft tried
-		$expect (equal err (DBus.Client.clientError "requestName: received unknown response code 5")
-			{ DBus.Client.clientErrorFatal = False
-			})
+		$expect (equal (show reply) ("UnknownRequestNameReply 5"))
 
 test_ReleaseName :: Test
 test_ReleaseName = assertions "releaseName" $ do
@@ -254,14 +251,11 @@ test_ReleaseName = assertions "releaseName" $ do
 	
 	-- response with unknown result code
 	do
-		tried <- stubMethodCall sock
-			(try (DBus.Client.releaseName client (busName_ "com.example.Foo")))
+		reply <- stubMethodCall sock
+			(DBus.Client.releaseName client (busName_ "com.example.Foo"))
 			requestCall
 			(requestReply [toVariant (5 :: Word32)])
-		err <- $requireLeft tried
-		$expect (equal err (DBus.Client.clientError "releaseName: received unknown response code 5")
-			{ DBus.Client.clientErrorFatal = False
-			})
+		$expect (equal (show reply) ("UnknownReleaseNameReply 5"))
 
 test_Call :: Test
 test_Call = assertions "call" $ do
