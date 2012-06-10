@@ -20,7 +20,6 @@ module DBus.Message
 	, noReplyExpected
 	, noAutoStart
 	
-	, UnknownMessage(..)
 	, MethodCall(..)
 	, MethodReturn(..)
 	, MethodError(..)
@@ -51,13 +50,6 @@ class Message a where
 
 maybe' :: (a -> b) -> Maybe a -> [b]
 maybe' f = maybe [] (\x' -> [f x'])
-
-data UnknownMessage = UnknownMessage
-	{ unknownMessageType :: Word8
-	, unknownMessageFlags :: [MessageFlag]
-	, unknownMessageBody :: [Variant]
-	}
-	deriving (Show, Eq)
 
 data HeaderField
 	= HeaderPath        ObjectPath
@@ -196,12 +188,11 @@ instance Message Signal where
 		]
 
 -- | Not an actual message type, but a wrapper around messages received from
--- the bus. Each value contains the message's 'Serial' and possibly the
--- origin's 'BusName'
+-- the bus. Each value contains the message's 'Serial'.
 data ReceivedMessage
 	= ReceivedMethodCall Serial MethodCall
 	| ReceivedMethodReturn Serial MethodReturn
 	| ReceivedMethodError Serial MethodError
 	| ReceivedSignal Serial Signal
-	| ReceivedUnknown Serial UnknownMessage
+	| ReceivedUnknown
 	deriving (Show, Eq)

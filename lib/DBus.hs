@@ -16,57 +16,53 @@
 module DBus
 	(
 	-- * Messages
-	  M.Message
+	  Message
 	
 	-- ** Method calls
-	, M.MethodCall
+	, MethodCall
 	, methodCall
-	, M.methodCallPath
-	, M.methodCallInterface
-	, M.methodCallMember
-	, M.methodCallSender
-	, M.methodCallDestination
-	, M.methodCallFlags
-	, M.methodCallBody
+	, methodCallPath
+	, methodCallInterface
+	, methodCallMember
+	, methodCallSender
+	, methodCallDestination
+	, methodCallFlags
+	, methodCallBody
 	
-	, M.MessageFlag
-	, M.noReplyExpected
-	, M.noAutoStart
+	, MessageFlag
+	, noReplyExpected
+	, noAutoStart
 	
 	-- ** Method returns
-	, M.MethodReturn
+	, MethodReturn
 	, methodReturn
-	, M.methodReturnSerial
-	, M.methodReturnSender
-	, M.methodReturnDestination
-	, M.methodReturnBody
+	, methodReturnSerial
+	, methodReturnSender
+	, methodReturnDestination
+	, methodReturnBody
 	
 	-- ** Method errors
-	, M.MethodError
+	, MethodError
 	, methodError
-	, M.methodErrorName
-	, M.methodErrorSerial
-	, M.methodErrorSender
-	, M.methodErrorDestination
-	, M.methodErrorBody
-	, M.methodErrorMessage
+	, methodErrorName
+	, methodErrorSerial
+	, methodErrorSender
+	, methodErrorDestination
+	, methodErrorBody
+	, methodErrorMessage
 	
 	-- ** Signals
-	, M.Signal
+	, Signal
 	, signal
-	, M.signalPath
-	, M.signalMember
-	, M.signalInterface
-	, M.signalSender
-	, M.signalDestination
-	, M.signalBody
+	, signalPath
+	, signalMember
+	, signalInterface
+	, signalSender
+	, signalDestination
+	, signalBody
 	
 	-- ** Received messages
-	, M.ReceivedMessage (..)
-	, M.UnknownMessage
-	, unknownMessageType
-	, unknownMessageFlags
-	, unknownMessageBody
+	, ReceivedMessage(ReceivedMethodCall, ReceivedMethodReturn, ReceivedMethodError, ReceivedSignal)
 	
 	-- * Variants
 	, Variant
@@ -162,12 +158,12 @@ module DBus
 
 import           Control.Monad (replicateM)
 import qualified Data.ByteString.Char8 as Char8
-import           Data.Word (Word16, Word8)
+import           Data.Word (Word16)
 import           System.Random (randomRIO)
 import           Text.Printf (printf)
 
 import           DBus.Address
-import qualified DBus.Message as M
+import           DBus.Message
 import qualified DBus.Types
 import           DBus.Types hiding (typeOf)
 import           DBus.Wire
@@ -175,26 +171,17 @@ import           DBus.Wire
 typeOf :: IsValue a => a -> Type
 typeOf = DBus.Types.typeOf
 
-methodCall :: ObjectPath -> InterfaceName -> MemberName -> M.MethodCall
-methodCall path iface member = M.MethodCall path (Just iface) member Nothing Nothing [] []
+methodCall :: ObjectPath -> InterfaceName -> MemberName -> MethodCall
+methodCall path iface member = MethodCall path (Just iface) member Nothing Nothing [] []
 
-methodReturn :: Serial -> M.MethodReturn
-methodReturn s = M.MethodReturn s Nothing Nothing []
+methodReturn :: Serial -> MethodReturn
+methodReturn s = MethodReturn s Nothing Nothing []
 
-methodError :: Serial -> ErrorName -> M.MethodError
-methodError s name = M.MethodError name s Nothing Nothing []
+methodError :: Serial -> ErrorName -> MethodError
+methodError s name = MethodError name s Nothing Nothing []
 
-signal :: ObjectPath -> InterfaceName -> MemberName -> M.Signal
-signal path iface member = M.Signal path iface member Nothing Nothing []
-
-unknownMessageType :: M.UnknownMessage -> Word8
-unknownMessageType = M.unknownMessageType
-
-unknownMessageFlags :: M.UnknownMessage -> [M.MessageFlag]
-unknownMessageFlags = M.unknownMessageFlags
-
-unknownMessageBody :: M.UnknownMessage -> [Variant]
-unknownMessageBody = M.unknownMessageBody
+signal :: ObjectPath -> InterfaceName -> MemberName -> Signal
+signal path iface member = Signal path iface member Nothing Nothing []
 
 -- | A D-Bus UUID is 128 bits of data, usually randomly generated. They are
 -- used for identifying unique server instances to clients.

@@ -665,9 +665,7 @@ buildReceivedMessage 4 fields = do
 		msg = Signal path iface member sender dest body
 		in ReceivedSignal serial msg
 
-buildReceivedMessage messageType _ = return $ \serial flags body -> let
-	msg = UnknownMessage messageType flags body
-	in ReceivedUnknown serial msg
+buildReceivedMessage _ _ = return (\_ _ _ -> ReceivedUnknown)
 
 require :: String -> [a] -> ErrorM String a
 require _     (x:_) = return x

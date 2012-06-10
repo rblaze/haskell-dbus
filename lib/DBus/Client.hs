@@ -315,7 +315,7 @@ dispatch client = go where
 					}
 				(\_ -> return ())
 		return ()
-	go (ReceivedUnknown _ _) = return ()
+	go _ = return ()
 	
 	dispatchReply serial result = do
 		pending <- atomicModifyIORef
