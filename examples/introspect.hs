@@ -41,9 +41,10 @@ main = do
 
 introspect :: Client -> BusName -> ObjectPath -> IO I.Object
 introspect client service path = do
-	obj <- proxy client service path
-	reply <- proxyCall obj "org.freedesktop.DBus.Introspectable" "Introspect" []
-	let Just xml = fromVariant (reply !! 0)
+	reply <- call_ client (methodCall path "org.freedesktop.DBus.Introspectable" "Introspect")
+		{ methodCallDestination = Just service
+		}
+	let Just xml = fromVariant (methodReturnBody reply !! 0)
 	case I.fromXML path xml of
 		Just info -> return info
 		Nothing -> error ("Invalid introspection XML: " ++ show xml)

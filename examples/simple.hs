@@ -26,12 +26,13 @@ main = do
 	client <- connectSession
 	
 	-- Request a list of connected clients from the bus
-	bus <- proxy client "org.freedesktop.DBus" "/org/freedesktop/DBus"
-	reply <- proxyCall bus "org.freedesktop.DBus" "ListNames" []
+	reply <- call_ client (methodCall "/org/freedesktop/DBus" "org.freedesktop.DBus" "ListNames")
+		{ methodCallDestination = Just "org.freedesktop.DBus"
+		}
 	
 	-- org.freedesktop.DBus.ListNames returns a single value, which is
 	-- a list of names (here represented as [String])
-	let Just names = fromVariant (reply !! 0)
+	let Just names = fromVariant (methodReturnBody reply !! 0)
 	
 	-- Print each name on a line, sorted so reserved names are below
 	-- temporary names.

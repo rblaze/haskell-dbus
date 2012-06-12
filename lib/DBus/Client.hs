@@ -85,12 +85,6 @@ module DBus.Client
 	, clientSocketOptions
 	, defaultClientOptions
 	, connectWith
-	
-	-- * Object proxies
-	, Proxy
-	, proxy
-	, proxyCall
-	, proxyListen
 	) where
 
 import           Control.Concurrent
@@ -130,11 +124,25 @@ clientError msg = ClientError msg True
 -- @
 --{-\# LANGUAGE OverloadedStrings \#-}
 --
+--import Data.List (sort)
+--import DBus
+--import DBus.Client
+--
 --main = do
 --    client <- 'connectSession'
---    bus <- 'proxy' client \"org.freedesktop.DBus\" \"\/org\/freedesktop\/DBus\"
---    [names] <- 'proxyCall' bus \"org.freedesktop.DBus\" \"ListNames\" []
---    print names
+--    //
+--    \-- Request a list of connected clients from the bus
+--    reply <- 'call_' client ('methodCall' \"\/org\/freedesktop\/DBus\" \"org.freedesktop.DBus\" \"ListNames\")
+--        { 'methodCallDestination' = Just \"org.freedesktop.DBus\"
+--        }
+--    //
+--    \-- org.freedesktop.DBus.ListNames returns a single value, which is
+--    \-- a list of names (here represented as [String])
+--    let Just names = 'fromVariant' ('methodReturnBody' reply !! 0)
+--    //
+--    \-- Print each name on a line, sorted so reserved names are below
+--    \-- temporary names.
+--    mapM_ putStrLn (sort names)
 -- @
 --
 data Client = Client
@@ -832,28 +840,6 @@ autoMethod iface name fun = DBus.Client.method iface name inSig outSig io where
 		, " has an invalid "
 		, label
 		, " signature."])
-
-data Proxy = Proxy Client BusName ObjectPath
-
-proxy :: Client -> BusName -> ObjectPath -> IO Proxy
-proxy client dest path = return (Proxy client dest path)
-
-proxyCall :: Proxy -> InterfaceName -> MemberName -> [Variant] -> IO [Variant]
-proxyCall (Proxy client dest path) iface member body = do
-	reply <- call_ client (methodCall path iface member)
-		{ methodCallDestination = Just dest
-		, methodCallBody = body
-		}
-	return (methodReturnBody reply)
-
-proxyListen :: Proxy -> InterfaceName -> MemberName -> (BusName -> Signal -> IO ()) -> IO ()
-proxyListen (Proxy client dest path) iface member = DBus.Client.listen client matchAny
-	{ matchSender = Just dest
-	, matchInterface = Just iface
-	, matchMember = Just member
-	, matchPath = Just path
-	, matchDestination = Nothing
-	}
 
 errorFailed :: ErrorName
 errorFailed = errorName_ "org.freedesktop.DBus.Error.Failed"
