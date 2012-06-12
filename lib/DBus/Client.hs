@@ -147,18 +147,9 @@ data Client = Client
 
 data ClientOptions t = ClientOptions
 	{
-	-- | If specified, forces connection attempts to abort after the given
-	-- number of milliseconds.
-	  clientTimeout :: Maybe Integer
-	
-	-- | Whether the client should attempt to reconnect, if it loses its
-	-- connection to the server. any pending method calls will fail with
-	-- an error saying the connection was lost.
-	, clientReconnect :: Bool
-	
 	-- | Options for the underlying socket, for advanced use cases. See
 	-- the "DBus.Socket" module.
-	, clientSocketOptions :: DBus.Socket.SocketOptions t
+	  clientSocketOptions :: DBus.Socket.SocketOptions t
 	}
 
 type Callback = (ReceivedMessage -> IO ())
@@ -267,9 +258,7 @@ connectWith opts addr = do
 -- supports the @tcp:@ and @unix:@ methods.
 defaultClientOptions :: ClientOptions SocketTransport
 defaultClientOptions = ClientOptions
-	{ clientTimeout = Nothing
-	, clientReconnect = True
-	, clientSocketOptions = DBus.Socket.defaultSocketOptions
+	{ clientSocketOptions = DBus.Socket.defaultSocketOptions
 	}
 
 -- | Stop a 'Client''s callback thread and close its underlying socket.
