@@ -644,6 +644,9 @@ throwError name message extra = Control.Exception.throwIO (MethodExc name (toVar
 --
 -- Note that the input and output parameter signatures are used for
 -- introspection, but are not checked when executing a method.
+--
+-- See 'autoMethod' for an easier way to export functions with simple
+-- parameter and return types.
 method :: InterfaceName
        -> MemberName
        -> Signature -- ^ Input parameter signature
@@ -814,12 +817,13 @@ instance (IsValue a, AutoMethod fn) => AutoMethod (a -> fn) where
 		Just v' -> apply (fn v') vs
 		Nothing -> Nothing
 
--- | Prepare a Haskell function for export. This automatically detects the
--- function's type signature; see 'AutoMethod'.
+-- | Prepare a Haskell function for export, automatically detecting the
+-- function's type signature.
 --
--- To manage the type signature and marshaling yourself, use
--- 'DBus.Client.method' instead.
-autoMethod:: (AutoMethod fn) => InterfaceName -> MemberName -> fn -> Method
+-- See 'AutoMethod' for details on the limitations of this function.
+--
+-- See 'method' for exporting functions with user-defined types.
+autoMethod :: (AutoMethod fn) => InterfaceName -> MemberName -> fn -> Method
 autoMethod iface name fun = DBus.Client.method iface name inSig outSig io where
 	(typesIn, typesOut) = funTypes fun
 	inSig = case signature typesIn of
