@@ -23,12 +23,6 @@ module DBus.Client
 	-- * Clients
 	  Client
 	
-	-- * Client errors
-	, ClientError
-	, clientError
-	, clientErrorMessage
-	, clientErrorFatal
-	
 	-- * Connecting to a bus
 	, connect
 	, connectSystem
@@ -79,6 +73,12 @@ module DBus.Client
 	
 	, RequestNameReply(NamePrimaryOwner, NameInQueue, NameExists, NameAlreadyOwner)
 	, ReleaseNameReply(NameReleased, NameNonExistent, NameNotOwner)
+	
+	-- * Client errors
+	, ClientError
+	, clientError
+	, clientErrorMessage
+	, clientErrorFatal
 	
 	-- * Advanced connection options
 	, ClientOptions
@@ -666,8 +666,11 @@ method iface name inSig outSig io = Method iface name inSig outSig
 -- | Export the given functions under the given 'ObjectPath' and
 -- 'InterfaceName'. 
 --
--- The functions may accept/return any types that are
--- instances of 'IsValue'; see 'AutoMethod'.
+-- Use 'autoMethod' to construct a 'Method' from a function that accepts and
+-- returns simple types.
+--
+-- Use 'method' to construct a 'Method' from a function that handles parameter
+-- conversion manually.
 --
 -- @
 --ping :: MethodCall -> IO 'Reply'
