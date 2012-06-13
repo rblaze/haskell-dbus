@@ -138,14 +138,16 @@ module DBus
 	
 	-- * Message marshaling
 	, Endianness (..)
+	
+	-- ** Marshal
+	, marshal
 	, MarshalError
 	, marshalErrorMessage
 	
+	-- ** Unmarshal
+	, unmarshal
 	, UnmarshalError
 	, unmarshalErrorMessage
-	
-	, marshalMessage
-	, unmarshalMessage
 	
 	-- ** Message serials
 	, Serial
@@ -206,6 +208,19 @@ receivedMessageBody (ReceivedMethodReturn _ msg) = methodReturnBody msg
 receivedMessageBody (ReceivedMethodError _ msg) = methodErrorBody msg
 receivedMessageBody (ReceivedSignal _ msg) = signalBody msg
 receivedMessageBody (ReceivedUnknown _ msg) = unknownMessageBody msg
+
+-- | Convert a 'Message' into a 'Char8.ByteString'. Although unusual, it is
+-- possible for marshaling to fail; if this occurs, an error will be
+-- returned instead.
+marshal :: Message msg => Endianness -> Serial -> msg -> Either MarshalError Char8.ByteString
+marshal = marshalMessage
+
+-- | Parse a 'Char8.ByteString' into a 'ReceivedMessage'. The result can be
+-- inspected to see what type of message was parsed. Unknown message types
+-- can still be parsed successfully, as long as they otherwise conform to
+-- the D-Bus standard.
+unmarshal :: Char8.ByteString -> Either UnmarshalError ReceivedMessage
+unmarshal = unmarshalMessage
 
 -- | A D-Bus UUID is 128 bits of data, usually randomly generated. They are
 -- used for identifying unique server instances to clients.

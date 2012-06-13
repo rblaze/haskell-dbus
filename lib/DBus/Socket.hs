@@ -257,7 +257,7 @@ socketListenerAddress (SocketListener l _) = transportListenerAddress l
 send :: Message msg => Socket -> msg -> (Serial -> IO a) -> IO a
 send sock msg io = toSocketError (socketAddress sock) $ do
 	serial <- nextSocketSerial sock
-	case marshalMessage LittleEndian serial msg of
+	case marshal LittleEndian serial msg of
 		Right bytes -> do
 			let t = socketTransport sock
 			a <- io serial

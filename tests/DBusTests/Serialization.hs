@@ -52,32 +52,32 @@ test_MethodCall :: Test
 test_MethodCall = property "MethodCall" prop where
 	prop = forAll gen_MethodCall check
 	check msg endianness serial = let
-		Right bytes = marshalMessage endianness serial msg
-		Right received = unmarshalMessage bytes
+		Right bytes = marshal endianness serial msg
+		Right received = unmarshal bytes
 		in ReceivedMethodCall serial msg == received
 
 test_MethodReturn :: Test
 test_MethodReturn = property "MethodReturn" prop where
 	prop = forAll gen_MethodReturn check
 	check msg endianness serial = let
-		Right bytes = marshalMessage endianness serial msg
-		Right received = unmarshalMessage bytes
+		Right bytes = marshal endianness serial msg
+		Right received = unmarshal bytes
 		in ReceivedMethodReturn serial msg == received
 
 test_MethodError :: Test
 test_MethodError = property "MethodError" prop where
 	prop = forAll gen_MethodError check
 	check msg endianness serial = let
-		Right bytes = marshalMessage endianness serial msg
-		Right received = unmarshalMessage bytes
+		Right bytes = marshal endianness serial msg
+		Right received = unmarshal bytes
 		in ReceivedMethodError serial msg == received
 
 test_Signal :: Test
 test_Signal = property "Signal" prop where
 	prop = forAll gen_Signal check
 	check msg endianness serial = let
-		Right bytes = marshalMessage endianness serial msg
-		Right received = unmarshalMessage bytes
+		Right bytes = marshal endianness serial msg
+		Right received = unmarshal bytes
 		in ReceivedSignal serial msg == received
 
 gen_Atom :: Gen Variant
