@@ -39,6 +39,9 @@ addressMethod (Address x _ ) = x
 addressParameters :: Address -> Map String String
 addressParameters (Address _ x) = x
 
+-- | Try to convert a method string and parameter map to an 'Address'.
+--
+-- Returns 'Nothing' if the method or parameters are invalid.
 address :: String -> Map String String -> Maybe Address
 address method params = if validMethod method && validParams params
 	then if null method && Data.Map.null params
@@ -65,6 +68,7 @@ optionallyEncoded = concat
 	, ['-', '_', '/', '\\', '*', '.']
 	]
 
+-- | Convert an address to a string in the format expected by 'parseAddress'.
 formatAddress :: Address -> String
 formatAddress (Address method params) = concat [method, ":", csvParams] where
 	csvParams = intercalate "," $ do
@@ -76,6 +80,8 @@ formatAddress (Address method params) = concat [method, ":", csvParams] where
 		then [c]
 		else printf "%%%02X" (ord c)
 
+-- | Convert a list of addresses to a string in the format expected by
+-- 'parseAddresses'.
 formatAddresses :: [Address] -> String
 formatAddresses = intercalate ";" . map formatAddress
 
@@ -84,12 +90,21 @@ instance Show Address where
 		showString "Address " .
 		shows (formatAddress x)
 
+-- | Try to parse a string containing one valid address.
+--
+-- An address string is in the format @method:key1=val1,key2=val2@. There
+-- are some limitations on the characters allowed within methods and
+-- parameters; see the D-Bus specification for full details.
 parseAddress :: String -> Maybe Address
 parseAddress = maybeParseString $ do
 	addr <- parsecAddress
 	eof
 	return addr
 
+-- | Try to parse a string containing one or more valid addresses.
+--
+-- Addresses are separated by semicolons. See 'parseAddress' for the format
+-- of addresses.
 parseAddresses :: String -> Maybe [Address]
 parseAddresses = maybeParseString $ do
 	addrs <- sepEndBy parsecAddress (char ';')
@@ -117,17 +132,33 @@ parsecAddress = p where
 		return (chr (hexToInt hex))
 	unencoded = oneOf optionallyEncoded
 
+-- | Returns the address in the environment variable
+-- @DBUS_SYSTEM_BUS_ADDRESS@, or
+-- @unix:path=\/var\/run\/dbus\/system_bus_socket@ if @DBUS_SYSTEM_BUS_ADDRESS@
+-- is not set.
+--
+-- Returns 'Nothing' if @DBUS_SYSTEM_BUS_ADDRESS@ contains an invalid address.
 getSystemAddress :: IO (Maybe Address)
 getSystemAddress = do
 	let system = "unix:path=/var/run/dbus/system_bus_socket"
 	env <- getenv "DBUS_SYSTEM_BUS_ADDRESS"
 	return (parseAddress (maybe system id env))
 
+-- | Returns the address in the environment variable
+-- @DBUS_SESSION_BUS_ADDRESS@, which must be set.
+--
+-- Returns 'Nothing' if @DBUS_SYSTEM_BUS_ADDRESS@ is unset or contains an
+-- invalid address.
 getSessionAddress :: IO (Maybe Address)
 getSessionAddress = do
 	env <- getenv "DBUS_SESSION_BUS_ADDRESS"
 	return (env >>= parseAddress)
 
+-- | Returns the address in the environment variable
+-- @DBUS_STARTER_ADDRESS@, which must be set.
+--
+-- Returns 'Nothing' if @DBUS_STARTER_ADDRESS@ is unset or contains an
+-- invalid address.
 getStarterAddress :: IO (Maybe Address)
 getStarterAddress = do
 	env <- getenv "DBUS_STARTER_ADDRESS"
