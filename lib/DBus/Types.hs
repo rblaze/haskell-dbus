@@ -1207,7 +1207,7 @@ instance (IsVariant a1, IsVariant a2, IsVariant a3, IsVariant a4, IsVariant a5, 
 	fromVariant _ = Nothing
 
 -- | A value used to uniquely identify a particular message within a session.
--- 'Serial's are 32-bit unsigned integers, and eventually wrap.
+-- Serials are 32-bit unsigned integers, and eventually wrap.
 newtype Serial = Serial Word32
 	deriving (Eq, Ord, Show)
 
@@ -1218,11 +1218,16 @@ instance IsVariant Serial where
 serialValue :: Serial -> Word32
 serialValue (Serial x) = x
 
+-- | Get the first serial in the sequence.
 firstSerial :: Serial
 firstSerial = Serial 1
 
+-- | Get the next serial in the sequence. This may wrap around to
+-- 'firstSerial'.
 nextSerial :: Serial -> Serial
-nextSerial (Serial x) = Serial (x + 1)
+nextSerial (Serial x) = Serial (if x + 1 == 0
+	then 1 -- wrap to firstSerial
+	else x + 1)
 
 skipSepBy1 :: Parsec.Parser a -> Parsec.Parser b -> Parsec.Parser ()
 skipSepBy1 p sep = do
