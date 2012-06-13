@@ -483,13 +483,10 @@ send_ client msg io = do
 -- couldn't be parsed.
 call :: Client -> MethodCall -> IO (Either MethodError MethodReturn)
 call client msg = do
-	-- Remove some fields that should not be set:
-	--
-	-- methodCallSender: not used in client/bus mode.
-	-- noReplyExpected: can cause this function to block indefinitely.
+	-- Remove noReplyExpected, which can cause this function to block
+	-- indefinitely if the remote side honors it.
 	let safeMsg = msg
-		{ methodCallSender = Nothing
-		, methodCallFlags = filter (/= noReplyExpected) (methodCallFlags msg)
+		{ methodCallFlags = filter (/= noReplyExpected) (methodCallFlags msg)
 		}
 	mvar <- newEmptyMVar
 	send_ client safeMsg (\serial -> do
@@ -528,8 +525,7 @@ callNoReply :: Client -> MethodCall -> IO ()
 callNoReply client msg = do
 	-- Ensure that noReplyExpected is always set.
 	let safeMsg = msg
-		{ methodCallSender = Nothing
-		, methodCallFlags = noReplyExpected : methodCallFlags msg
+		{ methodCallFlags = noReplyExpected : methodCallFlags msg
 		}
 	send_ client safeMsg (\_ -> return ())
 
@@ -541,11 +537,9 @@ callNoReply client msg = do
 --
 -- Throws a 'ClientError' if adding the match rule couldn't be added to the
 -- bus.
-listen :: Client -> MatchRule -> (BusName -> Signal -> IO ()) -> IO ()
+listen :: Client -> MatchRule -> (Signal -> IO ()) -> IO ()
 listen client rule io = do
-	let handler msg = case signalSender msg of
-		Just sender -> when (checkMatchRule rule sender msg) (io sender msg)
-		Nothing -> return ()
+	let handler msg = when (checkMatchRule rule msg) (io msg)
 	
 	let formatted = case formatMatchRule rule of
 		"" -> "type='signal'"
@@ -622,9 +616,9 @@ formatMatchRule rule = intercalate "," predicates where
 matchAny :: MatchRule
 matchAny = MatchRule Nothing Nothing Nothing Nothing Nothing
 
-checkMatchRule :: MatchRule -> BusName -> Signal -> Bool
-checkMatchRule rule sender msg = and
-	[ maybe True (== sender) (matchSender rule)
+checkMatchRule :: MatchRule -> Signal -> Bool
+checkMatchRule rule msg = and
+	[ maybe True (\x -> signalSender msg == Just x) (matchSender rule)
 	, maybe True (\x -> signalDestination msg == Just x) (matchDestination rule)
 	, maybe True (== signalPath msg) (matchPath rule)
 	, maybe True (== signalInterface msg) (matchInterface rule)

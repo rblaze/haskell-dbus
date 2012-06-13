@@ -268,13 +268,12 @@ test_Call = assertions "call" $ do
 		, methodCallBody = [toVariant "com.example.Foo"]
 		}
 	
-	-- noReplyExpected and methodCallSender are removed
+	-- noReplyExpected is removed
 	do
 		response <- stubMethodCall sock
 			(DBus.Client.call client requestCall)
 			(requestCall
-				{ methodCallSender = Nothing
-				, methodCallFlags = [noAutoStart]
+				{ methodCallFlags = [noAutoStart]
 				})
 			methodReturn
 		reply <- $requireRight response
@@ -292,13 +291,12 @@ test_CallNoReply = assertions "callNoReply" $ do
 		, methodCallBody = [toVariant "com.example.Foo"]
 		}
 	
-	-- noReplyExpected is added, methodCallSender is removed
+	-- noReplyExpected is added
 	do
 		stubMethodCall sock
 			(DBus.Client.callNoReply client requestCall)
 			(requestCall
-				{ methodCallSender = Nothing
-				, methodCallFlags = [noAutoStart, noReplyExpected]
+				{ methodCallFlags = [noAutoStart, noReplyExpected]
 				})
 			methodReturn
 
@@ -327,7 +325,7 @@ test_Listen = assertions "listen" $ do
 	
 	-- add a listener for the given signal
 	stubMethodCall sock
-		(DBus.Client.listen client matchRule (\sender sig -> putMVar signalVar (sender, sig)))
+		(DBus.Client.listen client matchRule (putMVar signalVar))
 		requestCall
 		methodReturn
 	
@@ -344,7 +342,7 @@ test_Listen = assertions "listen" $ do
 		}
 	liftIO (DBus.Socket.send sock matchedSignal (\_ -> return ()))
 	received <- liftIO (takeMVar signalVar)
-	$expect (equal received (busName_ "com.example.Foo", matchedSignal))
+	$expect (equal received matchedSignal)
 
 test_AutoMethod :: Test
 test_AutoMethod = assertions "autoMethod" $ do
