@@ -748,6 +748,13 @@ parserBusName = name >> Parsec.eof where
 		_ <- oneOf start
 		Parsec.skipMany (oneOf alphanum)
 
+-- | A D-Bus Structure is a container type similar to Haskell tuples, storing
+-- values of any type that is convertable to 'IsVariant'. A Structure may
+-- contain up to 255 values.
+--
+-- Most users can use the 'IsVariant' instance for tuples to extract the
+-- values of a structure. This type is for very large structures, which may
+-- be awkward to work with as tuples.
 newtype Structure = Structure [Value]
 	deriving (Eq)
 
@@ -762,6 +769,12 @@ instance IsVariant Structure where
 structureItems :: Structure -> [Variant]
 structureItems (Structure xs) = map Variant xs
 
+-- | A D-Bus Array is a container type similar to Haskell lists, storing
+-- zero or more values of a single D-Bus type.
+--
+-- Most users can use the 'IsVariant' instance for lists or vectors to extract
+-- the values of an array. This type is for advanced use cases, where the user
+-- wants to convert array values to heterogenous Haskell types.
 data Array
 	= Array Type (Vector Value)
 	| ArrayBytes ByteString
@@ -787,6 +800,12 @@ arrayItems :: Array -> [Variant]
 arrayItems (Array _ xs) = map Variant (Data.Vector.toList xs)
 arrayItems (ArrayBytes bs) = map toVariant (Data.ByteString.unpack bs)
 
+-- | A D-Bus Dictionary is a container type similar to Haskell maps, storing
+-- zero or more associations between keys and values.
+--
+-- Most users can use the 'IsVariant' instance for maps to extract the values
+-- of a dictionary. This type is for advanced use cases, where the user
+-- wants to convert dictionary items to heterogenous Haskell types.
 data Dictionary = Dictionary Type Type (Map Atom Value)
 	deriving (Eq)
 

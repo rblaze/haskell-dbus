@@ -116,11 +116,17 @@ module DBus
 	, parseBusName
 	
 	-- * Heterogenous containers
+	
+	-- ** Structures
 	, Structure
-	, Array
-	, Dictionary
 	, structureItems
+	
+	-- ** Arrays
+	, Array
 	, arrayItems
+	
+	-- ** Dictionaries
+	, Dictionary
 	, dictionaryItems
 	
 	-- * Addresses
