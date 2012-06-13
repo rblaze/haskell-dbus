@@ -576,6 +576,14 @@ emit client msg = send_ client msg (\_ -> return ())
 data MatchRule = MatchRule
 	{
 	-- | If set, only receives signals sent from the given bus name.
+	--
+	-- The standard D-Bus implementation from <http://dbus.freedesktop.org/>
+	-- almost always sets signal senders to the unique name of the sending
+	-- client. If 'matchSender' is a requested name like
+	-- @\"com.example.Foo\"@, it will not match any signals.
+	--
+	-- The exception is for signals sent by the bus itself, which always
+	-- have a sender of @\"org.freedesktop.DBus\"@.
 	  matchSender :: Maybe BusName
 	
 	-- | If set, only receives signals sent to the given bus name.
