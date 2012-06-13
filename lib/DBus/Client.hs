@@ -18,6 +18,39 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+-- | D-Bus clients are an abstraction over the lower-level messaging
+-- system. When combined with an external daemon called the \"bus\", clients
+-- can perform remote procedure calls to other clients on the bus.
+--
+-- Clients may also listen for or emit /signals/, which are asynchronous
+-- broadcast notifications.
+--
+-- Example: connect to the session bus, and get a list of active names.
+--
+-- @
+--{-\# LANGUAGE OverloadedStrings \#-}
+--
+--import Data.List (sort)
+--import DBus
+--import DBus.Client
+--
+--main = do
+--    client <- 'connectSession'
+--    //
+--    \-- Request a list of connected clients from the bus
+--    reply <- 'call_' client ('methodCall' \"\/org\/freedesktop\/DBus\" \"org.freedesktop.DBus\" \"ListNames\")
+--        { 'methodCallDestination' = Just \"org.freedesktop.DBus\"
+--        }
+--    //
+--    \-- org.freedesktop.DBus.ListNames returns a single value, which is
+--    \-- a list of names (here represented as [String])
+--    let Just names = 'fromVariant' ('methodReturnBody' reply !! 0)
+--    //
+--    \-- Print each name on a line, sorted so reserved names are below
+--    \-- temporary names.
+--    mapM_ putStrLn (sort names)
+-- @
+--
 module DBus.Client
 	(
 	-- * Clients
@@ -116,35 +149,8 @@ instance Control.Exception.Exception ClientError
 clientError :: String -> ClientError
 clientError msg = ClientError msg True
 
--- | Represents an active client session to a message bus. Clients may
--- send or receive method calls, and listen for or emit signals.
---
--- Example: connect to the session bus, and get a list of active names.
---
--- @
---{-\# LANGUAGE OverloadedStrings \#-}
---
---import Data.List (sort)
---import DBus
---import DBus.Client
---
---main = do
---    client <- 'connectSession'
---    //
---    \-- Request a list of connected clients from the bus
---    reply <- 'call_' client ('methodCall' \"\/org\/freedesktop\/DBus\" \"org.freedesktop.DBus\" \"ListNames\")
---        { 'methodCallDestination' = Just \"org.freedesktop.DBus\"
---        }
---    //
---    \-- org.freedesktop.DBus.ListNames returns a single value, which is
---    \-- a list of names (here represented as [String])
---    let Just names = 'fromVariant' ('methodReturnBody' reply !! 0)
---    //
---    \-- Print each name on a line, sorted so reserved names are below
---    \-- temporary names.
---    mapM_ putStrLn (sort names)
--- @
---
+-- | An active client session to a message bus. Clients may send or receive
+-- method calls, and listen for or emit signals.
 data Client = Client
 	{ clientSocket :: DBus.Socket.Socket
 	, clientPendingCalls :: IORef (Map Serial (MVar (Either MethodError MethodReturn)))
@@ -535,8 +541,7 @@ callNoReply client msg = do
 -- A received signal might be processed by more than one callback at a time.
 -- Callbacks each run in their own thread.
 --
--- Throws a 'ClientError' if adding the match rule couldn't be added to the
--- bus.
+-- Throws a 'ClientError' if the match rule couldn't be added to the bus.
 listen :: Client -> MatchRule -> (Signal -> IO ()) -> IO ()
 listen client rule io = do
 	let handler msg = when (checkMatchRule rule msg) (io msg)
