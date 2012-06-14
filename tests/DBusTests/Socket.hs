@@ -88,7 +88,8 @@ test_SendReceive = assertions "send-receive" $ do
 	let msg = (methodCall "/" "org.example.iface" "Foo")
 		{ methodCallSender = Just "org.example.src"
 		, methodCallDestination = Just "org.example.dst"
-		, methodCallFlags = [noReplyExpected, noAutoStart]
+		, methodCallAutoStart = False
+		, methodCallReplyExpected = False
 		, methodCallBody = [toVariant True]
 		}
 	

@@ -489,10 +489,10 @@ send_ client msg io = do
 -- couldn't be parsed.
 call :: Client -> MethodCall -> IO (Either MethodError MethodReturn)
 call client msg = do
-	-- Remove noReplyExpected, which can cause this function to block
-	-- indefinitely if the remote side honors it.
+	-- If ReplyExpected is False, this function would block indefinitely
+	-- if the remote side honors it.
 	let safeMsg = msg
-		{ methodCallFlags = filter (/= noReplyExpected) (methodCallFlags msg)
+		{ methodCallReplyExpected = True
 		}
 	mvar <- newEmptyMVar
 	send_ client safeMsg (\serial -> do
@@ -531,7 +531,7 @@ callNoReply :: Client -> MethodCall -> IO ()
 callNoReply client msg = do
 	-- Ensure that noReplyExpected is always set.
 	let safeMsg = msg
-		{ methodCallFlags = noReplyExpected : methodCallFlags msg
+		{ methodCallReplyExpected = False
 		}
 	send_ client safeMsg (\_ -> return ())
 
@@ -551,7 +551,7 @@ listen client rule io = do
 		x -> "type='signal'," ++ x
 	
 	atomicModifyIORef (clientSignalHandlers client) (\hs -> (handler : hs, ()))
-	callNoReply client (methodCall dbusPath dbusInterface "AddMatch")
+	_ <- call_ client (methodCall dbusPath dbusInterface "AddMatch")
 		{ methodCallDestination = Just dbusName
 		, methodCallBody = [toVariant formatted]
 		}

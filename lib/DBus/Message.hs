@@ -16,10 +16,6 @@
 module DBus.Message
 	( Message(..)
 	
-	, MessageFlag
-	, noReplyExpected
-	, noAutoStart
-	
 	, UnknownMessage(..)
 	, MethodCall(..)
 	, MethodReturn(..)
@@ -30,12 +26,10 @@ module DBus.Message
 	
 	-- for use in Wire
 	, HeaderField(..)
-	, encodeFlags
-	, decodeFlags
+	, setMethodCallFlags
 	) where
 
 import           Data.Bits ((.|.), (.&.))
-import           Data.List (nub, sort)
 import           Data.Maybe (fromMaybe, listToMaybe)
 import           Data.Word (Word8)
 
@@ -46,8 +40,8 @@ class Message a where
 	messageHeaderFields :: a -> [HeaderField]
 	messageBody :: a -> [Variant]
 	
-	messageFlags :: a -> [MessageFlag]
-	messageFlags _ = []
+	messageFlags :: a -> Word8
+	messageFlags _ = 0
 
 maybe' :: (a -> b) -> Maybe a -> [b]
 maybe' f = maybe [] (\x' -> [f x'])
@@ -70,44 +64,31 @@ data HeaderField
 	| HeaderSignature   Signature
 	deriving (Show, Eq)
 
-data MessageFlag
-	= NoReplyExpected
-	| NoAutoStart
-	deriving (Show, Eq, Ord)
-
-noReplyExpected :: MessageFlag
-noReplyExpected = NoReplyExpected
-
-noAutoStart :: MessageFlag
-noAutoStart = NoAutoStart
-
-encodeFlags :: [MessageFlag] -> Word8
-encodeFlags = foldr (.|.) 0 . map flagValue where
-	flagValue NoReplyExpected = 0x1
-	flagValue NoAutoStart     = 0x2
-
-decodeFlags :: Word8 -> [MessageFlag]
-decodeFlags word = flags where
-	flagSet = [ (0x1, NoReplyExpected)
-	          , (0x2, NoAutoStart)
-	          ]
-	flags = flagSet >>= \(x, y) -> [y | word .&. x > 0]
-
 data MethodCall = MethodCall
-	{ methodCallPath        :: ObjectPath
-	, methodCallInterface   :: Maybe InterfaceName
-	, methodCallMember      :: MemberName
-	, methodCallSender      :: Maybe BusName
+	{ methodCallPath :: ObjectPath
+	, methodCallInterface :: Maybe InterfaceName
+	, methodCallMember :: MemberName
+	, methodCallSender :: Maybe BusName
 	, methodCallDestination :: Maybe BusName
-	, methodCallFlags       :: [MessageFlag]
-	, methodCallBody        :: [Variant]
+	, methodCallReplyExpected :: Bool
+	, methodCallAutoStart :: Bool
+	, methodCallBody :: [Variant]
 	}
-	deriving (Show)
+	deriving (Eq, Show)
+
+setMethodCallFlags :: MethodCall -> Word8 -> MethodCall
+setMethodCallFlags c w = c
+	{ methodCallReplyExpected = w .&. 0x1 == 0
+	, methodCallAutoStart = w .&. 0x2 == 0
+	}
 
 instance Message MethodCall where
 	messageTypeCode _ = 1
-	messageFlags      = methodCallFlags
-	messageBody       = methodCallBody
+	messageFlags c = foldr (.|.) 0
+		[ if methodCallReplyExpected c then 0 else 0x1
+		, if methodCallAutoStart c then 0 else 0x2
+		]
+	messageBody = methodCallBody
 	messageHeaderFields m = concat
 		[ [ HeaderPath (methodCallPath m)
 		  , HeaderMember (methodCallMember m)
@@ -116,16 +97,6 @@ instance Message MethodCall where
 		, maybe' HeaderSender (methodCallSender m)
 		, maybe' HeaderDestination (methodCallDestination m)
 		]
-
-instance Eq MethodCall where
-	x == y = let eq f = f x == f y in
-	             eq methodCallPath &&
-	             eq methodCallInterface &&
-	             eq methodCallMember &&
-	             eq methodCallSender &&
-	             eq methodCallDestination &&
-	             eq (sort . nub . methodCallFlags) &&
-	             eq methodCallBody
 
 data MethodReturn = MethodReturn
 	{ methodReturnSerial      :: Serial

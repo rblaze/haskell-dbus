@@ -524,9 +524,6 @@ decodeField' x f label = case fromVariant x of
 	Just x' -> return [f x']
 	Nothing -> throwErrorM (UnmarshalError ("Header field " ++ show label ++ " contains invalid value " ++ show x))
 
--- | Convert a 'Message' into a 'ByteString'. Although unusual, it is
--- possible for marshaling to fail; if this occurs, an error will be
--- returned instead.
 marshalMessage :: Message a => Endianness -> Serial -> a
                -> Either MarshalError Data.ByteString.ByteString
 marshalMessage e serial msg = runMarshal where
@@ -558,7 +555,7 @@ marshalHeader :: Message a => a -> Serial -> Signature -> Word32
 marshalHeader msg serial bodySig bodyLength = do
 	let fields = HeaderSignature bodySig : messageHeaderFields msg
 	marshalWord8 (messageTypeCode msg)
-	marshalWord8 (encodeFlags (messageFlags msg))
+	marshalWord8 (messageFlags msg)
 	marshalWord8 protocolVersion
 	marshalWord32 bodyLength
 	marshalWord32 (serialValue serial)
@@ -594,7 +591,7 @@ unmarshalMessageM getBytes' = runErrorT $ do
 		WireRL err  -> throwErrorT (UnmarshalError err)
 	fixed <- unmarshal' fixedSig fixedBytes
 	let messageType = fromJust (fromValue (fixed !! 1))
-	let flags = decodeFlags (fromJust (fromValue (fixed !! 2)))
+	let flags = fromJust (fromValue (fixed !! 2))
 	let bodyLength = fromJust (fromValue (fixed !! 4)) :: Word32
 	let serial = fromJust (fromVariant (Variant (fixed !! 5)))
 
@@ -627,7 +624,7 @@ unmarshalMessageM getBytes' = runErrorT $ do
 findBodySignature :: [HeaderField] -> Signature
 findBodySignature fields = fromMaybe (signature_ []) (listToMaybe [x | HeaderSignature x <- fields])
 
-buildReceivedMessage :: Word8 -> [HeaderField] -> ErrorM String (Serial -> [MessageFlag] -> [Variant] -> ReceivedMessage)
+buildReceivedMessage :: Word8 -> [HeaderField] -> ErrorM String (Serial -> Word8 -> [Variant] -> ReceivedMessage)
 buildReceivedMessage 1 fields = do
 	path <- require "path" [x | HeaderPath x <- fields]
 	member <- require "member name" [x | HeaderMember x <- fields]
@@ -635,8 +632,8 @@ buildReceivedMessage 1 fields = do
 		iface = listToMaybe [x | HeaderInterface x <- fields]
 		dest = listToMaybe [x | HeaderDestination x <- fields]
 		sender = listToMaybe [x | HeaderSender x <- fields]
-		msg = MethodCall path iface member sender dest flags body
-		in ReceivedMethodCall serial msg
+		msg = MethodCall path iface member sender dest True True body
+		in ReceivedMethodCall serial (setMethodCallFlags msg flags)
 
 buildReceivedMessage 2 fields = do
 	replySerial <- require "reply serial" [x | HeaderReplySerial x <- fields]
@@ -674,10 +671,6 @@ require :: String -> [a] -> ErrorM String a
 require _     (x:_) = return x
 require label _     = throwErrorM label
 
--- | Parse a 'ByteString' into a 'ReceivedMessage'. The result can be
--- inspected to see what type of message was parsed. Unknown message types
--- can still be parsed successfully, as long as they otherwise conform to
--- the D-Bus standard.
 unmarshalMessage :: ByteString -> Either UnmarshalError ReceivedMessage
 unmarshalMessage bytes = case Get.runGet (unmarshalMessageM Get.getByteString) bytes of
 	Left err -> Left (UnmarshalError err)

@@ -26,12 +26,9 @@ module DBus
 	, methodCallMember
 	, methodCallSender
 	, methodCallDestination
-	, methodCallFlags
+	, methodCallAutoStart
+	, methodCallReplyExpected
 	, methodCallBody
-	
-	, MessageFlag
-	, noReplyExpected
-	, noAutoStart
 	
 	-- ** Method returns
 	, MethodReturn
@@ -183,7 +180,7 @@ typeOf :: IsValue a => a -> Type
 typeOf = DBus.Types.typeOf
 
 methodCall :: ObjectPath -> InterfaceName -> MemberName -> MethodCall
-methodCall path iface member = MethodCall path (Just iface) member Nothing Nothing [] []
+methodCall path iface member = MethodCall path (Just iface) member Nothing Nothing True True []
 
 methodReturn :: Serial -> MethodReturn
 methodReturn s = MethodReturn s Nothing Nothing []

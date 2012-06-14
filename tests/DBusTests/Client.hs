@@ -264,16 +264,17 @@ test_Call = assertions "call" $ do
 	let requestCall = (dbusCall "Hello")
 		{ methodCallSender = Just (busName_ "com.example.Foo")
 		, methodCallDestination = Just (busName_ "org.freedesktop.DBus")
-		, methodCallFlags = [noReplyExpected, noAutoStart]
+		, methodCallReplyExpected = False
+		, methodCallAutoStart = False
 		, methodCallBody = [toVariant "com.example.Foo"]
 		}
 	
-	-- noReplyExpected is removed
+	-- methodCallReplyExpected is forced to True
 	do
 		response <- stubMethodCall sock
 			(DBus.Client.call client requestCall)
 			(requestCall
-				{ methodCallFlags = [noAutoStart]
+				{ methodCallReplyExpected = True
 				})
 			methodReturn
 		reply <- $requireRight response
@@ -287,16 +288,17 @@ test_CallNoReply = assertions "callNoReply" $ do
 	let requestCall = (dbusCall "Hello")
 		{ methodCallSender = Just (busName_ "com.example.Foo")
 		, methodCallDestination = Just (busName_ "org.freedesktop.DBus")
-		, methodCallFlags = [noAutoStart]
+		, methodCallReplyExpected = True
+		, methodCallAutoStart = False
 		, methodCallBody = [toVariant "com.example.Foo"]
 		}
 	
-	-- noReplyExpected is added
+	-- methodCallReplyExpected is forced to False
 	do
 		stubMethodCall sock
 			(DBus.Client.callNoReply client requestCall)
 			(requestCall
-				{ methodCallFlags = [noAutoStart, noReplyExpected]
+				{ methodCallReplyExpected = False
 				})
 			methodReturn
 
@@ -317,7 +319,6 @@ test_Listen = assertions "listen" $ do
 	
 	let requestCall = (dbusCall "AddMatch")
 		{ methodCallDestination = Just (busName_ "org.freedesktop.DBus")
-		, methodCallFlags = [noReplyExpected]
 		, methodCallBody = [toVariant "type='signal',sender='com.example.Foo',destination='com.example.Bar',path='/',interface='com.example.Baz',member='Qux'"]
 		}
 	

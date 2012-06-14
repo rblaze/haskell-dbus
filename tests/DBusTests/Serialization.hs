@@ -132,13 +132,17 @@ gen_MethodCall = do
 	member <- arbitrary
 	sender <- arbitrary
 	dest <- arbitrary
-	flags <- arbitrary
+	
+	flagReplyExpected <- arbitrary
+	flagAutoStart <- arbitrary
+	
 	body <- smallListOf gen_Variant
 	return (methodCall path "com.example.ignored" member)
 		{ methodCallInterface = iface
 		, methodCallSender = sender
 		, methodCallDestination = dest
-		, methodCallFlags = flags
+		, methodCallReplyExpected = flagReplyExpected
+		, methodCallAutoStart = flagAutoStart
 		, methodCallBody = body
 		}
 
@@ -186,6 +190,3 @@ instance Arbitrary Endianness where
 
 instance Arbitrary Serial where
 	arbitrary = fmap DBus.Types.Serial arbitrary
-
-instance Arbitrary MessageFlag where
-	arbitrary = elements [noReplyExpected, noAutoStart]
