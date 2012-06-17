@@ -1262,6 +1262,3 @@ maybeParseString :: Parsec.Parser a -> String -> Maybe a
 maybeParseString parser s = case Parsec.parse parser "" s of
 	Left _ -> Nothing
 	Right a -> Just a
-
-maybeParseText :: Parsec.Parser a -> Text -> Maybe a
-maybeParseText parser text = maybeParseString parser (Data.Text.unpack text)
