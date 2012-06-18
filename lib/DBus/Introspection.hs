@@ -30,7 +30,6 @@ module DBus.Introspection
 import           Control.Monad ((>=>))
 import           Control.Monad.ST (runST)
 import           Data.List (isPrefixOf)
-import           Data.Maybe (fromMaybe)
 import qualified Data.STRef as ST
 import qualified Data.Text
 import           Data.Text (Text)
@@ -146,15 +145,13 @@ parseType e = do
 
 parseParameter :: X.Element -> Maybe Parameter
 parseParameter e = do
-	let name = Data.Text.unpack (getattr "name" e)
 	sig <- parseType e
 	case T.signatureTypes sig of
-		[t] -> Just (Parameter name t)
+		[t] -> Just (Parameter (getattr "name" e) t)
 		_ -> Nothing
 
 parseProperty :: X.Element -> Maybe Property
 parseProperty e = do
-	let name = Data.Text.unpack (getattr "name" e)
 	sig <- parseType e
 	access <- case getattr "access" e of
 		""          -> Just []
@@ -162,12 +159,12 @@ parseProperty e = do
 		"write"     -> Just [Write]
 		"readwrite" -> Just [Read, Write]
 		_           -> Nothing
-	return (Property name sig access)
+	return (Property (getattr "name" e) sig access)
 
-getattr :: X.Name -> X.Element -> Text
-getattr = (fromMaybe "" .) . X.attributeText
+getattr :: X.Name -> X.Element -> String
+getattr name e = maybe "" Data.Text.unpack (X.attributeText name e)
 
-isParam :: [Text] -> X.Element -> [X.Element]
+isParam :: [String] -> X.Element -> [X.Element]
 isParam dirs = X.isNamed "arg" >=> checkDir where
 	checkDir e = [e | getattr "direction" e `elem` dirs]
 

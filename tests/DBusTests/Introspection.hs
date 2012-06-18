@@ -37,6 +37,7 @@ test_Introspection :: Suite
 test_Introspection = suite "Introspection"
 	test_XmlPassthrough
 	test_XmlParseFailed
+	test_XmlWriteFailed
 
 test_XmlPassthrough :: Test
 test_XmlPassthrough = property "xml-passthrough" $ \obj -> let
@@ -48,6 +49,32 @@ test_XmlParseFailed :: Test
 test_XmlParseFailed = assertions "xml-parse-failed" $ do
 	$expect (nothing (Introspection.fromXML (objectPath_ "/") "<invalid>"))
 	$expect (nothing (Introspection.fromXML (objectPath_ "/") "<invalid/>"))
+	
+	-- invalid property access
+	$expect (nothing (Introspection.fromXML (objectPath_ "/")
+		"<node>\
+		\  <interface name='com.example.Foo'>\
+		\    <property type='s' access='invalid'>\
+		\    </property>\
+		\  </interface>\
+		\</node>"))
+	
+	-- invalid parameter type
+	$expect (nothing (Introspection.fromXML (objectPath_ "/")
+		"<node>\
+		\  <interface name='com.example.Foo'>\
+		\    <method name='Foo'>\
+		\      <arg type='yy'/>\
+		\    </method>\
+		\  </interface>\
+		\</node>"))
+
+test_XmlWriteFailed :: Test
+test_XmlWriteFailed = assertions "xml-write-failed" $ do
+	$expect (nothing (Introspection.toXML (
+		Introspection.Object (objectPath_ "/foo") []
+			[ Introspection.Object (objectPath_ "/bar") [] []
+			])))
 
 instance Arbitrary Type where
 	arbitrary = oneof [atom, container] where
