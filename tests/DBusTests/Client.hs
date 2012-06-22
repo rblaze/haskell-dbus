@@ -27,7 +27,6 @@ import           Test.Chell
 
 import           DBus
 import qualified DBus.Client
-import qualified DBus.Introspection as I
 import qualified DBus.Socket
 
 import           DBusTests.Util (forkVar, withEnv)
@@ -397,40 +396,44 @@ test_ExportIntrospection = assertions "exportIntrospection" $ do
 		
 		$assert (equal (length body) 1)
 		let Just xml = fromVariant (head body)
-		let Just obj = I.fromXML (objectPath_ "/") xml
-		return obj
+		return xml
 	
-	let ifaceIntrospectable = I.Interface (interfaceName_ "org.freedesktop.DBus.Introspectable")
-		[ I.Method (memberName_ "Introspect") [] [I.Parameter "" TypeString]
-		] [] []
+	root <- introspect "/"
+	$expect (equalLines root
+		"<!DOCTYPE node PUBLIC '-//freedesktop//DTD D-BUS Object Introspection 1.0//EN' 'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>\n\
+		\<node name='/'>\
+			\<interface name='org.freedesktop.DBus.Introspectable'>\
+				\<method name='Introspect'>\
+					\<arg name='' type='s' direction='out'/>\
+				\</method>\
+			\</interface>\
+			\<node name='foo'></node>\
+		\</node>")
 	
-	let ifaceFoo = I.Interface (interfaceName_ "com.example.Foo")
-		[ I.Method (memberName_ "Method1")
-			[ I.Parameter "" TypeString ]
-			[]
-		, I.Method (memberName_ "Method2")
-			[ I.Parameter "" TypeString ]
-			[ I.Parameter "" TypeString ]
-		, I.Method (memberName_ "Method3")
-			[ I.Parameter "" TypeString ]
-			[ I.Parameter "" TypeString
-			, I.Parameter "" TypeString
-			]
-		] [] []
-	
-	do
-		root <- introspect "/"
-		let expected = I.Object (objectPath_ "/")
-			[ifaceIntrospectable]
-			[I.Object (objectPath_ "/foo") [] []]
-		$expect (equal root expected)
-	
-	do
-		foo <- introspect "/foo"
-		let expected = I.Object (objectPath_ "/foo")
-			[ifaceFoo, ifaceIntrospectable]
-			[]
-		$expect (equal foo expected)
+	foo <- introspect "/foo"
+	$expect (equalLines foo
+		"<!DOCTYPE node PUBLIC '-//freedesktop//DTD D-BUS Object Introspection 1.0//EN' 'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>\n\
+		\<node name='/foo'>\
+			\<interface name='com.example.Foo'>\
+				\<method name='Method1'>\
+					\<arg name='' type='s' direction='in'/>\
+				\</method>\
+				\<method name='Method2'>\
+					\<arg name='' type='s' direction='in'/>\
+					\<arg name='' type='s' direction='out'/>\
+				\</method>\
+				\<method name='Method3'>\
+					\<arg name='' type='s' direction='in'/>\
+					\<arg name='' type='s' direction='out'/>\
+					\<arg name='' type='s' direction='out'/>\
+				\</method>\
+			\</interface>\
+			\<interface name='org.freedesktop.DBus.Introspectable'>\
+				\<method name='Introspect'>\
+					\<arg name='' type='s' direction='out'/>\
+				\</method>\
+			\</interface>\
+		\</node>")
 
 startDummyBus :: Assertions (Address, MVar DBus.Socket.Socket)
 startDummyBus = do

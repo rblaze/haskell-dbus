@@ -41,7 +41,7 @@ test_Introspection = suite "Introspection"
 
 test_XmlPassthrough :: Test
 test_XmlPassthrough = property "xml-passthrough" $ \obj -> let
-	(Introspection.Object path _ _) = obj
+	path = Introspection.objectPath obj
 	Just xml = Introspection.toXML obj
 	in Introspection.fromXML path xml == Just obj
 
@@ -71,10 +71,12 @@ test_XmlParseFailed = assertions "xml-parse-failed" $ do
 
 test_XmlWriteFailed :: Test
 test_XmlWriteFailed = assertions "xml-write-failed" $ do
-	$expect (nothing (Introspection.toXML (
-		Introspection.Object (objectPath_ "/foo") []
-			[ Introspection.Object (objectPath_ "/bar") [] []
-			])))
+	let obj = (Introspection.object (objectPath_ "/foo"))
+		{ Introspection.objectChildren =
+			[ Introspection.object (objectPath_ "/bar")
+			]
+		}
+	$expect (nothing (Introspection.toXML obj))
 
 instance Arbitrary Type where
 	arbitrary = oneof [atom, container] where
@@ -117,41 +119,63 @@ subObject parentPath = sized $ \n -> resize (min n 4) $ do
 	let path = objectPath_ path'
 	ifaces <- arbitrary
 	children <- halfSized (listOf (subObject path))
-	return (Introspection.Object path ifaces children)
+	return (Introspection.object path)
+		{ Introspection.objectInterfaces = ifaces
+		, Introspection.objectChildren = children
+		}
 
 instance Arbitrary Introspection.Interface where
-	arbitrary = Introspection.Interface
-		<$> arbitrary
-		<*> arbitrary
-		<*> arbitrary
-		<*> arbitrary
+	arbitrary = do
+		name <- arbitrary
+		methods <- arbitrary
+		signals <- arbitrary
+		properties <- arbitrary
+		return (Introspection.interface name)
+			{ Introspection.interfaceMethods = methods
+			, Introspection.interfaceSignals = signals
+			, Introspection.interfaceProperties = properties
+			}
 
 instance Arbitrary Introspection.Method where
-	arbitrary = Introspection.Method
-		<$> arbitrary
-		<*> arbitrary
-		<*> arbitrary
+	arbitrary = do
+		name <- arbitrary
+		args <- arbitrary
+		return (Introspection.method name)
+			{ Introspection.methodArgs = args
+			}
 
 instance Arbitrary Introspection.Signal where
-	arbitrary = Introspection.Signal
-		<$> arbitrary
+	arbitrary = do
+		name <- arbitrary
+		args <- arbitrary
+		return (Introspection.signal name)
+			{ Introspection.signalArgs = args
+			}
+
+instance Arbitrary Introspection.MethodArg where
+	arbitrary = Introspection.methodArg
+		<$> gen_Ascii
+		<*> arbitrary
 		<*> arbitrary
 
-instance Arbitrary Introspection.Parameter where
-	arbitrary = Introspection.Parameter
+instance Arbitrary Introspection.Direction where
+	arbitrary = elements [Introspection.directionIn, Introspection.directionOut]
+
+instance Arbitrary Introspection.SignalArg where
+	arbitrary = Introspection.signalArg
 		<$> gen_Ascii
 		<*> arbitrary
 
 instance Arbitrary Introspection.Property where
-	arbitrary = Introspection.Property
+	arbitrary = Introspection.property
 		<$> gen_Ascii
 		<*> arbitrary
 		<*> elements
 			[ []
-			, [ Introspection.Read ]
-			, [ Introspection.Write ]
-			, [ Introspection.Read
-			  , Introspection.Write ]
+			, [ Introspection.accessRead ]
+			, [ Introspection.accessWrite ]
+			, [ Introspection.accessRead
+			  , Introspection.accessWrite ]
 			]
 
 gen_Ascii :: Gen String

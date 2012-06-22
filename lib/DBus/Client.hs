@@ -134,7 +134,7 @@ import           Data.Typeable (Typeable)
 import           Data.Word (Word32)
 
 import           DBus
-import qualified DBus.Introspection
+import qualified DBus.Introspection as I
 import qualified DBus.Socket
 import           DBus.Transport (TransportOpen, SocketTransport)
 
@@ -740,38 +740,49 @@ introspectRoot :: Client -> Method
 introspectRoot client = methodIntrospect $ do
 	objects <- readIORef (clientObjects client)
 	let paths = filter (/= "/") (Data.Map.keys objects)
-	return (DBus.Introspection.Object "/"
-		[DBus.Introspection.Interface interfaceIntrospectable
-			[DBus.Introspection.Method "Introspect"
-				[]
-				[DBus.Introspection.Parameter "" TypeString]]
-			[] []]
-		[DBus.Introspection.Object p [] [] | p <- paths])
+	return (I.object "/")
+		{ I.objectInterfaces =
+			[ (I.interface interfaceIntrospectable)
+				{ I.interfaceMethods =
+					[ (I.method "Introspect")
+						{ I.methodArgs =
+							[ I.methodArg "" TypeString I.directionOut
+							]
+						}
+					]
+				}
+			]
+		, I.objectChildren = [I.object p | p <- paths]
+		}
 
-methodIntrospect :: IO DBus.Introspection.Object -> Method
+methodIntrospect :: IO I.Object -> Method
 methodIntrospect get = method interfaceIntrospectable "Introspect" "" "s" $
 	\msg -> case methodCallBody msg of
 		[] -> do
 			obj <- get
-			let Just xml = DBus.Introspection.toXML obj
+			let Just xml = I.toXML obj
 			return (replyReturn [toVariant xml])
 		_ -> return (replyError errorInvalidParameters [])
 
-introspect :: ObjectPath -> ObjectInfo -> DBus.Introspection.Object
-introspect path obj = DBus.Introspection.Object path interfaces [] where
+introspect :: ObjectPath -> ObjectInfo -> I.Object
+introspect path obj = (I.object path) { I.objectInterfaces = interfaces } where
 	interfaces = map introspectIface (Data.Map.toList obj)
 	
-	introspectIface (name, iface) = let
-		members = Data.Map.toList iface
-		methods = concatMap introspectMethod members
-		in DBus.Introspection.Interface name methods [] []
+	introspectIface (name, iface) = (I.interface name)
+		{ I.interfaceMethods = concatMap introspectMethod (Data.Map.toList iface)
+		}
+	
+	args inSig outSig =
+		map (introspectArg I.directionIn) (signatureTypes inSig) ++
+		map (introspectArg I.directionOut) (signatureTypes outSig)
 	
 	introspectMethod (name, MethodInfo inSig outSig _) =
-		[DBus.Introspection.Method name
-			(map introspectParam (signatureTypes inSig))
-			(map introspectParam (signatureTypes outSig))]
+		[ (I.method name)
+			{ I.methodArgs = args inSig outSig
+			}
+		]
 	
-	introspectParam = DBus.Introspection.Parameter ""
+	introspectArg dir t = I.methodArg "" t dir
 
 -- | Used to automatically generate method signatures for introspection
 -- documents. To support automatic signatures, a method's parameters and

@@ -16,15 +16,56 @@
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 module DBus.Introspection
-	( Object (..)
-	, Interface (..)
-	, Method (..)
-	, Signal (..)
-	, Parameter (..)
-	, Property (..)
-	, PropertyAccess (..)
-	, toXML
+	( toXML
 	, fromXML
+	
+	, Object
+	, object
+	, objectPath
+	, objectInterfaces
+	, objectChildren
+	
+	, Interface
+	, interface
+	, interfaceName
+	, interfaceMethods
+	, interfaceSignals
+	, interfaceProperties
+	
+	, Method
+	, method
+	, methodName
+	, methodArgs
+	
+	, MethodArg
+	, methodArg
+	, methodArgName
+	, methodArgType
+	, methodArgDirection
+	
+	, Direction
+	, directionIn
+	, directionOut
+	
+	, Signal
+	, signal
+	, signalName
+	, signalArgs
+	
+	, SignalArg
+	, signalArg
+	, signalArgName
+	, signalArgType
+	
+	, Property
+	, property
+	, propertyName
+	, propertyType
+	, propertyAccess
+	
+	, Access
+	, accessRead
+	, accessWrite
 	) where
 
 import           Control.Monad ((>=>))
@@ -39,26 +80,91 @@ import qualified Text.XML.LibXML.SAX as SAX
 
 import qualified DBus as T
 
-data Object = Object T.ObjectPath [Interface] [Object]
+data Object = Object
+	{ objectPath :: T.ObjectPath
+	, objectInterfaces :: [Interface]
+	, objectChildren :: [Object]
+	}
 	deriving (Show, Eq)
 
-data Interface = Interface T.InterfaceName [Method] [Signal] [Property]
+object :: T.ObjectPath -> Object
+object path = Object path [] []
+
+data Interface = Interface
+	{ interfaceName :: T.InterfaceName
+	, interfaceMethods :: [Method]
+	, interfaceSignals :: [Signal]
+	, interfaceProperties :: [Property]
+	}
 	deriving (Show, Eq)
 
-data Method = Method T.MemberName [Parameter] [Parameter]
+interface :: T.InterfaceName -> Interface
+interface name = Interface name [] [] []
+
+data Method = Method
+	{ methodName :: T.MemberName
+	, methodArgs :: [MethodArg]
+	}
 	deriving (Show, Eq)
 
-data Signal = Signal T.MemberName [Parameter]
+method :: T.MemberName -> Method
+method name = Method name []
+
+data MethodArg = MethodArg
+	{ methodArgName :: String
+	, methodArgType :: T.Type
+	, methodArgDirection :: Direction
+	}
 	deriving (Show, Eq)
 
-data Parameter = Parameter String T.Type
+methodArg :: String -> T.Type -> Direction -> MethodArg
+methodArg = MethodArg
+
+data Direction = In | Out
 	deriving (Show, Eq)
 
-data Property = Property String T.Signature [PropertyAccess]
+directionIn :: Direction
+directionIn = In
+
+directionOut :: Direction
+directionOut = Out
+
+data Signal = Signal
+	{ signalName :: T.MemberName
+	, signalArgs :: [SignalArg]
+	}
 	deriving (Show, Eq)
 
-data PropertyAccess = Read | Write
+signal :: T.MemberName -> Signal
+signal name = Signal name []
+
+data SignalArg = SignalArg
+	{ signalArgName :: String
+	, signalArgType :: T.Type
+	}
 	deriving (Show, Eq)
+
+signalArg :: String -> T.Type -> SignalArg
+signalArg = SignalArg
+
+data Property = Property
+	{ propertyName :: String
+	, propertyType :: T.Type
+	, propertyAccess :: [Access]
+	}
+	deriving (Show, Eq)
+
+property :: String -> T.Type -> [Access] -> Property
+property = Property
+
+data Access = Read | Write
+	deriving (Show, Eq)
+
+accessRead :: Access
+accessRead = Read
+
+accessWrite :: Access
+accessWrite = Write
 
 fromXML :: T.ObjectPath -> String -> Maybe Object
 fromXML path xml = do
@@ -128,27 +234,40 @@ parseInterface e = do
 parseMethod :: X.Element -> Maybe Method
 parseMethod e = do
 	name <- T.parseMemberName =<< attributeString "name" e
-	paramsIn <- children parseParameter (isParam ["in", ""]) e
-	paramsOut <- children parseParameter (isParam ["out"]) e
-	return (Method name paramsIn paramsOut)
+	args <- children parseMethodArg (isArg ["in", "out", ""]) e
+	return (Method name args)
 
 parseSignal :: X.Element -> Maybe Signal
 parseSignal e = do
 	name <- T.parseMemberName =<< attributeString "name" e
-	params <- children parseParameter (isParam ["out", ""]) e
-	return (Signal name params)
+	args <- children parseSignalArg (isArg ["out", ""]) e
+	return (Signal name args)
 
 parseType :: X.Element -> Maybe T.Signature
 parseType e = do
 	s <- attributeString "type" e
 	T.parseSignature s
 
-parseParameter :: X.Element -> Maybe Parameter
-parseParameter e = do
+parseMethodArg :: X.Element -> Maybe MethodArg
+parseMethodArg e = do
+	sig <- parseType e
+	let dir = case getattr "direction" e of
+		"out" -> Out
+		_ -> In
+	case T.signatureTypes sig of
+		[t] -> Just (MethodArg (getattr "name" e) t dir)
+		_ -> Nothing
+
+parseSignalArg :: X.Element -> Maybe SignalArg
+parseSignalArg e = do
 	sig <- parseType e
 	case T.signatureTypes sig of
-		[t] -> Just (Parameter (getattr "name" e) t)
+		[t] -> Just (SignalArg (getattr "name" e) t)
 		_ -> Nothing
+
+isArg :: [String] -> X.Element -> [X.Element]
+isArg dirs = X.isNamed "arg" >=> checkDir where
+	checkDir e = [e | getattr "direction" e `elem` dirs]
 
 parseProperty :: X.Element -> Maybe Property
 parseProperty e = do
@@ -159,14 +278,12 @@ parseProperty e = do
 		"write"     -> Just [Write]
 		"readwrite" -> Just [Read, Write]
 		_           -> Nothing
-	return (Property (getattr "name" e) sig access)
+	case T.signatureTypes sig of
+		[t] -> Just (Property (getattr "name" e) t access)
+		_ -> Nothing
 
 getattr :: X.Name -> X.Element -> String
 getattr name e = maybe "" Data.Text.unpack (X.attributeText name e)
-
-isParam :: [String] -> X.Element -> [X.Element]
-isParam dirs = X.isNamed "arg" >=> checkDir where
-	checkDir e = [e | getattr "direction" e `elem` dirs]
 
 children :: Monad m => (X.Element -> m b) -> (X.Element -> [X.Element]) -> X.Element -> m [b]
 children f p = mapM f . concatMap p . X.elementChildren
@@ -222,31 +339,51 @@ writeInterface (Interface name methods signals properties) = writeElement "inter
 		mapM_ writeProperty properties
 
 writeMethod :: Method -> XmlWriter ()
-writeMethod (Method name inParams outParams) = writeElement "method"
+writeMethod (Method name args) = writeElement "method"
 	[("name", T.formatMemberName name)] $ do
-		mapM_ (writeParameter "in") inParams
-		mapM_ (writeParameter "out") outParams
+		mapM_ writeMethodArg args
 
 writeSignal :: Signal -> XmlWriter ()
-writeSignal (Signal name params) = writeElement "signal"
+writeSignal (Signal name args) = writeElement "signal"
 	[("name", T.formatMemberName name)] $ do
-		mapM_ (writeParameter "out") params
+		mapM_ writeSignalArg args
 
-writeParameter :: String -> Parameter -> XmlWriter ()
-writeParameter direction (Parameter name t) = writeEmptyElement "arg"
-	[ ("name", name)
-	, ("type", T.formatSignature (T.signature_ [t]))
-	, ("direction", direction)
-	]
+writeMethodArg :: MethodArg -> XmlWriter ()
+writeMethodArg (MethodArg name t dir) = do
+	sig <- case T.signature [t] of
+		Just x -> return x
+		Nothing -> XmlWriter Nothing
+	let dirAttr = case dir of
+		In -> "in"
+		Out -> "out"
+	writeEmptyElement "arg" $
+		[ ("name", name)
+		, ("type", T.formatSignature sig)
+		, ("direction", dirAttr)
+		]
+
+writeSignalArg :: SignalArg -> XmlWriter ()
+writeSignalArg (SignalArg name t) = do
+	sig <- case T.signature [t] of
+		Just x -> return x
+		Nothing -> XmlWriter Nothing
+	writeEmptyElement "arg" $
+		[ ("name", name)
+		, ("type", T.formatSignature sig)
+		]
 
 writeProperty :: Property -> XmlWriter ()
-writeProperty (Property name sig access) = writeEmptyElement "property"
-	[ ("name", name)
-	, ("type", T.formatSignature sig)
-	, ("access", strAccess access)
-	]
+writeProperty (Property name t access) = do
+	sig <- case T.signature [t] of
+		Just x -> return x
+		Nothing -> XmlWriter Nothing
+	writeEmptyElement "property"
+		[ ("name", name)
+		, ("type", T.formatSignature sig)
+		, ("access", strAccess access)
+		]
 
-strAccess :: [PropertyAccess] -> String
+strAccess :: [Access] -> String
 strAccess access = readS ++ writeS where
 	readS = if elem Read access then "read" else ""
 	writeS = if elem Write access then "write" else ""
