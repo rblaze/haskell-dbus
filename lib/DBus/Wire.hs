@@ -34,7 +34,6 @@ import           Data.Int (Int16, Int32, Int64)
 import qualified Data.Map
 import           Data.Map (Map)
 import           Data.Maybe (fromJust, listToMaybe, fromMaybe)
-import qualified Data.Text
 import           Data.Text (Text)
 import qualified Data.Text.Encoding
 import qualified Data.Vector
@@ -342,9 +341,6 @@ marshalText text = do
 	appendS bytes
 	marshalWord8 0
 
-marshalString :: String -> Marshal ()
-marshalString = marshalText . Data.Text.pack
-
 unmarshalText :: Unmarshal Text
 unmarshalText = do
 	byteCount <- unmarshalWord32
@@ -352,21 +348,24 @@ unmarshalText = do
 	skipTerminator
 	fromMaybeU "text" maybeDecodeUtf8 bytes
 
-unmarshalString :: Unmarshal String
-unmarshalString = liftM Data.Text.unpack unmarshalText
-
 maybeDecodeUtf8 :: ByteString -> Maybe Text
 maybeDecodeUtf8 bs = case Data.Text.Encoding.decodeUtf8' bs of
 	Right text -> Just text
 	_ -> Nothing
 
 marshalObjectPath :: ObjectPath -> Marshal ()
-marshalObjectPath = marshalString . formatObjectPath
+marshalObjectPath p = do
+	let bytes = Data.ByteString.Char8.pack (formatObjectPath p)
+	marshalWord32 (fromIntegral (Data.ByteString.length bytes))
+	appendS bytes
+	marshalWord8 0
 
 unmarshalObjectPath :: Unmarshal ObjectPath
 unmarshalObjectPath = do
-	s <- unmarshalString
-	fromMaybeU "object path" parseObjectPath s
+	byteCount <- unmarshalWord32
+	bytes <- consume (fromIntegral byteCount)
+	skipTerminator
+	fromMaybeU "object path" parseObjectPath (Data.ByteString.Char8.unpack bytes)
 
 signatureBytes :: Signature -> ByteString
 signatureBytes (Signature ts) = Data.ByteString.Char8.pack (concatMap typeCode ts)
