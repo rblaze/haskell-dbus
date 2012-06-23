@@ -45,7 +45,7 @@ introspect client service path = do
 		{ methodCallDestination = Just service
 		}
 	let Just xml = fromVariant (methodReturnBody reply !! 0)
-	case I.fromXML path xml of
+	case I.parseXml path xml of
 		Just info -> return info
 		Nothing -> error ("Invalid introspection XML: " ++ show xml)
 
@@ -53,48 +53,55 @@ introspect client service path = do
 
 printObj :: (ObjectPath -> IO I.Object) -> ObjectPath -> IO ()
 printObj get path = do
-	(I.Object _ interfaces children) <- get path
+	obj <- get path
 	putStrLn (formatObjectPath path)
-	mapM_ printIface interfaces
+	mapM_ printIface (I.objectInterfaces obj)
 	putStrLn ""
-	mapM_ (printObj get) [x | (I.Object x _ _) <- children]
+	mapM_ (printObj get) [I.objectPath x | x <- I.objectChildren obj]
 
 printIface :: I.Interface -> IO ()
-printIface (I.Interface name methods signals properties) = do
+printIface iface = do
 	putStr "    "
-	putStrLn (formatInterfaceName name)
+	putStrLn (formatInterfaceName (I.interfaceName iface))
 	
-	mapM_ printMethod methods
-	mapM_ printSignal signals
-	mapM_ printProperty properties
+	mapM_ printMethod (I.interfaceMethods iface)
+	mapM_ printSignal (I.interfaceSignals iface)
+	mapM_ printProperty (I.interfaceProperties iface)
 	putStrLn ""
 
 printMethod :: I.Method -> IO ()
-printMethod (I.Method name inParams outParams) = do
+printMethod method = do
 	putStr "        method "
-	putStrLn (formatMemberName name)
-	
-	mapM_ (printParam "IN") inParams
-	mapM_ (printParam "OUT") outParams
+	putStrLn (formatMemberName (I.methodName method))
+	mapM_ printMethodArg (I.methodArgs method)
+
+printMethodArg :: I.MethodArg -> IO ()
+printMethodArg arg = do
+	let dir = case I.methodArgDirection arg of
+		d | d == I.directionIn -> "IN "
+		d | d == I.directionOut -> "OUT"
+		_ -> "   "
+	putStr ("            [" ++ dir ++ " ")
+	putStr (show (formatSignature (signature_ [I.methodArgType arg])) ++ "] ")
+	putStrLn (I.methodArgName arg)
 
 printSignal :: I.Signal -> IO ()
-printSignal (I.Signal name params) = do
+printSignal sig = do
 	putStr "        signal "
-	putStrLn (formatMemberName name)
-	
-	mapM_ (printParam "OUT") params
+	putStrLn (formatMemberName (I.signalName sig))
+	mapM_ printSignalArg (I.signalArgs sig)
+
+printSignalArg :: I.SignalArg -> IO ()
+printSignalArg arg = do
+	putStr "            ["
+	putStr (show (formatSignature (signature_ [I.signalArgType arg])) ++ "] ")
+	putStrLn (I.signalArgName arg)
 
 printProperty :: I.Property -> IO ()
-printProperty (I.Property name sig access) = do
+printProperty prop = do
 	putStr "        property "
-	putStr (show (formatSignature sig) ++ " ")
-	putStrLn name
+	putStr (show (formatSignature (signature_ [I.propertyType prop])) ++ " ")
+	putStrLn (I.propertyName prop)
 	
 	putStr "            "
-	putStrLn (show access)
-	
-printParam :: String -> I.Parameter -> IO ()
-printParam label (I.Parameter name t) = do
-	putStr ("            [" ++ label ++ " ")
-	putStr (show (formatSignature (signature_ [t])) ++ "] ")
-	putStrLn name
+	putStrLn (show (I.propertyAccess prop))
