@@ -243,27 +243,26 @@ parseSignal e = do
 	args <- children parseSignalArg (isArg ["out", ""]) e
 	return (Signal name args)
 
-parseType :: X.Element -> Maybe T.Signature
+parseType :: X.Element -> Maybe T.Type
 parseType e = do
-	s <- attributeString "type" e
-	T.parseSignature s
+	typeStr <- attributeString "type" e
+	sig <- T.parseSignature typeStr
+	case T.signatureTypes sig of
+		[t] -> Just t
+		_ -> Nothing
 
 parseMethodArg :: X.Element -> Maybe MethodArg
 parseMethodArg e = do
-	sig <- parseType e
+	t <- parseType e
 	let dir = case getattr "direction" e of
 		"out" -> Out
 		_ -> In
-	case T.signatureTypes sig of
-		[t] -> Just (MethodArg (getattr "name" e) t dir)
-		_ -> Nothing
+	Just (MethodArg (getattr "name" e) t dir)
 
 parseSignalArg :: X.Element -> Maybe SignalArg
 parseSignalArg e = do
-	sig <- parseType e
-	case T.signatureTypes sig of
-		[t] -> Just (SignalArg (getattr "name" e) t)
-		_ -> Nothing
+	t <- parseType e
+	Just (SignalArg (getattr "name" e) t)
 
 isArg :: [String] -> X.Element -> [X.Element]
 isArg dirs = X.isNamed "arg" >=> checkDir where
@@ -271,16 +270,14 @@ isArg dirs = X.isNamed "arg" >=> checkDir where
 
 parseProperty :: X.Element -> Maybe Property
 parseProperty e = do
-	sig <- parseType e
+	t <- parseType e
 	access <- case getattr "access" e of
 		""          -> Just []
 		"read"      -> Just [Read]
 		"write"     -> Just [Write]
 		"readwrite" -> Just [Read, Write]
 		_           -> Nothing
-	case T.signatureTypes sig of
-		[t] -> Just (Property (getattr "name" e) t access)
-		_ -> Nothing
+	Just (Property (getattr "name" e) t access)
 
 getattr :: X.Name -> X.Element -> String
 getattr name e = maybe "" Data.Text.unpack (X.attributeText name e)
@@ -348,38 +345,39 @@ writeSignal (Signal name args) = writeElement "signal"
 	[("name", T.formatMemberName name)] $ do
 		mapM_ writeSignalArg args
 
-writeMethodArg :: MethodArg -> XmlWriter ()
-writeMethodArg (MethodArg name t dir) = do
+formatType :: T.Type -> XmlWriter String
+formatType t = do
 	sig <- case T.signature [t] of
 		Just x -> return x
 		Nothing -> XmlWriter Nothing
+	return (T.formatSignature sig)
+
+writeMethodArg :: MethodArg -> XmlWriter ()
+writeMethodArg (MethodArg name t dir) = do
+	typeStr <- formatType t
 	let dirAttr = case dir of
 		In -> "in"
 		Out -> "out"
 	writeEmptyElement "arg" $
 		[ ("name", name)
-		, ("type", T.formatSignature sig)
+		, ("type", typeStr)
 		, ("direction", dirAttr)
 		]
 
 writeSignalArg :: SignalArg -> XmlWriter ()
 writeSignalArg (SignalArg name t) = do
-	sig <- case T.signature [t] of
-		Just x -> return x
-		Nothing -> XmlWriter Nothing
+	typeStr <- formatType t
 	writeEmptyElement "arg" $
 		[ ("name", name)
-		, ("type", T.formatSignature sig)
+		, ("type", typeStr)
 		]
 
 writeProperty :: Property -> XmlWriter ()
 writeProperty (Property name t access) = do
-	sig <- case T.signature [t] of
-		Just x -> return x
-		Nothing -> XmlWriter Nothing
+	typeStr <- formatType t
 	writeEmptyElement "property"
 		[ ("name", name)
-		, ("type", T.formatSignature sig)
+		, ("type", typeStr)
 		, ("access", strAccess access)
 		]
 

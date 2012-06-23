@@ -36,6 +36,7 @@ import           DBusTests.Util (halfSized)
 test_Introspection :: Suite
 test_Introspection = suite "Introspection"
 	test_XmlPassthrough
+	test_XmlParse
 	test_XmlParseFailed
 	test_XmlWriteFailed
 
@@ -44,6 +45,18 @@ test_XmlPassthrough = property "xml-passthrough" $ \obj -> let
 	path = Introspection.objectPath obj
 	Just xml = Introspection.formatXml obj
 	in Introspection.parseXml path xml == Just obj
+
+test_XmlParse :: Test
+test_XmlParse = assertions "xml-parse" $ do
+	-- root object path can be inferred
+	$expect (equal
+		(Introspection.parseXml (objectPath_ "/") "<node><node name='foo'/></node>")
+		(Just (Introspection.object (objectPath_ "/"))
+			{ Introspection.objectChildren = 
+				[ Introspection.object (objectPath_ "/foo")
+				]
+			}
+		))
 
 test_XmlParseFailed :: Test
 test_XmlParseFailed = assertions "xml-parse-failed" $ do
@@ -71,12 +84,23 @@ test_XmlParseFailed = assertions "xml-parse-failed" $ do
 
 test_XmlWriteFailed :: Test
 test_XmlWriteFailed = assertions "xml-write-failed" $ do
-	let obj = (Introspection.object (objectPath_ "/foo"))
+	-- child's object path isn't under parent's
+	$expect (nothing (Introspection.formatXml (Introspection.object (objectPath_ "/foo"))
 		{ Introspection.objectChildren =
 			[ Introspection.object (objectPath_ "/bar")
 			]
-		}
-	$expect (nothing (Introspection.formatXml obj))
+		}))
+	
+	-- invalid type
+	$expect (nothing (Introspection.formatXml (Introspection.object (objectPath_ "/foo"))
+		{ Introspection.objectInterfaces =
+			[ (Introspection.interface (interfaceName_ "/bar"))
+				{ Introspection.interfaceProperties =
+					[ Introspection.property "prop" (TypeDictionary TypeVariant TypeVariant) []
+					]
+				}
+			]
+		}))
 
 instance Arbitrary Type where
 	arbitrary = oneof [atom, container] where
