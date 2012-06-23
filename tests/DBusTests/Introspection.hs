@@ -96,7 +96,7 @@ test_XmlWriteFailed = assertions "xml-write-failed" $ do
 		{ Introspection.objectInterfaces =
 			[ (Introspection.interface (interfaceName_ "/bar"))
 				{ Introspection.interfaceProperties =
-					[ Introspection.property "prop" (TypeDictionary TypeVariant TypeVariant) []
+					[ Introspection.property "prop" (TypeDictionary TypeVariant TypeVariant)
 					]
 				}
 			]
@@ -191,16 +191,15 @@ instance Arbitrary Introspection.SignalArg where
 		<*> arbitrary
 
 instance Arbitrary Introspection.Property where
-	arbitrary = Introspection.property
-		<$> gen_Ascii
-		<*> arbitrary
-		<*> elements
-			[ []
-			, [ Introspection.accessRead ]
-			, [ Introspection.accessWrite ]
-			, [ Introspection.accessRead
-			  , Introspection.accessWrite ]
-			]
+	arbitrary = do
+		name <- gen_Ascii
+		t <- arbitrary
+		canRead <- arbitrary
+		canWrite <- arbitrary
+		return (Introspection.property name t)
+			{ Introspection.propertyRead = canRead
+			, Introspection.propertyWrite = canWrite
+			}
 
 gen_Ascii :: Gen String
 gen_Ascii = listOf (elements ['!'..'~'])

@@ -16,15 +16,19 @@
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 module DBus.Introspection
-	( parseXml
+	(
+	-- * XML conversion
+	  parseXml
 	, formatXml
 	
+	-- * Objects
 	, Object
 	, object
 	, objectPath
 	, objectInterfaces
 	, objectChildren
 	
+	-- * Interfaces
 	, Interface
 	, interface
 	, interfaceName
@@ -32,11 +36,13 @@ module DBus.Introspection
 	, interfaceSignals
 	, interfaceProperties
 	
+	-- * Methods
 	, Method
 	, method
 	, methodName
 	, methodArgs
 	
+	-- ** Method arguments
 	, MethodArg
 	, methodArg
 	, methodArgName
@@ -47,25 +53,25 @@ module DBus.Introspection
 	, directionIn
 	, directionOut
 	
+	-- * Signals
 	, Signal
 	, signal
 	, signalName
 	, signalArgs
 	
+	-- ** Signal arguments
 	, SignalArg
 	, signalArg
 	, signalArgName
 	, signalArgType
 	
+	-- * Properties
 	, Property
 	, property
 	, propertyName
 	, propertyType
-	, propertyAccess
-	
-	, Access
-	, accessRead
-	, accessWrite
+	, propertyRead
+	, propertyWrite
 	) where
 
 import           Control.Monad ((>=>))
@@ -150,21 +156,13 @@ signalArg = SignalArg
 data Property = Property
 	{ propertyName :: String
 	, propertyType :: T.Type
-	, propertyAccess :: [Access]
+	, propertyRead :: Bool
+	, propertyWrite :: Bool
 	}
 	deriving (Show, Eq)
 
-property :: String -> T.Type -> [Access] -> Property
-property = Property
-
-data Access = Read | Write
-	deriving (Show, Eq)
-
-accessRead :: Access
-accessRead = Read
-
-accessWrite :: Access
-accessWrite = Write
+property :: String -> T.Type -> Property
+property name t = Property name t False False
 
 parseXml :: T.ObjectPath -> String -> Maybe Object
 parseXml path xml = do
@@ -271,13 +269,13 @@ isArg dirs = X.isNamed "arg" >=> checkDir where
 parseProperty :: X.Element -> Maybe Property
 parseProperty e = do
 	t <- parseType e
-	access <- case getattr "access" e of
-		""          -> Just []
-		"read"      -> Just [Read]
-		"write"     -> Just [Write]
-		"readwrite" -> Just [Read, Write]
+	(canRead, canWrite) <- case getattr "access" e of
+		""          -> Just (False, False)
+		"read"      -> Just (True, False)
+		"write"     -> Just (False, True)
+		"readwrite" -> Just (True, True)
 		_           -> Nothing
-	Just (Property (getattr "name" e) t access)
+	Just (Property (getattr "name" e) t canRead canWrite)
 
 getattr :: X.Name -> X.Element -> String
 getattr name e = maybe "" Data.Text.unpack (X.attributeText name e)
@@ -373,18 +371,15 @@ writeSignalArg (SignalArg name t) = do
 		]
 
 writeProperty :: Property -> XmlWriter ()
-writeProperty (Property name t access) = do
+writeProperty (Property name t canRead canWrite) = do
 	typeStr <- formatType t
+	let readS = if canRead then "read" else ""
+	let writeS = if canWrite then "write" else ""
 	writeEmptyElement "property"
 		[ ("name", name)
 		, ("type", typeStr)
-		, ("access", strAccess access)
+		, ("access", readS ++ writeS)
 		]
-
-strAccess :: [Access] -> String
-strAccess access = readS ++ writeS where
-	readS = if elem Read access then "read" else ""
-	writeS = if elem Write access then "write" else ""
 
 attributeString :: X.Name -> X.Element -> Maybe String
 attributeString name e = fmap Data.Text.unpack (X.attributeText name e)
