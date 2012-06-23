@@ -127,9 +127,9 @@ class Transport t => TransportListen t where
 	-- See 'randomUUID'.
 	transportListenerUUID :: TransportListener t -> UUID
 
--- | Supports connecting over UNIX or TCP sockets.
+-- | Supports connecting over Unix or TCP sockets.
 --
--- UNIX sockets are similar to pipes, but exist as special files in the
+-- Unix sockets are similar to pipes, but exist as special files in the
 -- filesystem. On Linux, /abstract sockets/ have a path-like address, but do
 -- not actually have entries in the filesystem.
 --
@@ -304,7 +304,7 @@ listenUnix uuid origAddr opts = getPath >>= go where
 			let fileName = x ++ "/haskell-dbus-" ++ formatUUID uuid
 			
 			-- Abstract paths are supported on Linux, but not on
-			-- other UNIX-like systems.
+			-- other Unix-like systems.
 			let (addrParams, path) = if System.Info.os == "linux"
 				then ([("abstract", fileName)], '\x00' : fileName)
 				else ([("path", fileName)], fileName)

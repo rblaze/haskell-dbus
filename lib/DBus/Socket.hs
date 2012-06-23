@@ -142,7 +142,7 @@ data SocketOptions t = SocketOptions
 	, socketTransportOptions :: TransportOptions t
 	}
 
--- | Default 'SocketOptions', which uses the default UNIX/TCP transport and
+-- | Default 'SocketOptions', which uses the default Unix/TCP transport and
 -- authenticator.
 defaultSocketOptions :: SocketOptions SocketTransport
 defaultSocketOptions = SocketOptions
@@ -325,7 +325,7 @@ authenticator :: Authenticator t
 authenticator = Authenticator (\_ -> return False) (\_ _ -> return False)
 
 -- | Implements the D-Bus @EXTERNAL@ mechanism, which uses credential
--- passing over a UNIX socket.
+-- passing over a Unix socket.
 authExternal :: Authenticator SocketTransport
 authExternal = authenticator
 	{ authenticatorClient = clientAuthExternal

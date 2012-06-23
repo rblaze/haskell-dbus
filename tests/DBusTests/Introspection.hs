@@ -43,14 +43,14 @@ test_Introspection = suite "Introspection"
 test_XmlPassthrough :: Test
 test_XmlPassthrough = property "xml-passthrough" $ \obj -> let
 	path = Introspection.objectPath obj
-	Just xml = Introspection.formatXml obj
-	in Introspection.parseXml path xml == Just obj
+	Just xml = Introspection.formatXML obj
+	in Introspection.parseXML path xml == Just obj
 
 test_XmlParse :: Test
 test_XmlParse = assertions "xml-parse" $ do
 	-- root object path can be inferred
 	$expect (equal
-		(Introspection.parseXml (objectPath_ "/") "<node><node name='foo'/></node>")
+		(Introspection.parseXML (objectPath_ "/") "<node><node name='foo'/></node>")
 		(Just (Introspection.object (objectPath_ "/"))
 			{ Introspection.objectChildren = 
 				[ Introspection.object (objectPath_ "/foo")
@@ -60,11 +60,11 @@ test_XmlParse = assertions "xml-parse" $ do
 
 test_XmlParseFailed :: Test
 test_XmlParseFailed = assertions "xml-parse-failed" $ do
-	$expect (nothing (Introspection.parseXml (objectPath_ "/") "<invalid>"))
-	$expect (nothing (Introspection.parseXml (objectPath_ "/") "<invalid/>"))
+	$expect (nothing (Introspection.parseXML (objectPath_ "/") "<invalid>"))
+	$expect (nothing (Introspection.parseXML (objectPath_ "/") "<invalid/>"))
 	
 	-- invalid property access
-	$expect (nothing (Introspection.parseXml (objectPath_ "/")
+	$expect (nothing (Introspection.parseXML (objectPath_ "/")
 		"<node>\
 		\  <interface name='com.example.Foo'>\
 		\    <property type='s' access='invalid'>\
@@ -73,7 +73,7 @@ test_XmlParseFailed = assertions "xml-parse-failed" $ do
 		\</node>"))
 	
 	-- invalid parameter type
-	$expect (nothing (Introspection.parseXml (objectPath_ "/")
+	$expect (nothing (Introspection.parseXML (objectPath_ "/")
 		"<node>\
 		\  <interface name='com.example.Foo'>\
 		\    <method name='Foo'>\
@@ -85,14 +85,14 @@ test_XmlParseFailed = assertions "xml-parse-failed" $ do
 test_XmlWriteFailed :: Test
 test_XmlWriteFailed = assertions "xml-write-failed" $ do
 	-- child's object path isn't under parent's
-	$expect (nothing (Introspection.formatXml (Introspection.object (objectPath_ "/foo"))
+	$expect (nothing (Introspection.formatXML (Introspection.object (objectPath_ "/foo"))
 		{ Introspection.objectChildren =
 			[ Introspection.object (objectPath_ "/bar")
 			]
 		}))
 	
 	-- invalid type
-	$expect (nothing (Introspection.formatXml (Introspection.object (objectPath_ "/foo"))
+	$expect (nothing (Introspection.formatXML (Introspection.object (objectPath_ "/foo"))
 		{ Introspection.objectInterfaces =
 			[ (Introspection.interface (interfaceName_ "/bar"))
 				{ Introspection.interfaceProperties =

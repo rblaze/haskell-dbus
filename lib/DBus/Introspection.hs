@@ -18,8 +18,8 @@
 module DBus.Introspection
 	(
 	-- * XML conversion
-	  parseXml
-	, formatXml
+	  parseXML
+	, formatXML
 	
 	-- * Objects
 	, Object
@@ -164,8 +164,8 @@ data Property = Property
 property :: String -> T.Type -> Property
 property name t = Property name t False False
 
-parseXml :: T.ObjectPath -> String -> Maybe Object
-parseXml path xml = do
+parseXML :: T.ObjectPath -> String -> Maybe Object
+parseXML path xml = do
 	root <- parseElement (Data.Text.pack xml)
 	parseRoot path root
 
@@ -295,8 +295,8 @@ instance Monad XmlWriter where
 tell :: String -> XmlWriter ()
 tell s = XmlWriter (Just ((), s))
 
-formatXml :: Object -> Maybe String
-formatXml obj = do
+formatXML :: Object -> Maybe String
+formatXML obj = do
 	(_, xml) <- runXmlWriter (writeRoot obj)
 	return xml
 
