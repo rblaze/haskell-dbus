@@ -42,7 +42,7 @@
 --        { 'methodCallDestination' = Just \"org.freedesktop.DBus\"
 --        }
 --    //
---    \-- org.freedesktop.DBus.ListNames returns a single value, which is
+--    \-- org.freedesktop.DBus.ListNames() returns a single value, which is
 --    \-- a list of names (here represented as [String])
 --    let Just names = 'fromVariant' ('methodReturnBody' reply !! 0)
 --    //
