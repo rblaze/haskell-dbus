@@ -92,25 +92,27 @@ module DBus
 	, formatObjectPath
 	, parseObjectPath
 	
-	-- * Interface names
+	-- * Names
+	
+	-- ** Interface names
 	, InterfaceName
 	, interfaceName_
 	, formatInterfaceName
 	, parseInterfaceName
 	
-	-- * Member names
+	-- ** Member names
 	, MemberName
 	, memberName_
 	, formatMemberName
 	, parseMemberName
 	
-	-- * Error names
+	-- ** Error names
 	, ErrorName
 	, errorName_
 	, formatErrorName
 	, parseErrorName
 	
-	-- * Bus names
+	-- ** Bus names
 	, BusName
 	, busName_
 	, formatBusName

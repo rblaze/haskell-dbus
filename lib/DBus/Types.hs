@@ -93,9 +93,16 @@ showType paren t = case t of
 	TypeStructure ts -> concat
 		["(", intercalate ", " (map show ts), ")"]
 
+-- | A signature is a list of D-Bus types, obeying some basic rules of
+-- validity.
+--
+-- The rules of signature validity are complex: see
+-- <http://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-signatures>
+-- for details.
 newtype Signature = Signature [Type]
 	deriving (Eq, Ord)
 
+-- | Get the list of types in a signature. The inverse of 'signature'.
 signatureTypes :: Signature -> [Type]
 signatureTypes (Signature types) = types
 
@@ -104,6 +111,8 @@ instance Show Signature where
 		showString "Signature " .
 		shows (formatSignature sig)
 
+-- | Convert a signature into a signature string. The inverse of
+-- 'parseSignature'.
 formatSignature :: Signature -> String
 formatSignature = concatMap typeCode . signatureTypes
 
@@ -131,6 +140,9 @@ typeCode (TypeStructure ts) = concat
 instance Data.String.IsString Signature where
 	fromString = forceParse "signature" parseSignature
 
+-- | Convert a list of types into a valid signature.
+--
+-- Returns @Nothing@ if the given types are not a valid signature.
 signature :: [Type] -> Maybe Signature
 signature = check where
 	check ts = if sumLen ts > 255
@@ -153,11 +165,17 @@ signature = check where
 	typeIsAtomic TypeStructure{} = False
 	typeIsAtomic _ = True
 
+-- | Convert a list of types into a valid signature.
+--
+-- Throws an exception if the given types are not a valid signature.
 signature_ :: [Type] -> Signature
 signature_ ts = case signature ts of
 	Just sig -> sig
 	Nothing -> error ("invalid signature: " ++ show ts)
 
+-- | Parse a signature string into a valid signature.
+--
+-- Returns @Nothing@ if the given string is not a valid signature.
 parseSignature :: String -> Maybe Signature
 parseSignature s = do
 	when (length s > 255) Nothing
@@ -591,6 +609,15 @@ varToVal :: IsVariant a => a -> Value
 varToVal a = case toVariant a of
 	Variant val -> val
 
+-- | Object paths are special strings, used to identify a particular object
+-- exported from a D-Bus application.
+--
+-- Object paths must begin with a slash, and consist of alphanumeric
+-- characters separated by slashes.
+--
+-- See
+-- <http://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-marshaling-object-path>
+-- for details.
 newtype ObjectPath = ObjectPath String
 	deriving (Eq, Ord, Show)
 
@@ -627,6 +654,13 @@ parserObjectPath = root <|> object where
 	               , ['0'..'9']
 	               , "_"]
 
+-- | Interfaces are used to group a set of methods and signals within an
+-- exported object. Interface names consist of alphanumeric characters
+-- separated by periods.
+--
+-- See
+-- <http://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-names-interface>
+-- for details.
 newtype InterfaceName = InterfaceName String
 	deriving (Eq, Ord, Show)
 
@@ -661,6 +695,12 @@ parserInterfaceName = name >> Parsec.eof where
 		_ <- Parsec.char '.'
 		skipSepBy1 element (Parsec.char '.')
 
+-- | Member names are used to identify a single method or signal within an
+-- interface. Method names consist of alphanumeric characters.
+--
+-- See
+-- <http://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-names-member>
+-- for details.
 newtype MemberName = MemberName String
 	deriving (Eq, Ord, Show)
 
@@ -691,6 +731,13 @@ parserMemberName = name >> Parsec.eof where
 		_ <- oneOf alpha
 		Parsec.skipMany (oneOf alphanum)
 
+-- | Error names are used to identify which type of error was returned from
+-- a method call. Error names consist of alphanumeric characters
+-- separated by periods.
+--
+-- See
+-- <http://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-names-error>
+-- for details.
 newtype ErrorName = ErrorName String
 	deriving (Eq, Ord, Show)
 
@@ -713,6 +760,14 @@ instance IsVariant ErrorName where
 	toVariant = toVariant . formatErrorName
 	fromVariant = fromVariant >=> parseErrorName
 
+-- | Bus names are used to identify particular clients on the message bus.
+-- A bus name may be either /unique/ or /well-known/, where unique names
+-- start with a colon. Bus names consist of alphanumeric characters separated
+-- by periods.
+--
+-- See
+-- <http://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-names-bus>
+-- for details.
 newtype BusName = BusName String
 	deriving (Eq, Ord, Show)
 
