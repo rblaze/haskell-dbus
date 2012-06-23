@@ -64,14 +64,61 @@ data HeaderField
 	| HeaderSignature   Signature
 	deriving (Show, Eq)
 
+-- | A method call is a request to run some procedure exported by the
+-- remote process. Procedures are identified by an (object_path,
+-- interface_name, method_name) tuple.
 data MethodCall = MethodCall
-	{ methodCallPath :: ObjectPath
+	{
+	-- | The object path of the method call. Conceptually, object paths
+	-- act like a procedural language's pointers. Each object referenced
+	-- by a path is a collection of procedures.
+	  methodCallPath :: ObjectPath
+	
+	-- | The interface of the method call. Each object may implement any
+	-- number of interfaces. Each method is part of at least one
+	-- interface.
+	--
+	-- In certain cases, this may be @Nothing@, but most users should set
+	-- it to a value.
 	, methodCallInterface :: Maybe InterfaceName
+	
+	-- | The method name of the method call. Method names are unique within
+	-- an interface, but might not be unique within an object.
 	, methodCallMember :: MemberName
+	
+	-- | The name of the application that sent this call.
+	--
+	-- Most users will just leave this empty, because the bus overwrites
+	-- the sender for security reasons. Setting the sender manually is
+	-- used for peer-peer connections.
+	--
+	-- Defaults to @Nothing@.
 	, methodCallSender :: Maybe BusName
+	
+	-- | The name of the application to send the call to.
+	--
+	-- Most users should set this. If a message with no destination is
+	-- sent to the bus, the bus will behave as if the destination was
+	-- set to @org.freedesktop.DBus@. For peer-peer connections, the
+	-- destination can be empty because there is only one peer.
+	--
+	-- Defaults to @Nothing@.
 	, methodCallDestination :: Maybe BusName
+	
+	-- | Set whether a reply is expected. This can save network and cpu
+	-- resources by inhibiting unnecessary replies.
+	--
+	-- Defaults to @True@.
 	, methodCallReplyExpected :: Bool
+	
+	-- | Set whether the bus should auto-start the remote
+	--
+	-- Defaults to @True@.
 	, methodCallAutoStart :: Bool
+	
+	-- | The arguments to the method call. See 'toVariant'.
+	--
+	-- Defaults to @[]@.
 	, methodCallBody :: [Variant]
 	}
 	deriving (Eq, Show)
@@ -98,11 +145,37 @@ instance Message MethodCall where
 		, maybe' HeaderDestination (methodCallDestination m)
 		]
 
+-- | A method return is a reply to a method call, indicating that the call
+-- succeeded.
 data MethodReturn = MethodReturn
-	{ methodReturnSerial      :: Serial
-	, methodReturnSender      :: Maybe BusName
+	{
+	-- | The serial of the original method call. This lets the original
+	-- caller match up this reply to the pending call.
+	  methodReturnSerial :: Serial
+	
+	-- | The name of the application that is returning from a call.
+	--
+	-- Most users will just leave this empty, because the bus overwrites
+	-- the sender for security reasons. Setting the sender manually is
+	-- used for peer-peer connections.
+	--
+	-- Defaults to @Nothing@.
+	, methodReturnSender :: Maybe BusName
+	
+	-- | The name of the application that initiated the call.
+	--
+	-- Most users should set this. If a message with no destination is
+	-- sent to the bus, the bus will behave as if the destination was
+	-- set to @org.freedesktop.DBus@. For peer-peer connections, the
+	-- destination can be empty because there is only one peer.
+	--
+	-- Defaults to @Nothing@.
 	, methodReturnDestination :: Maybe BusName
-	, methodReturnBody        :: [Variant]
+	
+	-- | Values returned from the method call. See 'toVariant'.
+	--
+	-- Defaults to @[]@.
+	, methodReturnBody :: [Variant]
 	}
 	deriving (Show, Eq)
 
@@ -116,12 +189,41 @@ instance Message MethodReturn where
 		, maybe' HeaderDestination (methodReturnDestination m)
 		]
 
+-- | A method error is a reply to a method call, indicating that the call
+-- received an error and did not succeed.
 data MethodError = MethodError
-	{ methodErrorName        :: ErrorName
-	, methodErrorSerial      :: Serial
-	, methodErrorSender      :: Maybe BusName
+	{
+	-- | The name of the error type. Names are used so clients can
+	-- handle certain classes of error differently from others.
+	  methodErrorName :: ErrorName
+	
+	-- | The serial of the original method call. This lets the original
+	-- caller match up this reply to the pending call.
+	, methodErrorSerial :: Serial
+	
+	-- | The name of the application that is returning from a call.
+	--
+	-- Most users will just leave this empty, because the bus overwrites
+	-- the sender for security reasons. Setting the sender manually is
+	-- used for peer-peer connections.
+	--
+	-- Defaults to @Nothing@.
+	, methodErrorSender :: Maybe BusName
+	
+	-- | The name of the application that initiated the call.
+	--
+	-- Most users should set this. If a message with no destination is
+	-- sent to the bus, the bus will behave as if the destination was
+	-- set to @org.freedesktop.DBus@. For peer-peer connections, the
+	-- destination can be empty because there is only one peer.
+	--
+	-- Defaults to @Nothing@.
 	, methodErrorDestination :: Maybe BusName
-	, methodErrorBody        :: [Variant]
+	
+	-- | Additional information about the error. By convention, if
+	-- the error body contains any items, the first item should be a
+	-- string describing the error.
+	, methodErrorBody :: [Variant]
 	}
 	deriving (Show, Eq)
 
@@ -136,6 +238,8 @@ instance Message MethodError where
 		, maybe' HeaderDestination (methodErrorDestination m)
 		]
 
+-- | Get a human-readable description of the error, by returning the first
+-- item in the error body if it's a string.
 methodErrorMessage :: MethodError -> String
 methodErrorMessage err = fromMaybe "(no error message)" $ do
 	field <- listToMaybe (methodErrorBody err)
@@ -144,13 +248,40 @@ methodErrorMessage err = fromMaybe "(no error message)" $ do
 		then Nothing
 		else return msg
 
+-- | Signals are broadcast by applications to notify other clients of some
+-- event.
 data Signal = Signal
-	{ signalPath        :: ObjectPath
-	, signalInterface   :: InterfaceName
-	, signalMember      :: MemberName
-	, signalSender      :: Maybe BusName
+	{
+	-- | The path of the object that emitted this signal.
+	  signalPath :: ObjectPath
+	
+	-- | The interface that this signal belongs to.
+	, signalInterface :: InterfaceName
+	
+	-- | The name of this signal.
+	, signalMember :: MemberName
+	
+	-- | The name of the application that emitted this signal.
+	--
+	-- Most users will just leave this empty, because the bus overwrites
+	-- the sender for security reasons. Setting the sender manually is
+	-- used for peer-peer connections.
+	--
+	-- Defaults to @Nothing@.
+	, signalSender :: Maybe BusName
+	
+	-- | The name of the application to emit the signal to. If @Nothing@,
+	-- the signal is sent to any application that has registered an
+	-- appropriate match rule.
+	--
+	-- Defaults to @Nothing@.
 	, signalDestination :: Maybe BusName
-	, signalBody        :: [Variant]
+	
+	-- | Additional information about the signal, such as the new value
+	-- or the time.
+	--
+	-- Defaults to @[]@.
+	, signalBody :: [Variant]
 	}
 	deriving (Show, Eq)
 
@@ -168,6 +299,11 @@ instance Message Signal where
 
 -- | Not an actual message type, but a wrapper around messages received from
 -- the bus. Each value contains the message's 'Serial'.
+--
+-- If casing against these constructors, always include a default case to
+-- handle messages of an unknown type. New message types may be added to the
+-- D-Bus specification, and applications should handle them gracefully by
+-- either ignoring or logging them.
 data ReceivedMessage
 	= ReceivedMethodCall Serial MethodCall
 	| ReceivedMethodReturn Serial MethodReturn

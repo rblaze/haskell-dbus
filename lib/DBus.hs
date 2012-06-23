@@ -13,6 +13,10 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+-- | Basic types, useful to every D-Bus application.
+--
+-- Authors of client applications should import "DBus.Client", which provides
+-- an easy RPC-oriented interface to D-Bus methods and signals.
 module DBus
 	(
 	-- * Messages
@@ -112,7 +116,7 @@ module DBus
 	, formatBusName
 	, parseBusName
 	
-	-- * Heterogenous containers
+	-- * Non-native containers
 	
 	-- ** Structures
 	, Structure
@@ -176,21 +180,48 @@ import qualified DBus.Types
 import           DBus.Types hiding (typeOf)
 import           DBus.Wire
 
+-- | Get the D-Bus type corresponding to the given Haskell value. The value
+-- may be @undefined@.
 typeOf :: IsValue a => a -> Type
 typeOf = DBus.Types.typeOf
 
+-- | Construct a new 'MethodCall' for the given object, interface, and method.
+--
+-- Use fields such as 'methodCallDestination' and 'methodCallBody' to populate
+-- a 'MethodCall'.
+--
+-- @
+--{-\# LANGUAGE OverloadedStrings \#-}
+--
+--methodCall \"/\" \"org.example.Math\" \"Add\"
+--    { 'methodCallDestination' = Just \"org.example.Calculator\"
+--    , 'methodCallBody' = ['toVariant' (1 :: Int32), 'toVariant' (2 :: Int32)]
+--    }
+-- @
 methodCall :: ObjectPath -> InterfaceName -> MemberName -> MethodCall
 methodCall path iface member = MethodCall path (Just iface) member Nothing Nothing True True []
 
+-- | Construct a new 'MethodReturn', in reply to a method call with the given
+-- serial.
+--
+-- Use fields such as 'methodReturnBody' to populate a 'MethodReturn'.
 methodReturn :: Serial -> MethodReturn
 methodReturn s = MethodReturn s Nothing Nothing []
 
+-- | Construct a new 'MethodError', in reply to a method call with the given
+-- serial.
+--
+-- Use fields such as 'methodErrorBody' to populate a 'MethodError'.
 methodError :: Serial -> ErrorName -> MethodError
 methodError s name = MethodError name s Nothing Nothing []
 
+-- | Construct a new 'Signal' for the given object, interface, and signal name.
+--
+-- Use fields such as 'signalBody' to populate a 'Signal'.
 signal :: ObjectPath -> InterfaceName -> MemberName -> Signal
 signal path iface member = Signal path iface member Nothing Nothing []
 
+-- | No matter what sort of message was received, get its serial.
 receivedMessageSerial :: ReceivedMessage -> Serial
 receivedMessageSerial (ReceivedMethodCall s _) = s
 receivedMessageSerial (ReceivedMethodReturn s _) = s
@@ -198,6 +229,7 @@ receivedMessageSerial (ReceivedMethodError s _) = s
 receivedMessageSerial (ReceivedSignal s _) = s
 receivedMessageSerial (ReceivedUnknown s _) = s
 
+-- | No matter what sort of message was received, get its sender (if provided).
 receivedMessageSender :: ReceivedMessage -> Maybe BusName
 receivedMessageSender (ReceivedMethodCall _ msg) = methodCallSender msg
 receivedMessageSender (ReceivedMethodReturn _ msg) = methodReturnSender msg
@@ -205,6 +237,7 @@ receivedMessageSender (ReceivedMethodError _ msg) = methodErrorSender msg
 receivedMessageSender (ReceivedSignal _ msg) = signalSender msg
 receivedMessageSender (ReceivedUnknown _ msg) = unknownMessageSender msg
 
+-- | No matter what sort of message was received, get its body (if provided).
 receivedMessageBody :: ReceivedMessage -> [Variant]
 receivedMessageBody (ReceivedMethodCall _ msg) = methodCallBody msg
 receivedMessageBody (ReceivedMethodReturn _ msg) = methodReturnBody msg

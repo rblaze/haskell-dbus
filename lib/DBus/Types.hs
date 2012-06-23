@@ -296,18 +296,27 @@ class IsVariant a where
 	toVariant :: a -> Variant
 	fromVariant :: Variant -> Maybe a
 
+-- | Value types can be used as items in containers, such as lists or
+-- dictionaries.
+--
+-- Users may not provide new instances of 'IsValue' because this could allow
+-- containers to be created with items of heterogenous types.
 class IsVariant a => IsValue a where
 	typeOf :: a -> Type
 	toValue :: a -> Value
 	fromValue :: Value -> Maybe a
 
+-- | Atomic types can be used as keys to dictionaries.
+--
+-- Users may not provide new instances of 'IsAtom' because this could allow
+-- dictionaries to be created with invalid keys.
 class IsValue a => IsAtom a where
 	toAtom :: a -> Atom
 	fromAtom :: Atom -> Maybe a
 
--- | 'Variant's may contain any other built-in D-Bus value. Besides
+-- | Variants may contain any other built-in D-Bus value. Besides
 -- representing native @VARIANT@ values, they allow type-safe storage and
--- deconstruction of heterogeneous collections.
+-- inspection of D-Bus collections.
 newtype Variant = Variant Value
 	deriving (Eq)
 
@@ -774,7 +783,8 @@ structureItems (Structure xs) = map Variant xs
 --
 -- Most users can use the 'IsVariant' instance for lists or vectors to extract
 -- the values of an array. This type is for advanced use cases, where the user
--- wants to convert array values to heterogenous Haskell types.
+-- wants to convert array values to Haskell types that are not instances of
+-- 'IsValue'.
 data Array
 	= Array Type (Vector Value)
 	| ArrayBytes ByteString
@@ -805,7 +815,8 @@ arrayItems (ArrayBytes bs) = map toVariant (Data.ByteString.unpack bs)
 --
 -- Most users can use the 'IsVariant' instance for maps to extract the values
 -- of a dictionary. This type is for advanced use cases, where the user
--- wants to convert dictionary items to heterogenous Haskell types.
+-- wants to convert dictionary items to Haskell types that are not instances
+-- of 'IsValue'.
 data Dictionary = Dictionary Type Type (Map Atom Value)
 	deriving (Eq)
 
