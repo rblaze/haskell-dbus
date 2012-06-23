@@ -17,6 +17,7 @@
 
 module Main (main) where
 
+import           Control.Monad (when)
 import           Data.String (fromString)
 import qualified Data.Text
 import           System.Environment (getArgs, getProgName)
@@ -45,7 +46,7 @@ introspect client service path = do
 		{ methodCallDestination = Just service
 		}
 	let Just xml = fromVariant (methodReturnBody reply !! 0)
-	case I.parseXml path xml of
+	case I.parseXML path xml of
 		Just info -> return info
 		Nothing -> error ("Invalid introspection XML: " ++ show xml)
 
@@ -104,4 +105,6 @@ printProperty prop = do
 	putStrLn (I.propertyName prop)
 	
 	putStr "            "
-	putStrLn (show (I.propertyAccess prop))
+	when (I.propertyRead prop) (putStr "Read")
+	when (I.propertyWrite prop) (putStr "Write")
+	putStrLn ""
