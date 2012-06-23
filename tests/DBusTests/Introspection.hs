@@ -42,16 +42,16 @@ test_Introspection = suite "Introspection"
 test_XmlPassthrough :: Test
 test_XmlPassthrough = property "xml-passthrough" $ \obj -> let
 	path = Introspection.objectPath obj
-	Just xml = Introspection.toXML obj
-	in Introspection.fromXML path xml == Just obj
+	Just xml = Introspection.formatXml obj
+	in Introspection.parseXml path xml == Just obj
 
 test_XmlParseFailed :: Test
 test_XmlParseFailed = assertions "xml-parse-failed" $ do
-	$expect (nothing (Introspection.fromXML (objectPath_ "/") "<invalid>"))
-	$expect (nothing (Introspection.fromXML (objectPath_ "/") "<invalid/>"))
+	$expect (nothing (Introspection.parseXml (objectPath_ "/") "<invalid>"))
+	$expect (nothing (Introspection.parseXml (objectPath_ "/") "<invalid/>"))
 	
 	-- invalid property access
-	$expect (nothing (Introspection.fromXML (objectPath_ "/")
+	$expect (nothing (Introspection.parseXml (objectPath_ "/")
 		"<node>\
 		\  <interface name='com.example.Foo'>\
 		\    <property type='s' access='invalid'>\
@@ -60,7 +60,7 @@ test_XmlParseFailed = assertions "xml-parse-failed" $ do
 		\</node>"))
 	
 	-- invalid parameter type
-	$expect (nothing (Introspection.fromXML (objectPath_ "/")
+	$expect (nothing (Introspection.parseXml (objectPath_ "/")
 		"<node>\
 		\  <interface name='com.example.Foo'>\
 		\    <method name='Foo'>\
@@ -76,7 +76,7 @@ test_XmlWriteFailed = assertions "xml-write-failed" $ do
 			[ Introspection.object (objectPath_ "/bar")
 			]
 		}
-	$expect (nothing (Introspection.toXML obj))
+	$expect (nothing (Introspection.formatXml obj))
 
 instance Arbitrary Type where
 	arbitrary = oneof [atom, container] where

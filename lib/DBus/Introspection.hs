@@ -16,8 +16,8 @@
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 module DBus.Introspection
-	( toXML
-	, fromXML
+	( parseXml
+	, formatXml
 	
 	, Object
 	, object
@@ -166,8 +166,8 @@ accessRead = Read
 accessWrite :: Access
 accessWrite = Write
 
-fromXML :: T.ObjectPath -> String -> Maybe Object
-fromXML path xml = do
+parseXml :: T.ObjectPath -> String -> Maybe Object
+parseXml path xml = do
 	root <- parseElement (Data.Text.pack xml)
 	parseRoot path root
 
@@ -300,8 +300,8 @@ instance Monad XmlWriter where
 tell :: String -> XmlWriter ()
 tell s = XmlWriter (Just ((), s))
 
-toXML :: Object -> Maybe String
-toXML obj = do
+formatXml :: Object -> Maybe String
+formatXml obj = do
 	(_, xml) <- runXmlWriter (writeRoot obj)
 	return xml
 

@@ -760,7 +760,7 @@ methodIntrospect get = method interfaceIntrospectable "Introspect" "" "s" $
 	\msg -> case methodCallBody msg of
 		[] -> do
 			obj <- get
-			let Just xml = I.toXML obj
+			let Just xml = I.formatXml obj
 			return (replyReturn [toVariant xml])
 		_ -> return (replyError errorInvalidParameters [])
 
