@@ -111,7 +111,7 @@ library
     , text >= 0.11.1.5 && < 0.12
     , transformers >= 0.2 && < 0.4
     , unix >= 2.2 && < 2.7
-    , vector >= 0.7 && < 0.10
+    , vector >= 0.7 && < 0.11
     , xml-types >= 0.3 && < 0.4
 
   -- haskell-dbus requires Network.Socket.ByteString, which can be provided
