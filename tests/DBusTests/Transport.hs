@@ -42,6 +42,7 @@ test_Transport = suite "Transport"
 	test_TransportListen
 	test_TransportAccept
 	test_TransportSendReceive
+	test_HandleLostConnection
 
 test_TransportOpen :: Suite
 test_TransportOpen = suite "transportOpen"
@@ -244,6 +245,22 @@ test_TransportSendReceive = assertions "send-receive" $ do
 		liftIO (transportPut t sentBytes)
 		bytes <- liftIO (readMVar var)
 		$assert (equal bytes sentBytes)
+
+test_HandleLostConnection :: Test
+test_HandleLostConnection = assertions "handle-lost-connection" $ do
+	(addr, networkSocket) <- listenRandomIPv4
+	afterTest (N.sClose networkSocket)
+	
+	_ <- liftIO $ forkIO $ do
+		(s, _) <- NS.accept networkSocket
+		sendAll s "123"
+		NS.sClose s
+	
+	t <- liftIO (transportOpen socketTransportOptions addr)
+	afterTest (transportClose t)
+	
+	bytes <- liftIO (transportGet t 4)
+	$assert (equal bytes "123")
 
 test_ListenUnknown :: Test
 test_ListenUnknown = assertions "unknown" $ do

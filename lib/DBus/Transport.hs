@@ -158,10 +158,16 @@ recvLoop s = loop Builder.empty where
 			loop builder (n - Data.ByteString.length chunk)
 		else do
 			chunk <- recv s n
-			let builder = Builder.append acc (Builder.fromByteString chunk)
-			if Data.ByteString.length chunk == n
-				then return (Builder.toByteString builder)
-				else loop builder (n - Data.ByteString.length chunk)
+			case Data.ByteString.length chunk of
+				-- Unexpected end of connection; maybe the remote end went away.
+				-- Return what we've got so far.
+				0 -> return (Builder.toByteString acc)
+				
+				len -> do
+					let builder = Builder.append acc (Builder.fromByteString chunk)
+					if len == n
+						then return (Builder.toByteString builder)
+						else loop builder (n - Data.ByteString.length chunk)
 
 instance TransportOpen SocketTransport where
 	transportOpen _ a = case addressMethod a of
