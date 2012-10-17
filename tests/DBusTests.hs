@@ -35,6 +35,7 @@ import           DBusTests.Socket
 import           DBusTests.Signature
 import           DBusTests.Transport
 import           DBusTests.Variant
+import           DBusTests.Wire
 
 -- import all dbus modules here to ensure they show up in the coverage report,
 -- even if not tested.
@@ -64,6 +65,7 @@ tests =
 	, test_Socket
 	, test_Transport
 	, test_Variant
+	, test_Wire
 	]
 
 main :: IO ()

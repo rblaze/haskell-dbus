@@ -570,8 +570,11 @@ checkMaximumSize = do
 unmarshalMessageM :: Monad m => (Int -> m ByteString)
                   -> m (Either UnmarshalError ReceivedMessage)
 unmarshalMessageM getBytes' = runErrorT $ do
-	let getBytes = ErrorT . liftM Right . getBytes'
-	
+	let getBytes count = do
+		bytes <- ErrorT (liftM Right (getBytes' count))
+		if Data.ByteString.length bytes < count
+			then throwErrorT (UnmarshalError "Unexpected end of input while parsing message header.")
+			else return bytes
 
 	let Just fixedSig = parseSignature "yyyyuuu"
 	fixedBytes <- getBytes 16
@@ -671,9 +674,17 @@ require _     (x:_) = return x
 require label _     = throwErrorM label
 
 unmarshalMessage :: ByteString -> Either UnmarshalError ReceivedMessage
-unmarshalMessage bytes = case Get.runGet (unmarshalMessageM Get.getByteString) bytes of
-	Left err -> Left (UnmarshalError err)
-	Right x -> x
+unmarshalMessage bytes = checkError (Get.runGet get bytes) where
+	get = unmarshalMessageM getBytes
+	
+	-- wrap getByteString, so it will behave like transportGet and return
+	-- a truncated result on EOF instead of throwing an exception.
+	getBytes count = do
+		remaining <- Get.remaining
+		Get.getByteString (min remaining count)
+	
+	checkError (Left err) = Left (UnmarshalError err)
+	checkError (Right x) = x
 
 untilM :: Monad m => m Bool -> m a -> m [a]
 untilM test comp = do
