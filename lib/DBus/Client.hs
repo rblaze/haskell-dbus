@@ -116,6 +116,7 @@ module DBus.Client
 	-- * Advanced connection options
 	, ClientOptions
 	, clientSocketOptions
+	, clientThreadRunner
 	, defaultClientOptions
 	, connectWith
 	) where
@@ -164,6 +165,16 @@ data ClientOptions t = ClientOptions
 	-- | Options for the underlying socket, for advanced use cases. See
 	-- the "DBus.Socket" module.
 	  clientSocketOptions :: DBus.Socket.SocketOptions t
+	
+	-- | A function to run the client thread. The provided IO computation
+	-- should be called repeatedly; each time it is called, it will process
+	-- one incoming message.
+	--
+	-- The provided computation will throw a 'ClientError' if it fails to
+	-- process an incoming message, or if the connection is lost.
+	--
+	-- The default implementation is 'forever'.
+	, clientThreadRunner :: IO () -> IO ()
 	}
 
 type Callback = (ReceivedMessage -> IO ())
@@ -246,10 +257,12 @@ connectWith opts addr = do
 	signalHandlers <- newIORef []
 	objects <- newIORef Data.Map.empty
 	
+	let threadRunner = clientThreadRunner opts
+	
 	clientMVar <- newEmptyMVar
 	threadID <- forkIO $ do
 		client <- readMVar clientMVar
-		mainLoop client
+		threadRunner (mainLoop client)
 	
 	let client = Client
 		{ clientSocket = sock
@@ -273,6 +286,7 @@ connectWith opts addr = do
 defaultClientOptions :: ClientOptions SocketTransport
 defaultClientOptions = ClientOptions
 	{ clientSocketOptions = DBus.Socket.defaultSocketOptions
+	, clientThreadRunner = forever
 	}
 
 -- | Stop a 'Client''s callback thread and close its underlying socket.
@@ -293,7 +307,7 @@ disconnect' client = do
 	DBus.Socket.close (clientSocket client)
 
 mainLoop :: Client -> IO ()
-mainLoop client = forever $ do
+mainLoop client = do
 	let sock = clientSocket client
 	
 	received <- Control.Exception.try (DBus.Socket.receive sock)
