@@ -27,7 +27,9 @@ module DBusTests.Util
 	, listenRandomIPv6
 	, noIPv6
 	, forkVar
+	
 	, withEnv
+	, countFileDescriptors
 	
 	, dropWhileEnd
 	
@@ -38,7 +40,7 @@ module DBusTests.Util
 	) where
 
 import           Control.Concurrent
-import           Control.Exception (IOException, try, bracket_)
+import           Control.Exception (IOException, try, bracket, bracket_)
 import           Control.Monad.IO.Class (MonadIO, liftIO)
 import           Data.Bits ((.&.))
 import qualified Data.ByteString
@@ -50,7 +52,7 @@ import qualified Data.Text as T
 import qualified Network as N
 import qualified Network.Socket as NS
 import           System.Directory (getTemporaryDirectory, removeFile)
-import qualified System.Posix.Env
+import qualified System.Posix as Posix
 import           System.FilePath ((</>))
 
 import           Test.Chell
@@ -172,10 +174,23 @@ forkVar io = liftIO $ do
 withEnv :: MonadIO m => String -> Maybe String -> IO a -> m a
 withEnv name value io = liftIO $ do
 	let set val = case val of
-		Just x -> System.Posix.Env.setEnv name x True
-		Nothing -> System.Posix.Env.unsetEnv name
-	old <- System.Posix.Env.getEnv name
+		Just x -> Posix.setEnv name x True
+		Nothing -> Posix.unsetEnv name
+	old <- Posix.getEnv name
 	bracket_ (set value) (set old) io
+
+countFileDescriptors :: MonadIO m => m Int
+countFileDescriptors = liftIO io where
+	io = do
+		pid <- Posix.getProcessID
+		let fdDir = "/proc/" ++ show pid ++ "/fd"
+		bracket (Posix.openDirStream fdDir) Posix.closeDirStream countDirEntries
+	countDirEntries dir = loop 0 where
+		loop n = do
+			name <- Posix.readDirStream dir
+			if null name
+				then return n
+				else loop (n + 1)
 
 instance (Arbitrary a, Ord a) => Arbitrary (Data.Set.Set a) where
 	arbitrary = fmap Data.Set.fromList arbitrary

@@ -221,10 +221,12 @@ openUnix transportAddr = go where
 		Left err -> throwIO (transportError err)
 			{ transportErrorAddress = Just transportAddr
 			}
-		Right p -> catchIOException (Just transportAddr) $ do
-			sock <- socket AF_UNIX Stream defaultProtocol
-			connect sock (SockAddrUnix p)
-			return (SocketTransport (Just transportAddr) sock)
+		Right p -> catchIOException (Just transportAddr) $ bracketOnError
+			(socket AF_UNIX Stream defaultProtocol)
+			sClose
+			(\sock -> do
+				connect sock (SockAddrUnix p)
+				return (SocketTransport (Just transportAddr) sock))
 
 openTcp :: Address -> IO SocketTransport
 openTcp transportAddr = go where

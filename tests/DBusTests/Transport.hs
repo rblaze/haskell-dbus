@@ -83,28 +83,45 @@ test_OpenUnix_Path = assertions "path" $ do
 	(addr, networkSocket) <- listenRandomUnixPath
 	afterTest (N.sClose networkSocket)
 	
+	fdcountBefore <- countFileDescriptors
+	
 	t <- liftIO (transportOpen socketTransportOptions addr)
-	afterTest (transportClose t)
+	liftIO (transportClose t)
+	
+	fdcountAfter <- countFileDescriptors
+	$assert (equal fdcountBefore fdcountAfter)
 
 test_OpenUnix_Abstract :: Test
 test_OpenUnix_Abstract = assertions "abstract" $ do
 	(addr, networkSocket) <- listenRandomUnixAbstract
 	afterTest (N.sClose networkSocket)
 	
+	fdcountBefore <- countFileDescriptors
+	
 	t <- liftIO (transportOpen socketTransportOptions addr)
-	afterTest (transportClose t)
+	liftIO (transportClose t)
+	
+	fdcountAfter <- countFileDescriptors
+	$assert (equal fdcountBefore fdcountAfter)
 
 test_OpenUnix_TooFew :: Test
 test_OpenUnix_TooFew = assertions "too-few" $ do
+	fdcountBefore <- countFileDescriptors
+	
 	let Just addr = address "unix" Map.empty
 	$assert $ throwsEq
 		((transportError "One of 'path' or 'abstract' must be specified for the 'unix' transport.")
 			{ transportErrorAddress = Just addr
 			})
 		(transportOpen socketTransportOptions addr)
+	
+	fdcountAfter <- countFileDescriptors
+	$assert (equal fdcountBefore fdcountAfter)
 
 test_OpenUnix_TooMany :: Test
 test_OpenUnix_TooMany = assertions "too-many" $ do
+	fdcountBefore <- countFileDescriptors
+	
 	let Just addr = address "unix" (Map.fromList
 		[ ("path", "foo")
 		, ("abstract", "bar")
@@ -114,9 +131,14 @@ test_OpenUnix_TooMany = assertions "too-many" $ do
 			{ transportErrorAddress = Just addr
 			})
 		(transportOpen socketTransportOptions addr)
+	
+	fdcountAfter <- countFileDescriptors
+	$assert (equal fdcountBefore fdcountAfter)
 
 test_OpenUnix_NotListening :: Test
 test_OpenUnix_NotListening = assertions "not-listening" $ do
+	fdcountBefore <- countFileDescriptors
+	
 	(addr, networkSocket) <- listenRandomUnixAbstract
 	liftIO (NS.sClose networkSocket)
 	$assert $ throwsEq
@@ -124,6 +146,9 @@ test_OpenUnix_NotListening = assertions "not-listening" $ do
 			{ transportErrorAddress = Just addr
 			})
 		(transportOpen socketTransportOptions addr)
+	
+	fdcountAfter <- countFileDescriptors
+	$assert (equal fdcountBefore fdcountAfter)
 
 test_OpenTcp :: Suite
 test_OpenTcp = suite "tcp"
@@ -140,19 +165,31 @@ test_OpenTcp_IPv4 = assertions "ipv4" $ do
 	(addr, networkSocket) <- listenRandomIPv4
 	afterTest (N.sClose networkSocket)
 	
+	fdcountBefore <- countFileDescriptors
+	
 	t <- liftIO (transportOpen socketTransportOptions addr)
-	afterTest (transportClose t)
+	liftIO (transportClose t)
+	
+	fdcountAfter <- countFileDescriptors
+	$assert (equal fdcountBefore fdcountAfter)
 
 test_OpenTcp_IPv6 :: Test
 test_OpenTcp_IPv6 = assertions "ipv6" $ do
 	(addr, networkSocket) <- listenRandomIPv6
 	afterTest (N.sClose networkSocket)
 	
+	fdcountBefore <- countFileDescriptors
+	
 	t <- liftIO (transportOpen socketTransportOptions addr)
-	afterTest (transportClose t)
+	liftIO (transportClose t)
+	
+	fdcountAfter <- countFileDescriptors
+	$assert (equal fdcountBefore fdcountAfter)
 
 test_OpenTcp_Unknown :: Test
 test_OpenTcp_Unknown = assertions "unknown-family" $ do
+	fdcountBefore <- countFileDescriptors
+	
 	let Just addr = address "tcp" (Map.fromList
 		[ ("family", "noexist")
 		, ("port", "1234")
@@ -162,9 +199,14 @@ test_OpenTcp_Unknown = assertions "unknown-family" $ do
 			{ transportErrorAddress = Just addr
 			})
 		(transportOpen socketTransportOptions addr)
+	
+	fdcountAfter <- countFileDescriptors
+	$assert (equal fdcountBefore fdcountAfter)
 
 test_OpenTcp_NoPort :: Test
 test_OpenTcp_NoPort = assertions "no-port" $ do
+	fdcountBefore <- countFileDescriptors
+	
 	let Just addr = address "tcp" (Map.fromList
 		[ ("family", "ipv4")
 		])
@@ -173,9 +215,14 @@ test_OpenTcp_NoPort = assertions "no-port" $ do
 			{ transportErrorAddress = Just addr
 			})
 		(transportOpen socketTransportOptions addr)
+	
+	fdcountAfter <- countFileDescriptors
+	$assert (equal fdcountBefore fdcountAfter)
 
 test_OpenTcp_InvalidPort :: Test
 test_OpenTcp_InvalidPort = assertions "invalid-port" $ do
+	fdcountBefore <- countFileDescriptors
+	
 	let Just addr = address "tcp" (Map.fromList
 		[ ("family", "ipv4")
 		, ("port", "123456")
@@ -185,9 +232,14 @@ test_OpenTcp_InvalidPort = assertions "invalid-port" $ do
 			{ transportErrorAddress = Just addr
 			})
 		(transportOpen socketTransportOptions addr)
+	
+	fdcountAfter <- countFileDescriptors
+	$assert (equal fdcountBefore fdcountAfter)
 
 test_OpenTcp_NoUsableAddresses :: Test
 test_OpenTcp_NoUsableAddresses = assertions "no-usable-addresses" $ do
+	fdcountBefore <- countFileDescriptors
+	
 	let Just addr = address "tcp" (Map.fromList
 		[ ("family", "ipv4")
 		, ("port", "1234")
@@ -199,9 +251,14 @@ test_OpenTcp_NoUsableAddresses = assertions "no-usable-addresses" $ do
 			, transportErrorAddress err == Just addr
 			])
 		(transportOpen socketTransportOptions addr)
+	
+	fdcountAfter <- countFileDescriptors
+	$assert (equal fdcountBefore fdcountAfter)
 
 test_OpenTcp_NotListening :: Test
 test_OpenTcp_NotListening = assertions "too-many" $ do
+	fdcountBefore <- countFileDescriptors
+	
 	(addr, networkSocket) <- listenRandomIPv4
 	liftIO (NS.sClose networkSocket)
 	$assert $ throwsEq
@@ -209,6 +266,9 @@ test_OpenTcp_NotListening = assertions "too-many" $ do
 			{ transportErrorAddress = Just addr
 			})
 		(transportOpen socketTransportOptions addr)
+	
+	fdcountAfter <- countFileDescriptors
+	$assert (equal fdcountBefore fdcountAfter)
 
 test_TransportSendReceive :: Test
 test_TransportSendReceive = assertions "send-receive" $ do
@@ -400,6 +460,8 @@ test_ListenTcp_InvalidPort = assertions "invalid-port" $ do
 
 test_ListenTcp_InvalidBind :: Test
 test_ListenTcp_InvalidBind = assertions "invalid-bind" $ do
+	fdcountBefore <- countFileDescriptors
+	
 	let Just addr = address "tcp" (Map.fromList
 		[ ("family", "ipv4")
 		, ("port", "1")
@@ -409,6 +471,9 @@ test_ListenTcp_InvalidBind = assertions "invalid-bind" $ do
 			{ transportErrorAddress = Just addr
 			})
 		(transportListen socketTransportOptions addr)
+	
+	fdcountAfter <- countFileDescriptors
+	$assert (equal fdcountBefore fdcountAfter)
 
 test_AcceptSocket :: Test
 test_AcceptSocket = assertions "socket" $ do
