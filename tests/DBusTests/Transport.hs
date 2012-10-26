@@ -338,6 +338,7 @@ test_ListenUnix = suite "unix"
 	test_ListenUnix_Tmpdir
 	test_ListenUnix_TooFew
 	test_ListenUnix_TooMany
+	test_ListenUnix_InvalidBind
 
 test_ListenUnix_Path :: Test
 test_ListenUnix_Path = assertions "path" $ do
@@ -401,6 +402,22 @@ test_ListenUnix_TooMany = assertions "too-many" $ do
 			{ transportErrorAddress = Just addr
 			})
 		(transportListen socketTransportOptions addr)
+
+test_ListenUnix_InvalidBind :: Test
+test_ListenUnix_InvalidBind = assertions "invalid-bind" $ do
+	fdcountBefore <- countFileDescriptors
+	
+	let Just addr = address "unix" (Map.fromList
+		[ ("path", "/")
+		])
+	$assert $ throwsEq
+		((transportError "bind: resource busy (Address already in use)")
+			{ transportErrorAddress = Just addr
+			})
+		(transportListen socketTransportOptions addr)
+	
+	fdcountAfter <- countFileDescriptors
+	$assert (equal fdcountBefore fdcountAfter)
 
 test_ListenTcp :: Suite
 test_ListenTcp = suite "tcp"

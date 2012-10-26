@@ -326,11 +326,13 @@ listenUnix uuid origAddr opts = getPath >>= go where
 		Left err -> throwIO (transportError err)
 			{ transportErrorAddress = Just origAddr
 			}
-		Right (addr, p) -> catchIOException (Just addr) $ do
-			sock <- socket AF_UNIX Stream defaultProtocol
-			bindSocket sock (SockAddrUnix p)
-			Network.Socket.listen sock (socketTransportOptionBacklog opts)
-			return (addr, sock)
+		Right (addr, p) -> catchIOException (Just origAddr) $ bracketOnError
+			(socket AF_UNIX Stream defaultProtocol)
+			sClose
+			(\sock -> do
+				bindSocket sock (SockAddrUnix p)
+				Network.Socket.listen sock (socketTransportOptionBacklog opts)
+				return (addr, sock))
 
 listenTcp :: UUID -> Address -> TransportOptions SocketTransport -> IO (Address, Socket)
 listenTcp uuid origAddr opts = go where
@@ -400,20 +402,16 @@ listenTcp uuid origAddr opts = go where
 				}
 			Right family_ -> catchIOException (Just origAddr) $ do
 				sockAddrs <- getAddresses family_
-				
-				sock <- (bracketOnError
-					(do
-						sock <- socket family_ Stream defaultProtocol
-						setSocketOption sock ReuseAddr 1
-						return sock)
+				bracketOnError
+					(socket family_ Stream defaultProtocol)
 					sClose
 					(\sock -> do
+						setSocketOption sock ReuseAddr 1
 						bindAddrs sock (map (setPort port) sockAddrs)
-						return sock))
-				
-				Network.Socket.listen sock (socketTransportOptionBacklog opts)
-				sockPort <- socketPort sock
-				return (sockAddr sockPort, sock)
+						
+						Network.Socket.listen sock (socketTransportOptionBacklog opts)
+						sockPort <- socketPort sock
+						return (sockAddr sockPort, sock))
 
 catchIOException :: Maybe Address -> IO a -> IO a
 catchIOException addr io = do
