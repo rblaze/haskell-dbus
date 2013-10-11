@@ -80,12 +80,12 @@ extra-source-files:
   tests/DBusTests/*.hs
 
 source-repository head
-  type: bazaar
-  location: https://john-millikin.com/branches/haskell-dbus/0.10/
+  type: git
+  location: https://john-millikin.com/code/haskell-dbus/
 
 source-repository this
-  type: bazaar
-  location: https://john-millikin.com/branches/haskell-dbus/0.10/
+  type: git
+  location: https://john-millikin.com/code/haskell-dbus/
   tag: haskell-dbus_0.10.4
 
 flag network-bytestring-610
