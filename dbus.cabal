@@ -1,5 +1,5 @@
 name: dbus
-version: 0.10.4
+version: 0.10.5
 license: GPL-3
 license-file: license.txt
 author: John Millikin <jmillikin@gmail.com>
@@ -103,7 +103,7 @@ library
   build-depends:
       base >= 4.0 && < 5.0
     , bytestring >= 0.9
-    , cereal >= 0.3.4 && < 0.4
+    , cereal >= 0.3.4 && < 0.5
     , containers >= 0.1 && < 0.6
     , libxml-sax >= 0.7 && < 0.8
     , parsec >= 2.0 && < 3.2
