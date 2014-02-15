@@ -1,5 +1,5 @@
 name: dbus
-version: 0.10.5
+version: 0.10.6
 license: GPL-3
 license-file: license.txt
 author: John Millikin <jmillikin@gmail.com>
@@ -86,7 +86,7 @@ source-repository head
 source-repository this
   type: git
   location: https://john-millikin.com/code/haskell-dbus/
-  tag: haskell-dbus_0.10.4
+  tag: haskell-dbus_0.10.6
 
 flag network-bytestring-610
   default: False
@@ -108,9 +108,9 @@ library
     , libxml-sax >= 0.7 && < 0.8
     , parsec >= 2.0 && < 3.2
     , random >= 1.0 && < 1.1
-    , text >= 0.11.1.5 && < 0.12
+    , text >= 0.11.1.5
     , transformers >= 0.2 && < 0.4
-    , unix >= 2.2 && < 2.7
+    , unix >= 2.2
     , vector >= 0.7 && < 0.11
     , xml-types >= 0.3 && < 0.4
 
