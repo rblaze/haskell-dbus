@@ -70,6 +70,7 @@ module DBus.Client
 	
 	-- * Receiving method calls
 	, export
+	, unexport
 	, Method
 	, method
 	, Reply
@@ -730,6 +731,12 @@ export client path methods = atomicModifyIORef (clientObjects client) addObject 
 		objects <- readIORef (clientObjects client)
 		let Just obj = Data.Map.lookup path objects
 		return (introspect path obj)
+
+-- | Revokes the export of the given 'ObjectPath'. This will remove all
+-- interfaces and methods associated with the path.
+unexport :: Client -> ObjectPath -> IO ()
+unexport client path = atomicModifyIORef (clientObjects client) deleteObject where
+	deleteObject objs = (Data.Map.delete path objs, ())
 
 findMethod :: Map ObjectPath ObjectInfo -> MethodCall -> Either ErrorName Callback
 findMethod objects msg = case Data.Map.lookup (methodCallPath msg) objects of
