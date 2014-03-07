@@ -81,10 +81,10 @@ addMatch sock match = send sock (methodCall "/org/freedesktop/DBus" "org.freedes
 
 defaultFilters :: [String]
 defaultFilters =
-	[ "type='signal'"
-	, "type='method_call'"
-	, "type='method_return'"
-	, "type='error'"
+	[ "type='signal',eavesdrop=true"
+	, "type='method_call',eavesdrop=true"
+	, "type='method_return',eavesdrop=true"
+	, "type='error',eavesdrop=true"
 	]
 
 main :: IO ()
