@@ -83,10 +83,11 @@ module DBus.Client
 	, autoMethod
 	
 	-- * Signals
-	, listen
-	, emit
+	, SignalHandler
 	, addMatch
 	, removeMatch
+	, emit
+	, listen
 	
 	-- ** Match rules
 	, MatchRule
