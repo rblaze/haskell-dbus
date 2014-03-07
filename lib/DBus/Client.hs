@@ -85,6 +85,8 @@ module DBus.Client
 	-- * Signals
 	, listen
 	, emit
+	, addMatch
+	, removeMatch
 	
 	-- ** Match rules
 	, MatchRule
@@ -133,6 +135,7 @@ import qualified Data.Map
 import           Data.Map (Map)
 import           Data.Maybe (catMaybes, listToMaybe)
 import           Data.Typeable (Typeable)
+import           Data.Unique
 import           Data.Word (Word32)
 
 import           DBus
@@ -156,7 +159,7 @@ clientError msg = ClientError msg True
 data Client = Client
 	{ clientSocket :: DBus.Socket.Socket
 	, clientPendingCalls :: IORef (Map Serial (MVar (Either MethodError MethodReturn)))
-	, clientSignalHandlers :: IORef [Signal -> IO ()]
+	, clientSignalHandlers :: IORef (Map Unique SignalHandler)
 	, clientObjects :: IORef (Map ObjectPath ObjectInfo)
 	, clientThreadID :: ThreadId
 	}
@@ -179,6 +182,9 @@ data ClientOptions t = ClientOptions
 	}
 
 type Callback = (ReceivedMessage -> IO ())
+
+type FormattedMatchRule = String
+data SignalHandler = SignalHandler Unique FormattedMatchRule (IORef Bool) (Signal -> IO ())
 
 data Reply
 	= ReplyReturn [Variant]
@@ -255,7 +261,7 @@ connectWith opts addr = do
 	sock <- DBus.Socket.openWith (clientSocketOptions opts) addr
 	
 	pendingCalls <- newIORef Data.Map.empty
-	signalHandlers <- newIORef []
+	signalHandlers <- newIORef Data.Map.empty
 	objects <- newIORef Data.Map.empty
 	
 	let threadRunner = clientThreadRunner opts
@@ -302,7 +308,7 @@ disconnect' client = do
 	forM_ (Data.Map.toList pendingCalls) $ \(k, v) -> do
 		putMVar v (Left (methodError k errorDisconnected))
 	
-	atomicModifyIORef (clientSignalHandlers client) (\_ -> ([], ()))
+	atomicModifyIORef (clientSignalHandlers client) (\_ -> (Data.Map.empty, ()))
 	atomicModifyIORef (clientObjects client) (\_ -> (Data.Map.empty, ()))
 	
 	DBus.Socket.close (clientSocket client)
@@ -326,7 +332,7 @@ dispatch client = go where
 	go (ReceivedMethodError _ msg) = dispatchReply (methodErrorSerial msg) (Left msg)
 	go (ReceivedSignal _ msg) = do
 		handlers <- readIORef (clientSignalHandlers client)
-		forM_ handlers (\h -> forkIO (h msg) >> return ())
+		forM_ (Data.Map.toAscList handlers) (\(_, SignalHandler _ _ _ h) -> forkIO (h msg) >> return ())
 	go received@(ReceivedMethodCall serial msg) = do
 		objects <- readIORef (clientObjects client)
 		let sender = methodCallSender msg
@@ -556,21 +562,45 @@ callNoReply client msg = do
 -- A received signal might be processed by more than one callback at a time.
 -- Callbacks each run in their own thread.
 --
+-- The returned 'SignalHandler' can be passed to 'removeMatch'
+-- to stop handling this signal.
+--
 -- Throws a 'ClientError' if the match rule couldn't be added to the bus.
-listen :: Client -> MatchRule -> (Signal -> IO ()) -> IO ()
-listen client rule io = do
-	let handler msg = when (checkMatchRule rule msg) (io msg)
-	
+addMatch :: Client -> MatchRule -> (Signal -> IO ()) -> IO SignalHandler
+addMatch client rule io = do
 	let formatted = case formatMatchRule rule of
 		"" -> "type='signal'"
 		x -> "type='signal'," ++ x
 	
-	atomicModifyIORef (clientSignalHandlers client) (\hs -> (handler : hs, ()))
+	handlerId <- newUnique
+	registered <- newIORef True
+	let handler = SignalHandler handlerId formatted registered (\msg -> when (checkMatchRule rule msg) (io msg))
+	
+	atomicModifyIORef (clientSignalHandlers client) (\hs -> (Data.Map.insert handlerId handler hs, ()))
 	_ <- call_ client (methodCall dbusPath dbusInterface "AddMatch")
 		{ methodCallDestination = Just dbusName
 		, methodCallBody = [toVariant formatted]
 		}
-	return ()
+	return handler
+
+-- | Request that the bus stop forwarding signals for the given handler.
+--
+-- Throws a 'ClientError' if the match rule couldn't be removed from the bus.
+removeMatch :: Client -> SignalHandler -> IO ()
+removeMatch client (SignalHandler handlerId formatted registered _) = do
+	shouldUnregister <- atomicModifyIORef registered (\wasRegistered -> (False, wasRegistered))
+	when shouldUnregister $ do
+		atomicModifyIORef (clientSignalHandlers client) (\hs -> (Data.Map.delete handlerId hs, ()))
+		_ <- call_ client (methodCall dbusPath dbusInterface "RemoveMatch")
+			{ methodCallDestination = Just dbusName
+			, methodCallBody = [toVariant formatted]
+			}
+		return ()
+
+-- | Equivalent to 'addMatch', but does not return the added 'SignalHandler'.
+listen :: Client -> MatchRule -> (Signal -> IO ()) -> IO ()
+listen client rule io = addMatch client rule io >> return ()
+{-# DEPRECATED listen "Prefer DBus.Client.addMatch in new code." #-}
 
 -- | Emit the signal on the bus.
 --
