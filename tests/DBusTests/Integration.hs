@@ -22,15 +22,15 @@ import           Test.Chell
 
 import           Control.Exception (finally)
 import           Control.Monad.IO.Class (liftIO)
+import           System.Directory (removeFile)
 import           System.Exit
-import           System.IO (hGetLine)
+import           System.IO (hGetLine, writeFile)
 import           System.Process
 
 import           DBus
 import           DBus.Socket
 import           DBus.Client
-
-import           Paths_haskell_dbus_tests (getDataFileName)
+import           DBusTests.Util (getTempPath)
 
 test_Integration :: Suite
 test_Integration = suite "integration"
@@ -91,13 +91,32 @@ test_Client = withDaemon "client" $ \addr -> do
 	liftIO (disconnect clientA)
 	liftIO (disconnect clientB)
 
+configFileContent :: String
+configFileContent = "\
+\<!DOCTYPE busconfig PUBLIC \"-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN\"\
+\ \"http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd\">\
+\<busconfig>\
+\  <type>session</type>\
+\  <keep_umask/>\
+\  <listen>unix:tmpdir=/tmp</listen>\
+\  <policy context=\"default\">\
+\    <!-- Allow everything to be sent -->\
+\    <allow send_destination=\"*\" eavesdrop=\"true\"/>\
+\    <!-- Allow everything to be received -->\
+\    <allow eavesdrop=\"true\"/>\
+\    <!-- Allow anyone to own anything -->\
+\    <allow own=\"*\"/>\
+\  </policy>\
+\</busconfig>"
+
 withDaemon :: String -> (Address -> Assertions ()) -> Test
 withDaemon name io = test name $ \opts -> do
 	(versionExit, _, _) <- readProcessWithExitCode "dbus-daemon" ["--version"] ""
 	case versionExit of
 		ExitFailure _ -> return TestSkipped
 		ExitSuccess -> do
-			configFilePath <- getDataFileName "data/dbus-daemon.xml"
+			configFilePath <- liftIO getTempPath
+			writeFile configFilePath configFileContent
 			daemon <- createProcess (proc "dbus-daemon" ["--config-file=" ++ configFilePath, "--print-address"])
 				{ std_out = CreatePipe
 				, close_fds = True
@@ -112,4 +131,5 @@ withDaemon name io = test name $ \opts -> do
 				(do
 					terminateProcess daemonProc
 					_ <- waitForProcess daemonProc
+					removeFile configFilePath
 					return ())
