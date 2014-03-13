@@ -228,12 +228,18 @@ openUnix transportAddr = go where
 				connect sock (SockAddrUnix p)
 				return (SocketTransport (Just transportAddr) sock))
 
+tcpHostname :: Maybe String -> Either a Network.Socket.Family -> String
+tcpHostname (Just host) _ = host
+tcpHostname Nothing (Right AF_INET) = "127.0.0.1"
+tcpHostname Nothing (Right AF_INET6) = "::1"
+tcpHostname _ _ = "localhost"
+
 openTcp :: Address -> IO SocketTransport
 openTcp transportAddr = go where
 	params = addressParameters transportAddr
 	param key = Map.lookup key params
 	
-	hostname = maybe "localhost" id (param "host")
+	hostname = tcpHostname (param "host") getFamily
 	unknownFamily x = "Unknown socket family for TCP transport: " ++ show x
 	getFamily = case param "family" of
 		Just "ipv4" -> Right AF_INET
@@ -356,9 +362,7 @@ listenTcp uuid origAddr opts = go where
 	paramBind = case param "bind" of
 		Just "*" -> Nothing
 		Just x -> Just x
-		Nothing -> case param "host" of
-			Just x -> Just x
-			Nothing -> Just "localhost"
+		Nothing -> Just (tcpHostname (param "host") getFamily)
 	
 	getAddresses family_ = getAddrInfo (Just (defaultHints
 		{ addrFlags = [AI_ADDRCONFIG, AI_PASSIVE]

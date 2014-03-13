@@ -153,7 +153,7 @@ listenRandomIPv6 = liftIO $ do
 	sockPort <- NS.socketPort sock
 	let Just addr = address "tcp" (Map.fromList
 		[ ("family", "ipv6")
-		, ("host", "localhost")
+		, ("host", "::1")
 		, ("port", show (toInteger sockPort))
 		])
 	return (addr, sock)
