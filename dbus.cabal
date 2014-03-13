@@ -88,24 +88,18 @@ source-repository this
   location: https://john-millikin.com/code/haskell-dbus/
   tag: haskell-dbus_0.10.7
 
-flag network-bytestring-610
-  default: False
-
-flag network-bytestring
-  default: True
-
 library
   ghc-options: -Wall -O2
   hs-source-dirs: lib
 
-  -- IMPORTANT: if you change these dependencies, also update them in
-  -- tests/
+  -- IMPORTANT: keep these in sync with the test suite
   build-depends:
       base >= 4.0 && < 5.0
     , bytestring >= 0.9
     , cereal >= 0.3.4 && < 0.5
     , containers >= 0.1 && < 0.6
     , libxml-sax >= 0.7 && < 0.8
+    , network >= 2.2.3
     , parsec >= 2.0 && < 3.2
     , random >= 1.0 && < 1.1
     , text >= 0.11.1.5
@@ -113,30 +107,6 @@ library
     , unix >= 2.2
     , vector >= 0.7 && < 0.11
     , xml-types >= 0.3 && < 0.4
-
-  -- haskell-dbus requires Network.Socket.ByteString, which can be provided
-  -- by EITHER (network >= 2.2.3) or (network-bytestring >= 0.1.2).
-  --
-  -- Flags do most of the work, but a little manual intervention is needed
-  -- because GHC 6.10 can't build (network >= 2.3.0.12). We want to make
-  -- network-bytestring the default *only* on old compilers, which requires
-  -- defining a separate flag with a different default value.
-  if impl(ghc < 6.12)
-    if flag(network-bytestring-610)
-      build-depends:
-          network >= 2.2.3
-    else
-      build-depends:
-          network >= 2.2 && < 2.2.3
-        , network-bytestring >= 0.1.2 && < 0.2
-  else
-    if flag(network-bytestring)
-      build-depends:
-          network >= 2.2.3
-    else
-      build-depends:
-          network >= 2.2 && < 2.2.3
-        , network-bytestring >= 0.1.2 && < 0.2
 
   exposed-modules:
     DBus
