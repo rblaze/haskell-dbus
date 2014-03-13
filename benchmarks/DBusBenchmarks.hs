@@ -21,7 +21,6 @@ import           Control.DeepSeq
 import           Criterion.Types
 import           Criterion.Config
 import qualified Criterion.Main
-import qualified Data.Set
 import           Data.Word (Word32)
 import           Unsafe.Coerce (unsafeCoerce)
 
@@ -50,31 +49,17 @@ instance NFData ErrorName
 instance NFData BusName
 
 empty_MethodCall :: MethodCall
-empty_MethodCall = MethodCall
-	{ methodCallPath = "/"
-	, methodCallMember = "m"
-	, methodCallInterface = Nothing
-	, methodCallSender = Nothing
-	, methodCallDestination = Nothing
-	, methodCallFlags = Data.Set.empty
-	, methodCallBody = []
-	}
+empty_MethodCall = methodCall "/" "org.i" "m"
 
 empty_MethodReturn :: MethodReturn
-empty_MethodReturn = MethodReturn
-	{ methodReturnSerial = serial 0
-	, methodReturnSender = Nothing
-	, methodReturnDestination = Nothing
-	, methodReturnBody =  []
-	}
+empty_MethodReturn = methodReturn (serial 0)
 
 benchMarshal :: Message msg => String -> msg -> Benchmark
-benchMarshal name msg = bench name (whnf marshal msg) where
-	marshal = marshalMessage LittleEndian (serial 0)
+benchMarshal name msg = bench name (whnf (marshal LittleEndian (serial 0)) msg)
 
 benchUnmarshal :: Message msg => String -> msg -> Benchmark
-benchUnmarshal name msg = bench name (whnf unmarshalMessage bytes) where
-	Right bytes = marshalMessage LittleEndian (serial 0) msg
+benchUnmarshal name msg = bench name (whnf unmarshal bytes) where
+	Right bytes = marshal LittleEndian (serial 0) msg
 
 benchmarks :: [Benchmark]
 benchmarks = 
@@ -85,9 +70,9 @@ benchmarks =
 			, bench "parseSignature/large" (nf parseSignature "a{s(asiiiiasa(siiia{s(iiiiv)}))}")
 			]
 		, bgroup "ObjectPath"
-			[ bench "objectPath_/small" (nf objectPath "/")
-			, bench "objectPath_/medium" (nf objectPath "/foo/bar")
-			, bench "objectPath_/large" (nf objectPath "/f0OO/b4R/baz_qux/blahblahblah")
+			[ bench "objectPath_/small" (nf objectPath_ "/")
+			, bench "objectPath_/medium" (nf objectPath_ "/foo/bar")
+			, bench "objectPath_/large" (nf objectPath_ "/f0OO/b4R/baz_qux/blahblahblah")
 			]
 		, bgroup "InterfaceName"
 			[ bench "interfaceName_/small" (nf interfaceName_ "f.b")
