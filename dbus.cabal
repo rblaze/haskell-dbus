@@ -66,16 +66,13 @@ description:
 
 
 extra-source-files:
-  benchmarks/Benchmarks.hs
-  benchmarks/haskell-dbus-benchmarks.cabal
+  benchmarks/DBusBenchmarks.hs
   --
   examples/dbus-monitor.hs
   examples/export.hs
   examples/introspect.hs
   examples/list-names.hs
   --
-  tests/data/dbus-daemon.xml
-  tests/haskell-dbus-tests.cabal
   tests/DBusTests.hs
   tests/DBusTests/*.hs
 
