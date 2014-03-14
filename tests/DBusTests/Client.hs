@@ -38,7 +38,7 @@ test_Client = suite "Client"
 	test_ReleaseName
 	test_Call
 	test_CallNoReply
-	test_Listen
+	test_AddMatch
 	test_AutoMethod
 	test_ExportIntrospection
 
@@ -301,8 +301,8 @@ test_CallNoReply = assertions "callNoReply" $ do
 				})
 			methodReturn
 
-test_Listen :: Test
-test_Listen = assertions "listen" $ do
+test_AddMatch :: Test
+test_AddMatch = assertions "addMatch" $ do
 	(sock, client) <- startConnectedClient
 	
 	let matchRule = DBus.Client.matchAny
@@ -325,7 +325,7 @@ test_Listen = assertions "listen" $ do
 	
 	-- add a listener for the given signal
 	stubMethodCall sock
-		(DBus.Client.listen client matchRule (putMVar signalVar))
+		(DBus.Client.addMatch client matchRule (putMVar signalVar))
 		requestCall
 		methodReturn
 	
