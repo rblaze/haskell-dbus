@@ -1,7 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverlappingInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 -- Copyright (C) 2009-2012 John Millikin <jmillikin@gmail.com>
 --
@@ -309,8 +310,8 @@ disconnect' client = do
 	forM_ (Data.Map.toList pendingCalls) $ \(k, v) -> do
 		putMVar v (Left (methodError k errorDisconnected))
 	
-	atomicModifyIORef (clientSignalHandlers client) (\_ -> (Data.Map.empty, ()))
-	atomicModifyIORef (clientObjects client) (\_ -> (Data.Map.empty, ()))
+	atomicWriteIORef (clientSignalHandlers client) Data.Map.empty
+	atomicWriteIORef (clientObjects client) Data.Map.empty
 	
 	DBus.Socket.close (clientSocket client)
 
@@ -500,7 +501,7 @@ send_ :: Message msg => Client -> msg -> (Serial -> IO a) -> IO a
 send_ client msg io = do
 	result <- Control.Exception.try (DBus.Socket.send (clientSocket client) msg io)
 	case result of
-		Right serial -> return serial
+		Right x -> return x
 		Left err -> throwIO (clientError (DBus.Socket.socketErrorMessage err))
 			{ clientErrorFatal = DBus.Socket.socketErrorFatal err
 			}
@@ -517,17 +518,15 @@ call client msg = do
 		{ methodCallReplyExpected = True
 		}
 	mvar <- newEmptyMVar
-	send_ client safeMsg (\serial -> do
-		let ref = clientPendingCalls client
-		
-		-- If the mvar is finalized, remove its serial from the pending
-		-- call map. This allows calls to be canceled, by using
-		-- something like 'timeout' to make 'call' return early, and
-		-- having the finalizer clear out the map.
-		addMVarFinalizer mvar (atomicModifyIORef ref (\p -> (Data.Map.delete serial p, ())))
-		
-		atomicModifyIORef ref (\p -> (Data.Map.insert serial mvar p, ())))
-	takeMVar mvar
+	let ref = clientPendingCalls client
+	serial <- send_ client safeMsg (\serial -> atomicModifyIORef ref (\p -> (Data.Map.insert serial mvar p, serial)))
+	
+	-- At this point, we wait for the reply to arrive. The user may cancel
+	-- a pending call by sending this thread an exception via something
+	-- like 'timeout'; in that case, we want to clean up the pending call.
+	Control.Exception.onException
+		(takeMVar mvar)
+		(atomicModifyIORef_ ref (Data.Map.delete serial))
 
 -- | Send a method call to the bus, and wait for the response.
 --
@@ -947,3 +946,11 @@ dbusInterface = interfaceName_ "org.freedesktop.DBus"
 
 interfaceIntrospectable :: InterfaceName
 interfaceIntrospectable = interfaceName_ "org.freedesktop.DBus.Introspectable"
+
+atomicModifyIORef_ :: IORef a -> (a -> a) -> IO ()
+atomicModifyIORef_ ref fn = atomicModifyIORef ref (\x -> (fn x, ()))
+
+#if !MIN_VERSION_base(4,6,0)
+atomicWriteIORef :: IORef a -> a -> IO ()
+atomicWriteIORef ref x = atomicModifyIORef ref (\_ -> (x, ()))
+#endif
