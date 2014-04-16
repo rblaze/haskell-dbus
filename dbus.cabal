@@ -136,7 +136,7 @@ test-suite dbus_tests
     , network >= 2.2.3
     , parsec >= 2.0 && < 3.2
     , process >= 1.0 && < 1.2
-    , QuickCheck == 2.4.*
+    , QuickCheck >= 2.4
     , random >= 1.0 && < 1.1
     , text >= 0.11.1.5
     , transformers >= 0.2 && < 0.4
