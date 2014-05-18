@@ -17,14 +17,10 @@
 
 module Main (main) where
 
-import           Control.Concurrent (threadDelay)
 import           Control.Monad
 import           Data.List (intercalate)
-import           Data.Maybe
 import           Data.Int
 import           Data.Word
-import           Data.Text (Text)
-import qualified Data.Text
 import           System.Environment
 import           System.Exit
 import           System.IO

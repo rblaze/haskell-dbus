@@ -21,7 +21,6 @@ import           Control.Concurrent (threadDelay)
 import           Control.Monad
 import           System.Exit
 
-import           DBus
 import           DBus.Client
 
 onFoo :: String -> String -> IO (String, String)

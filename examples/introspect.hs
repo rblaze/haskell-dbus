@@ -19,7 +19,6 @@ module Main (main) where
 
 import           Control.Monad (when)
 import           Data.String (fromString)
-import qualified Data.Text
 import           System.Environment (getArgs, getProgName)
 import           System.Exit (exitFailure)
 import           System.IO (hPutStrLn, stderr)
