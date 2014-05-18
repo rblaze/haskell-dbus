@@ -2,8 +2,8 @@ name: dbus
 version: 0.10.7
 license: GPL-3
 license-file: license.txt
-author: John Millikin <jmillikin@gmail.com>
-maintainer: John Millikin <jmillikin@gmail.com>
+author: John Millikin <john@john-millikin.com>
+maintainer: John Millikin <john@john-millikin.com>
 build-type: Simple
 cabal-version: >= 1.8
 category: Network, Desktop
