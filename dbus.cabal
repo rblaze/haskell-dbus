@@ -100,7 +100,7 @@ library
     , parsec >= 2.0 && < 3.2
     , random >= 1.0 && < 1.1
     , text >= 0.11.1.5
-    , transformers >= 0.2 && < 0.4
+    , transformers >= 0.2
     , unix >= 2.2
     , vector >= 0.7 && < 0.11
     , xml-types >= 0.3 && < 0.4
@@ -135,11 +135,11 @@ test-suite dbus_tests
     , libxml-sax >= 0.7 && < 0.8
     , network >= 2.2.3
     , parsec >= 2.0 && < 3.2
-    , process >= 1.0 && < 1.2
+    , process >= 1.0 && < 2.0
     , QuickCheck >= 2.4
     , random >= 1.0 && < 1.1
     , text >= 0.11.1.5
-    , transformers >= 0.2 && < 0.4
+    , transformers >= 0.2
     , unix >= 2.2
     , vector >= 0.7 && < 0.11
     , xml-types >= 0.3 && < 0.4
