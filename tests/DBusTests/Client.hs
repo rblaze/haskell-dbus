@@ -32,15 +32,15 @@ import qualified DBus.Socket
 import           DBusTests.Util (forkVar, withEnv)
 
 test_Client :: Suite
-test_Client = suite "Client"
-	suite_Connect
-	test_RequestName
-	test_ReleaseName
-	test_Call
-	test_CallNoReply
-	test_AddMatch
-	test_AutoMethod
-	test_ExportIntrospection
+test_Client = suite "Client" $
+	[ test_RequestName
+	, test_ReleaseName
+	, test_Call
+	, test_CallNoReply
+	, test_AddMatch
+	, test_AutoMethod
+	, test_ExportIntrospection
+	] ++ suiteTests suite_Connect
 
 test_Connect :: String -> (Address -> IO DBus.Client.Client) -> Test
 test_Connect name connect = assertions name $ do
@@ -60,12 +60,13 @@ test_Connect name connect = assertions name $ do
 
 suite_Connect :: Suite
 suite_Connect = suite "connect"
-	test_ConnectSystem
-	test_ConnectSystem_NoAddress
-	test_ConnectSession
-	test_ConnectSession_NoAddress
-	test_ConnectStarter
-	test_ConnectStarter_NoAddress
+	[ test_ConnectSystem
+	, test_ConnectSystem_NoAddress
+	, test_ConnectSession
+	, test_ConnectSession_NoAddress
+	, test_ConnectStarter
+	, test_ConnectStarter_NoAddress
+	]
 
 test_ConnectSystem :: Test
 test_ConnectSystem = test_Connect "connectSystem" $ \addr -> do

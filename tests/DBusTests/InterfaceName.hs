@@ -29,9 +29,10 @@ import           DBusTests.Util
 
 test_InterfaceName :: Suite
 test_InterfaceName = suite "InterfaceName"
-	test_Parse
-	test_ParseInvalid
-	test_IsVariant
+	[ test_Parse
+	, test_ParseInvalid
+	, test_IsVariant
+	]
 
 test_Parse :: Test
 test_Parse = property "parse" prop where

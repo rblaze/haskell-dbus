@@ -32,9 +32,10 @@ import           DBusTests.Util (forkVar)
 
 test_Socket :: Suite
 test_Socket = suite "Socket"
-	test_Listen
-	test_ListenWith_CustomAuth
-	test_SendReceive
+	[ test_Listen
+	, test_ListenWith_CustomAuth
+	, test_SendReceive
+	]
 
 test_Listen :: Test
 test_Listen = assertions "listen" $ do

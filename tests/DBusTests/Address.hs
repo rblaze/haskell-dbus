@@ -33,15 +33,16 @@ import           DBusTests.Util (smallListOf, smallListOf1, withEnv)
 
 test_Address :: Suite
 test_Address = suite "Address"
-	test_BuildAddress
-	test_ParseAddress
-	test_ParseAddresses
-	test_ParseInvalid
-	test_FormatAddress
-	test_FormatAddresses
-	test_GetSystemAddress
-	test_GetSessionAddress
-	test_GetStarterAddress
+	[ test_BuildAddress
+	, test_ParseAddress
+	, test_ParseAddresses
+	, test_ParseInvalid
+	, test_FormatAddress
+	, test_FormatAddresses
+	, test_GetSystemAddress
+	, test_GetSessionAddress
+	, test_GetStarterAddress
+	]
 
 test_BuildAddress :: Test
 test_BuildAddress = property "address" prop where

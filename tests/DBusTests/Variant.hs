@@ -38,10 +38,11 @@ import           DBusTests.Util
 
 test_Variant :: Suite
 test_Variant = suite "Variant"
-	test_IsAtom
-	test_IsValue
-	test_Show
-	test_ByteStorage
+	[ test_IsAtom
+	, test_IsValue
+	, test_Show
+	, test_ByteStorage
+	]
 
 test_IsAtom :: Test
 test_IsAtom = assertions "IsAtom" $ do

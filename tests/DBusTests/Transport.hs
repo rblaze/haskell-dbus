@@ -37,29 +37,31 @@ import           DBus.Transport
 import           DBusTests.Util
 
 test_Transport :: Suite
-test_Transport = suite "Transport"
-	test_TransportOpen
-	test_TransportListen
-	test_TransportAccept
-	test_TransportSendReceive
-	test_HandleLostConnection
+test_Transport = suite "Transport" $
+	suiteTests suite_TransportOpen ++
+	suiteTests suite_TransportListen ++
+	suiteTests suite_TransportAccept ++
+	[ test_TransportSendReceive
+	, test_HandleLostConnection
+	]
 
-test_TransportOpen :: Suite
-test_TransportOpen = suite "transportOpen"
-	test_OpenUnknown
-	test_OpenUnix
-	test_OpenTcp
+suite_TransportOpen :: Suite
+suite_TransportOpen = suite "transportOpen" $
+	[ test_OpenUnknown
+	] ++ suiteTests suite_OpenUnix
+	++ suiteTests suite_OpenTcp
 
-test_TransportListen :: Suite
-test_TransportListen = suite "transportListen"
-	test_ListenUnknown
-	test_ListenUnix
-	test_ListenTcp
+suite_TransportListen :: Suite
+suite_TransportListen = suite "transportListen" $
+	[ test_ListenUnknown
+	] ++ suiteTests suite_ListenUnix
+	++ suiteTests suite_ListenTcp
 
-test_TransportAccept :: Suite
-test_TransportAccept = suite "transportAccept"
-	test_AcceptSocket
-	test_AcceptSocketClosed
+suite_TransportAccept :: Suite
+suite_TransportAccept = suite "transportAccept"
+	[ test_AcceptSocket
+	, test_AcceptSocketClosed
+	]
 
 test_OpenUnknown :: Test
 test_OpenUnknown = assertions "unknown" $ do
@@ -70,13 +72,14 @@ test_OpenUnknown = assertions "unknown" $ do
 			})
 		(transportOpen socketTransportOptions addr)
 
-test_OpenUnix :: Suite
-test_OpenUnix = suite "unix"
-	test_OpenUnix_Path
-	test_OpenUnix_Abstract
-	test_OpenUnix_TooFew
-	test_OpenUnix_TooMany
-	test_OpenUnix_NotListening
+suite_OpenUnix :: Suite
+suite_OpenUnix = suite "unix"
+	[ test_OpenUnix_Path
+	, test_OpenUnix_Abstract
+	, test_OpenUnix_TooFew
+	, test_OpenUnix_TooMany
+	, test_OpenUnix_NotListening
+	]
 
 test_OpenUnix_Path :: Test
 test_OpenUnix_Path = assertions "path" $ do
@@ -150,15 +153,16 @@ test_OpenUnix_NotListening = assertions "not-listening" $ do
 	fdcountAfter <- countFileDescriptors
 	$assert (equal fdcountBefore fdcountAfter)
 
-test_OpenTcp :: Suite
-test_OpenTcp = suite "tcp"
-	test_OpenTcp_IPv4
-	(skipWhen noIPv6 test_OpenTcp_IPv6)
-	test_OpenTcp_Unknown
-	test_OpenTcp_NoPort
-	test_OpenTcp_InvalidPort
-	test_OpenTcp_NoUsableAddresses
-	test_OpenTcp_NotListening
+suite_OpenTcp :: Suite
+suite_OpenTcp = suite "tcp"
+	[ test_OpenTcp_IPv4
+	, skipWhen noIPv6 test_OpenTcp_IPv6
+	, test_OpenTcp_Unknown
+	, test_OpenTcp_NoPort
+	, test_OpenTcp_InvalidPort
+	, test_OpenTcp_NoUsableAddresses
+	, test_OpenTcp_NotListening
+	]
 
 test_OpenTcp_IPv4 :: Test
 test_OpenTcp_IPv4 = assertions "ipv4" $ do
@@ -331,14 +335,15 @@ test_ListenUnknown = assertions "unknown" $ do
 			})
 		(transportListen socketTransportOptions addr)
 
-test_ListenUnix :: Suite
-test_ListenUnix = suite "unix"
-	test_ListenUnix_Path
-	test_ListenUnix_Abstract
-	test_ListenUnix_Tmpdir
-	test_ListenUnix_TooFew
-	test_ListenUnix_TooMany
-	test_ListenUnix_InvalidBind
+suite_ListenUnix :: Suite
+suite_ListenUnix = suite "unix"
+	[ test_ListenUnix_Path
+	, test_ListenUnix_Abstract
+	, test_ListenUnix_Tmpdir
+	, test_ListenUnix_TooFew
+	, test_ListenUnix_TooMany
+	, test_ListenUnix_InvalidBind
+	]
 
 test_ListenUnix_Path :: Test
 test_ListenUnix_Path = assertions "path" $ do
@@ -419,13 +424,14 @@ test_ListenUnix_InvalidBind = assertions "invalid-bind" $ do
 	fdcountAfter <- countFileDescriptors
 	$assert (equal fdcountBefore fdcountAfter)
 
-test_ListenTcp :: Suite
-test_ListenTcp = suite "tcp"
-	test_ListenTcp_IPv4
-	(skipWhen noIPv6 test_ListenTcp_IPv6)
-	test_ListenTcp_Unknown
-	test_ListenTcp_InvalidPort
-	test_ListenTcp_InvalidBind
+suite_ListenTcp :: Suite
+suite_ListenTcp = suite "tcp"
+	[ test_ListenTcp_IPv4
+	, skipWhen noIPv6 test_ListenTcp_IPv6
+	, test_ListenTcp_Unknown
+	, test_ListenTcp_InvalidPort
+	, test_ListenTcp_InvalidBind
+	]
 
 test_ListenTcp_IPv4 :: Test
 test_ListenTcp_IPv4 = assertions "ipv4" $ do

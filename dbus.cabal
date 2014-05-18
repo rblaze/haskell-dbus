@@ -127,7 +127,7 @@ test-suite dbus_tests
       base >= 4.0 && < 5.0
     , bytestring >= 0.9
     , cereal >= 0.3.4 && < 0.5
-    , chell >= 0.3 && < 0.4
+    , chell >= 0.4 && < 0.5
     , chell-quickcheck >= 0.2 && < 0.3
     , containers >= 0.1 && < 0.6
     , directory

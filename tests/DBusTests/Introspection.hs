@@ -35,10 +35,11 @@ import           DBusTests.Util (halfSized)
 
 test_Introspection :: Suite
 test_Introspection = suite "Introspection"
-	test_XmlPassthrough
-	test_XmlParse
-	test_XmlParseFailed
-	test_XmlWriteFailed
+	[ test_XmlPassthrough
+	, test_XmlParse
+	, test_XmlParseFailed
+	, test_XmlWriteFailed
+	]
 
 test_XmlPassthrough :: Test
 test_XmlPassthrough = property "xml-passthrough" $ \obj -> let

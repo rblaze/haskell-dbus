@@ -29,9 +29,10 @@ import           DBusTests.Util
 
 test_BusName :: Suite
 test_BusName = suite "BusName"
-	test_Parse
-	test_ParseInvalid
-	test_IsVariant
+	[ test_Parse
+	, test_ParseInvalid
+	, test_IsVariant
+	]
 
 test_Parse :: Test
 test_Parse = property "parse" prop where

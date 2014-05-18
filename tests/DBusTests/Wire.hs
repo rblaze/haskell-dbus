@@ -25,12 +25,13 @@ import qualified Data.ByteString.Char8 ()
 import           DBus
 
 test_Wire :: Suite
-test_Wire = suite "Wire"
-	test_Unmarshal
+test_Wire = suite "Wire" $
+	suiteTests test_Unmarshal
 
 test_Unmarshal :: Suite
 test_Unmarshal = suite "unmarshal"
-	test_UnmarshalUnexpectedEof
+	[ test_UnmarshalUnexpectedEof
+	]
 
 test_UnmarshalUnexpectedEof :: Test
 test_UnmarshalUnexpectedEof = assertions "unexpected-eof" $ do

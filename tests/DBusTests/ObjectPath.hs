@@ -27,8 +27,9 @@ import           DBus
 
 test_ObjectPath :: Suite
 test_ObjectPath = suite "ObjectPath"
-	test_Parse
-	test_ParseInvalid
+	[ test_Parse
+	, test_ParseInvalid
+	]
 
 test_Parse :: Test
 test_Parse = property "parse" prop where

@@ -27,12 +27,13 @@ import           DBusTests.Util
 
 test_Signature :: Suite
 test_Signature = suite "Signature"
-	test_BuildSignature
-	test_ParseSignature
-	test_ParseInvalid
-	test_FormatSignature
-	test_IsAtom
-	test_ShowType
+	[ test_BuildSignature
+	, test_ParseSignature
+	, test_ParseInvalid
+	, test_FormatSignature
+	, test_IsAtom
+	, test_ShowType
+	]
 
 test_BuildSignature :: Test
 test_BuildSignature = property "signature" prop where

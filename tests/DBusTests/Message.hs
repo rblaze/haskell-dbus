@@ -23,7 +23,8 @@ import           DBus
 
 test_Message :: Suite
 test_Message = suite "Message"
-	test_MethodErrorMessage
+	[ test_MethodErrorMessage
+	]
 
 test_MethodErrorMessage :: Test
 test_MethodErrorMessage = assertions "methodErrorMessage" $ do

@@ -43,10 +43,11 @@ import           DBusTests.Util (smallListOf)
 
 test_Serialization :: Suite
 test_Serialization = suite "Serialization"
-	test_MethodCall
-	test_MethodReturn
-	test_MethodError
-	test_Signal
+	[ test_MethodCall
+	, test_MethodReturn
+	, test_MethodError
+	, test_Signal
+	]
 
 test_MethodCall :: Test
 test_MethodCall = property "MethodCall" prop where

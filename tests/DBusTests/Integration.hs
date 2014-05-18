@@ -34,8 +34,9 @@ import           DBusTests.Util (getTempPath)
 
 test_Integration :: Suite
 test_Integration = suite "integration"
-	test_Socket
-	test_Client
+	[ test_Socket
+	, test_Client
+	]
 
 test_Socket :: Test
 test_Socket = withDaemon "socket" $ \addr -> do
