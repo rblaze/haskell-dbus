@@ -74,7 +74,8 @@ module DBus.Introspection
 	, propertyWrite
 	) where
 
-import           Control.Monad ((>=>))
+import qualified Control.Applicative
+import           Control.Monad ((>=>), ap, liftM)
 import           Control.Monad.ST (runST)
 import           Data.List (isPrefixOf)
 import qualified Data.STRef as ST
@@ -284,6 +285,13 @@ children :: Monad m => (X.Element -> m b) -> (X.Element -> [X.Element]) -> X.Ele
 children f p = mapM f . concatMap p . X.elementChildren
 
 newtype XmlWriter a = XmlWriter { runXmlWriter :: Maybe (a, String) }
+
+instance Functor XmlWriter where
+	fmap = liftM
+
+instance Control.Applicative.Applicative XmlWriter where
+	pure = return
+	(<*>) = ap
 
 instance Monad XmlWriter where
 	return a = XmlWriter $ Just (a, "")

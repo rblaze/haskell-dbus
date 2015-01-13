@@ -26,7 +26,8 @@ module DBus.Wire
 	, unmarshalMessageM
 	) where
 
-import           Control.Monad (liftM, when, unless)
+import qualified Control.Applicative
+import           Control.Monad (ap, liftM, when, unless)
 import qualified Data.ByteString
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8
@@ -94,6 +95,17 @@ data WireR s a
 newtype Wire s a = Wire
 	{ unWire :: Endianness -> s -> WireR s a
 	}
+
+instance Functor (Wire s) where
+	{-# INLINE fmap #-}
+	fmap = liftM
+
+instance Control.Applicative.Applicative (Wire s) where
+	{-# INLINE pure #-}
+	pure = return
+	
+	{-# INLINE (<*>) #-}
+	(<*>) = ap
 
 instance Monad (Wire s) where
 	{-# INLINE return #-}
@@ -708,6 +720,10 @@ instance Functor (ErrorM e) where
 		Left err -> Left err
 		Right x -> Right (f x)
 
+instance Control.Applicative.Applicative (ErrorM e) where
+	pure = return
+	(<*>) = ap
+
 instance Monad (ErrorM e) where
 	return = ErrorM . Right
 	(>>=) m k = case runErrorM m of
@@ -721,6 +737,10 @@ newtype ErrorT e m a = ErrorT { runErrorT :: m (Either e a) }
 
 instance Monad m => Functor (ErrorT e m) where
 	fmap = liftM
+
+instance Monad m => Control.Applicative.Applicative (ErrorT e m) where
+	pure = return
+	(<*>) = ap
 
 instance Monad m => Monad (ErrorT e m) where
 	return = ErrorT . return . Right

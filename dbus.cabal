@@ -1,5 +1,5 @@
 name: dbus
-version: 0.10.9
+version: 0.10.9.1
 license: GPL-3
 license-file: license.txt
 author: John Millikin <john@john-millikin.com>
@@ -83,7 +83,7 @@ source-repository head
 source-repository this
   type: git
   location: https://john-millikin.com/code/haskell-dbus/
-  tag: haskell-dbus_0.10.9
+  tag: haskell-dbus_0.10.9.1
 
 library
   ghc-options: -Wall -O2
