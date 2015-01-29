@@ -1,5 +1,5 @@
 name: dbus
-version: 0.10.9.1
+version: 0.10.9.2
 license: GPL-3
 license-file: license.txt
 author: John Millikin <john@john-millikin.com>
@@ -83,11 +83,14 @@ source-repository head
 source-repository this
   type: git
   location: https://john-millikin.com/code/haskell-dbus/
-  tag: haskell-dbus_0.10.9.1
+  tag: haskell-dbus_0.10.9.2
 
 library
   ghc-options: -Wall -O2
   hs-source-dirs: lib
+
+  if impl(ghc>=7.10)
+    ghc-options: -fno-warn-tabs
 
   -- IMPORTANT: keep these in sync with the test suite
   build-depends:
@@ -123,6 +126,9 @@ test-suite dbus_tests
   main-is: DBusTests.hs
   hs-source-dirs: lib,tests
 
+  if impl(ghc>=7.10)
+    ghc-options: -fno-warn-tabs
+
   build-depends:
       base >= 4.0 && < 5.0
     , bytestring >= 0.9
@@ -149,6 +155,9 @@ benchmark dbus_benchmarks
   main-is: DBusBenchmarks.hs
   hs-source-dirs: benchmarks
   ghc-options: -Wall -O2 -fno-warn-orphans
+
+  if impl(ghc>=7.10)
+    ghc-options: -fno-warn-tabs
 
   build-depends:
       dbus

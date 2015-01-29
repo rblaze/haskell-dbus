@@ -802,12 +802,14 @@ parserBusName = name >> Parsec.eof where
 	
 	wellKnown = elements alpha
 	
+	elements :: [Char] -> Parsec.Parser ()
 	elements start = do
 		element start
 		Parsec.skipMany1 $ do
 			_ <- Parsec.char '.'
 			element start
 	
+	element :: [Char] -> Parsec.Parser ()
 	element start = do
 		_ <- oneOf start
 		Parsec.skipMany (oneOf alphanum)
