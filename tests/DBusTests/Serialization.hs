@@ -29,6 +29,8 @@ import           Data.Word (Word8, Word16, Word32, Word64)
 import           Data.Map (Map)
 import qualified Data.Map
 import qualified Data.Vector
+import           Foreign.C.Types (CInt)
+import           System.Posix.Types (Fd)
 
 import           DBus
 import qualified DBus.Types
@@ -92,10 +94,18 @@ gen_Atom = oneof
 	, fmap toVariant (arbitrary :: Gen Int64)
 	, fmap toVariant (arbitrary :: Gen Bool)
 	, fmap toVariant (arbitrary :: Gen Double)
+	, fmap toVariant gen_UnixFd
 	, fmap toVariant (arbitrary :: Gen Text)
 	, fmap toVariant (arbitrary :: Gen ObjectPath)
 	, fmap toVariant (arbitrary :: Gen Signature)
 	]
+
+gen_UnixFd :: Gen Fd
+gen_UnixFd = do
+	let maxWord32 = toInteger (maxBound :: Word32)
+	let maxCInt = toInteger (maxBound :: CInt)
+	x <- choose (0, toInteger (min maxWord32 maxCInt))
+	return (fromInteger x)
 
 gen_Variant :: Gen Variant
 gen_Variant = oneof

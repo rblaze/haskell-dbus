@@ -31,7 +31,7 @@ module DBus.Message
 
 import           Data.Bits ((.|.), (.&.))
 import           Data.Maybe (fromMaybe, listToMaybe)
-import           Data.Word (Word8)
+import           Data.Word (Word8, Word32)
 
 import           DBus.Types
 
@@ -62,6 +62,7 @@ data HeaderField
 	| HeaderDestination BusName
 	| HeaderSender      BusName
 	| HeaderSignature   Signature
+	| HeaderUnixFds     Word32
 	deriving (Show, Eq)
 
 -- | A method call is a request to run some procedure exported by the

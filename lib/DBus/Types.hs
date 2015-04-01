@@ -43,6 +43,7 @@ import           Data.Vector (Vector)
 import           Data.Word
 import qualified Foreign
 import           System.IO.Unsafe (unsafePerformIO)
+import           System.Posix.Types (Fd)
 
 import qualified Text.ParserCombinators.Parsec as Parsec
 import           Text.ParserCombinators.Parsec ((<|>), oneOf)
@@ -57,6 +58,7 @@ data Type
 	| TypeInt32
 	| TypeInt64
 	| TypeDouble
+	| TypeUnixFd
 	| TypeString
 	| TypeSignature
 	| TypeObjectPath
@@ -80,6 +82,7 @@ showType paren t = case t of
 	TypeInt32 -> "Int32"
 	TypeInt64 -> "Int64"
 	TypeDouble -> "Double"
+	TypeUnixFd -> "UnixFd"
 	TypeString -> "String"
 	TypeSignature -> "Signature"
 	TypeObjectPath -> "ObjectPath"
@@ -126,6 +129,7 @@ typeCode TypeInt16      = "n"
 typeCode TypeInt32      = "i"
 typeCode TypeInt64      = "x"
 typeCode TypeDouble     = "d"
+typeCode TypeUnixFd     = "h"
 typeCode TypeString     = "s"
 typeCode TypeSignature  = "g"
 typeCode TypeObjectPath = "o"
@@ -210,6 +214,7 @@ parseAtom byte yes no = case byte of
 	0x75 -> yes TypeWord32
 	0x74 -> yes TypeWord64
 	0x64 -> yes TypeDouble
+	0x68 -> yes TypeUnixFd
 	0x73 -> yes TypeString
 	0x67 -> yes TypeSignature
 	0x6F -> yes TypeObjectPath
@@ -357,6 +362,7 @@ data Atom
 	| AtomInt32 Int32
 	| AtomInt64 Int64
 	| AtomDouble Double
+	| AtomUnixFd Fd
 	| AtomText Text
 	| AtomSignature Signature
 	| AtomObjectPath ObjectPath
@@ -390,6 +396,7 @@ showAtom _ (AtomInt16 x) = show x
 showAtom _ (AtomInt32 x) = show x
 showAtom _ (AtomInt64 x) = show x
 showAtom _ (AtomDouble x) = show x
+showAtom p (AtomUnixFd x) = showParen p (showString "UnixFd " . shows x) ""
 showAtom _ (AtomText x) = show x
 showAtom p (AtomSignature x) = showsPrec (if p then 11 else 0) x ""
 showAtom p (AtomObjectPath x) = showsPrec (if p then 11 else 0) x ""
@@ -440,6 +447,7 @@ atomType (AtomInt16 _) = TypeInt16
 atomType (AtomInt32 _) = TypeInt32
 atomType (AtomInt64 _) = TypeInt64
 atomType (AtomDouble _) = TypeDouble
+atomType (AtomUnixFd _) = TypeUnixFd
 atomType (AtomText _) = TypeString
 atomType (AtomSignature _) = TypeSignature
 atomType (AtomObjectPath _) = TypeObjectPath
@@ -470,6 +478,7 @@ IS_ATOM(Int16,      AtomInt16,      TypeInt16)
 IS_ATOM(Int32,      AtomInt32,      TypeInt32)
 IS_ATOM(Int64,      AtomInt64,      TypeInt64)
 IS_ATOM(Double,     AtomDouble,     TypeDouble)
+IS_ATOM(Fd,         AtomUnixFd,     TypeUnixFd)
 IS_ATOM(Text,       AtomText,       TypeString)
 IS_ATOM(Signature,  AtomSignature,  TypeSignature)
 IS_ATOM(ObjectPath, AtomObjectPath, TypeObjectPath)

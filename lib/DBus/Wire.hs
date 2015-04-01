@@ -40,6 +40,8 @@ import qualified Data.Text.Encoding
 import qualified Data.Vector
 import           Data.Vector (Vector)
 import           Data.Word (Word8, Word16, Word32, Word64)
+import           Foreign.C.Types (CInt)
+import           System.Posix.Types (Fd(..))
 
 import qualified Data.Serialize.Builder as Builder
 import qualified Data.Serialize.Get as Get
@@ -71,6 +73,7 @@ alignment TypeInt16 = 2
 alignment TypeInt32 = 4
 alignment TypeInt64 = 8
 alignment TypeDouble = 8
+alignment TypeUnixFd = 4
 alignment TypeString = 4
 alignment TypeObjectPath = 4
 alignment TypeSignature = 1
@@ -167,6 +170,7 @@ marshalAtom (AtomInt16 x) = marshalInt16 x
 marshalAtom (AtomInt32 x) = marshalInt32 x
 marshalAtom (AtomInt64 x) = marshalInt64 x
 marshalAtom (AtomDouble x) = marshalDouble x
+marshalAtom (AtomUnixFd x) = marshalUnixFd x
 marshalAtom (AtomBool x) = marshalBool x
 marshalAtom (AtomText x) = marshalText x
 marshalAtom (AtomObjectPath x) = marshalObjectPath x
@@ -219,6 +223,7 @@ unmarshal TypeInt16 = liftM toValue unmarshalInt16
 unmarshal TypeInt32 = liftM toValue unmarshalInt32
 unmarshal TypeInt64 = liftM toValue unmarshalInt64
 unmarshal TypeDouble = liftM toValue unmarshalDouble
+unmarshal TypeUnixFd = liftM toValue unmarshalUnixFd
 unmarshal TypeBoolean = liftM toValue unmarshalBool
 unmarshal TypeString = liftM toValue unmarshalText
 unmarshal TypeObjectPath = liftM toValue unmarshalObjectPath
@@ -331,6 +336,19 @@ unmarshalDouble :: Unmarshal Double
 unmarshalDouble = unmarshalGet 8
 	getFloat64be
 	getFloat64le
+
+marshalUnixFd :: Fd -> Marshal ()
+marshalUnixFd (Fd x)
+	| x < 0 = throwError ("Invalid file descriptor: " ++ show x)
+	| toInteger x > toInteger (maxBound :: Word32) = throwError ("D-Bus forbids file descriptors exceeding UINT32_MAX: " ++ show x)
+	| otherwise = marshalWord32 (fromIntegral x)
+
+unmarshalUnixFd :: Unmarshal Fd
+unmarshalUnixFd = do
+	x <- unmarshalWord32
+	when (toInteger x > toInteger (maxBound :: CInt))
+		(throwError ("Invalid file descriptor: " ++ show x))
+	return (Fd (fromIntegral x))
 
 marshalBool :: Bool -> Marshal ()
 marshalBool False = marshalWord32 0
@@ -512,6 +530,7 @@ encodeField (HeaderReplySerial x) = encodeField' 5 x
 encodeField (HeaderDestination x) = encodeField' 6 x
 encodeField (HeaderSender x)      = encodeField' 7 x
 encodeField (HeaderSignature x)   = encodeField' 8 x
+encodeField (HeaderUnixFds x)     = encodeField' 9 x
 
 encodeField' :: IsVariant a => Word8 -> a -> Value
 encodeField' code x = toValue (code, toVariant x)
@@ -527,6 +546,7 @@ decodeField struct = case struct of
 	(6, x) -> decodeField' x HeaderDestination "destination"
 	(7, x) -> decodeField' x HeaderSender "sender"
 	(8, x) -> decodeField' x HeaderSignature "signature"
+	(9, x) -> decodeField' x HeaderUnixFds "unix fds"
 	_      -> return []
 
 decodeField' :: IsVariant a => Variant -> (a -> b) -> String

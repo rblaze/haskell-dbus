@@ -30,6 +30,7 @@ import           Data.Word (Word8, Word16, Word32, Word64)
 import           Data.Int (Int16, Int32, Int64)
 import qualified Data.Map
 import qualified Data.Vector
+import           System.Posix.Types (Fd)
 
 import           DBus
 import           DBus.Types (toValue)
@@ -55,6 +56,7 @@ test_IsAtom = assertions "IsAtom" $ do
 	assertAtom TypeInt32 (0 :: Int32)
 	assertAtom TypeInt64 (0 :: Int64)
 	assertAtom TypeDouble (0 :: Double)
+	assertAtom TypeUnixFd (0 :: Fd)
 	assertAtom TypeString (Data.Text.pack "")
 	assertAtom TypeString (Data.Text.Lazy.pack "")
 	assertAtom TypeString ("" :: String)
@@ -95,6 +97,7 @@ test_Show = assertions "show" $ do
 	$expect $ equal "Variant 0" (show (toVariant (0 :: Int32)))
 	$expect $ equal "Variant 0" (show (toVariant (0 :: Int64)))
 	$expect $ equal "Variant 0.1" (show (toVariant (0.1 :: Double)))
+	$expect $ equal "Variant (UnixFd 1)" (show (toVariant (1 :: Fd)))
 	$expect $ equal "Variant \"\"" (show (toVariant (T.pack "")))
 	$expect $ equal "Variant (ObjectPath \"/\")" (show (toVariant (objectPath_ "/")))
 	$expect $ equal "Variant (Signature \"\")" (show (toVariant (signature_ [])))

@@ -73,9 +73,6 @@ test_ParseInvalid = assertions "parse-invalid" $ do
 	-- non-atomic dict key
 	$expect (nothing (parseSignature "a{vy}"))
 	$expect (nothing (signature [TypeDictionary TypeVariant TypeVariant]))
-	
-	-- unix fd (intentionally not supported in haskell-dbus)
-	$expect (nothing (parseSignature "h"))
 
 test_FormatSignature :: Test
 test_FormatSignature = property "formatSignature" prop where
@@ -101,6 +98,7 @@ test_ShowType = assertions "show-type" $ do
 	$expect (equal "Int32" (show TypeInt32))
 	$expect (equal "Int64" (show TypeInt64))
 	$expect (equal "Double" (show TypeDouble))
+	$expect (equal "UnixFd" (show TypeUnixFd))
 	$expect (equal "String" (show TypeString))
 	$expect (equal "Signature" (show TypeSignature))
 	$expect (equal "ObjectPath" (show TypeObjectPath))
@@ -127,6 +125,7 @@ gen_SignatureString = gen where
 		, ("i", TypeInt32)
 		, ("x", TypeInt64)
 		, ("d", TypeDouble)
+		, ("h", TypeUnixFd)
 		, ("s", TypeString)
 		, ("o", TypeObjectPath)
 		, ("g", TypeSignature)
