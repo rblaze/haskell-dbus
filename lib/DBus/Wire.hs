@@ -30,11 +30,14 @@ import qualified Control.Applicative
 import           Control.Monad (ap, liftM, when, unless)
 import qualified Data.ByteString
 import           Data.ByteString (ByteString)
+import qualified Data.ByteString.Builder as Builder
 import qualified Data.ByteString.Char8
+import qualified Data.ByteString.Lazy as Lazy
 import           Data.Int (Int16, Int32, Int64)
 import qualified Data.Map
 import           Data.Map (Map)
 import           Data.Maybe (fromJust, listToMaybe, fromMaybe)
+import           Data.Monoid (mappend, mempty)
 import           Data.Text (Text)
 import qualified Data.Text.Encoding
 import qualified Data.Vector
@@ -43,7 +46,6 @@ import           Data.Word (Word8, Word16, Word32, Word64)
 import           Foreign.C.Types (CInt)
 import           System.Posix.Types (Fd(..))
 
-import qualified Data.Serialize.Builder as Builder
 import qualified Data.Serialize.Get as Get
 import           Data.Serialize.IEEE754 (getFloat64be, getFloat64le, putFloat64be, putFloat64le)
 import           Data.Serialize.Put (runPut)
@@ -178,14 +180,19 @@ marshalAtom (AtomSignature x) = marshalSignature x
 
 appendB :: Word64 -> Builder.Builder -> Marshal ()
 appendB size bytes = Wire (\_ (MarshalState builder count) -> let
-	builder' = Builder.append builder bytes
+	builder' = mappend builder bytes
 	count' = count + size
 	in WireRR () (MarshalState builder' count'))
 
 appendS :: ByteString -> Marshal ()
 appendS bytes = appendB
 	(fromIntegral (Data.ByteString.length bytes))
-	(Builder.fromByteString bytes)
+	(Builder.byteString bytes)
+
+appendL :: Lazy.ByteString -> Marshal ()
+appendL bytes = appendB
+	(fromIntegral (Lazy.length bytes))
+	(Builder.lazyByteString bytes)
 
 pad :: Word8 -> Marshal ()
 pad count = do
@@ -273,25 +280,25 @@ unmarshalGet count be le = do
 	return ret
 
 marshalWord8 :: Word8 -> Marshal ()
-marshalWord8 x = appendB 1 (Builder.singleton x)
+marshalWord8 x = appendB 1 (Builder.word8 x)
 
 unmarshalWord8 :: Unmarshal Word8
 unmarshalWord8 = liftM Data.ByteString.head (consume 1)
 
 marshalWord16 :: Word16 -> Marshal ()
 marshalWord16 = marshalBuilder 2
-	Builder.putWord16be
-	Builder.putWord16le
+	Builder.word16BE
+	Builder.word16LE
 
 marshalWord32 :: Word32 -> Marshal ()
 marshalWord32 = marshalBuilder 4
-	Builder.putWord32be
-	Builder.putWord32le
+	Builder.word32BE
+	Builder.word32LE
 
 marshalWord64 :: Word64 -> Marshal ()
 marshalWord64 = marshalBuilder 8
-	Builder.putWord64be
-	Builder.putWord64le
+	Builder.word64BE
+	Builder.word64LE
 
 marshalInt16 :: Int16 -> Marshal ()
 marshalInt16 = marshalWord16 . fromIntegral
@@ -414,35 +421,35 @@ unmarshalSignature = do
 	skipTerminator
 	fromMaybeU "signature" parseSignatureBytes bytes
 
-arrayMaximumLength :: Int
+arrayMaximumLength :: Int64
 arrayMaximumLength = 67108864
 
 marshalVector :: Type -> Vector Value -> Marshal ()
 marshalVector t x = do
 	(arrayPadding, arrayBytes) <- getArrayBytes t x
-	let arrayLen = Data.ByteString.length arrayBytes
+	let arrayLen = Lazy.length arrayBytes
 	when (arrayLen > arrayMaximumLength) (throwError ("Marshaled array size (" ++ show arrayLen ++ " bytes) exceeds maximum limit of (" ++ show arrayMaximumLength ++ " bytes)."))
 	marshalWord32 (fromIntegral arrayLen)
 	appendS (Data.ByteString.replicate arrayPadding 0)
-	appendS arrayBytes
+	appendL arrayBytes
 
 marshalStrictBytes :: ByteString -> Marshal ()
 marshalStrictBytes bytes = do
-	let arrayLen = Data.ByteString.length bytes
+	let arrayLen = Lazy.length (Lazy.fromStrict bytes)
 	when (fromIntegral arrayLen > arrayMaximumLength) (throwError ("Marshaled array size (" ++ show arrayLen ++ " bytes) exceeds maximum limit of (" ++ show arrayMaximumLength ++ " bytes)."))
 	marshalWord32 (fromIntegral arrayLen)
 	appendS bytes
 
-getArrayBytes :: Type -> Vector Value -> Marshal (Int, ByteString)
+getArrayBytes :: Type -> Vector Value -> Marshal (Int, Lazy.ByteString)
 getArrayBytes itemType vs = do
 	s <- getState
 	(MarshalState _ afterLength) <- marshalWord32 0 >> getState
 	(MarshalState _ afterPadding) <- pad (alignment itemType) >> getState
 	
-	putState (MarshalState Builder.empty afterPadding)
+	putState (MarshalState mempty afterPadding)
 	(MarshalState itemBuilder _) <- Data.Vector.mapM_ marshal vs >> getState
 	
-	let itemBytes = Builder.toByteString itemBuilder
+	let itemBytes = Builder.toLazyByteString itemBuilder
 	    paddingSize = fromIntegral (afterPadding - afterLength)
 	
 	putState s
@@ -556,7 +563,7 @@ decodeField' x f label = case fromVariant x of
 	Nothing -> throwErrorM (UnmarshalError ("Header field " ++ show label ++ " contains invalid value " ++ show x))
 
 marshalMessage :: Message a => Endianness -> Serial -> a
-               -> Either MarshalError Data.ByteString.ByteString
+               -> Either MarshalError ByteString
 marshalMessage e serial msg = runMarshal where
 	body = messageBody msg
 	marshaler = do
@@ -566,15 +573,15 @@ marshalMessage e serial msg = runMarshal where
 		(MarshalState bodyBytesB _) <- getState
 		putState empty
 		marshal (toValue (encodeEndianness e))
-		let bodyBytes = Builder.toByteString bodyBytesB
-		marshalHeader msg serial sig (fromIntegral (Data.ByteString.length bodyBytes))
+		let bodyBytes = Builder.toLazyByteString bodyBytesB
+		marshalHeader msg serial sig (fromIntegral (Lazy.length bodyBytes))
 		pad 8
-		appendS bodyBytes
+		appendL bodyBytes
 		checkMaximumSize
-	emptyState = MarshalState Builder.empty 0
+	emptyState = MarshalState mempty 0
 	runMarshal = case unWire marshaler e emptyState of
 		WireRL err -> Left (MarshalError err)
-		WireRR _ (MarshalState builder _) -> Right (Builder.toByteString builder)
+		WireRR _ (MarshalState builder _) -> Right (Lazy.toStrict (Builder.toLazyByteString builder))
 
 checkBodySig :: [Variant] -> Marshal Signature
 checkBodySig vs = case signature (map variantType vs) of

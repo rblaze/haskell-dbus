@@ -40,14 +40,15 @@ module DBus.Transport
 import           Control.Exception
 import qualified Data.ByteString
 import           Data.ByteString (ByteString)
+import qualified Data.ByteString.Builder as Builder
+import qualified Data.ByteString.Lazy as Lazy
 import qualified Data.Map as Map
+import           Data.Monoid (mappend, mempty)
 import           Data.Typeable (Typeable)
 import           Foreign.C (CUInt)
 import           Network.Socket hiding (recv)
 import           Network.Socket.ByteString (sendAll, recv)
 import qualified System.Info
-
-import qualified Data.Serialize.Builder as Builder
 
 import           DBus
 
@@ -149,24 +150,24 @@ instance Transport SocketTransport where
 	transportClose (SocketTransport addr s) = catchIOException addr (sClose s)
 
 recvLoop :: Socket -> Int -> IO ByteString
-recvLoop s = loop Builder.empty where
+recvLoop s = \n -> Lazy.toStrict `fmap` loop mempty n where
 	chunkSize = 4096
 	loop acc n = if n > chunkSize
 		then do
 			chunk <- recv s chunkSize
-			let builder = Builder.append acc (Builder.fromByteString chunk)
+			let builder = mappend acc (Builder.byteString chunk)
 			loop builder (n - Data.ByteString.length chunk)
 		else do
 			chunk <- recv s n
 			case Data.ByteString.length chunk of
 				-- Unexpected end of connection; maybe the remote end went away.
 				-- Return what we've got so far.
-				0 -> return (Builder.toByteString acc)
+				0 -> return (Builder.toLazyByteString acc)
 				
 				len -> do
-					let builder = Builder.append acc (Builder.fromByteString chunk)
+					let builder = mappend acc (Builder.byteString chunk)
 					if len == n
-						then return (Builder.toByteString builder)
+						then return (Builder.toLazyByteString builder)
 						else loop builder (n - Data.ByteString.length chunk)
 
 instance TransportOpen SocketTransport where

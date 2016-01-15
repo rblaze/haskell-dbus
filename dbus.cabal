@@ -1,5 +1,5 @@
 name: dbus
-version: 0.10.11
+version: 0.10.12
 license: GPL-3
 license-file: license.txt
 author: John Millikin <john@john-millikin.com>
@@ -83,7 +83,7 @@ source-repository head
 source-repository this
   type: git
   location: https://john-millikin.com/code/haskell-dbus/
-  tag: haskell-dbus_0.10.11
+  tag: haskell-dbus_0.10.12
 
 library
   ghc-options: -Wall -O2
@@ -95,8 +95,8 @@ library
   -- IMPORTANT: keep these in sync with the test suite
   build-depends:
       base >= 4.0 && < 5.0
-    , bytestring >= 0.9
-    , cereal >= 0.3.4 && < 0.5
+    , bytestring >= 0.10.2
+    , cereal >= 0.3.4 && < 0.6
     , containers >= 0.1 && < 0.6
     , libxml-sax >= 0.7 && < 0.8
     , network >= 2.2.3
@@ -131,8 +131,8 @@ test-suite dbus_tests
 
   build-depends:
       base >= 4.0 && < 5.0
-    , bytestring >= 0.9
-    , cereal >= 0.3.4 && < 0.5
+    , bytestring >= 0.10.2
+    , cereal >= 0.3.4 && < 0.6
     , chell >= 0.4 && < 0.5
     , chell-quickcheck >= 0.2 && < 0.3
     , containers >= 0.1 && < 0.6
