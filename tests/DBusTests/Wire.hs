@@ -26,19 +26,19 @@ import           DBus
 
 test_Wire :: Suite
 test_Wire = suite "Wire" $
-	suiteTests test_Unmarshal
+    suiteTests test_Unmarshal
 
 test_Unmarshal :: Suite
 test_Unmarshal = suite "unmarshal"
-	[ test_UnmarshalUnexpectedEof
-	]
+    [ test_UnmarshalUnexpectedEof
+    ]
 
 test_UnmarshalUnexpectedEof :: Test
 test_UnmarshalUnexpectedEof = assertions "unexpected-eof" $ do
-	let unmarshaled = unmarshal "0"
-	$assert (left unmarshaled)
-	
-	let Left err = unmarshaled
-	$assert (equal
-		(unmarshalErrorMessage err)
-		"Unexpected end of input while parsing message header.")
+    let unmarshaled = unmarshal "0"
+    $assert (left unmarshaled)
+
+    let Left err = unmarshaled
+    $assert (equal
+        (unmarshalErrorMessage err)
+        "Unexpected end of input while parsing message header.")
