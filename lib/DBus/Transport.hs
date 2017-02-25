@@ -321,8 +321,8 @@ listenUnix uuid origAddr opts = getPath >>= go where
             -- Abstract paths are supported on Linux, but not on
             -- other Unix-like systems.
             let (addrParams, path) = if System.Info.os == "linux"
-                then ([("abstract", fileName)], '\x00' : fileName)
-                else ([("path", fileName)], fileName)
+                    then ([("abstract", fileName)], '\x00' : fileName)
+                    else ([("path", fileName)], fileName)
 
             let addr = address_ "unix" (addrParams ++ [("guid", formatUUID uuid)])
             return (Right (addr, path))

@@ -284,8 +284,8 @@ receive sock = toSocketError (socketAddress sock) $ do
     --       outside of the lock.
     let t = socketTransport sock
     let get n = if n == 0
-        then return Data.ByteString.empty
-        else transportGet t n
+            then return Data.ByteString.empty
+            else transportGet t n
     received <- withMVar (socketReadLock sock) (\_ -> unmarshalMessageM get)
     case received of
         Left err -> throwIO (socketError ("Error reading message from socket: " ++ show err))

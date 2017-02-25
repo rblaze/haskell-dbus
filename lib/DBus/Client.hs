@@ -274,12 +274,12 @@ connectWith opts addr = do
         threadRunner (mainLoop client)
 
     let client = Client
-        { clientSocket = sock
-        , clientPendingCalls = pendingCalls
-        , clientSignalHandlers = signalHandlers
-        , clientObjects = objects
-        , clientThreadID = threadID
-        }
+            { clientSocket = sock
+            , clientPendingCalls = pendingCalls
+            , clientSignalHandlers = signalHandlers
+            , clientObjects = objects
+            , clientThreadID = threadID
+            }
     putMVar clientMVar client
 
     export client "/" [introspectRoot client]
@@ -515,8 +515,8 @@ call client msg = do
     -- If ReplyExpected is False, this function would block indefinitely
     -- if the remote side honors it.
     let safeMsg = msg
-        { methodCallReplyExpected = True
-        }
+            { methodCallReplyExpected = True
+            }
     mvar <- newEmptyMVar
     let ref = clientPendingCalls client
     serial <- send_ client safeMsg (\serial -> atomicModifyIORef ref (\p -> (Data.Map.insert serial mvar p, serial)))
@@ -552,8 +552,8 @@ callNoReply :: Client -> MethodCall -> IO ()
 callNoReply client msg = do
     -- Ensure that noReplyExpected is always set.
     let safeMsg = msg
-        { methodCallReplyExpected = False
-        }
+            { methodCallReplyExpected = False
+            }
     send_ client safeMsg (\_ -> return ())
 
 -- | Request that the bus forward signals matching the given rule to this
@@ -569,8 +569,8 @@ callNoReply client msg = do
 addMatch :: Client -> MatchRule -> (Signal -> IO ()) -> IO SignalHandler
 addMatch client rule io = do
     let formatted = case formatMatchRule rule of
-        "" -> "type='signal'"
-        x -> "type='signal'," ++ x
+            "" -> "type='signal'"
+            x -> "type='signal'," ++ x
 
     handlerId <- newUnique
     registered <- newIORef True

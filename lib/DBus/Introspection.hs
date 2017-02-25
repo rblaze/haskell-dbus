@@ -209,8 +209,8 @@ parseRoot defaultPath e = do
 parseChild :: T.ObjectPath -> X.Element -> Maybe Object
 parseChild parentPath e = do
     let parentPath' = case T.formatObjectPath parentPath of
-        "/" -> "/"
-        x   -> x ++ "/"
+            "/" -> "/"
+            x   -> x ++ "/"
     pathSegment <- X.attributeText "name" e
     path <- T.parseObjectPath (parentPath' ++ Data.Text.unpack pathSegment)
     parseObject path e
@@ -254,8 +254,8 @@ parseMethodArg :: X.Element -> Maybe MethodArg
 parseMethodArg e = do
     t <- parseType e
     let dir = case getattr "direction" e of
-        "out" -> Out
-        _ -> In
+            "out" -> Out
+            _ -> In
     Just (MethodArg (getattr "name" e) t dir)
 
 parseSignalArg :: X.Element -> Maybe SignalArg
@@ -362,8 +362,8 @@ writeMethodArg :: MethodArg -> XmlWriter ()
 writeMethodArg (MethodArg name t dir) = do
     typeStr <- formatType t
     let dirAttr = case dir of
-        In -> "in"
-        Out -> "out"
+            In -> "in"
+            Out -> "out"
     writeEmptyElement "arg" $
         [ ("name", name)
         , ("type", typeStr)

@@ -516,8 +516,8 @@ marshalVariant var@(Variant val) = do
 unmarshalVariant :: Unmarshal Value
 unmarshalVariant = do
     let getType sig = case signatureTypes sig of
-        [t] -> Just t
-        _   -> Nothing
+            [t] -> Just t
+            _   -> Nothing
 
     t <- fromMaybeU "variant signature" getType =<< unmarshalSignature
     (toValue . Variant) `liftM` unmarshal t
@@ -628,8 +628,8 @@ unmarshalMessageM getBytes' = runErrorT $ do
 
     let unmarshalSig = mapM unmarshal . signatureTypes
     let unmarshal' x bytes = case unWire (unmarshalSig x) endianness (UnmarshalState bytes 0) of
-        WireRR x' _ -> return x'
-        WireRL err  -> throwErrorT (UnmarshalError err)
+            WireRR x' _ -> return x'
+            WireRL err  -> throwErrorT (UnmarshalError err)
     fixed <- unmarshal' fixedSig fixedBytes
     let messageType = fromJust (fromValue (fixed !! 1))
     let flags = fromJust (fromValue (fixed !! 2))
