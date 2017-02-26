@@ -41,6 +41,7 @@ packages:
 # (e.g., acme-missiles-0.3)
 extra-deps:
 - libxml-sax-0.7.5
+- chell-quickcheck-0.2.5
 
 # Override default flag values for local packages and extra-deps
 flags: {}

@@ -192,9 +192,6 @@ countFileDescriptors = liftIO io where
                 then return n
                 else loop (n + 1)
 
-instance (Arbitrary a, Ord a) => Arbitrary (Data.Set.Set a) where
-    arbitrary = fmap Data.Set.fromList arbitrary
-
 halfSized :: Gen a -> Gen a
 halfSized gen = sized (\n -> if n > 0
     then resize (div n 2) gen

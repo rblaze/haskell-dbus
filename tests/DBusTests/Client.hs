@@ -114,19 +114,19 @@ test_RequestName :: Test
 test_RequestName = assertions "requestName" $ do
     (sock, client) <- startConnectedClient
     let allFlags =
-        [ DBus.Client.nameAllowReplacement
-        , DBus.Client.nameReplaceExisting
-        , DBus.Client.nameDoNotQueue
-        ]
+            [ DBus.Client.nameAllowReplacement
+            , DBus.Client.nameReplaceExisting
+            , DBus.Client.nameDoNotQueue
+            ]
 
     let requestCall = (dbusCall "RequestName")
-        { methodCallDestination = Just (busName_ "org.freedesktop.DBus")
-        , methodCallBody = [toVariant "com.example.Foo", toVariant (7 :: Word32)]
-        }
+            { methodCallDestination = Just (busName_ "org.freedesktop.DBus")
+            , methodCallBody = [toVariant "com.example.Foo", toVariant (7 :: Word32)]
+            }
 
     let requestReply body serial = (methodReturn serial)
-        { methodReturnBody = body
-        }
+            { methodReturnBody = body
+            }
 
     -- NamePrimaryOwner
     do
@@ -195,13 +195,13 @@ test_ReleaseName = assertions "releaseName" $ do
     (sock, client) <- startConnectedClient
 
     let requestCall = (dbusCall "ReleaseName")
-        { methodCallDestination = Just (busName_ "org.freedesktop.DBus")
-        , methodCallBody = [toVariant "com.example.Foo"]
-        }
+            { methodCallDestination = Just (busName_ "org.freedesktop.DBus")
+            , methodCallBody = [toVariant "com.example.Foo"]
+            }
 
     let requestReply body serial = (methodReturn serial)
-        { methodReturnBody = body
-        }
+            { methodReturnBody = body
+            }
 
     -- NameReleased
     do
@@ -262,12 +262,12 @@ test_Call = assertions "call" $ do
     (sock, client) <- startConnectedClient
 
     let requestCall = (dbusCall "Hello")
-        { methodCallSender = Just (busName_ "com.example.Foo")
-        , methodCallDestination = Just (busName_ "org.freedesktop.DBus")
-        , methodCallReplyExpected = False
-        , methodCallAutoStart = False
-        , methodCallBody = [toVariant "com.example.Foo"]
-        }
+            { methodCallSender = Just (busName_ "com.example.Foo")
+            , methodCallDestination = Just (busName_ "org.freedesktop.DBus")
+            , methodCallReplyExpected = False
+            , methodCallAutoStart = False
+            , methodCallBody = [toVariant "com.example.Foo"]
+            }
 
     -- methodCallReplyExpected is forced to True
     do
@@ -286,12 +286,12 @@ test_CallNoReply = assertions "callNoReply" $ do
     (sock, client) <- startConnectedClient
 
     let requestCall = (dbusCall "Hello")
-        { methodCallSender = Just (busName_ "com.example.Foo")
-        , methodCallDestination = Just (busName_ "org.freedesktop.DBus")
-        , methodCallReplyExpected = True
-        , methodCallAutoStart = False
-        , methodCallBody = [toVariant "com.example.Foo"]
-        }
+            { methodCallSender = Just (busName_ "com.example.Foo")
+            , methodCallDestination = Just (busName_ "org.freedesktop.DBus")
+            , methodCallReplyExpected = True
+            , methodCallAutoStart = False
+            , methodCallBody = [toVariant "com.example.Foo"]
+            }
 
     -- methodCallReplyExpected is forced to False
     do
@@ -307,20 +307,20 @@ test_AddMatch = assertions "addMatch" $ do
     (sock, client) <- startConnectedClient
 
     let matchRule = DBus.Client.matchAny
-        { DBus.Client.matchSender = Just (busName_ "com.example.Foo")
-        , DBus.Client.matchDestination = Just (busName_ "com.example.Bar")
-        , DBus.Client.matchPath = Just (objectPath_ "/")
-        , DBus.Client.matchInterface = Just (interfaceName_ "com.example.Baz")
-        , DBus.Client.matchMember = Just (memberName_ "Qux")
-        }
+            { DBus.Client.matchSender = Just (busName_ "com.example.Foo")
+            , DBus.Client.matchDestination = Just (busName_ "com.example.Bar")
+            , DBus.Client.matchPath = Just (objectPath_ "/")
+            , DBus.Client.matchInterface = Just (interfaceName_ "com.example.Baz")
+            , DBus.Client.matchMember = Just (memberName_ "Qux")
+            }
 
     -- might as well test this while we're at it
     $expect (equal (show matchRule) "MatchRule \"sender='com.example.Foo',destination='com.example.Bar',path='/',interface='com.example.Baz',member='Qux'\"")
 
     let requestCall = (dbusCall "AddMatch")
-        { methodCallDestination = Just (busName_ "org.freedesktop.DBus")
-        , methodCallBody = [toVariant "type='signal',sender='com.example.Foo',destination='com.example.Bar',path='/',interface='com.example.Baz',member='Qux'"]
-        }
+            { methodCallDestination = Just (busName_ "org.freedesktop.DBus")
+            , methodCallBody = [toVariant "type='signal',sender='com.example.Foo',destination='com.example.Bar',path='/',interface='com.example.Baz',member='Qux'"]
+            }
 
     signalVar <- liftIO newEmptyMVar
 
@@ -338,9 +338,9 @@ test_AddMatch = assertions "addMatch" $ do
 
     -- matched signal
     let matchedSignal = (signal (objectPath_ "/") (interfaceName_ "com.example.Baz") (memberName_ "Qux"))
-        { signalSender = Just (busName_ "com.example.Foo")
-        , signalDestination = Just (busName_ "com.example.Bar")
-        }
+            { signalSender = Just (busName_ "com.example.Foo")
+            , signalDestination = Just (busName_ "com.example.Bar")
+            }
     liftIO (DBus.Socket.send sock matchedSignal (\_ -> return ()))
     received <- liftIO (takeMVar signalVar)
     $expect (equal received matchedSignal)
@@ -477,8 +477,8 @@ stubMethodCall sock io expectedCall respond = do
 callClientMethod :: DBus.Socket.Socket -> String -> String -> String -> [Variant] -> Assertions (Serial, Either MethodError MethodReturn)
 callClientMethod sock path iface name body = do
     let call = (methodCall (objectPath_ path) (interfaceName_ iface) (memberName_ name))
-        { methodCallBody = body
-        }
+            { methodCallBody = body
+            }
     serial <- liftIO (DBus.Socket.send sock call return)
     resp <- liftIO (DBus.Socket.receive sock)
     case resp of

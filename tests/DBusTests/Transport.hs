@@ -126,9 +126,9 @@ test_OpenUnix_TooMany = assertions "too-many" $ do
     fdcountBefore <- countFileDescriptors
 
     let Just addr = address "unix" (Map.fromList
-        [ ("path", "foo")
-        , ("abstract", "bar")
-        ])
+            [ ("path", "foo")
+            , ("abstract", "bar")
+            ])
     $assert $ throwsEq
         ((transportError "Only one of 'path' or 'abstract' may be specified for the 'unix' transport.")
             { transportErrorAddress = Just addr
@@ -195,9 +195,9 @@ test_OpenTcp_Unknown = assertions "unknown-family" $ do
     fdcountBefore <- countFileDescriptors
 
     let Just addr = address "tcp" (Map.fromList
-        [ ("family", "noexist")
-        , ("port", "1234")
-        ])
+            [ ("family", "noexist")
+            , ("port", "1234")
+            ])
     $assert $ throwsEq
         ((transportError "Unknown socket family for TCP transport: \"noexist\"")
             { transportErrorAddress = Just addr
@@ -212,8 +212,8 @@ test_OpenTcp_NoPort = assertions "no-port" $ do
     fdcountBefore <- countFileDescriptors
 
     let Just addr = address "tcp" (Map.fromList
-        [ ("family", "ipv4")
-        ])
+            [ ("family", "ipv4")
+            ])
     $assert $ throwsEq
         ((transportError "TCP transport requires the `port' parameter.")
             { transportErrorAddress = Just addr
@@ -228,9 +228,9 @@ test_OpenTcp_InvalidPort = assertions "invalid-port" $ do
     fdcountBefore <- countFileDescriptors
 
     let Just addr = address "tcp" (Map.fromList
-        [ ("family", "ipv4")
-        , ("port", "123456")
-        ])
+            [ ("family", "ipv4")
+            , ("port", "123456")
+            ])
     $assert $ throwsEq
         ((transportError "Invalid socket port for TCP transport: \"123456\"")
             { transportErrorAddress = Just addr
@@ -245,10 +245,10 @@ test_OpenTcp_NoUsableAddresses = assertions "no-usable-addresses" $ do
     fdcountBefore <- countFileDescriptors
 
     let Just addr = address "tcp" (Map.fromList
-        [ ("family", "ipv4")
-        , ("port", "1234")
-        , ("host", "256.256.256.256")
-        ])
+            [ ("family", "ipv4")
+            , ("port", "1234")
+            , ("host", "256.256.256.256")
+            ])
     $assert $ throws
         (\err -> and
             [ "getAddrInfo: does not exist" `isPrefixOf` transportErrorMessage err
@@ -349,8 +349,8 @@ test_ListenUnix_Path :: Test
 test_ListenUnix_Path = assertions "path" $ do
     path <- liftIO getTempPath
     let Just addr = address "unix" (Map.fromList
-        [ ("path", path)
-        ])
+            [ ("path", path)
+            ])
     l <- liftIO (transportListen socketTransportOptions addr)
     afterTest (transportListenerClose l)
     afterTest (removeFile path)
@@ -364,8 +364,8 @@ test_ListenUnix_Abstract :: Test
 test_ListenUnix_Abstract = assertions "abstract" $ do
     path <- liftIO getTempPath
     let Just addr = address "unix" (Map.fromList
-        [ ("abstract", path)
-        ])
+            [ ("abstract", path)
+            ])
     l <- liftIO (transportListen socketTransportOptions addr)
     afterTest (transportListenerClose l)
 
@@ -378,8 +378,8 @@ test_ListenUnix_Tmpdir :: Test
 test_ListenUnix_Tmpdir = assertions "tmpdir" $ do
     tmpdir <- liftIO getTemporaryDirectory
     let Just addr = address "unix" (Map.fromList
-        [ ("tmpdir", tmpdir)
-        ])
+            [ ("tmpdir", tmpdir)
+            ])
     l <- liftIO (transportListen socketTransportOptions addr)
     afterTest (transportListenerClose l)
 
@@ -399,9 +399,9 @@ test_ListenUnix_TooFew = assertions "too-few" $ do
 test_ListenUnix_TooMany :: Test
 test_ListenUnix_TooMany = assertions "too-many" $ do
     let Just addr = address "unix" (Map.fromList
-        [ ("path", "foo")
-        , ("abstract", "bar")
-        ])
+            [ ("path", "foo")
+            , ("abstract", "bar")
+            ])
     $assert $ throwsEq
         ((transportError "Only one of 'abstract', 'path', or 'tmpdir' may be specified for the 'unix' transport.")
             { transportErrorAddress = Just addr
@@ -413,8 +413,8 @@ test_ListenUnix_InvalidBind = assertions "invalid-bind" $ do
     fdcountBefore <- countFileDescriptors
 
     let Just addr = address "unix" (Map.fromList
-        [ ("path", "/")
-        ])
+            [ ("path", "/")
+            ])
     $assert $ throwsEq
         ((transportError "bind: resource busy (Address already in use)")
             { transportErrorAddress = Just addr
@@ -436,8 +436,8 @@ suite_ListenTcp = suite "tcp"
 test_ListenTcp_IPv4 :: Test
 test_ListenTcp_IPv4 = assertions "ipv4" $ do
     let Just addr = address "tcp" (Map.fromList
-        [ ("family", "ipv4")
-        ])
+            [ ("family", "ipv4")
+            ])
     l <- liftIO (transportListen socketTransportOptions addr)
     afterTest (transportListenerClose l)
 
@@ -448,8 +448,8 @@ test_ListenTcp_IPv4 = assertions "ipv4" $ do
 test_ListenTcp_IPv6 :: Test
 test_ListenTcp_IPv6 = assertions "ipv6" $ do
     let Just addr = address "tcp" (Map.fromList
-        [ ("family", "ipv6")
-        ])
+            [ ("family", "ipv6")
+            ])
     l <- liftIO (transportListen socketTransportOptions addr)
     afterTest (transportListenerClose l)
 
@@ -460,9 +460,9 @@ test_ListenTcp_IPv6 = assertions "ipv6" $ do
 test_ListenTcp_Unknown :: Test
 test_ListenTcp_Unknown = assertions "unknown-family" $ do
     let Just addr = address "tcp" (Map.fromList
-        [ ("family", "noexist")
-        , ("port", "1234")
-        ])
+            [ ("family", "noexist")
+            , ("port", "1234")
+            ])
     $assert $ throwsEq
         ((transportError "Unknown socket family for TCP transport: \"noexist\"")
             { transportErrorAddress = Just addr
@@ -472,9 +472,9 @@ test_ListenTcp_Unknown = assertions "unknown-family" $ do
 test_ListenTcp_InvalidPort :: Test
 test_ListenTcp_InvalidPort = assertions "invalid-port" $ do
     let Just addr = address "tcp" (Map.fromList
-        [ ("family", "ipv4")
-        , ("port", "123456")
-        ])
+            [ ("family", "ipv4")
+            , ("port", "123456")
+            ])
     $assert $ throwsEq
         ((transportError "Invalid socket port for TCP transport: \"123456\"")
             { transportErrorAddress = Just addr
@@ -486,9 +486,9 @@ test_ListenTcp_InvalidBind = assertions "invalid-bind" $ do
     fdcountBefore <- countFileDescriptors
 
     let Just addr = address "tcp" (Map.fromList
-        [ ("family", "ipv4")
-        , ("port", "1")
-        ])
+            [ ("family", "ipv4")
+            , ("port", "1")
+            ])
     $assert $ throwsEq
         ((transportError "bind: permission denied (Permission denied)")
             { transportErrorAddress = Just addr
@@ -502,8 +502,8 @@ test_AcceptSocket :: Test
 test_AcceptSocket = assertions "socket" $ do
     path <- liftIO getTempPath
     let Just addr = address "unix" (Map.fromList
-        [ ("abstract", path)
-        ])
+            [ ("abstract", path)
+            ])
     listener <- liftIO (transportListen socketTransportOptions addr)
     afterTest (transportListenerClose listener)
 
@@ -525,8 +525,8 @@ test_AcceptSocketClosed :: Test
 test_AcceptSocketClosed = assertions "socket-closed" $ do
     path <- liftIO getTempPath
     let Just addr = address "unix" (Map.fromList
-        [ ("abstract", path)
-        ])
+            [ ("abstract", path)
+            ])
     listener <- liftIO (transportListen socketTransportOptions addr)
     let listeningAddr = transportListenerAddress listener
     liftIO (transportListenerClose listener)

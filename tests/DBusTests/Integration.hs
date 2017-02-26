@@ -41,8 +41,8 @@ test_Integration = suite "integration"
 test_Socket :: Test
 test_Socket = withDaemon "socket" $ \addr -> do
     let hello = (methodCall "/org/freedesktop/DBus" "org.freedesktop.DBus" "Hello")
-        { methodCallDestination = Just "org.freedesktop.DBus"
-        }
+            { methodCallDestination = Just "org.freedesktop.DBus"
+            }
 
     sock <- liftIO (open addr)
     serial <- liftIO (send sock hello return)

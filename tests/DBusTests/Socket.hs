@@ -41,8 +41,8 @@ test_Listen :: Test
 test_Listen = assertions "listen" $ do
     uuid <- liftIO randomUUID
     let Just addr = address "unix" (Map.fromList
-        [ ("abstract", formatUUID uuid)
-        ])
+            [ ("abstract", formatUUID uuid)
+            ])
 
     listener <- liftIO (listen addr)
     afterTest (closeListener listener)
@@ -60,8 +60,8 @@ test_ListenWith_CustomAuth :: Test
 test_ListenWith_CustomAuth = assertions "listenWith-custom-auth" $ do
     uuid <- liftIO randomUUID
     let Just addr = address "unix" (Map.fromList
-        [ ("abstract", formatUUID uuid)
-        ])
+            [ ("abstract", formatUUID uuid)
+            ])
 
     listener <- liftIO (listenWith (defaultSocketOptions
         { socketAuthenticator = dummyAuth
@@ -83,16 +83,16 @@ test_SendReceive :: Test
 test_SendReceive = assertions "send-receive" $ do
     uuid <- liftIO randomUUID
     let Just addr = address "unix" (Map.fromList
-        [ ("abstract", formatUUID uuid)
-        ])
+            [ ("abstract", formatUUID uuid)
+            ])
 
     let msg = (methodCall "/" "org.example.iface" "Foo")
-        { methodCallSender = Just "org.example.src"
-        , methodCallDestination = Just "org.example.dst"
-        , methodCallAutoStart = False
-        , methodCallReplyExpected = False
-        , methodCallBody = [toVariant True]
-        }
+            { methodCallSender = Just "org.example.src"
+            , methodCallDestination = Just "org.example.dst"
+            , methodCallAutoStart = False
+            , methodCallReplyExpected = False
+            , methodCallBody = [toVariant True]
+           }
 
     listener <- liftIO (listen addr)
     afterTest (closeListener listener)

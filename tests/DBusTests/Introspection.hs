@@ -139,8 +139,8 @@ subObject parentPath = sized $ \n -> resize (min n 4) $ do
 
     thisPath <- nonRoot
     let path' = case formatObjectPath parentPath of
-        "/" -> thisPath
-        x   -> x ++ thisPath
+            "/" -> thisPath
+            x   -> x ++ thisPath
     let path = objectPath_ path'
     ifaces <- arbitrary
     children <- halfSized (listOf (subObject path))

@@ -70,8 +70,6 @@ extra-source-files:
   examples/export.hs
   examples/introspect.hs
   examples/list-names.hs
-  --
-  tests/DBusTests/*.hs
 
 source-repository head
   type: git
@@ -102,8 +100,7 @@ library
     DBus.Introspection
     DBus.Socket
     DBus.Transport
-
-  other-modules:
+    -- TODO make following internal
     DBus.Address
     DBus.Message
     DBus.Types
@@ -112,10 +109,11 @@ library
 test-suite dbus_tests
   type: exitcode-stdio-1.0
   main-is: DBusTests.hs
-  hs-source-dirs: lib,tests
+  hs-source-dirs: tests
 
   build-depends:
-      base
+      dbus
+    , base
     , bytestring
     , cereal
     , chell
@@ -134,6 +132,25 @@ test-suite dbus_tests
     , unix
     , vector
     , xml-types
+
+  other-modules:
+    DBusTests.Address
+    DBusTests.BusName
+    DBusTests.Client
+    DBusTests.ErrorName
+    DBusTests.Integration
+    DBusTests.InterfaceName
+    DBusTests.Introspection
+    DBusTests.MemberName
+    DBusTests.Message
+    DBusTests.ObjectPath
+    DBusTests.Serialization
+    DBusTests.Signature
+    DBusTests.Socket
+    DBusTests.Transport
+    DBusTests.Util
+    DBusTests.Variant
+    DBusTests.Wire
 
 benchmark dbus_benchmarks
   type: exitcode-stdio-1.0
