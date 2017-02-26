@@ -37,7 +37,6 @@ import           Data.Int (Int16, Int32, Int64)
 import qualified Data.Map
 import           Data.Map (Map)
 import           Data.Maybe (fromJust, listToMaybe, fromMaybe)
-import           Data.Monoid (mappend, mempty)
 import           Data.Text (Text)
 import qualified Data.Text.Encoding
 import qualified Data.Vector

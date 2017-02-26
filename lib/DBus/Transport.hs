@@ -43,7 +43,6 @@ import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Builder as Builder
 import qualified Data.ByteString.Lazy as Lazy
 import qualified Data.Map as Map
-import           Data.Monoid (mappend, mempty)
 import           Data.Typeable (Typeable)
 import           Foreign.C (CUInt)
 import           Network.Socket hiding (recv)
@@ -147,7 +146,7 @@ instance Transport SocketTransport where
     transportDefaultOptions = SocketTransportOptions 30
     transportPut (SocketTransport addr s) bytes = catchIOException addr (sendAll s bytes)
     transportGet (SocketTransport addr s) n = catchIOException addr (recvLoop s n)
-    transportClose (SocketTransport addr s) = catchIOException addr (sClose s)
+    transportClose (SocketTransport addr s) = catchIOException addr (close s)
 
 recvLoop :: Socket -> Int -> IO ByteString
 recvLoop s = \n -> Lazy.toStrict `fmap` loop mempty n where
@@ -192,7 +191,7 @@ instance TransportListen SocketTransport where
     transportAccept (SocketTransportListener a _ s) = catchIOException (Just a) $ do
         (s', _) <- accept s
         return (SocketTransport Nothing s')
-    transportListenerClose (SocketTransportListener a _ s) = catchIOException (Just a) (sClose s)
+    transportListenerClose (SocketTransportListener a _ s) = catchIOException (Just a) (close s)
     transportListenerAddress (SocketTransportListener a _ _) = a
     transportListenerUUID (SocketTransportListener _ uuid _) = uuid
 
@@ -224,7 +223,7 @@ openUnix transportAddr = go where
             }
         Right p -> catchIOException (Just transportAddr) $ bracketOnError
             (socket AF_UNIX Stream defaultProtocol)
-            sClose
+            close
             (\sock -> do
                 connect sock (SockAddrUnix p)
                 return (SocketTransport (Just transportAddr) sock))
@@ -267,7 +266,7 @@ openTcp transportAddr = go where
     openSocket (addr:addrs) = do
         tried <- Control.Exception.try $ bracketOnError
             (socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr))
-            sClose
+            close
             (\sock -> do
                 connect sock (addrAddress addr)
                 return sock)
@@ -335,9 +334,9 @@ listenUnix uuid origAddr opts = getPath >>= go where
             }
         Right (addr, p) -> catchIOException (Just origAddr) $ bracketOnError
             (socket AF_UNIX Stream defaultProtocol)
-            sClose
+            close
             (\sock -> do
-                bindSocket sock (SockAddrUnix p)
+                bind sock (SockAddrUnix p)
                 Network.Socket.listen sock (socketTransportOptionBacklog opts)
                 return (addr, sock))
 
@@ -375,7 +374,7 @@ listenTcp uuid origAddr opts = go where
         { transportErrorAddress = Just origAddr
         }
     bindAddrs sock (addr:addrs) = do
-        tried <- Control.Exception.try (bindSocket sock (addrAddress addr))
+        tried <- Control.Exception.try (bind sock (addrAddress addr))
         case tried of
             Left err -> case addrs of
                 [] -> throwIO (transportError (show (err :: IOException)))
@@ -409,7 +408,7 @@ listenTcp uuid origAddr opts = go where
                 sockAddrs <- getAddresses family_
                 bracketOnError
                     (socket family_ Stream defaultProtocol)
-                    sClose
+                    close
                     (\sock -> do
                         setSocketOption sock ReuseAddr 1
                         bindAddrs sock (map (setPort port) sockAddrs)
