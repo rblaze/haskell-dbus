@@ -104,8 +104,8 @@ listenRandomUnixPath = do
     afterTest (removeFile path)
 
     let Just addr = address "unix" (Map.fromList
-        [ ("path", path)
-        ])
+            [ ("path", path)
+            ])
     return (addr, sock)
 
 listenRandomUnixAbstract :: MonadIO m => m (Address, N.Socket)
@@ -118,8 +118,8 @@ listenRandomUnixAbstract = liftIO $ do
     NS.listen sock 1
 
     let Just addr = address "unix" (Map.fromList
-        [ ("abstract", formatUUID uuid)
-        ])
+            [ ("abstract", formatUUID uuid)
+            ])
     return (addr, sock)
 
 listenRandomIPv4 :: MonadIO m => m (Address, N.Socket)
@@ -133,18 +133,18 @@ listenRandomIPv4 = liftIO $ do
 
     sockPort <- NS.socketPort sock
     let Just addr = address "tcp" (Map.fromList
-        [ ("family", "ipv4")
-        , ("host", "localhost")
-        , ("port", show (toInteger sockPort))
-        ])
+            [ ("family", "ipv4")
+            , ("host", "localhost")
+            , ("port", show (toInteger sockPort))
+            ])
     return (addr, sock)
 
 listenRandomIPv6 :: MonadIO m => m (Address, N.Socket)
 listenRandomIPv6 = liftIO $ do
     addrs <- NS.getAddrInfo Nothing (Just "::1") Nothing
     let sockAddr = case addrs of
-        [] -> error "listenRandomIPv6: no address for localhost?"
-        a:_ -> NS.addrAddress a
+            [] -> error "listenRandomIPv6: no address for localhost?"
+            a:_ -> NS.addrAddress a
 
     sock <- NS.socket NS.AF_INET6 NS.Stream NS.defaultProtocol
     NS.bindSocket sock sockAddr
@@ -152,10 +152,10 @@ listenRandomIPv6 = liftIO $ do
 
     sockPort <- NS.socketPort sock
     let Just addr = address "tcp" (Map.fromList
-        [ ("family", "ipv6")
-        , ("host", "::1")
-        , ("port", show (toInteger sockPort))
-        ])
+            [ ("family", "ipv6")
+            , ("host", "::1")
+            , ("port", show (toInteger sockPort))
+            ])
     return (addr, sock)
 
 noIPv6 :: IO Bool
@@ -174,8 +174,8 @@ forkVar io = liftIO $ do
 withEnv :: MonadIO m => String -> Maybe String -> IO a -> m a
 withEnv name value io = liftIO $ do
     let set val = case val of
-        Just x -> Posix.setEnv name x True
-        Nothing -> Posix.unsetEnv name
+            Just x -> Posix.setEnv name x True
+            Nothing -> Posix.unsetEnv name
     old <- Posix.getEnv name
     bracket_ (set value) (set old) io
 
