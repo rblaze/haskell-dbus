@@ -203,6 +203,8 @@ script:
         cd "$PKGVER"
         cabal configure --enable-tests
         cabal build
+        # FIXME remove tests in cabal when fixed in stack builds
+        cabal test
         cd $ORIGDIR
       done
       ;;
