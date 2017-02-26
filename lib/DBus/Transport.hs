@@ -43,11 +43,13 @@ import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Builder as Builder
 import qualified Data.ByteString.Lazy as Lazy
 import qualified Data.Map as Map
+import           Data.Monoid
 import           Data.Typeable (Typeable)
 import           Foreign.C (CUInt)
 import           Network.Socket hiding (recv)
 import           Network.Socket.ByteString (sendAll, recv)
 import qualified System.Info
+import           Prelude
 
 import           DBus
 

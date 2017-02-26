@@ -37,6 +37,7 @@ import           Data.Int (Int16, Int32, Int64)
 import qualified Data.Map
 import           Data.Map (Map)
 import           Data.Maybe (fromJust, listToMaybe, fromMaybe)
+import           Data.Monoid
 import           Data.Text (Text)
 import qualified Data.Text.Encoding
 import qualified Data.Vector
@@ -44,6 +45,7 @@ import           Data.Vector (Vector)
 import           Data.Word (Word8, Word16, Word32, Word64)
 import           Foreign.C.Types (CInt)
 import           System.Posix.Types (Fd(..))
+import           Prelude
 
 import qualified Data.Serialize.Get as Get
 import           Data.Serialize.IEEE754 (getFloat64be, getFloat64le, putFloat64be, putFloat64le)
