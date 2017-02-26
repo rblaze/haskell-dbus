@@ -40,13 +40,13 @@ import           DBusTests.Wire
 -- import all dbus modules here to ensure they show up in the coverage report,
 -- even if not tested.
 import           DBus ()
-import           DBus.Address ()
 import           DBus.Client ()
+import           DBus.Internal.Address ()
+import           DBus.Internal.Message ()
+import           DBus.Internal.Types ()
+import           DBus.Internal.Wire ()
 import           DBus.Introspection ()
-import           DBus.Message ()
 import           DBus.Socket ()
-import           DBus.Types ()
-import           DBus.Wire ()
 
 tests :: [Suite]
 tests =

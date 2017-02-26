@@ -176,16 +176,16 @@ import           Data.Word (Word16)
 import           System.Random (randomRIO)
 import           Text.Printf (printf)
 
-import           DBus.Address
-import           DBus.Message
-import qualified DBus.Types
-import           DBus.Types hiding (typeOf)
-import           DBus.Wire
+import           DBus.Internal.Address
+import           DBus.Internal.Message
+import qualified DBus.Internal.Types
+import           DBus.Internal.Types hiding (typeOf)
+import           DBus.Internal.Wire
 
 -- | Get the D-Bus type corresponding to the given Haskell value. The value
 -- may be @undefined@.
 typeOf :: IsValue a => a -> Type
-typeOf = DBus.Types.typeOf
+typeOf = DBus.Internal.Types.typeOf
 
 -- | Construct a new 'MethodCall' for the given object, interface, and method.
 --

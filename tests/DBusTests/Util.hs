@@ -59,7 +59,7 @@ import           Test.Chell
 import           Test.QuickCheck hiding ((.&.))
 
 import           DBus
-import           DBus.Types
+import           DBus.Internal.Types
 
 assertVariant :: (Eq a, Show a, IsVariant a) => Type -> a -> Assertions ()
 assertVariant t a = do
@@ -72,7 +72,7 @@ $([d||])
 assertValue :: (Eq a, Show a, IsValue a) => Type -> a -> Assertions ()
 assertValue t a = do
     $expect $ equal t (DBus.typeOf a)
-    $expect $ equal t (DBus.Types.typeOf a)
+    $expect $ equal t (DBus.Internal.Types.typeOf a)
     $expect $ equal t (valueType (toValue a))
     $expect $ equal (fromValue (toValue a)) (Just a)
     $expect $ equal (toValue a) (toValue a)

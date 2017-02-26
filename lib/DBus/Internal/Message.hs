@@ -13,7 +13,7 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-module DBus.Message
+module DBus.Internal.Message
     ( Message(..)
 
     , UnknownMessage(..)
@@ -33,7 +33,7 @@ import           Data.Bits ((.|.), (.&.))
 import           Data.Maybe (fromMaybe, listToMaybe)
 import           Data.Word (Word8, Word32)
 
-import           DBus.Types
+import           DBus.Internal.Types
 
 class Message a where
     messageTypeCode :: a -> Word8

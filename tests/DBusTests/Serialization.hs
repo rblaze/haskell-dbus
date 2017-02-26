@@ -33,7 +33,7 @@ import           Foreign.C.Types (CInt)
 import           System.Posix.Types (Fd)
 
 import           DBus
-import qualified DBus.Types
+import qualified DBus.Internal.Types
 
 import           DBusTests.BusName ()
 import           DBusTests.ErrorName ()
@@ -200,4 +200,4 @@ instance Arbitrary Endianness where
     arbitrary = elements [BigEndian, LittleEndian]
 
 instance Arbitrary Serial where
-    arbitrary = fmap DBus.Types.Serial arbitrary
+    arbitrary = fmap DBus.Internal.Types.Serial arbitrary

@@ -78,7 +78,7 @@ import           Text.Printf (printf)
 
 import           DBus
 import           DBus.Transport
-import           DBus.Wire (unmarshalMessageM)
+import           DBus.Internal.Wire (unmarshalMessageM)
 
 -- | Stores information about an error encountered while creating or using a
 -- 'Socket'.

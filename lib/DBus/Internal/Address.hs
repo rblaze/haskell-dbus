@@ -13,7 +13,7 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-module DBus.Address where
+module DBus.Internal.Address where
 
 import qualified Control.Exception
 import           Data.Char (digitToInt, ord, chr)

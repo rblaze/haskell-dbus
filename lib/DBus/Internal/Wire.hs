@@ -13,7 +13,7 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-module DBus.Wire
+module DBus.Internal.Wire
     ( Endianness(..)
     , MarshalError
     , marshalErrorMessage
@@ -50,8 +50,8 @@ import qualified Data.Serialize.Get as Get
 import           Data.Serialize.IEEE754 (getFloat64be, getFloat64le, putFloat64be, putFloat64le)
 import           Data.Serialize.Put (runPut)
 
-import           DBus.Message
-import           DBus.Types
+import           DBus.Internal.Message
+import           DBus.Internal.Types
 
 data Endianness = LittleEndian | BigEndian
     deriving (Show, Eq)

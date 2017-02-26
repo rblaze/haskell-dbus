@@ -100,11 +100,10 @@ library
     DBus.Introspection
     DBus.Socket
     DBus.Transport
-    -- TODO make following internal
-    DBus.Address
-    DBus.Message
-    DBus.Types
-    DBus.Wire
+    DBus.Internal.Address
+    DBus.Internal.Message
+    DBus.Internal.Types
+    DBus.Internal.Wire
 
 test-suite dbus_tests
   type: exitcode-stdio-1.0

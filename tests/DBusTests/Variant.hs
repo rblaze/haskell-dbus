@@ -33,7 +33,7 @@ import qualified Data.Vector
 import           System.Posix.Types (Fd)
 
 import           DBus
-import           DBus.Types (toValue)
+import           DBus.Internal.Types (toValue)
 
 import           DBusTests.Util
 
