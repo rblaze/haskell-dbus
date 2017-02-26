@@ -383,7 +383,7 @@ listenTcp uuid origAddr opts = go where
                 _ -> bindAddrs sock addrs
             Right _ -> return ()
 
-    sockAddr (PortNum port) = address_ "tcp" p where
+    sockAddr port = address_ "tcp" p where
         p = baseParams ++ hostParam ++ familyParam
         baseParams =
             [ ("port", show port)
