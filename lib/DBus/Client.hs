@@ -99,6 +99,7 @@ module DBus.Client
     , matchPath
     , matchInterface
     , matchMember
+    , matchPathNamespace
 
     -- * Name reservation
     , requestName
@@ -132,13 +133,14 @@ import qualified Control.Exception
 import           Control.Monad (forever, forM_, when)
 import           Data.Bits ((.|.))
 import           Data.IORef
-import           Data.List (foldl', intercalate)
+import           Data.List (foldl', intercalate, isPrefixOf)
 import qualified Data.Map
 import           Data.Map (Map)
 import           Data.Maybe (catMaybes, listToMaybe)
 import           Data.Typeable (Typeable)
 import           Data.Unique
 import           Data.Word (Word32)
+import           Data.Function
 
 import           DBus
 import qualified DBus.Introspection as I
@@ -641,6 +643,10 @@ data MatchRule = MatchRule
 
     -- | If set, only receives signals sent with the given member name.
     , matchMember :: Maybe MemberName
+
+    -- | If set, only receives signals sent with the given path or any of
+    -- its children.
+    , matchPathNamespace :: Maybe ObjectPath
     }
 
 instance Show MatchRule where
@@ -655,6 +661,7 @@ formatMatchRule rule = intercalate "," predicates where
         , f "path" matchPath formatObjectPath
         , f "interface" matchInterface formatInterfaceName
         , f "member" matchMember formatMemberName
+        , f "path_namespace" matchPathNamespace formatObjectPath
         ]
 
     f :: String -> (MatchRule -> Maybe a) -> (a -> String) -> Maybe String
@@ -664,7 +671,7 @@ formatMatchRule rule = intercalate "," predicates where
 
 -- | Match any signal.
 matchAny :: MatchRule
-matchAny = MatchRule Nothing Nothing Nothing Nothing Nothing
+matchAny = MatchRule Nothing Nothing Nothing Nothing Nothing Nothing
 
 checkMatchRule :: MatchRule -> Signal -> Bool
 checkMatchRule rule msg = and
@@ -673,7 +680,9 @@ checkMatchRule rule msg = and
     , maybe True (== signalPath msg) (matchPath rule)
     , maybe True (== signalInterface msg) (matchInterface rule)
     , maybe True (== signalMember msg) (matchMember rule)
-    ]
+    , maybe True (`pathPrefix` signalPath msg) (matchPathNamespace rule)
+    ] where
+  pathPrefix = isPrefixOf `on` formatObjectPath
 
 data MethodExc = MethodExc ErrorName [Variant]
     deriving (Show, Eq, Typeable)
