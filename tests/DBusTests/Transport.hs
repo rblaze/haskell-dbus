@@ -24,7 +24,7 @@ import           Control.Concurrent
 import           Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.ByteString
 import           Data.Function (fix)
-import           Data.List (isPrefixOf)
+import           Data.List (isPrefixOf, isInfixOf)
 import qualified Data.Map as Map
 import qualified Network as N
 import qualified Network.Socket as NS
@@ -144,10 +144,11 @@ test_OpenUnix_NotListening = assertions "not-listening" $ do
 
     (addr, networkSocket) <- listenRandomUnixAbstract
     liftIO (NS.sClose networkSocket)
-    $assert $ throwsEq
-        ((transportError "connect: does not exist (Connection refused)")
-            { transportErrorAddress = Just addr
-            })
+    $assert $ throws
+        (\err -> and
+            [ "Connection refused" `isInfixOf` transportErrorMessage err
+            , transportErrorAddress err == Just addr
+            ])
         (transportOpen socketTransportOptions addr)
 
     fdcountAfter <- countFileDescriptors
@@ -251,7 +252,7 @@ test_OpenTcp_NoUsableAddresses = assertions "no-usable-addresses" $ do
             ])
     $assert $ throws
         (\err -> and
-            [ "getAddrInfo: does not exist" `isPrefixOf` transportErrorMessage err
+            [ "getAddrInfo: does not exist" `isInfixOf` transportErrorMessage err
             , transportErrorAddress err == Just addr
             ])
         (transportOpen socketTransportOptions addr)
@@ -265,10 +266,11 @@ test_OpenTcp_NotListening = assertions "too-many" $ do
 
     (addr, networkSocket) <- listenRandomIPv4
     liftIO (NS.sClose networkSocket)
-    $assert $ throwsEq
-        ((transportError "connect: does not exist (Connection refused)")
-            { transportErrorAddress = Just addr
-            })
+    $assert $ throws
+        (\err -> and
+            [ "Connection refused" `isInfixOf` transportErrorMessage err
+            , transportErrorAddress err == Just addr
+            ])
         (transportOpen socketTransportOptions addr)
 
     fdcountAfter <- countFileDescriptors
@@ -415,10 +417,11 @@ test_ListenUnix_InvalidBind = assertions "invalid-bind" $ do
     let Just addr = address "unix" (Map.fromList
             [ ("path", "/")
             ])
-    $assert $ throwsEq
-        ((transportError "bind: resource busy (Address already in use)")
-            { transportErrorAddress = Just addr
-            })
+    $assert $ throws
+        (\err -> and
+            [ "Address already in use" `isInfixOf` transportErrorMessage err
+            , transportErrorAddress err == Just addr
+            ])
         (transportListen socketTransportOptions addr)
 
     fdcountAfter <- countFileDescriptors
@@ -489,10 +492,11 @@ test_ListenTcp_InvalidBind = assertions "invalid-bind" $ do
             [ ("family", "ipv4")
             , ("port", "1")
             ])
-    $assert $ throwsEq
-        ((transportError "bind: permission denied (Permission denied)")
-            { transportErrorAddress = Just addr
-            })
+    $assert $ throws
+        (\err -> and
+            [ "Permission denied" `isInfixOf` transportErrorMessage err
+            , transportErrorAddress err == Just addr
+            ])
         (transportListen socketTransportOptions addr)
 
     fdcountAfter <- countFileDescriptors
@@ -531,10 +535,13 @@ test_AcceptSocketClosed = assertions "socket-closed" $ do
     let listeningAddr = transportListenerAddress listener
     liftIO (transportListenerClose listener)
 
-    $assert $ throwsEq
-        ((transportError "user error (accept: can't perform accept on socket ((AF_UNIX,Stream,0)) in status Closed)")
-            { transportErrorAddress = Just listeningAddr
-            })
+    $assert $ throws
+        (\err -> and
+            [ "accept" `isInfixOf` transportErrorMessage err
+            , "socket" `isInfixOf` transportErrorMessage err
+            , "Closed" `isInfixOf` transportErrorMessage err
+            , transportErrorAddress err == Just listeningAddr
+            ])
         (transportAccept listener)
 
 socketTransportOptions :: TransportOptions SocketTransport
