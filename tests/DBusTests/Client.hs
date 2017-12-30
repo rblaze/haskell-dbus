@@ -1,5 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 -- Copyright (C) 2010-2012 John Millikin <john@john-millikin.com>
 --
 -- This program is free software: you can redistribute it and/or modify
@@ -17,22 +15,21 @@
 
 module DBusTests.Client (test_Client) where
 
-import           Control.Concurrent
-import           Control.Exception (try)
-import           Control.Monad.IO.Class (liftIO)
+import Control.Concurrent
+import Control.Exception (try)
+import Data.Word
+import Test.Tasty
+import Test.Tasty.HUnit
 import qualified Data.Map as Map
-import           Data.Word
 
-import           Test.Chell
-
-import           DBus
+import DBus
 import qualified DBus.Client
 import qualified DBus.Socket
 
-import           DBusTests.Util (forkVar, withEnv)
+import DBusTests.Util
 
-test_Client :: Suite
-test_Client = suite "Client" $
+test_Client :: TestTree
+test_Client = testGroup "Client" $
     [ test_RequestName
     , test_ReleaseName
     , test_Call
@@ -40,26 +37,27 @@ test_Client = suite "Client" $
     , test_AddMatch
     , test_AutoMethod
     , test_ExportIntrospection
-    ] ++ suiteTests suite_Connect
+    , suite_Connect
+    ]
 
-test_Connect :: String -> (Address -> IO DBus.Client.Client) -> Test
-test_Connect name connect = assertions name $ do
+test_Connect :: String -> (Address -> IO DBus.Client.Client) -> TestTree
+test_Connect name connect = testCase name $ do
     (addr, sockVar) <- startDummyBus
     clientVar <- forkVar (connect addr)
 
     -- TODO: verify that 'hello' contains expected data, and
     -- send a properly formatted reply.
-    sock <- liftIO (readMVar sockVar)
-    receivedHello <- liftIO (DBus.Socket.receive sock)
+    sock <- readMVar sockVar
+    receivedHello <- DBus.Socket.receive sock
     let (ReceivedMethodCall helloSerial _) = receivedHello
 
-    liftIO (DBus.Socket.send sock (methodReturn helloSerial) (\_ -> return ()))
+    DBus.Socket.send sock (methodReturn helloSerial) (\_ -> return ())
 
-    client <- liftIO (readMVar clientVar)
-    liftIO (DBus.Client.disconnect client)
+    client <- readMVar clientVar
+    DBus.Client.disconnect client
 
-suite_Connect :: Suite
-suite_Connect = suite "connect"
+suite_Connect :: TestTree
+suite_Connect = testGroup "connect"
     [ test_ConnectSystem
     , test_ConnectSystem_NoAddress
     , test_ConnectSession
@@ -68,51 +66,51 @@ suite_Connect = suite "connect"
     , test_ConnectStarter_NoAddress
     ]
 
-test_ConnectSystem :: Test
-test_ConnectSystem = test_Connect "connectSystem" $ \addr -> do
+test_ConnectSystem :: TestTree
+test_ConnectSystem = test_Connect "connectSystem" $ \addr ->
     withEnv "DBUS_SYSTEM_BUS_ADDRESS"
         (Just (formatAddress addr))
         DBus.Client.connectSystem
 
-test_ConnectSystem_NoAddress :: Test
-test_ConnectSystem_NoAddress = assertions "connectSystem-no-address" $ do
-    $expect $ throwsEq
+test_ConnectSystem_NoAddress :: TestTree
+test_ConnectSystem_NoAddress = testCase "connectSystem-no-address" $
+    assertException
         (DBus.Client.clientError "connectSystem: DBUS_SYSTEM_BUS_ADDRESS is invalid.")
         (withEnv "DBUS_SYSTEM_BUS_ADDRESS"
             (Just "invalid")
             DBus.Client.connectSystem)
 
-test_ConnectSession :: Test
-test_ConnectSession = test_Connect "connectSession" $ \addr -> do
+test_ConnectSession :: TestTree
+test_ConnectSession = test_Connect "connectSession" $ \addr ->
     withEnv "DBUS_SESSION_BUS_ADDRESS"
         (Just (formatAddress addr))
         DBus.Client.connectSession
 
-test_ConnectSession_NoAddress :: Test
-test_ConnectSession_NoAddress = assertions "connectSession-no-address" $ do
-    $expect $ throwsEq
+test_ConnectSession_NoAddress :: TestTree
+test_ConnectSession_NoAddress = testCase "connectSession-no-address" $
+    assertException
         (DBus.Client.clientError "connectSession: DBUS_SESSION_BUS_ADDRESS is missing or invalid.")
         (withEnv "DBUS_SESSION_BUS_ADDRESS"
             (Just "invalid")
             DBus.Client.connectSession)
 
-test_ConnectStarter :: Test
-test_ConnectStarter = test_Connect "connectStarter" $ \addr -> do
+test_ConnectStarter :: TestTree
+test_ConnectStarter = test_Connect "connectStarter" $ \addr ->
     withEnv "DBUS_STARTER_ADDRESS"
         (Just (formatAddress addr))
         DBus.Client.connectStarter
 
-test_ConnectStarter_NoAddress :: Test
-test_ConnectStarter_NoAddress = assertions "connectStarter-no-address" $ do
-    $expect $ throwsEq
+test_ConnectStarter_NoAddress :: TestTree
+test_ConnectStarter_NoAddress = testCase "connectStarter-no-address" $
+    assertException
         (DBus.Client.clientError "connectStarter: DBUS_STARTER_ADDRESS is missing or invalid.")
         (withEnv "DBUS_STARTER_ADDRESS"
             (Just "invalid")
             DBus.Client.connectStarter)
 
-test_RequestName :: Test
-test_RequestName = assertions "requestName" $ do
-    (sock, client) <- startConnectedClient
+test_RequestName :: TestTree
+test_RequestName = withConnectedClient $ \res -> testCase "requestName" $ do
+    (sock, client) <- res
     let allFlags =
             [ DBus.Client.nameAllowReplacement
             , DBus.Client.nameReplaceExisting
@@ -134,7 +132,7 @@ test_RequestName = assertions "requestName" $ do
             (DBus.Client.requestName client (busName_ "com.example.Foo") allFlags)
             requestCall
             (requestReply [toVariant (1 :: Word32)])
-        $expect (equal reply DBus.Client.NamePrimaryOwner)
+        reply @?= DBus.Client.NamePrimaryOwner
 
     -- NameInQueue
     do
@@ -142,7 +140,7 @@ test_RequestName = assertions "requestName" $ do
             (DBus.Client.requestName client (busName_ "com.example.Foo") allFlags)
             requestCall
             (requestReply [toVariant (2 :: Word32)])
-        $expect (equal reply DBus.Client.NameInQueue)
+        reply @?= DBus.Client.NameInQueue
 
     -- NameExists
     do
@@ -150,7 +148,7 @@ test_RequestName = assertions "requestName" $ do
             (DBus.Client.requestName client (busName_ "com.example.Foo") allFlags)
             requestCall
             (requestReply [toVariant (3 :: Word32)])
-        $expect (equal reply DBus.Client.NameExists)
+        reply @?= DBus.Client.NameExists
 
     -- NameAlreadyOwner
     do
@@ -158,7 +156,7 @@ test_RequestName = assertions "requestName" $ do
             (DBus.Client.requestName client (busName_ "com.example.Foo") allFlags)
             requestCall
             (requestReply [toVariant (4 :: Word32)])
-        $expect (equal reply DBus.Client.NameAlreadyOwner)
+        reply @?= DBus.Client.NameAlreadyOwner
 
     -- response with empty body
     do
@@ -166,10 +164,10 @@ test_RequestName = assertions "requestName" $ do
             (try (DBus.Client.requestName client (busName_ "com.example.Foo") allFlags))
             requestCall
             (requestReply [])
-        err <- $requireLeft tried
-        $expect (equal err (DBus.Client.clientError "requestName: received empty response")
+        err <- requireLeft tried
+        err @?= (DBus.Client.clientError "requestName: received empty response")
             { DBus.Client.clientErrorFatal = False
-            })
+            }
 
     -- response with invalid body
     do
@@ -177,10 +175,10 @@ test_RequestName = assertions "requestName" $ do
             (try (DBus.Client.requestName client (busName_ "com.example.Foo") allFlags))
             requestCall
             (requestReply [toVariant ""])
-        err <- $requireLeft tried
-        $expect (equal err (DBus.Client.clientError "requestName: received invalid response code (Variant \"\")")
+        err <- requireLeft tried
+        err @?= (DBus.Client.clientError "requestName: received invalid response code (Variant \"\")")
             { DBus.Client.clientErrorFatal = False
-            })
+            }
 
     -- response with unknown result code
     do
@@ -188,12 +186,11 @@ test_RequestName = assertions "requestName" $ do
             (DBus.Client.requestName client (busName_ "com.example.Foo") allFlags)
             requestCall
             (requestReply [toVariant (5 :: Word32)])
-        $expect (equal (show reply) ("UnknownRequestNameReply 5"))
+        show reply @?= "UnknownRequestNameReply 5"
 
-test_ReleaseName :: Test
-test_ReleaseName = assertions "releaseName" $ do
-    (sock, client) <- startConnectedClient
-
+test_ReleaseName :: TestTree
+test_ReleaseName = withConnectedClient $ \res -> testCase "releaseName" $ do
+    (sock, client) <- res
     let requestCall = (dbusCall "ReleaseName")
             { methodCallDestination = Just (busName_ "org.freedesktop.DBus")
             , methodCallBody = [toVariant "com.example.Foo"]
@@ -209,7 +206,7 @@ test_ReleaseName = assertions "releaseName" $ do
             (DBus.Client.releaseName client (busName_ "com.example.Foo"))
             requestCall
             (requestReply [toVariant (1 :: Word32)])
-        $expect (equal reply DBus.Client.NameReleased)
+        reply @?= DBus.Client.NameReleased
 
     -- NameNonExistent
     do
@@ -217,7 +214,7 @@ test_ReleaseName = assertions "releaseName" $ do
             (DBus.Client.releaseName client (busName_ "com.example.Foo"))
             requestCall
             (requestReply [toVariant (2 :: Word32)])
-        $expect (equal reply DBus.Client.NameNonExistent)
+        reply @?= DBus.Client.NameNonExistent
 
     -- NameNotOwner
     do
@@ -225,7 +222,7 @@ test_ReleaseName = assertions "releaseName" $ do
             (DBus.Client.releaseName client (busName_ "com.example.Foo"))
             requestCall
             (requestReply [toVariant (3 :: Word32)])
-        $expect (equal reply DBus.Client.NameNotOwner)
+        reply @?= DBus.Client.NameNotOwner
 
     -- response with empty body
     do
@@ -233,10 +230,10 @@ test_ReleaseName = assertions "releaseName" $ do
             (try (DBus.Client.releaseName client (busName_ "com.example.Foo")))
             requestCall
             (requestReply [])
-        err <- $requireLeft tried
-        $expect (equal err (DBus.Client.clientError "releaseName: received empty response")
+        err <- requireLeft tried
+        err @?= (DBus.Client.clientError "releaseName: received empty response")
             { DBus.Client.clientErrorFatal = False
-            })
+            }
 
     -- response with invalid body
     do
@@ -244,10 +241,10 @@ test_ReleaseName = assertions "releaseName" $ do
             (try (DBus.Client.releaseName client (busName_ "com.example.Foo")))
             requestCall
             (requestReply [toVariant ""])
-        err <- $requireLeft tried
-        $expect (equal err (DBus.Client.clientError "releaseName: received invalid response code (Variant \"\")")
+        err <- requireLeft tried
+        err @?= (DBus.Client.clientError "releaseName: received invalid response code (Variant \"\")")
             { DBus.Client.clientErrorFatal = False
-            })
+            }
 
     -- response with unknown result code
     do
@@ -255,12 +252,11 @@ test_ReleaseName = assertions "releaseName" $ do
             (DBus.Client.releaseName client (busName_ "com.example.Foo"))
             requestCall
             (requestReply [toVariant (5 :: Word32)])
-        $expect (equal (show reply) ("UnknownReleaseNameReply 5"))
+        show reply @?= "UnknownReleaseNameReply 5"
 
-test_Call :: Test
-test_Call = assertions "call" $ do
-    (sock, client) <- startConnectedClient
-
+test_Call :: TestTree
+test_Call = withConnectedClient $ \res -> testCase "call" $ do
+    (sock, client) <- res
     let requestCall = (dbusCall "Hello")
             { methodCallSender = Just (busName_ "com.example.Foo")
             , methodCallDestination = Just (busName_ "org.freedesktop.DBus")
@@ -277,14 +273,13 @@ test_Call = assertions "call" $ do
                 { methodCallReplyExpected = True
                 })
             methodReturn
-        reply <- $requireRight response
+        reply <- requireRight response
 
-        $expect (equal reply (methodReturn (methodReturnSerial reply)))
+        reply @?= methodReturn (methodReturnSerial reply)
 
-test_CallNoReply :: Test
-test_CallNoReply = assertions "callNoReply" $ do
-    (sock, client) <- startConnectedClient
-
+test_CallNoReply :: TestTree
+test_CallNoReply = withConnectedClient $ \res -> testCase "callNoReply" $ do
+    (sock, client) <- res
     let requestCall = (dbusCall "Hello")
             { methodCallSender = Just (busName_ "com.example.Foo")
             , methodCallDestination = Just (busName_ "org.freedesktop.DBus")
@@ -302,10 +297,9 @@ test_CallNoReply = assertions "callNoReply" $ do
                 })
             methodReturn
 
-test_AddMatch :: Test
-test_AddMatch = assertions "addMatch" $ do
-    (sock, client) <- startConnectedClient
-
+test_AddMatch :: TestTree
+test_AddMatch = withConnectedClient $ \res -> testCase "addMatch" $ do
+    (sock, client) <- res
     let matchRule = DBus.Client.matchAny
             { DBus.Client.matchSender = Just (busName_ "com.example.Foo")
             , DBus.Client.matchDestination = Just (busName_ "com.example.Bar")
@@ -315,92 +309,90 @@ test_AddMatch = assertions "addMatch" $ do
             }
 
     -- might as well test this while we're at it
-    $expect (equal (show matchRule) "MatchRule \"sender='com.example.Foo',destination='com.example.Bar',path='/',interface='com.example.Baz',member='Qux'\"")
+    show matchRule @?= "MatchRule \"sender='com.example.Foo',destination='com.example.Bar',path='/',interface='com.example.Baz',member='Qux'\""
 
     let requestCall = (dbusCall "AddMatch")
             { methodCallDestination = Just (busName_ "org.freedesktop.DBus")
             , methodCallBody = [toVariant "type='signal',sender='com.example.Foo',destination='com.example.Bar',path='/',interface='com.example.Baz',member='Qux'"]
             }
 
-    signalVar <- liftIO newEmptyMVar
+    signalVar <- newEmptyMVar
 
     -- add a listener for the given signal
-    stubMethodCall sock
+    _ <- stubMethodCall sock
         (DBus.Client.addMatch client matchRule (putMVar signalVar))
         requestCall
         methodReturn
 
     -- ignored signal
-    liftIO (DBus.Socket.send sock
+    DBus.Socket.send sock
         (signal (objectPath_ "/") (interfaceName_ "com.example.Baz") (memberName_ "Qux"))
-        (\_ -> return ()))
-    $assert (isEmptyMVar signalVar)
+        (\_ -> return ())
+    isEmptyMVar signalVar >>= assertBool "signal not ignored"
 
     -- matched signal
     let matchedSignal = (signal (objectPath_ "/") (interfaceName_ "com.example.Baz") (memberName_ "Qux"))
             { signalSender = Just (busName_ "com.example.Foo")
             , signalDestination = Just (busName_ "com.example.Bar")
             }
-    liftIO (DBus.Socket.send sock matchedSignal (\_ -> return ()))
-    received <- liftIO (takeMVar signalVar)
-    $expect (equal received matchedSignal)
+    DBus.Socket.send sock matchedSignal (\_ -> return ())
+    received <- takeMVar signalVar
+    received @?= matchedSignal
 
-test_AutoMethod :: Test
-test_AutoMethod = assertions "autoMethod" $ do
-    (sock, client) <- startConnectedClient
-
+test_AutoMethod :: TestTree
+test_AutoMethod = withConnectedClient $ \res -> testCase "autoMethod" $ do
+    (sock, client) <- res
     let methodMax = (\x y -> return (max x y)) :: Word32 -> Word32 -> IO Word32
 
     let methodPair = (\x y -> return (x, y)) :: String -> String -> IO (String, String)
 
-    liftIO (DBus.Client.export client (objectPath_ "/")
+    DBus.Client.export client (objectPath_ "/")
         [ DBus.Client.autoMethod (interfaceName_ "com.example.Foo") (memberName_ "Max") methodMax
         , DBus.Client.autoMethod (interfaceName_ "com.example.Foo") (memberName_ "Pair") methodPair
-        ])
+        ]
 
     -- valid call to com.example.Foo.Max
     do
         (serial, response) <- callClientMethod sock "/" "com.example.Foo" "Max" [toVariant (2 :: Word32), toVariant (1 :: Word32)]
-        $expect (equal response (Right (methodReturn serial)
+        response @?= Right (methodReturn serial)
             { methodReturnBody = [toVariant (2 :: Word32)]
-            }))
+            }
 
     -- valid call to com.example.Foo.Pair
     do
         (serial, response) <- callClientMethod sock "/" "com.example.Foo" "Pair" [toVariant "x", toVariant "y"]
-        $expect (equal response (Right (methodReturn serial)
+        response @?= Right (methodReturn serial)
             { methodReturnBody = [toVariant "x", toVariant "y"]
-            }))
+            }
 
     -- invalid call to com.example.Foo.Max
     do
         (serial, response) <- callClientMethod sock "/" "com.example.Foo" "Max" [toVariant "x", toVariant "y"]
-        $expect (equal response (Left (methodError serial (errorName_ "org.freedesktop.DBus.Error.InvalidParameters"))))
+        response @?= Left (methodError serial (errorName_ "org.freedesktop.DBus.Error.InvalidParameters"))
 
-test_ExportIntrospection :: Test
-test_ExportIntrospection = assertions "exportIntrospection" $ do
-    (sock, client) <- startConnectedClient
-
-    liftIO (DBus.Client.export client (objectPath_ "/foo")
+test_ExportIntrospection :: TestTree
+test_ExportIntrospection = withConnectedClient $ \res -> testCase "exportIntrospection" $ do
+    (sock, client) <- res
+    DBus.Client.export client (objectPath_ "/foo")
         [ DBus.Client.autoMethod (interfaceName_ "com.example.Foo") (memberName_ "Method1")
           (undefined :: String -> IO ())
         , DBus.Client.autoMethod (interfaceName_ "com.example.Foo") (memberName_ "Method2")
           (undefined :: String -> IO String)
         , DBus.Client.autoMethod (interfaceName_ "com.example.Foo") (memberName_ "Method3")
           (undefined :: String -> IO (String, String))
-        ])
+        ]
 
     let introspect path = do
         (_, response) <- callClientMethod sock path "org.freedesktop.DBus.Introspectable" "Introspect" []
-        ret <- $requireRight response
+        ret <- requireRight response
         let body = methodReturnBody ret
 
-        $assert (equal (length body) 1)
+        length body @?= 1
         let Just xml = fromVariant (head body)
         return xml
 
     root <- introspect "/"
-    $expect (equalLines root
+    root @?=
         "<!DOCTYPE node PUBLIC '-//freedesktop//DTD D-BUS Object Introspection 1.0//EN' 'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>\n\
         \<node name='/'>\
             \<interface name='org.freedesktop.DBus.Introspectable'>\
@@ -409,10 +401,10 @@ test_ExportIntrospection = assertions "exportIntrospection" $ do
                 \</method>\
             \</interface>\
             \<node name='foo'></node>\
-        \</node>")
+        \</node>"
 
     foo <- introspect "/foo"
-    $expect (equalLines foo
+    foo @?=
         "<!DOCTYPE node PUBLIC '-//freedesktop//DTD D-BUS Object Introspection 1.0//EN' 'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>\n\
         \<node name='/foo'>\
             \<interface name='com.example.Foo'>\
@@ -434,57 +426,58 @@ test_ExportIntrospection = assertions "exportIntrospection" $ do
                     \<arg name='' type='s' direction='out'/>\
                 \</method>\
             \</interface>\
-        \</node>")
+        \</node>"
 
-startDummyBus :: Assertions (Address, MVar DBus.Socket.Socket)
+startDummyBus :: IO (Address, MVar DBus.Socket.Socket)
 startDummyBus = do
-    uuid <- liftIO randomUUID
+    uuid <- randomUUID
     let Just addr = address "unix" (Map.fromList [("abstract", formatUUID uuid)])
-    listener <- liftIO (DBus.Socket.listen addr)
+    listener <- DBus.Socket.listen addr
     sockVar <- forkVar (DBus.Socket.accept listener)
     return (DBus.Socket.socketListenerAddress listener, sockVar)
 
-startConnectedClient :: Assertions (DBus.Socket.Socket, DBus.Client.Client)
-startConnectedClient = do
-    (addr, sockVar) <- startDummyBus
-    clientVar <- forkVar (DBus.Client.connect addr)
+withConnectedClient :: (IO (DBus.Socket.Socket, DBus.Client.Client) -> TestTree) -> TestTree
+withConnectedClient = withResource create remove
+  where
+    create = do
+        (addr, sockVar) <- startDummyBus
+        clientVar <- forkVar (DBus.Client.connect addr)
 
-    -- TODO: verify that 'hello' contains expected data, and
-    -- send a properly formatted reply.
-    sock <- liftIO (readMVar sockVar)
-    receivedHello <- liftIO (DBus.Socket.receive sock)
-    let (ReceivedMethodCall helloSerial _) = receivedHello
+        -- TODO: verify that 'hello' contains expected data, and
+        -- send a properly formatted reply.
+        sock <- readMVar sockVar
+        receivedHello <- DBus.Socket.receive sock
+        let (ReceivedMethodCall helloSerial _) = receivedHello
 
-    liftIO (DBus.Socket.send sock (methodReturn helloSerial) (\_ -> return ()))
+        DBus.Socket.send sock (methodReturn helloSerial) (\_ -> return ())
 
-    client <- liftIO (readMVar clientVar)
-    afterTest (DBus.Client.disconnect client)
+        client <- readMVar clientVar
+        return (sock, client)
+    remove (_, client) = DBus.Client.disconnect client
 
-    return (sock, client)
-
-stubMethodCall :: DBus.Socket.Socket -> IO a -> MethodCall -> (Serial -> MethodReturn) -> Assertions a
+stubMethodCall :: DBus.Socket.Socket -> IO a -> MethodCall -> (Serial -> MethodReturn) -> IO a
 stubMethodCall sock io expectedCall respond = do
     var <- forkVar io
 
-    receivedCall <- liftIO (DBus.Socket.receive sock)
+    receivedCall <- DBus.Socket.receive sock
     let ReceivedMethodCall callSerial call = receivedCall
-    $expect (equal expectedCall call)
+    expectedCall @?= call
 
-    liftIO (DBus.Socket.send sock (respond callSerial) (\_ -> return ()))
+    DBus.Socket.send sock (respond callSerial) (\_ -> return ())
 
-    liftIO (takeMVar var)
+    takeMVar var
 
-callClientMethod :: DBus.Socket.Socket -> String -> String -> String -> [Variant] -> Assertions (Serial, Either MethodError MethodReturn)
+callClientMethod :: DBus.Socket.Socket -> String -> String -> String -> [Variant] -> IO (Serial, Either MethodError MethodReturn)
 callClientMethod sock path iface name body = do
     let call = (methodCall (objectPath_ path) (interfaceName_ iface) (memberName_ name))
             { methodCallBody = body
             }
-    serial <- liftIO (DBus.Socket.send sock call return)
-    resp <- liftIO (DBus.Socket.receive sock)
+    serial <- DBus.Socket.send sock call return
+    resp <- DBus.Socket.receive sock
     case resp of
         ReceivedMethodReturn _ ret -> return (serial, Right ret)
         ReceivedMethodError _ err -> return (serial, Left err)
-        _ -> $die "callClientMethod: unexpected response to method call"
+        _ -> assertFailure "callClientMethod: unexpected response to method call" >> undefined
 
 dbusCall :: String -> MethodCall
 dbusCall member = methodCall (objectPath_ "/org/freedesktop/DBus") (interfaceName_ "org.freedesktop.DBus") (memberName_ member)

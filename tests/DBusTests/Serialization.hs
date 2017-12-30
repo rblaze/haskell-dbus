@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 -- Copyright (C) 2010-2012 John Millikin <john@john-millikin.com>
 --
@@ -18,65 +17,65 @@
 
 module DBusTests.Serialization (test_Serialization) where
 
-import           Test.Chell
-import           Test.Chell.QuickCheck
-import           Test.QuickCheck hiding ((.&.), property)
-
-import           Data.ByteString (ByteString)
-import           Data.Text (Text)
-import           Data.Int (Int16, Int32, Int64)
-import           Data.Word (Word8, Word16, Word32, Word64)
-import           Data.Map (Map)
+import Data.ByteString (ByteString)
+import Data.Int (Int16, Int32, Int64)
+import Data.Map (Map)
+import Data.Text (Text)
+import Data.Word (Word8, Word16, Word32, Word64)
+import Foreign.C.Types (CInt)
+import System.Posix.Types (Fd)
+import Test.QuickCheck
+import Test.Tasty
+import Test.Tasty.HUnit
+import Test.Tasty.QuickCheck
 import qualified Data.Map
 import qualified Data.Vector
-import           Foreign.C.Types (CInt)
-import           System.Posix.Types (Fd)
 
-import           DBus
+import DBus
 import qualified DBus.Internal.Types
 
-import           DBusTests.BusName ()
-import           DBusTests.ErrorName ()
-import           DBusTests.InterfaceName ()
-import           DBusTests.MemberName ()
-import           DBusTests.ObjectPath ()
-import           DBusTests.Signature ()
-import           DBusTests.Util (smallListOf)
+import DBusTests.BusName ()
+import DBusTests.ErrorName ()
+import DBusTests.InterfaceName ()
+import DBusTests.MemberName ()
+import DBusTests.ObjectPath ()
+import DBusTests.Signature ()
+import DBusTests.Util (smallListOf)
 
-test_Serialization :: Suite
-test_Serialization = suite "Serialization"
+test_Serialization :: TestTree
+test_Serialization = testGroup "Serialization"
     [ test_MethodCall
     , test_MethodReturn
     , test_MethodError
     , test_Signal
     ]
 
-test_MethodCall :: Test
-test_MethodCall = property "MethodCall" prop where
+test_MethodCall :: TestTree
+test_MethodCall = testProperty "MethodCall" prop where
     prop = forAll gen_MethodCall check
     check msg endianness serial = let
         Right bytes = marshal endianness serial msg
         Right received = unmarshal bytes
         in ReceivedMethodCall serial msg == received
 
-test_MethodReturn :: Test
-test_MethodReturn = property "MethodReturn" prop where
+test_MethodReturn :: TestTree
+test_MethodReturn = testProperty "MethodReturn" prop where
     prop = forAll gen_MethodReturn check
     check msg endianness serial = let
         Right bytes = marshal endianness serial msg
         Right received = unmarshal bytes
         in ReceivedMethodReturn serial msg == received
 
-test_MethodError :: Test
-test_MethodError = property "MethodError" prop where
+test_MethodError :: TestTree
+test_MethodError = testProperty "MethodError" prop where
     prop = forAll gen_MethodError check
     check msg endianness serial = let
         Right bytes = marshal endianness serial msg
         Right received = unmarshal bytes
         in ReceivedMethodError serial msg == received
 
-test_Signal :: Test
-test_Signal = property "Signal" prop where
+test_Signal :: TestTree
+test_Signal = testProperty "Signal" prop where
     prop = forAll gen_Signal check
     check msg endianness serial = let
         Right bytes = marshal endianness serial msg

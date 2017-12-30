@@ -1,5 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 -- Copyright (C) 2010-2012 John Millikin <john@john-millikin.com>
 --
 -- This program is free software: you can redistribute it and/or modify
@@ -19,6 +17,8 @@ module DBusTests.Util
     ( assertVariant
     , assertValue
     , assertAtom
+    , assertException
+    , assertThrows
 
     , getTempPath
     , listenRandomUnixPath
@@ -37,54 +37,52 @@ module DBusTests.Util
     , clampedSize
     , smallListOf
     , smallListOf1
+
+    , DBusTests.Util.requireLeft
+    , DBusTests.Util.requireRight
     ) where
 
-import           Control.Concurrent
-import           Control.Exception (IOException, try, bracket, bracket_)
-import           Control.Monad.IO.Class (MonadIO, liftIO)
-import           Data.Bits ((.&.))
+import Control.Concurrent
+import Control.Exception (Exception, IOException, try, bracket, bracket_)
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Trans.Resource
+import Data.Bits ((.&.))
+import Data.Char (chr)
+import System.Directory (getTemporaryDirectory, removeFile)
+import System.FilePath ((</>))
+import Test.QuickCheck hiding ((.&.))
+import Test.Tasty.HUnit
 import qualified Data.ByteString
 import qualified Data.ByteString.Lazy
-import           Data.Char (chr)
 import qualified Data.Map as Map
-import qualified Data.Set
 import qualified Data.Text as T
 import qualified Network as N
 import qualified Network.Socket as NS
-import           System.Directory (getTemporaryDirectory, removeFile)
 import qualified System.Posix as Posix
-import           System.FilePath ((</>))
 
-import           Test.Chell
-import           Test.QuickCheck hiding ((.&.))
+import DBus
+import DBus.Internal.Types
 
-import           DBus
-import           DBus.Internal.Types
-
-assertVariant :: (Eq a, Show a, IsVariant a) => Type -> a -> Assertions ()
+assertVariant :: (Eq a, Show a, IsVariant a) => Type -> a -> Test.Tasty.HUnit.Assertion
 assertVariant t a = do
-    $expect $ equal t (variantType (toVariant a))
-    $expect $ equal (fromVariant (toVariant a)) (Just a)
-    $expect $ equal (toVariant a) (toVariant a)
+    t @=? variantType (toVariant a)
+    Just a @=? fromVariant (toVariant a)
+    toVariant a @=? toVariant a
 
-$([d||])
-
-assertValue :: (Eq a, Show a, IsValue a) => Type -> a -> Assertions ()
+assertValue :: (Eq a, Show a, IsValue a) => Type -> a -> Test.Tasty.HUnit.Assertion
 assertValue t a = do
-    $expect $ equal t (DBus.typeOf a)
-    $expect $ equal t (DBus.Internal.Types.typeOf a)
-    $expect $ equal t (valueType (toValue a))
-    $expect $ equal (fromValue (toValue a)) (Just a)
-    $expect $ equal (toValue a) (toValue a)
+    t @=? DBus.typeOf a
+    t @=? DBus.Internal.Types.typeOf a
+    t @=? valueType (toValue a)
+    fromValue (toValue a) @?= Just a
+    toValue a @=? toValue a
     assertVariant t a
 
-$([d||])
-
-assertAtom :: (Eq a, Show a, IsAtom a) => Type -> a -> Assertions ()
+assertAtom :: (Eq a, Show a, IsAtom a) => Type -> a -> Test.Tasty.HUnit.Assertion
 assertAtom t a = do
-    $expect $ equal t (atomType (toAtom a))
-    $expect $ equal (fromAtom (toAtom a)) (Just a)
-    $expect $ equal (toAtom a) (toAtom a)
+    t @=? (atomType (toAtom a))
+    fromAtom (toAtom a) @?= (Just a)
+    toAtom a @=? toAtom a
     assertValue t a
 
 getTempPath :: IO String
@@ -93,64 +91,73 @@ getTempPath = do
     uuid <- randomUUID
     return (tmp </> formatUUID uuid)
 
-listenRandomUnixPath :: Assertions (Address, N.Socket)
+listenRandomUnixPath :: MonadResource m => m (Address, N.Socket)
 listenRandomUnixPath = do
     path <- liftIO getTempPath
 
     let sockAddr = NS.SockAddrUnix path
-    sock <- liftIO (NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol)
+    (_, sock) <- allocate
+        (NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol)
+        N.sClose
     liftIO (NS.bindSocket sock sockAddr)
     liftIO (NS.listen sock 1)
-    afterTest (removeFile path)
+    _ <- register (removeFile path)
 
     let Just addr = address "unix" (Map.fromList
             [ ("path", path)
             ])
     return (addr, sock)
 
-listenRandomUnixAbstract :: MonadIO m => m (Address, N.Socket)
-listenRandomUnixAbstract = liftIO $ do
+listenRandomUnixAbstract :: MonadResource m => m (Address, N.Socket, ReleaseKey)
+listenRandomUnixAbstract = do
     uuid <- liftIO randomUUID
     let sockAddr = NS.SockAddrUnix ('\x00' : formatUUID uuid)
 
-    sock <- NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol
-    NS.bindSocket sock sockAddr
-    NS.listen sock 1
+    (key, sock) <- allocate
+        (NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol)
+        N.sClose
+
+    liftIO $ NS.bindSocket sock sockAddr
+    liftIO $ NS.listen sock 1
 
     let Just addr = address "unix" (Map.fromList
             [ ("abstract", formatUUID uuid)
             ])
-    return (addr, sock)
+    return (addr, sock, key)
 
-listenRandomIPv4 :: MonadIO m => m (Address, N.Socket)
-listenRandomIPv4 = liftIO $ do
-    hostAddr <- NS.inet_addr "127.0.0.1"
+listenRandomIPv4 :: MonadResource m => m (Address, N.Socket, ReleaseKey)
+listenRandomIPv4 = do
+    hostAddr <- liftIO $ NS.inet_addr "127.0.0.1"
     let sockAddr = NS.SockAddrInet 0 hostAddr
 
-    sock <- NS.socket NS.AF_INET NS.Stream NS.defaultProtocol
-    NS.bindSocket sock sockAddr
-    NS.listen sock 1
+    (key, sock) <- allocate
+        (NS.socket NS.AF_INET NS.Stream NS.defaultProtocol)
+        N.sClose
+    liftIO $ NS.bindSocket sock sockAddr
+    liftIO $ NS.listen sock 1
 
-    sockPort <- NS.socketPort sock
+    sockPort <- liftIO $ NS.socketPort sock
     let Just addr = address "tcp" (Map.fromList
             [ ("family", "ipv4")
             , ("host", "localhost")
             , ("port", show (toInteger sockPort))
             ])
-    return (addr, sock)
+    return (addr, sock, key)
 
-listenRandomIPv6 :: MonadIO m => m (Address, N.Socket)
-listenRandomIPv6 = liftIO $ do
-    addrs <- NS.getAddrInfo Nothing (Just "::1") Nothing
+listenRandomIPv6 :: MonadResource m => m (Address, N.Socket)
+listenRandomIPv6 = do
+    addrs <- liftIO $ NS.getAddrInfo Nothing (Just "::1") Nothing
     let sockAddr = case addrs of
             [] -> error "listenRandomIPv6: no address for localhost?"
             a:_ -> NS.addrAddress a
 
-    sock <- NS.socket NS.AF_INET6 NS.Stream NS.defaultProtocol
-    NS.bindSocket sock sockAddr
-    NS.listen sock 1
+    (_, sock) <- allocate
+        (NS.socket NS.AF_INET6 NS.Stream NS.defaultProtocol)
+        N.sClose
+    liftIO $ NS.bindSocket sock sockAddr
+    liftIO $ NS.listen sock 1
 
-    sockPort <- NS.socketPort sock
+    sockPort <- liftIO $ NS.socketPort sock
     let Just addr = address "tcp" (Map.fromList
             [ ("family", "ipv6")
             , ("host", "::1")
@@ -265,3 +272,25 @@ instance Arbitrary Data.ByteString.Lazy.ByteString where
 
 dropWhileEnd :: (Char -> Bool) -> String -> String
 dropWhileEnd p = T.unpack . T.dropWhileEnd p . T.pack
+
+requireLeft :: Show b => Either a b -> IO a
+requireLeft (Left a) = return a
+requireLeft (Right b) = assertFailure ("Right " ++ show b ++ " is not Left") >> undefined
+
+requireRight :: Show a => Either a b -> IO b
+requireRight (Right b) = return b
+requireRight (Left a) = assertFailure ("Left " ++ show a ++ " is not Right") >> undefined
+
+assertException :: (Eq e, Exception e) => e -> IO a -> Test.Tasty.HUnit.Assertion
+assertException e f = do
+    result <- try f
+    case result of
+        Left ex -> ex @?= e
+        Right _ -> assertFailure "expected exception not thrown"
+
+assertThrows :: Exception e => (e -> Bool) -> IO a -> Test.Tasty.HUnit.Assertion
+assertThrows check f = do
+    result <- try f
+    case result of
+        Left ex -> assertBool ("unexpected exception " ++ show ex) (check ex)
+        Right _ -> assertFailure "expected exception not thrown"

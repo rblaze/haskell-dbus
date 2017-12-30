@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 -- Copyright (C) 2012 John Millikin <john@john-millikin.com>
 --
@@ -18,27 +17,29 @@
 
 module DBusTests.Wire (test_Wire) where
 
-import           Test.Chell
+import Data.Either
+import Test.Tasty
+import Test.Tasty.HUnit
 
 import qualified Data.ByteString.Char8 ()
 
-import           DBus
+import DBus
 
-test_Wire :: Suite
-test_Wire = suite "Wire" $
-    suiteTests test_Unmarshal
+test_Wire :: TestTree
+test_Wire = testGroup "Wire" $
+    [ test_Unmarshal
+    ]
 
-test_Unmarshal :: Suite
-test_Unmarshal = suite "unmarshal"
+test_Unmarshal :: TestTree
+test_Unmarshal = testGroup "unmarshal"
     [ test_UnmarshalUnexpectedEof
     ]
 
-test_UnmarshalUnexpectedEof :: Test
-test_UnmarshalUnexpectedEof = assertions "unexpected-eof" $ do
+test_UnmarshalUnexpectedEof :: TestTree
+test_UnmarshalUnexpectedEof = testCase "unexpected-eof" $ do
     let unmarshaled = unmarshal "0"
-    $assert (left unmarshaled)
+    assertBool "invalid unmarshalled parse" (isLeft unmarshaled)
 
     let Left err = unmarshaled
-    $assert (equal
-        (unmarshalErrorMessage err)
-        "Unexpected end of input while parsing message header.")
+    unmarshalErrorMessage err
+        @=? "Unexpected end of input while parsing message header."

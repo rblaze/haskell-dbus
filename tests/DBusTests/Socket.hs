@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 -- Copyright (C) 2012 John Millikin <john@john-millikin.com>
 --
@@ -18,70 +17,64 @@
 
 module DBusTests.Socket (test_Socket) where
 
-import           Test.Chell
-
-import           Control.Concurrent
-import           Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Concurrent
+import Control.Exception
+import Test.Tasty
+import Test.Tasty.HUnit
 import qualified Data.Map as Map
 
-import           DBus
-import           DBus.Socket
-import           DBus.Transport
+import DBus
+import DBus.Socket
+import DBus.Transport
 
-import           DBusTests.Util (forkVar)
+import DBusTests.Util (forkVar)
 
-test_Socket :: Suite
-test_Socket = suite "Socket"
+test_Socket :: TestTree
+test_Socket = testGroup "Socket"
     [ test_Listen
     , test_ListenWith_CustomAuth
     , test_SendReceive
     ]
 
-test_Listen :: Test
-test_Listen = assertions "listen" $ do
-    uuid <- liftIO randomUUID
+test_Listen :: TestTree
+test_Listen = testCase "listen" $ do
+    uuid <- randomUUID
     let Just addr = address "unix" (Map.fromList
             [ ("abstract", formatUUID uuid)
             ])
 
-    listener <- liftIO (listen addr)
-    afterTest (closeListener listener)
+    bracket (listen addr) closeListener $ \listener -> do
+        acceptedVar <- forkVar (accept listener)
+        openedVar <- forkVar (open addr)
 
-    acceptedVar <- forkVar (accept listener)
-    openedVar <- forkVar (open addr)
+        sock1 <- takeMVar acceptedVar
+        sock2 <- takeMVar openedVar
+        close sock1
+        close sock2
 
-    sock1 <- liftIO (takeMVar acceptedVar)
-    afterTest (close sock1)
-
-    sock2 <- liftIO (takeMVar openedVar)
-    afterTest (close sock2)
-
-test_ListenWith_CustomAuth :: Test
-test_ListenWith_CustomAuth = assertions "listenWith-custom-auth" $ do
-    uuid <- liftIO randomUUID
+test_ListenWith_CustomAuth :: TestTree
+test_ListenWith_CustomAuth = testCase "listenWith-custom-auth" $ do
+    uuid <- randomUUID
     let Just addr = address "unix" (Map.fromList
             [ ("abstract", formatUUID uuid)
             ])
 
-    listener <- liftIO (listenWith (defaultSocketOptions
-        { socketAuthenticator = dummyAuth
-        }) addr)
-    afterTest (closeListener listener)
+    bracket (listenWith (defaultSocketOptions
+            { socketAuthenticator = dummyAuth
+            }) addr) closeListener $ \listener -> do
+        acceptedVar <- forkVar (accept listener)
+        openedVar <- forkVar (openWith (defaultSocketOptions
+            { socketAuthenticator = dummyAuth
+            }) addr)
 
-    acceptedVar <- forkVar (accept listener)
-    openedVar <- forkVar (openWith (defaultSocketOptions
-        { socketAuthenticator = dummyAuth
-        }) addr)
+        sock1 <- takeMVar acceptedVar
+        sock2 <- takeMVar openedVar
+        close sock1
+        close sock2
 
-    sock1 <- liftIO (takeMVar acceptedVar)
-    afterTest (close sock1)
-
-    sock2 <- liftIO (takeMVar openedVar)
-    afterTest (close sock2)
-
-test_SendReceive :: Test
-test_SendReceive = assertions "send-receive" $ do
-    uuid <- liftIO randomUUID
+test_SendReceive :: TestTree
+test_SendReceive = testCase "send-receive" $ do
+    uuid <- randomUUID
     let Just addr = address "unix" (Map.fromList
             [ ("abstract", formatUUID uuid)
             ])
@@ -94,43 +87,37 @@ test_SendReceive = assertions "send-receive" $ do
             , methodCallBody = [toVariant True]
            }
 
-    listener <- liftIO (listen addr)
-    afterTest (closeListener listener)
+    bracket (listen addr) closeListener $ \listener -> do
+        acceptedVar <- forkVar (accept listener)
+        openedVar <- forkVar (open addr)
 
-    acceptedVar <- forkVar (accept listener)
-    openedVar <- forkVar (open addr)
+        bracket (takeMVar acceptedVar) close $ \sock1 -> do
+        bracket (takeMVar openedVar) close $ \sock2 -> do
+            -- client -> server
+            do
+                serialVar <- newEmptyMVar
+                sentVar <- forkVar (send sock2 msg (putMVar serialVar))
+                receivedVar <- forkVar (receive sock1)
 
-    sock1 <- liftIO (takeMVar acceptedVar)
-    afterTest (close sock1)
+                serial <- takeMVar serialVar
+                sent <- takeMVar sentVar
+                received <- takeMVar receivedVar
 
-    sock2 <- liftIO (takeMVar openedVar)
-    afterTest (close sock2)
+                sent @?= ()
+                received @?= ReceivedMethodCall serial msg
 
-    -- client -> server
-    do
-        serialVar <- liftIO newEmptyMVar
-        sentVar <- forkVar (send sock2 msg (putMVar serialVar))
-        receivedVar <- forkVar (receive sock1)
+            -- server -> client
+            do
+                serialVar <- newEmptyMVar
+                sentVar <- forkVar (send sock1 msg (putMVar serialVar))
+                receivedVar <- forkVar (receive sock2)
 
-        serial <- liftIO (takeMVar serialVar)
-        sent <- liftIO (takeMVar sentVar)
-        received <- liftIO (takeMVar receivedVar)
+                serial <- takeMVar serialVar
+                sent <- takeMVar sentVar
+                received <- takeMVar receivedVar
 
-        $assert (equal sent ())
-        $assert (equal received (ReceivedMethodCall serial msg))
-
-    -- server -> client
-    do
-        serialVar <- liftIO newEmptyMVar
-        sentVar <- forkVar (send sock1 msg (putMVar serialVar))
-        receivedVar <- forkVar (receive sock2)
-
-        serial <- liftIO (takeMVar serialVar)
-        sent <- liftIO (takeMVar sentVar)
-        received <- liftIO (takeMVar receivedVar)
-
-        $assert (equal sent ())
-        $assert (equal received (ReceivedMethodCall serial msg))
+                sent @?= ()
+                received @?= ReceivedMethodCall serial msg
 
 dummyAuth :: Transport t => Authenticator t
 dummyAuth = authenticator

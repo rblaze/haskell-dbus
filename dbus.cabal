@@ -108,16 +108,16 @@ test-suite dbus_tests
   type: exitcode-stdio-1.0
   main-is: DBusTests.hs
   hs-source-dirs: tests
+  ghc-options: -W -Wall
 
   build-depends:
       dbus
     , base
     , bytestring
     , cereal
-    , chell
-    , chell-quickcheck
     , containers
     , directory
+    , extra
     , filepath
     , libxml-sax
     , network
@@ -125,6 +125,10 @@ test-suite dbus_tests
     , process
     , QuickCheck
     , random
+    , resourcet
+    , tasty
+    , tasty-hunit
+    , tasty-quickcheck
     , text
     , transformers
     , unix
