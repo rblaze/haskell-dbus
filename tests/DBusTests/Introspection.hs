@@ -1,5 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 -- Copyright (C) 2010-2012 John Millikin <john@john-millikin.com>
 --
 -- This program is free software: you can redistribute it and/or modify
@@ -17,83 +15,81 @@
 
 module DBusTests.Introspection (test_Introspection) where
 
-import           Test.Chell
-import           Test.Chell.QuickCheck
-import           Test.QuickCheck hiding (property)
+import Control.Applicative ((<$>), (<*>))
+import Control.Monad (liftM, liftM2)
+import Test.QuickCheck
+import Test.Tasty
+import Test.Tasty.HUnit
+import Test.Tasty.QuickCheck
 
-import           Control.Applicative ((<$>), (<*>))
-import           Control.Monad (liftM, liftM2)
-
-import           DBus
+import DBus
 import qualified DBus.Introspection as Introspection
 
-import           DBusTests.InterfaceName ()
-import           DBusTests.MemberName ()
-import           DBusTests.ObjectPath ()
-import           DBusTests.Signature ()
-import           DBusTests.Util (halfSized)
+import DBusTests.InterfaceName ()
+import DBusTests.MemberName ()
+import DBusTests.ObjectPath ()
+import DBusTests.Signature ()
+import DBusTests.Util (halfSized)
 
-test_Introspection :: Suite
-test_Introspection = suite "Introspection"
+test_Introspection :: TestTree
+test_Introspection = testGroup "Introspection"
     [ test_XmlPassthrough
     , test_XmlParse
     , test_XmlParseFailed
     , test_XmlWriteFailed
     ]
 
-test_XmlPassthrough :: Test
-test_XmlPassthrough = property "xml-passthrough" $ \obj -> let
+test_XmlPassthrough :: TestTree
+test_XmlPassthrough = testProperty "xml-passthrough" $ \obj -> let
     path = Introspection.objectPath obj
     Just xml = Introspection.formatXML obj
     in Introspection.parseXML path xml == Just obj
 
-test_XmlParse :: Test
-test_XmlParse = assertions "xml-parse" $ do
+test_XmlParse :: TestTree
+test_XmlParse = testCase "xml-parse" $ do
     -- root object path can be inferred
-    $expect (equal
-        (Introspection.parseXML (objectPath_ "/") "<node><node name='foo'/></node>")
-        (Just (Introspection.object (objectPath_ "/"))
+    Introspection.parseXML (objectPath_ "/") "<node><node name='foo'/></node>"
+        @?= Just (Introspection.object (objectPath_ "/"))
             { Introspection.objectChildren =
                 [ Introspection.object (objectPath_ "/foo")
                 ]
             }
-        ))
 
-test_XmlParseFailed :: Test
-test_XmlParseFailed = assertions "xml-parse-failed" $ do
-    $expect (nothing (Introspection.parseXML (objectPath_ "/") "<invalid>"))
-    $expect (nothing (Introspection.parseXML (objectPath_ "/") "<invalid/>"))
+test_XmlParseFailed :: TestTree
+test_XmlParseFailed = testCase "xml-parse-failed" $ do
+    Nothing @=? Introspection.parseXML (objectPath_ "/") "<invalid>"
+    Nothing @=? Introspection.parseXML (objectPath_ "/") "<invalid/>"
 
     -- invalid property access
-    $expect (nothing (Introspection.parseXML (objectPath_ "/")
+    Nothing @=? Introspection.parseXML (objectPath_ "/")
         "<node>\
         \  <interface name='com.example.Foo'>\
         \    <property type='s' access='invalid'>\
         \    </property>\
         \  </interface>\
-        \</node>"))
+        \</node>"
 
     -- invalid parameter type
-    $expect (nothing (Introspection.parseXML (objectPath_ "/")
+    Nothing @=? Introspection.parseXML (objectPath_ "/")
         "<node>\
         \  <interface name='com.example.Foo'>\
         \    <method name='Foo'>\
         \      <arg type='yy'/>\
         \    </method>\
         \  </interface>\
-        \</node>"))
+        \</node>"
 
-test_XmlWriteFailed :: Test
-test_XmlWriteFailed = assertions "xml-write-failed" $ do
+test_XmlWriteFailed :: TestTree
+test_XmlWriteFailed = testCase "xml-write-failed" $ do
     -- child's object path isn't under parent's
-    $expect (nothing (Introspection.formatXML (Introspection.object (objectPath_ "/foo"))
+    Nothing @=? Introspection.formatXML (Introspection.object (objectPath_ "/foo"))
         { Introspection.objectChildren =
             [ Introspection.object (objectPath_ "/bar")
             ]
-        }))
+        }
 
     -- invalid type
-    $expect (nothing (Introspection.formatXML (Introspection.object (objectPath_ "/foo"))
+    Nothing @=? Introspection.formatXML (Introspection.object (objectPath_ "/foo"))
         { Introspection.objectInterfaces =
             [ (Introspection.interface (interfaceName_ "/bar"))
                 { Introspection.interfaceProperties =
@@ -101,7 +97,7 @@ test_XmlWriteFailed = assertions "xml-write-failed" $ do
                     ]
                 }
             ]
-        }))
+        }
 
 instance Arbitrary Type where
     arbitrary = oneof [atom, container] where

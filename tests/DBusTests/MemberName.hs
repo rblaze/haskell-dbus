@@ -1,5 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 -- Copyright (C) 2010-2012 John Millikin <john@john-millikin.com>
 --
 -- This program is free software: you can redistribute it and/or modify
@@ -17,46 +15,50 @@
 
 module DBusTests.MemberName (test_MemberName) where
 
-import           Test.Chell
-import           Test.Chell.QuickCheck
-import           Test.QuickCheck hiding (property)
+import Data.Maybe
+import Test.QuickCheck
+import Test.Tasty
+import Test.Tasty.HUnit
+import Test.Tasty.QuickCheck
 
-import           DBus
+import DBus
 
-import           DBusTests.Util
+import DBusTests.Util
 
-test_MemberName :: Suite
-test_MemberName = suite "MemberName"
+test_MemberName :: TestTree
+test_MemberName = testGroup "MemberName"
     [ test_Parse
     , test_ParseInvalid
     , test_IsVariant
     ]
 
-test_Parse :: Test
-test_Parse = property "parse" prop where
+test_Parse :: TestTree
+test_Parse = testProperty "parse" prop where
     prop = forAll gen_MemberName check
     check x = case parseMemberName x of
         Nothing -> False
         Just parsed -> formatMemberName parsed == x
 
-test_ParseInvalid :: Test
-test_ParseInvalid = assertions "parse-invalid" $ do
+test_ParseInvalid :: TestTree
+test_ParseInvalid = testCase "parse-invalid" $ do
     -- empty
-    $expect (nothing (parseMemberName ""))
+    Nothing @=? parseMemberName ""
 
     -- starts with a digit
-    $expect (nothing (parseMemberName "@foo"))
+    Nothing @=? parseMemberName "@foo"
 
     -- trailing chars
-    $expect (nothing (parseMemberName "foo!"))
+    Nothing @=? parseMemberName "foo!"
 
     -- at most 255 characters
-    $expect (just (parseMemberName (replicate 254 'y')))
-    $expect (just (parseMemberName (replicate 255 'y')))
-    $expect (nothing (parseMemberName (replicate 256 'y')))
+    assertBool "valid parse failed"
+        $ isJust (parseMemberName (replicate 254 'y'))
+    assertBool "valid parse failed"
+        $ isJust (parseMemberName (replicate 255 'y'))
+    Nothing @=? parseMemberName (replicate 256 'y')
 
-test_IsVariant :: Test
-test_IsVariant = assertions "IsVariant" $ do
+test_IsVariant :: TestTree
+test_IsVariant = testCase "IsVariant" $
     assertVariant TypeString (memberName_ "foo")
 
 gen_MemberName :: Gen String

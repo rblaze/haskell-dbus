@@ -1,5 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 -- Copyright (C) 2010-2012 John Millikin <john@john-millikin.com>
 --
 -- This program is free software: you can redistribute it and/or modify
@@ -17,54 +15,56 @@
 
 module DBusTests.BusName (test_BusName) where
 
-import           Test.Chell
-import           Test.Chell.QuickCheck
-import           Test.QuickCheck hiding (property)
+import Data.List (intercalate)
+import Data.Maybe (isJust)
+import Test.QuickCheck
+import Test.Tasty
+import Test.Tasty.HUnit
+import Test.Tasty.QuickCheck
 
-import           Data.List (intercalate)
+import DBus
+import DBusTests.Util
 
-import           DBus
-
-import           DBusTests.Util
-
-test_BusName :: Suite
-test_BusName = suite "BusName"
+test_BusName :: TestTree
+test_BusName = testGroup "BusName"
     [ test_Parse
     , test_ParseInvalid
     , test_IsVariant
     ]
 
-test_Parse :: Test
-test_Parse = property "parse" prop where
+test_Parse :: TestTree
+test_Parse = testProperty "parse" prop where
     prop = forAll gen_BusName check
     check x = case parseBusName x of
         Nothing -> False
         Just parsed -> formatBusName parsed == x
 
-test_ParseInvalid :: Test
-test_ParseInvalid = assertions "parse-invalid" $ do
+test_ParseInvalid :: TestTree
+test_ParseInvalid = testCase "parse-invalid" $ do
     -- empty
-    $expect (nothing (parseBusName ""))
+    Nothing @=? parseBusName ""
 
     -- well-known starting with a digit
-    $expect (nothing (parseBusName "foo.0bar"))
+    Nothing @=? parseBusName "foo.0bar"
 
     -- well-known with one element
-    $expect (nothing (parseBusName "foo"))
+    Nothing @=? parseBusName "foo"
 
     -- unique with one element
-    $expect (nothing (parseBusName ":foo"))
+    Nothing @=? parseBusName ":foo"
 
     -- trailing characters
-    $expect (nothing (parseBusName "foo.bar!"))
+    Nothing @=? parseBusName "foo.bar!"
 
     -- at most 255 characters
-    $expect (just (parseBusName (":0." ++ replicate 251 'y')))
-    $expect (just (parseBusName (":0." ++ replicate 252 'y')))
-    $expect (nothing (parseBusName (":0." ++ replicate 253 'y')))
+    assertBool "valid parse failed"
+        $ isJust (parseBusName (":0." ++ replicate 251 'y'))
+    assertBool "valid parse failed"
+        $ isJust (parseBusName (":0." ++ replicate 252 'y'))
+    Nothing @=? parseBusName (":0." ++ replicate 253 'y')
 
-test_IsVariant :: Test
-test_IsVariant = assertions "IsVariant" $ do
+test_IsVariant :: TestTree
+test_IsVariant = testCase "IsVariant" $
     assertVariant TypeString (busName_ "foo.bar")
 
 gen_BusName :: Gen String

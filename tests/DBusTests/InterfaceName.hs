@@ -1,5 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 -- Copyright (C) 2010-2012 John Millikin <john@john-millikin.com>
 --
 -- This program is free software: you can redistribute it and/or modify
@@ -17,51 +15,54 @@
 
 module DBusTests.InterfaceName (test_InterfaceName) where
 
-import           Test.Chell
-import           Test.Chell.QuickCheck
-import           Test.QuickCheck hiding (property)
+import Data.List (intercalate)
+import Data.Maybe
+import Test.QuickCheck
+import Test.Tasty
+import Test.Tasty.HUnit
+import Test.Tasty.QuickCheck
 
-import           Data.List (intercalate)
+import DBus
 
-import           DBus
+import DBusTests.Util
 
-import           DBusTests.Util
-
-test_InterfaceName :: Suite
-test_InterfaceName = suite "InterfaceName"
+test_InterfaceName :: TestTree
+test_InterfaceName = testGroup "InterfaceName"
     [ test_Parse
     , test_ParseInvalid
     , test_IsVariant
     ]
 
-test_Parse :: Test
-test_Parse = property "parse" prop where
+test_Parse :: TestTree
+test_Parse = testProperty "parse" prop where
     prop = forAll gen_InterfaceName check
     check x = case parseInterfaceName x of
         Nothing -> False
         Just parsed -> formatInterfaceName parsed == x
 
-test_ParseInvalid :: Test
-test_ParseInvalid = assertions "parse-invalid" $ do
+test_ParseInvalid :: TestTree
+test_ParseInvalid = testCase "parse-invalid" $ do
     -- empty
-    $expect (nothing (parseInterfaceName ""))
+    Nothing @=? parseInterfaceName ""
 
     -- one element
-    $expect (nothing (parseInterfaceName "foo"))
+    Nothing @=? parseInterfaceName "foo"
 
     -- element starting with a digit
-    $expect (nothing (parseInterfaceName "foo.0bar"))
+    Nothing @=? parseInterfaceName "foo.0bar"
 
     -- trailing characters
-    $expect (nothing (parseInterfaceName "foo.bar!"))
+    Nothing @=? parseInterfaceName "foo.bar!"
 
     -- at most 255 characters
-    $expect (just (parseInterfaceName ("f." ++ replicate 252 'y')))
-    $expect (just (parseInterfaceName ("f." ++ replicate 253 'y')))
-    $expect (nothing (parseInterfaceName ("f." ++ replicate 254 'y')))
+    assertBool "valid parse failed"
+        $ isJust (parseInterfaceName ("f." ++ replicate 252 'y'))
+    assertBool "valid parse failed"
+        $ isJust (parseInterfaceName ("f." ++ replicate 253 'y'))
+    Nothing @=? parseInterfaceName ("f." ++ replicate 254 'y')
 
-test_IsVariant :: Test
-test_IsVariant = assertions "IsVariant" $ do
+test_IsVariant :: TestTree
+test_IsVariant = testCase "IsVariant" $
     assertVariant TypeString (interfaceName_ "foo.bar")
 
 gen_InterfaceName :: Gen String

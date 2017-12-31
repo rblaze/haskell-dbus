@@ -1,5 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 -- Copyright (C) 2010-2012 John Millikin <john@john-millikin.com>
 --
 -- This program is free software: you can redistribute it and/or modify
@@ -17,22 +15,23 @@
 
 module DBusTests.Address (test_Address) where
 
-import           Test.Chell
-import           Test.Chell.QuickCheck
-import           Test.QuickCheck hiding (property)
-
-import           Data.Char (ord)
-import           Data.List (intercalate)
-import           Data.Map (Map)
+import Data.Char (ord)
+import Data.List (intercalate)
+import Data.Map (Map)
+import Data.Maybe
+import Test.QuickCheck
+import Test.Tasty
+import Test.Tasty.HUnit
+import Test.Tasty.QuickCheck
+import Text.Printf (printf)
 import qualified Data.Map
-import           Text.Printf (printf)
 
 import           DBus
 
 import           DBusTests.Util (smallListOf, smallListOf1, withEnv)
 
-test_Address :: Suite
-test_Address = suite "Address"
+test_Address :: TestTree
+test_Address = testGroup "Address"
     [ test_BuildAddress
     , test_ParseAddress
     , test_ParseAddresses
@@ -44,8 +43,8 @@ test_Address = suite "Address"
     , test_GetStarterAddress
     ]
 
-test_BuildAddress :: Test
-test_BuildAddress = property "address" prop where
+test_BuildAddress :: TestTree
+test_BuildAddress = testProperty "address" prop where
     prop = forAll gen_Address check
     check (method, params) = case address method params of
         Nothing -> False
@@ -54,8 +53,8 @@ test_BuildAddress = property "address" prop where
             , addressParameters addr == params
             ]
 
-test_ParseAddress :: Test
-test_ParseAddress = property "parseAddress" prop where
+test_ParseAddress :: TestTree
+test_ParseAddress = testProperty "parseAddress" prop where
     prop = forAll gen_AddressBytes check
     check (bytes, method, params) = case parseAddress bytes of
         Nothing -> False
@@ -64,8 +63,8 @@ test_ParseAddress = property "parseAddress" prop where
             , addressParameters addr == params
             ]
 
-test_ParseAddresses :: Test
-test_ParseAddresses = property "parseAddresses" prop where
+test_ParseAddresses :: TestTree
+test_ParseAddresses = testProperty "parseAddresses" prop where
     prop = forAll gen_AddressesBytes checkMany
     checkMany (bytes, expectedAddrs) = case parseAddresses bytes of
         Nothing -> False
@@ -78,32 +77,32 @@ test_ParseAddresses = property "parseAddresses" prop where
         , addressParameters addr == params
         ]
 
-test_ParseInvalid :: Test
-test_ParseInvalid = assertions "parse-invalid" $ do
+test_ParseInvalid :: TestTree
+test_ParseInvalid = testCase "parse-invalid" $ do
     -- empty
-    $expect (nothing (address "" Data.Map.empty))
-    $expect (nothing (parseAddress ""))
+    Nothing @=? address "" Data.Map.empty
+    Nothing @=? parseAddress ""
 
     -- no colon
-    $expect (nothing (parseAddress "a"))
+    Nothing @=? parseAddress "a"
 
     -- no equals sign
-    $expect (nothing (parseAddress "a:b"))
+    Nothing @=? parseAddress "a:b"
 
     -- no parameter
     -- TODO: should this be OK? what about the trailing comma rule?
-    $expect (nothing (parseAddress "a:,"))
+    Nothing @=? parseAddress "a:,"
 
     -- no key
-    $expect (nothing (address "" (Data.Map.fromList [("", "c")])))
-    $expect (nothing (parseAddress "a:=c"))
+    Nothing @=? address "" (Data.Map.fromList [("", "c")])
+    Nothing @=? parseAddress "a:=c"
 
     -- no value
-    $expect (nothing (address "" (Data.Map.fromList [("b", "")])))
-    $expect (nothing (parseAddress "a:b="))
+    Nothing @=? address "" (Data.Map.fromList [("b", "")])
+    Nothing @=? parseAddress "a:b="
 
-test_FormatAddress :: Test
-test_FormatAddress = property "formatAddress" prop where
+test_FormatAddress :: TestTree
+test_FormatAddress = testProperty "formatAddress" prop where
     prop = forAll gen_Address check where
     check (method, params) = let
         Just addr = address method params
@@ -115,8 +114,8 @@ test_FormatAddress = property "formatAddress" prop where
             , shown == "Address " ++ show bytes
             ]
 
-test_FormatAddresses :: Test
-test_FormatAddresses = property "formatAddresses" prop where
+test_FormatAddresses :: TestTree
+test_FormatAddresses = testProperty "formatAddresses" prop where
     prop = forAll (smallListOf1 gen_Address) check where
     check pairs = let
         addrs = do
@@ -127,28 +126,28 @@ test_FormatAddresses = property "formatAddresses" prop where
         parsed = parseAddresses bytes
         in parsed == Just addrs
 
-test_GetSystemAddress :: Test
-test_GetSystemAddress = assertions "getSystemAddress" $ do
+test_GetSystemAddress :: TestTree
+test_GetSystemAddress = testCase "getSystemAddress" $ do
     do
         addr <- withEnv "DBUS_SYSTEM_BUS_ADDRESS" Nothing getSystemAddress
-        $expect (just addr)
-        $assert (equal addr (address "unix" (Data.Map.fromList [("path", "/var/run/dbus/system_bus_socket")])))
+        assertBool "can't get system address" $ isJust addr
+        addr @?= address "unix" (Data.Map.fromList [("path", "/var/run/dbus/system_bus_socket")])
     do
         addr <- withEnv "DBUS_SYSTEM_BUS_ADDRESS" (Just "a:b=c") getSystemAddress
-        $expect (just addr)
-        $assert (equal addr (address "a" (Data.Map.fromList [("b", "c")])))
+        assertBool "can't get system address" $ isJust addr
+        addr @?= address "a" (Data.Map.fromList [("b", "c")])
 
-test_GetSessionAddress :: Test
-test_GetSessionAddress = assertions "getSessionAddress" $ do
+test_GetSessionAddress :: TestTree
+test_GetSessionAddress = testCase "getSessionAddress" $ do
     addr <- withEnv "DBUS_SESSION_BUS_ADDRESS" (Just "a:b=c") getSessionAddress
-    $expect (just addr)
-    $assert (equal addr (address "a" (Data.Map.fromList [("b", "c")])))
+    assertBool "can't get session address" $ isJust addr
+    addr @?= address "a" (Data.Map.fromList [("b", "c")])
 
-test_GetStarterAddress :: Test
-test_GetStarterAddress = assertions "getStarterAddress" $ do
+test_GetStarterAddress :: TestTree
+test_GetStarterAddress = testCase "getStarterAddress" $ do
     addr <- withEnv "DBUS_STARTER_ADDRESS" (Just "a:b=c") getStarterAddress
-    $expect (just addr)
-    $assert (equal addr (address "a" (Data.Map.fromList [("b", "c")])))
+    assertBool "can't get starter address" $ isJust addr
+    addr @?= address "a" (Data.Map.fromList [("b", "c")])
 
 gen_Address :: Gen (String, Map String String)
 gen_Address = gen where

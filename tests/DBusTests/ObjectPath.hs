@@ -1,5 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 -- Copyright (C) 2010-2012 John Millikin <john@john-millikin.com>
 --
 -- This program is free software: you can redistribute it and/or modify
@@ -17,43 +15,43 @@
 
 module DBusTests.ObjectPath (test_ObjectPath) where
 
-import           Test.Chell
-import           Test.Chell.QuickCheck
-import           Test.QuickCheck hiding (property)
+import Data.List (intercalate)
+import Test.QuickCheck
+import Test.Tasty
+import Test.Tasty.HUnit
+import Test.Tasty.QuickCheck
 
-import           Data.List (intercalate)
+import DBus
 
-import           DBus
-
-test_ObjectPath :: Suite
-test_ObjectPath = suite "ObjectPath"
+test_ObjectPath :: TestTree
+test_ObjectPath = testGroup "ObjectPath"
     [ test_Parse
     , test_ParseInvalid
     ]
 
-test_Parse :: Test
-test_Parse = property "parse" prop where
+test_Parse :: TestTree
+test_Parse = testProperty "parse" prop where
     prop = forAll gen_ObjectPath check
     check x = case parseObjectPath x of
         Nothing -> False
         Just parsed -> formatObjectPath parsed == x
 
-test_ParseInvalid :: Test
-test_ParseInvalid = assertions "parse-invalid" $ do
+test_ParseInvalid :: TestTree
+test_ParseInvalid = testCase "parse-invalid" $ do
     -- empty
-    $expect (nothing (parseObjectPath ""))
+    Nothing @=? parseObjectPath ""
 
     -- bad char
-    $expect (nothing (parseObjectPath "/f!oo"))
+    Nothing @=? parseObjectPath "/f!oo"
 
     -- ends with a slash
-    $expect (nothing (parseObjectPath "/foo/"))
+    Nothing @=? parseObjectPath "/foo/"
 
     -- empty element
-    $expect (nothing (parseObjectPath "/foo//bar"))
+    Nothing @=? parseObjectPath "/foo//bar"
 
     -- trailing chars
-    $expect (nothing (parseObjectPath "/foo!"))
+    Nothing @=? parseObjectPath "/foo!"
 
 gen_ObjectPath :: Gen String
 gen_ObjectPath = gen where
