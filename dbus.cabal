@@ -83,6 +83,7 @@ library
     , bytestring
     , cereal
     , containers
+    , deepseq
     , libxml-sax
     , network
     , parsec
@@ -164,4 +165,3 @@ benchmark dbus_benchmarks
       dbus
     , base
     , criterion
-    , deepseq
