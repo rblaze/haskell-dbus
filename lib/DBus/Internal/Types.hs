@@ -1,8 +1,10 @@
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE IncoherentInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 
 -- Copyright (C) 2009-2012 John Millikin <john@john-millikin.com>
 --
@@ -21,32 +23,33 @@
 
 module DBus.Internal.Types where
 
-import           Control.Monad (liftM, when, (>=>))
-import           Control.Exception (Exception, handle, throwIO)
-import           Data.ByteString (ByteString)
+import Control.DeepSeq
+import Control.Exception (Exception, handle, throwIO)
+import Control.Monad (liftM, when, (>=>))
+import Data.ByteString (ByteString)
+import Data.Char (ord)
+import Data.Int
+import Data.List (intercalate)
+import Data.Map (Map)
+import Data.Text (Text)
+import Data.Typeable (Typeable)
+import Data.Vector (Vector)
+import Data.Word
+import GHC.Generics
+import System.IO.Unsafe (unsafePerformIO)
+import System.Posix.Types (Fd)
+import Text.ParserCombinators.Parsec ((<|>), oneOf)
 import qualified Data.ByteString
 import qualified Data.ByteString.Char8 as Char8
 import qualified Data.ByteString.Lazy
 import qualified Data.ByteString.Unsafe
-import           Data.Char (ord)
-import           Data.Int
-import           Data.List (intercalate)
 import qualified Data.Map
-import           Data.Map (Map)
 import qualified Data.String
 import qualified Data.Text
-import           Data.Text (Text)
 import qualified Data.Text.Lazy
-import           Data.Typeable (Typeable)
 import qualified Data.Vector
-import           Data.Vector (Vector)
-import           Data.Word
 import qualified Foreign
-import           System.IO.Unsafe (unsafePerformIO)
-import           System.Posix.Types (Fd)
-
 import qualified Text.ParserCombinators.Parsec as Parsec
-import           Text.ParserCombinators.Parsec ((<|>), oneOf)
 
 data Type
     = TypeBoolean
@@ -66,7 +69,9 @@ data Type
     | TypeArray Type
     | TypeDictionary Type Type
     | TypeStructure [Type]
-    deriving (Eq, Ord)
+    deriving (Eq, Ord, Generic)
+
+instance NFData Type
 
 instance Show Type where
     showsPrec d = showString . showType (d > 10)
@@ -103,7 +108,7 @@ showType paren t = case t of
 -- <http://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-signatures>
 -- for details.
 newtype Signature = Signature [Type]
-    deriving (Eq, Ord)
+    deriving (Eq, Ord, NFData)
 
 -- | Get the list of types in a signature. The inverse of 'signature'.
 signatureTypes :: Signature -> [Type]
@@ -628,7 +633,7 @@ varToVal a = case toVariant a of
 -- <http://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-marshaling-object-path>
 -- for details.
 newtype ObjectPath = ObjectPath String
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Ord, Show, NFData)
 
 formatObjectPath :: ObjectPath -> String
 formatObjectPath (ObjectPath s) = s
@@ -671,7 +676,7 @@ parserObjectPath = root <|> object where
 -- <http://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-names-interface>
 -- for details.
 newtype InterfaceName = InterfaceName String
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Ord, Show, NFData)
 
 formatInterfaceName :: InterfaceName -> String
 formatInterfaceName (InterfaceName s) = s
@@ -711,7 +716,7 @@ parserInterfaceName = name >> Parsec.eof where
 -- <http://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-names-member>
 -- for details.
 newtype MemberName = MemberName String
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Ord, Show, NFData)
 
 formatMemberName :: MemberName -> String
 formatMemberName (MemberName s) = s
@@ -748,7 +753,7 @@ parserMemberName = name >> Parsec.eof where
 -- <http://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-names-error>
 -- for details.
 newtype ErrorName = ErrorName String
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Ord, Show, NFData)
 
 formatErrorName :: ErrorName -> String
 formatErrorName (ErrorName s) = s
@@ -778,7 +783,7 @@ instance IsVariant ErrorName where
 -- <http://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-names-bus>
 -- for details.
 newtype BusName = BusName String
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Ord, Show, NFData)
 
 formatBusName :: BusName -> String
 formatBusName (BusName s) = s

@@ -17,36 +17,16 @@
 
 module Main (benchmarks, main) where
 
-import           Control.DeepSeq
-import           Criterion.Types
-import           Criterion.Config
+import Criterion.Types
+import Data.Word (Word32)
+import Unsafe.Coerce (unsafeCoerce)
 import qualified Criterion.Main
-import           Data.Word (Word32)
-import           Unsafe.Coerce (unsafeCoerce)
 
-import           DBus
-
-config :: Config
-config = defaultConfig { cfgPerformGC = ljust True }
+import DBus
 
 serial :: Word32 -> Serial
 serial = unsafeCoerce -- FIXME: should the Serial constructor be exposed to
                       -- clients?
-
-instance NFData Type
-
-instance NFData Signature where
-    rnf = rnf . signatureTypes
-
-instance NFData ObjectPath
-
-instance NFData InterfaceName
-
-instance NFData MemberName
-
-instance NFData ErrorName
-
-instance NFData BusName
 
 empty_MethodCall :: MethodCall
 empty_MethodCall = methodCall "/" "org.i" "m"
@@ -106,4 +86,4 @@ benchmarks =
     ]
 
 main :: IO ()
-main = Criterion.Main.defaultMainWith config (return ()) benchmarks
+main = Criterion.Main.defaultMain benchmarks
