@@ -1,9 +1,9 @@
 name: dbus
-version: 0.10.13
+version: 0.10.14
 license: GPL-3
 license-file: license.txt
 author: John Millikin <john@john-millikin.com>
-maintainer: Andrey Sverdlichenko <blaze@ruddy.ru>, John Millikin <john@john-millikin.com>
+maintainer: Andrey Sverdlichenko <blaze@ruddy.ru>
 build-type: Simple
 cabal-version: >= 1.8
 category: Network, Desktop
