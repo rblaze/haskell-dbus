@@ -91,7 +91,7 @@ getTempPath = do
     uuid <- randomUUID
     return (tmp </> formatUUID uuid)
 
-listenRandomUnixPath :: MonadResource m => m (Address, N.Socket)
+listenRandomUnixPath :: MonadResource m => m Address
 listenRandomUnixPath = do
     path <- liftIO getTempPath
 
@@ -106,9 +106,9 @@ listenRandomUnixPath = do
     let Just addr = address "unix" (Map.fromList
             [ ("path", path)
             ])
-    return (addr, sock)
+    return addr
 
-listenRandomUnixAbstract :: MonadResource m => m (Address, N.Socket, ReleaseKey)
+listenRandomUnixAbstract :: MonadResource m => m (Address, ReleaseKey)
 listenRandomUnixAbstract = do
     uuid <- liftIO randomUUID
     let sockAddr = NS.SockAddrUnix ('\x00' : formatUUID uuid)
@@ -123,7 +123,7 @@ listenRandomUnixAbstract = do
     let Just addr = address "unix" (Map.fromList
             [ ("abstract", formatUUID uuid)
             ])
-    return (addr, sock, key)
+    return (addr, key)
 
 listenRandomIPv4 :: MonadResource m => m (Address, N.Socket, ReleaseKey)
 listenRandomIPv4 = do
@@ -144,7 +144,7 @@ listenRandomIPv4 = do
             ])
     return (addr, sock, key)
 
-listenRandomIPv6 :: MonadResource m => m (Address, N.Socket)
+listenRandomIPv6 :: MonadResource m => m Address
 listenRandomIPv6 = do
     addrs <- liftIO $ NS.getAddrInfo Nothing (Just "::1") Nothing
     let sockAddr = case addrs of
@@ -163,7 +163,7 @@ listenRandomIPv6 = do
             , ("host", "::1")
             , ("port", show (toInteger sockPort))
             ])
-    return (addr, sock)
+    return addr
 
 noIPv6 :: IO Bool
 noIPv6 = do
