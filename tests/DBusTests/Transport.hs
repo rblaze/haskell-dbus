@@ -282,7 +282,7 @@ test_TransportSendReceive = testCase "send-receive" $ runResourceT $ do
         fix $ \loop -> do
             bytes <- recv s 50
             if Data.ByteString.null bytes
-                then NS.sClose s
+                then NS.close s
                 else do
                     sendAll s bytes
                     loop
@@ -315,7 +315,7 @@ test_HandleLostConnection = testCase "handle-lost-connection" $ runResourceT $ d
     _ <- liftIO $ forkIO $ do
         (s, _) <- NS.accept networkSocket
         sendAll s "123"
-        NS.sClose s
+        NS.close s
 
     (_, t) <- allocate
         (transportOpen socketTransportOptions addr)

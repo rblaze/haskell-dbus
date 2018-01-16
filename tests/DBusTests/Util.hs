@@ -99,7 +99,7 @@ listenRandomUnixPath = do
     (_, sock) <- allocate
         (NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol)
         N.sClose
-    liftIO (NS.bindSocket sock sockAddr)
+    liftIO (NS.bind sock sockAddr)
     liftIO (NS.listen sock 1)
     _ <- register (removeFile path)
 
@@ -117,7 +117,7 @@ listenRandomUnixAbstract = do
         (NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol)
         N.sClose
 
-    liftIO $ NS.bindSocket sock sockAddr
+    liftIO $ NS.bind sock sockAddr
     liftIO $ NS.listen sock 1
 
     let Just addr = address "unix" (Map.fromList
@@ -133,7 +133,7 @@ listenRandomIPv4 = do
     (key, sock) <- allocate
         (NS.socket NS.AF_INET NS.Stream NS.defaultProtocol)
         N.sClose
-    liftIO $ NS.bindSocket sock sockAddr
+    liftIO $ NS.bind sock sockAddr
     liftIO $ NS.listen sock 1
 
     sockPort <- liftIO $ NS.socketPort sock
@@ -154,7 +154,7 @@ listenRandomIPv6 = do
     (_, sock) <- allocate
         (NS.socket NS.AF_INET6 NS.Stream NS.defaultProtocol)
         N.sClose
-    liftIO $ NS.bindSocket sock sockAddr
+    liftIO $ NS.bind sock sockAddr
     liftIO $ NS.listen sock 1
 
     sockPort <- liftIO $ NS.socketPort sock
