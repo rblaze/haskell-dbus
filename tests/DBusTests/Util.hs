@@ -91,7 +91,7 @@ getTempPath = do
     uuid <- randomUUID
     return (tmp </> formatUUID uuid)
 
-listenRandomUnixPath :: MonadResource m => m (Address, N.Socket)
+listenRandomUnixPath :: MonadResource m => m Address
 listenRandomUnixPath = do
     path <- liftIO getTempPath
 
@@ -99,16 +99,16 @@ listenRandomUnixPath = do
     (_, sock) <- allocate
         (NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol)
         N.sClose
-    liftIO (NS.bindSocket sock sockAddr)
+    liftIO (NS.bind sock sockAddr)
     liftIO (NS.listen sock 1)
     _ <- register (removeFile path)
 
     let Just addr = address "unix" (Map.fromList
             [ ("path", path)
             ])
-    return (addr, sock)
+    return addr
 
-listenRandomUnixAbstract :: MonadResource m => m (Address, N.Socket, ReleaseKey)
+listenRandomUnixAbstract :: MonadResource m => m (Address, ReleaseKey)
 listenRandomUnixAbstract = do
     uuid <- liftIO randomUUID
     let sockAddr = NS.SockAddrUnix ('\x00' : formatUUID uuid)
@@ -117,13 +117,13 @@ listenRandomUnixAbstract = do
         (NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol)
         N.sClose
 
-    liftIO $ NS.bindSocket sock sockAddr
+    liftIO $ NS.bind sock sockAddr
     liftIO $ NS.listen sock 1
 
     let Just addr = address "unix" (Map.fromList
             [ ("abstract", formatUUID uuid)
             ])
-    return (addr, sock, key)
+    return (addr, key)
 
 listenRandomIPv4 :: MonadResource m => m (Address, N.Socket, ReleaseKey)
 listenRandomIPv4 = do
@@ -133,7 +133,7 @@ listenRandomIPv4 = do
     (key, sock) <- allocate
         (NS.socket NS.AF_INET NS.Stream NS.defaultProtocol)
         N.sClose
-    liftIO $ NS.bindSocket sock sockAddr
+    liftIO $ NS.bind sock sockAddr
     liftIO $ NS.listen sock 1
 
     sockPort <- liftIO $ NS.socketPort sock
@@ -144,7 +144,7 @@ listenRandomIPv4 = do
             ])
     return (addr, sock, key)
 
-listenRandomIPv6 :: MonadResource m => m (Address, N.Socket)
+listenRandomIPv6 :: MonadResource m => m Address
 listenRandomIPv6 = do
     addrs <- liftIO $ NS.getAddrInfo Nothing (Just "::1") Nothing
     let sockAddr = case addrs of
@@ -154,7 +154,7 @@ listenRandomIPv6 = do
     (_, sock) <- allocate
         (NS.socket NS.AF_INET6 NS.Stream NS.defaultProtocol)
         N.sClose
-    liftIO $ NS.bindSocket sock sockAddr
+    liftIO $ NS.bind sock sockAddr
     liftIO $ NS.listen sock 1
 
     sockPort <- liftIO $ NS.socketPort sock
@@ -163,7 +163,7 @@ listenRandomIPv6 = do
             , ("host", "::1")
             , ("port", show (toInteger sockPort))
             ])
-    return (addr, sock)
+    return addr
 
 noIPv6 :: IO Bool
 noIPv6 = do

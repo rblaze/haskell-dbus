@@ -85,7 +85,7 @@ suite_OpenUnix = testGroup "unix"
 
 test_OpenUnix_Path :: TestTree
 test_OpenUnix_Path = testCase "path" $ runResourceT $ do
-    (addr, networkSocket) <- listenRandomUnixPath
+    addr <- listenRandomUnixPath
     fdcountBefore <- countFileDescriptors
 
     t <- liftIO (transportOpen socketTransportOptions addr)
@@ -96,7 +96,7 @@ test_OpenUnix_Path = testCase "path" $ runResourceT $ do
 
 test_OpenUnix_Abstract :: TestTree
 test_OpenUnix_Abstract = testCase "abstract" $ runResourceT $ do
-    (addr, networkSocket, _) <- listenRandomUnixAbstract
+    (addr, _) <- listenRandomUnixAbstract
     fdcountBefore <- countFileDescriptors
 
     t <- liftIO (transportOpen socketTransportOptions addr)
@@ -140,7 +140,7 @@ test_OpenUnix_NotListening :: TestTree
 test_OpenUnix_NotListening = testCase "not-listening" $ runResourceT $ do
     fdcountBefore <- countFileDescriptors
 
-    (addr, networkSocket, key) <- listenRandomUnixAbstract
+    (addr, key) <- listenRandomUnixAbstract
     release key
 
     liftIO $ assertThrows
@@ -166,7 +166,7 @@ suite_OpenTcp = testGroup "tcp"
 
 test_OpenTcp_IPv4 :: TestTree
 test_OpenTcp_IPv4 = testCase "ipv4" $ runResourceT $ do
-    (addr, networkSocket, _) <- listenRandomIPv4
+    (addr, _, _) <- listenRandomIPv4
     fdcountBefore <- countFileDescriptors
 
     t <- liftIO (transportOpen socketTransportOptions addr)
@@ -177,7 +177,7 @@ test_OpenTcp_IPv4 = testCase "ipv4" $ runResourceT $ do
 
 test_OpenTcp_IPv6 :: TestTree
 test_OpenTcp_IPv6 = testCase "ipv6" $ unlessM noIPv6 $ runResourceT $ do
-    (addr, networkSocket) <- listenRandomIPv6
+    addr <- listenRandomIPv6
     fdcountBefore <- countFileDescriptors
 
     t <- liftIO (transportOpen socketTransportOptions addr)
@@ -260,7 +260,7 @@ test_OpenTcp_NotListening :: TestTree
 test_OpenTcp_NotListening = testCase "too-many" $ runResourceT $ do
     fdcountBefore <- countFileDescriptors
 
-    (addr, networkSocket, key) <- listenRandomIPv4
+    (addr, _, key) <- listenRandomIPv4
     release key
     liftIO $ assertThrows
         (\err -> and
@@ -282,7 +282,7 @@ test_TransportSendReceive = testCase "send-receive" $ runResourceT $ do
         fix $ \loop -> do
             bytes <- recv s 50
             if Data.ByteString.null bytes
-                then NS.sClose s
+                then NS.close s
                 else do
                     sendAll s bytes
                     loop
@@ -315,7 +315,7 @@ test_HandleLostConnection = testCase "handle-lost-connection" $ runResourceT $ d
     _ <- liftIO $ forkIO $ do
         (s, _) <- NS.accept networkSocket
         sendAll s "123"
-        NS.sClose s
+        NS.close s
 
     (_, t) <- allocate
         (transportOpen socketTransportOptions addr)
