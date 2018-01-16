@@ -247,7 +247,8 @@ test_OpenTcp_NoUsableAddresses = testCase "no-usable-addresses" $ do
             ])
     assertThrows
         (\err -> and
-            [ "getAddrInfo: does not exist" `isInfixOf` transportErrorMessage err
+            [ "getAddrInfo" `isInfixOf` transportErrorMessage err
+            , "does not exist" `isInfixOf` transportErrorMessage err
             , transportErrorAddress err == Just addr
             ])
         (transportOpen socketTransportOptions addr)
