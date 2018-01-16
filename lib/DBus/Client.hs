@@ -127,25 +127,25 @@ module DBus.Client
     , connectWith
     ) where
 
-import           Control.Concurrent
-import           Control.Exception (SomeException, throwIO)
+import Control.Concurrent
+import Control.Exception (SomeException, throwIO)
+import Control.Monad (forever, forM_, when)
+import Data.Bits ((.|.))
+import Data.Function
+import Data.IORef
+import Data.List (foldl', intercalate, isPrefixOf)
+import Data.Map.Strict (Map)
+import Data.Maybe (catMaybes, listToMaybe)
+import Data.Typeable (Typeable)
+import Data.Unique
+import Data.Word (Word32)
 import qualified Control.Exception
-import           Control.Monad (forever, forM_, when)
-import           Data.Bits ((.|.))
-import           Data.IORef
-import           Data.List (foldl', intercalate, isPrefixOf)
-import qualified Data.Map
-import           Data.Map (Map)
-import           Data.Maybe (catMaybes, listToMaybe)
-import           Data.Typeable (Typeable)
-import           Data.Unique
-import           Data.Word (Word32)
-import           Data.Function
+import qualified Data.Map.Strict as M
 
-import           DBus
+import DBus
+import DBus.Transport (TransportOpen, SocketTransport)
 import qualified DBus.Introspection as I
 import qualified DBus.Socket
-import           DBus.Transport (TransportOpen, SocketTransport)
 
 data ClientError = ClientError
     { clientErrorMessage :: String
@@ -264,9 +264,9 @@ connectWith :: TransportOpen t => ClientOptions t -> Address -> IO Client
 connectWith opts addr = do
     sock <- DBus.Socket.openWith (clientSocketOptions opts) addr
 
-    pendingCalls <- newIORef Data.Map.empty
-    signalHandlers <- newIORef Data.Map.empty
-    objects <- newIORef Data.Map.empty
+    pendingCalls <- newIORef M.empty
+    signalHandlers <- newIORef M.empty
+    objects <- newIORef M.empty
 
     let threadRunner = clientThreadRunner opts
 
@@ -308,12 +308,12 @@ disconnect client = do
 
 disconnect' :: Client -> IO ()
 disconnect' client = do
-    pendingCalls <- atomicModifyIORef (clientPendingCalls client) (\p -> (Data.Map.empty, p))
-    forM_ (Data.Map.toList pendingCalls) $ \(k, v) -> do
+    pendingCalls <- atomicModifyIORef (clientPendingCalls client) (\p -> (M.empty, p))
+    forM_ (M.toList pendingCalls) $ \(k, v) -> do
         putMVar v (Left (methodError k errorDisconnected))
 
-    atomicWriteIORef (clientSignalHandlers client) Data.Map.empty
-    atomicWriteIORef (clientObjects client) Data.Map.empty
+    atomicWriteIORef (clientSignalHandlers client) M.empty
+    atomicWriteIORef (clientObjects client) M.empty
 
     DBus.Socket.close (clientSocket client)
 
@@ -336,7 +336,7 @@ dispatch client = go where
     go (ReceivedMethodError _ msg) = dispatchReply (methodErrorSerial msg) (Left msg)
     go (ReceivedSignal _ msg) = do
         handlers <- readIORef (clientSignalHandlers client)
-        forM_ (Data.Map.toAscList handlers) (\(_, SignalHandler _ _ _ h) -> forkIO (h msg) >> return ())
+        forM_ (M.toAscList handlers) (\(_, SignalHandler _ _ _ h) -> forkIO (h msg) >> return ())
     go received@(ReceivedMethodCall serial msg) = do
         objects <- readIORef (clientObjects client)
         let sender = methodCallSender msg
@@ -353,9 +353,9 @@ dispatch client = go where
     dispatchReply serial result = do
         pending <- atomicModifyIORef
             (clientPendingCalls client)
-            (\p -> case Data.Map.lookup serial p of
+            (\p -> case M.lookup serial p of
                 Nothing -> (p, Nothing)
-                Just mvar -> (Data.Map.delete serial p, Just mvar))
+                Just mvar -> (M.delete serial p, Just mvar))
         case pending of
             Just mvar -> putMVar mvar result
             Nothing -> return ()
@@ -521,14 +521,14 @@ call client msg = do
             }
     mvar <- newEmptyMVar
     let ref = clientPendingCalls client
-    serial <- send_ client safeMsg (\serial -> atomicModifyIORef ref (\p -> (Data.Map.insert serial mvar p, serial)))
+    serial <- send_ client safeMsg (\serial -> atomicModifyIORef ref (\p -> (M.insert serial mvar p, serial)))
 
     -- At this point, we wait for the reply to arrive. The user may cancel
     -- a pending call by sending this thread an exception via something
     -- like 'timeout'; in that case, we want to clean up the pending call.
     Control.Exception.onException
         (takeMVar mvar)
-        (atomicModifyIORef_ ref (Data.Map.delete serial))
+        (atomicModifyIORef_ ref (M.delete serial))
 
 -- | Send a method call to the bus, and wait for the response.
 --
@@ -578,7 +578,7 @@ addMatch client rule io = do
     registered <- newIORef True
     let handler = SignalHandler handlerId formatted registered (\msg -> when (checkMatchRule rule msg) (io msg))
 
-    atomicModifyIORef (clientSignalHandlers client) (\hs -> (Data.Map.insert handlerId handler hs, ()))
+    atomicModifyIORef (clientSignalHandlers client) (\hs -> (M.insert handlerId handler hs, ()))
     _ <- call_ client (methodCall dbusPath dbusInterface "AddMatch")
         { methodCallDestination = Just dbusName
         , methodCallBody = [toVariant formatted]
@@ -592,7 +592,7 @@ removeMatch :: Client -> SignalHandler -> IO ()
 removeMatch client (SignalHandler handlerId formatted registered _) = do
     shouldUnregister <- atomicModifyIORef registered (\wasRegistered -> (False, wasRegistered))
     when shouldUnregister $ do
-        atomicModifyIORef (clientSignalHandlers client) (\hs -> (Data.Map.delete handlerId hs, ()))
+        atomicModifyIORef (clientSignalHandlers client) (\hs -> (M.delete handlerId hs, ()))
         _ <- call_ client (methodCall dbusPath dbusInterface "RemoveMatch")
             { methodCallDestination = Just dbusName
             , methodCallBody = [toVariant formatted]
@@ -745,12 +745,12 @@ method iface name inSig outSig io = Method iface name inSig outSig
 -- @
 export :: Client -> ObjectPath -> [Method] -> IO ()
 export client path methods = atomicModifyIORef (clientObjects client) addObject where
-    addObject objs = (Data.Map.insert path info objs, ())
+    addObject objs = (M.insert path info objs, ())
 
-    info = foldl' addMethod Data.Map.empty (defaultIntrospect : methods)
-    addMethod m (Method iface name inSig outSig cb) = Data.Map.insertWith'
-        Data.Map.union iface
-        (Data.Map.fromList [(name, MethodInfo inSig outSig (wrapCB cb))]) m
+    info = foldl' addMethod M.empty (defaultIntrospect : methods)
+    addMethod m (Method iface name inSig outSig cb) = M.insertWith
+        M.union iface
+        (M.fromList [(name, MethodInfo inSig outSig (wrapCB cb))]) m
 
     wrapCB cb (ReceivedMethodCall serial msg) = do
         reply <- cb msg
@@ -768,38 +768,38 @@ export client path methods = atomicModifyIORef (clientObjects client) addObject 
 
     defaultIntrospect = methodIntrospect $ do
         objects <- readIORef (clientObjects client)
-        let Just obj = Data.Map.lookup path objects
+        let Just obj = M.lookup path objects
         return (introspect path obj)
 
 -- | Revokes the export of the given 'ObjectPath'. This will remove all
 -- interfaces and methods associated with the path.
 unexport :: Client -> ObjectPath -> IO ()
 unexport client path = atomicModifyIORef (clientObjects client) deleteObject where
-    deleteObject objs = (Data.Map.delete path objs, ())
+    deleteObject objs = (M.delete path objs, ())
 
 findMethod :: Map ObjectPath ObjectInfo -> MethodCall -> Either ErrorName Callback
-findMethod objects msg = case Data.Map.lookup (methodCallPath msg) objects of
+findMethod objects msg = case M.lookup (methodCallPath msg) objects of
     Nothing -> Left errorUnknownObject
     Just obj -> case methodCallInterface msg of
         Nothing -> let
             members = do
-                iface <- Data.Map.elems obj
-                case Data.Map.lookup (methodCallMember msg) iface of
+                iface <- M.elems obj
+                case M.lookup (methodCallMember msg) iface of
                     Just member -> [member]
                     Nothing -> []
             in case members of
                 [MethodInfo _ _ io] -> Right io
                 _ -> Left errorUnknownMethod
-        Just ifaceName -> case Data.Map.lookup ifaceName obj of
+        Just ifaceName -> case M.lookup ifaceName obj of
             Nothing -> Left errorUnknownInterface
-            Just iface -> case Data.Map.lookup (methodCallMember msg) iface of
+            Just iface -> case M.lookup (methodCallMember msg) iface of
                 Just (MethodInfo _ _ io) -> Right io
                 _ -> Left errorUnknownMethod
 
 introspectRoot :: Client -> Method
 introspectRoot client = methodIntrospect $ do
     objects <- readIORef (clientObjects client)
-    let paths = filter (/= "/") (Data.Map.keys objects)
+    let paths = filter (/= "/") (M.keys objects)
     return (I.object "/")
         { I.objectInterfaces =
             [ (I.interface interfaceIntrospectable)
@@ -826,10 +826,10 @@ methodIntrospect get = method interfaceIntrospectable "Introspect" "" "s" $
 
 introspect :: ObjectPath -> ObjectInfo -> I.Object
 introspect path obj = (I.object path) { I.objectInterfaces = interfaces } where
-    interfaces = map introspectIface (Data.Map.toList obj)
+    interfaces = map introspectIface (M.toList obj)
 
     introspectIface (name, iface) = (I.interface name)
-        { I.interfaceMethods = concatMap introspectMethod (Data.Map.toList iface)
+        { I.interfaceMethods = concatMap introspectMethod (M.toList iface)
         }
 
     args inSig outSig =
