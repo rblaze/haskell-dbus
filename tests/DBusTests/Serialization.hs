@@ -26,7 +26,6 @@ import Foreign.C.Types (CInt)
 import System.Posix.Types (Fd)
 import Test.QuickCheck
 import Test.Tasty
-import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 import qualified Data.Map
 import qualified Data.Vector
