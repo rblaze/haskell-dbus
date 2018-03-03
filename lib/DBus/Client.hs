@@ -1,3 +1,7 @@
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE IncoherentInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -71,9 +75,11 @@ module DBus.Client
 
     -- * Receiving method calls
     , export
+    , exportFromArgs
     , unexport
     , Method
     , method
+    , Property(..)
     , Reply
     , replyReturn
     , replyError
@@ -82,6 +88,7 @@ module DBus.Client
     -- ** Automatic method signatures
     , AutoMethod
     , autoMethod
+    , autoProperty
 
     -- * Signals
     , SignalHandler
@@ -128,19 +135,22 @@ module DBus.Client
     ) where
 
 import Control.Concurrent
+import qualified Control.Exception
 import Control.Exception (SomeException, throwIO)
 import Control.Monad (forever, forM_, when)
 import Data.Bits ((.|.))
 import Data.Function
 import Data.IORef
+import qualified Data.Traversable as T
 import Data.List (foldl', intercalate, isPrefixOf)
 import Data.Map.Strict (Map)
-import Data.Maybe (catMaybes, listToMaybe)
+import qualified Data.Map.Strict as M
+import Data.Maybe (catMaybes, listToMaybe, fromMaybe)
+import Data.String
 import Data.Typeable (Typeable)
 import Data.Unique
 import Data.Word (Word32)
-import qualified Control.Exception
-import qualified Data.Map.Strict as M
+import Text.Printf
 
 import DBus
 import DBus.Transport (TransportOpen, SocketTransport)
@@ -207,6 +217,7 @@ replyError :: ErrorName -> [Variant] -> Reply
 replyError = ReplyError
 
 data Method = Method InterfaceName MemberName Signature Signature (MethodCall -> IO Reply)
+data Property = Property InterfaceName MemberName Signature (IO Variant) (Variant -> IO ())
 
 type ObjectInfo = Map InterfaceName InterfaceInfo
 type InterfaceInfo = Map MemberName MethodInfo
@@ -744,10 +755,30 @@ method iface name inSig outSig io = Method iface name inSig outSig
 --    ]
 -- @
 export :: Client -> ObjectPath -> [Method] -> IO ()
-export client path methods = atomicModifyIORef (clientObjects client) addObject where
+export c o m = exportFromArgs c o $ defaultExportArgs { exportMethods = m }
+
+data ExportArgs = ExportArgs
+  { exportMethods :: [Method]
+  , exportProperties :: [Property]
+  , exportSignals :: [I.Signal]
+  }
+
+defaultExportArgs :: ExportArgs
+defaultExportArgs =
+  ExportArgs {exportMethods = [], exportProperties = [], exportSignals = []}
+
+exportFromArgs :: Client -> ObjectPath -> ExportArgs -> IO ()
+exportFromArgs client path ExportArgs
+                 { exportMethods = methods
+                 , exportProperties = properties
+                 , exportSignals = signals
+                 }
+  = atomicModifyIORef (clientObjects client) addObject
+    where
     addObject objs = (M.insert path info objs, ())
 
-    info = foldl' addMethod M.empty (defaultIntrospect : methods)
+    allMethods = defaultIntrospect : methods ++ buildPropertiesMethods properties
+    info = foldl' addMethod M.empty allMethods
     addMethod m (Method iface name inSig outSig cb) = M.insertWith
         M.union iface
         (M.fromList [(name, MethodInfo inSig outSig (wrapCB cb))]) m
@@ -770,6 +801,70 @@ export client path methods = atomicModifyIORef (clientObjects client) addObject 
         objects <- readIORef (clientObjects client)
         let Just obj = M.lookup path objects
         return (introspect path obj)
+
+buildPropertiesMap
+  :: [Property] -> Map InterfaceName (Map MemberName Property)
+buildPropertiesMap properties =
+  let insertMethod interfacesMap
+                     p@(Property interfaceName memberName _ _ _) =
+        let insertProp propMap = Just $
+              M.insert memberName p (fromMaybe M.empty propMap) in
+        M.alter insertProp interfaceName interfacesMap
+  in
+    foldl insertMethod M.empty properties
+
+maybeToEither :: b -> Maybe a -> Either b a
+maybeToEither = flip maybe Right . Left
+
+propertiesInterface :: InterfaceName
+propertiesInterface = fromString $ "org.freedesktop.DBus.Properties"
+
+buildPropertiesMethods :: [Property] -> [Method]
+buildPropertiesMethods properties =
+  let propertiesMap = buildPropertiesMap properties
+      lookupProperty interfaceName memberName =
+        (maybeToEither
+           (replyError errorUnknownInterface [toVariant interfaceName]) $
+         M.lookup interfaceName propertiesMap) >>=
+        (maybeToEither (replyError errorUnknownMethod [toVariant memberName]) .
+         M.lookup memberName)
+      goodReply v = replyReturn $ [toVariant v]
+      getAll interfaceName =
+        (fromMaybe
+           (return $ replyError errorUnknownInterface [toVariant interfaceName]) $
+         callAllGetters <$> M.lookup (fromString interfaceName) propertiesMap)
+      callAllGetters interfaceProperties =
+        goodReply . M.mapKeys show <$>
+        T.mapM (\(Property _ _ _ getter _) -> getter) interfaceProperties
+      get interfaceName memberName =
+        case lookupProperty (fromString interfaceName) (fromString memberName) of
+          Right (Property _ _ _ getter _) -> do
+            value <- getter
+            return $ replyReturn $ [toVariant value]
+          Left errorReply -> return errorReply
+      set interfaceName memberName value =
+        case lookupProperty (fromString interfaceName) (fromString memberName) of
+          Right (Property _ _ _ _ setter) ->
+            case fromVariant value of
+              Just val -> setter val >> (return $ replyReturn [])
+              Nothing -> return $ ReplyError errorInvalidParameters [value]
+          Left errorReply -> return errorReply
+      makePropertyMethod name sigin sigout fun =
+        Method
+          propertiesInterface name (signature_ sigin) (signature_ sigout) fun
+      getPropMethod =
+        makePropertyMethod
+          "Get" [TypeString, TypeString] [TypeVariant]
+                  (apply get . methodCallBody)
+      setPropMethod =
+        makePropertyMethod
+          "Set" [TypeString, TypeString, TypeVariant] []
+                  (apply set . methodCallBody)
+      getAllMethod =
+        makePropertyMethod
+          "GetAll" [TypeString] [TypeDictionary TypeString TypeVariant]
+                     (apply getAll . methodCallBody)
+  in [getPropMethod, setPropMethod, getAllMethod]
 
 -- | Revokes the export of the given 'ObjectPath'. This will remove all
 -- interfaces and methods associated with the path.
@@ -844,6 +939,8 @@ introspect path obj = (I.object path) { I.objectInterfaces = interfaces } where
 
     introspectArg dir t = I.methodArg "" t dir
 
+returnInvalidParameters = return $ ReplyError errorInvalidParameters []
+
 -- | Used to automatically generate method signatures for introspection
 -- documents. To support automatic signatures, a method's parameters and
 -- return value must all be instances of 'IsValue'.
@@ -859,13 +956,13 @@ introspect path obj = (I.object path) { I.objectInterfaces = interfaces } where
 -- converted to a list of return values.
 class AutoMethod a where
     funTypes :: a -> ([Type], [Type])
-    apply :: a -> [Variant] -> Maybe (IO [Variant])
+    apply :: a -> [Variant] -> IO Reply
 
 instance AutoMethod (IO ()) where
     funTypes _ = ([], [])
 
-    apply io [] = Just (io >> return [])
-    apply _ _ = Nothing
+    apply io [] = (io >> (return $ ReplyReturn []))
+    apply _ _ = returnInvalidParameters
 
 instance IsValue a => AutoMethod (IO a) where
     funTypes io = cased where
@@ -877,12 +974,20 @@ instance IsValue a => AutoMethod (IO a) where
         ioT :: IsValue a => IO a -> a -> (a, Type)
         ioT _ a = (a, typeOf a)
 
-    apply io [] = Just (do
+    apply io [] = replyReturn <$> (do
         var <- fmap toVariant io
         case fromVariant var of
             Just struct -> return (structureItems struct)
             Nothing -> return [var])
-    apply _ _ = Nothing
+    apply _ _ = returnInvalidParameters
+
+-- XXX: This is just a hack to allow the use of this type class to apply.
+-- Really, applyable out to be broken out.
+instance AutoMethod (IO Reply) where
+    funTypes _ = undefined
+
+    apply io [] = io
+    apply _ _ = returnInvalidParameters
 
 instance (IsValue a, AutoMethod fn) => AutoMethod (a -> fn) where
     funTypes fn = cased where
@@ -893,10 +998,10 @@ instance (IsValue a, AutoMethod fn) => AutoMethod (a -> fn) where
         valueT :: IsValue a => a -> (a, Type)
         valueT a = (a, typeOf a)
 
-    apply _ [] = Nothing
+    apply _ [] = returnInvalidParameters
     apply fn (v:vs) = case fromVariant v of
         Just v' -> apply (fn v') vs
-        Nothing -> Nothing
+        Nothing -> returnInvalidParameters
 
 -- | Prepare a Haskell function for export, automatically detecting the
 -- function's type signature.
@@ -913,9 +1018,7 @@ autoMethod iface name fun = DBus.Client.method iface name inSig outSig io where
     outSig = case signature typesOut of
         Just sig -> sig
         Nothing -> invalid "output"
-    io msg = case apply fun (methodCallBody msg) of
-        Nothing -> return (ReplyError errorInvalidParameters [])
-        Just io' -> fmap ReplyReturn io'
+    io msg = apply fun (methodCallBody msg)
 
     invalid label = error (concat
         [ "Method "
@@ -925,6 +1028,12 @@ autoMethod iface name fun = DBus.Client.method iface name inSig outSig io where
         , " has an invalid "
         , label
         , " signature."])
+
+autoProperty :: (IsValue v) => InterfaceName -> MemberName -> IO v -> (v -> IO ()) -> Property
+autoProperty iface name getter setter =
+  Property iface name (signature_ outTypes) (toVariant <$> getter) variantSetter
+    where (_, outTypes) = funTypes getter
+          variantSetter variant = maybe (return ()) setter (fromVariant variant)
 
 errorFailed :: ErrorName
 errorFailed = errorName_ "org.freedesktop.DBus.Error.Failed"
