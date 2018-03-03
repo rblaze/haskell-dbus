@@ -217,7 +217,12 @@ replyError :: ErrorName -> [Variant] -> Reply
 replyError = ReplyError
 
 data Method = Method InterfaceName MemberName Signature Signature (MethodCall -> IO Reply)
-data Property = Property InterfaceName MemberName Signature (IO Variant) (Variant -> IO ())
+data Property =
+  Property InterfaceName
+           MemberName
+           Type
+           (Maybe (IO Variant))
+           (Maybe (Variant -> IO ()))
 
 type ObjectInfo = Map InterfaceName InterfaceInfo
 type InterfaceInfo = Map MemberName MethodInfo
@@ -817,7 +822,7 @@ maybeToEither :: b -> Maybe a -> Either b a
 maybeToEither = flip maybe Right . Left
 
 propertiesInterface :: InterfaceName
-propertiesInterface = fromString $ "org.freedesktop.DBus.Properties"
+propertiesInterface = fromString "org.freedesktop.DBus.Properties"
 
 buildPropertiesMethods :: [Property] -> [Method]
 buildPropertiesMethods properties =
@@ -828,26 +833,35 @@ buildPropertiesMethods properties =
          M.lookup interfaceName propertiesMap) >>=
         (maybeToEither (replyError errorUnknownMethod [toVariant memberName]) .
          M.lookup memberName)
-      goodReply v = replyReturn $ [toVariant v]
+      goodReply v = replyReturn [toVariant v]
+      extractOrFilterGetter key property newMap =
+        case property of
+          Property _ _ _ (Just getter) _ -> M.insert (show key) getter newMap
+          _ -> newMap
       getAll interfaceName =
         (fromMaybe
            (return $ replyError errorUnknownInterface [toVariant interfaceName]) $
-         callAllGetters <$> M.lookup (fromString interfaceName) propertiesMap)
-      callAllGetters interfaceProperties =
-        goodReply . M.mapKeys show <$>
-        T.mapM (\(Property _ _ _ getter _) -> getter) interfaceProperties
+           callAllGetters <$> M.lookup (fromString interfaceName) propertiesMap)
+      callAllGetters interfaceProperties = goodReply <$>
+        (T.sequenceA $ M.foldrWithKey extractOrFilterGetter M.empty interfaceProperties)
+      runGetter getter = do
+        value <- getter
+        return $ replyReturn $ [toVariant value]
+      notAccesible memberName accessType =
+        replyError errorInvalidParameters
+                     [toVariant $ (printf "Member %s is not %s." memberName accessType :: String)]
       get interfaceName memberName =
         case lookupProperty (fromString interfaceName) (fromString memberName) of
-          Right (Property _ _ _ getter _) -> do
-            value <- getter
-            return $ replyReturn $ [toVariant value]
+          Right (Property _ _ _ mgetter _) ->
+            maybe (return $ notAccesible memberName ("readable" :: String)) runGetter mgetter
           Left errorReply -> return errorReply
       set interfaceName memberName value =
         case lookupProperty (fromString interfaceName) (fromString memberName) of
-          Right (Property _ _ _ _ setter) ->
-            case fromVariant value of
-              Just val -> setter val >> (return $ replyReturn [])
-              Nothing -> return $ ReplyError errorInvalidParameters [value]
+          Right (Property _ _ _ _ msetter) ->
+            case (fromVariant value, msetter) of
+              (Just val, Just setter) -> setter val >> return (replyReturn [])
+              (_, Nothing) -> return $ notAccesible memberName ("writable" :: String)
+              (Nothing, _) -> return $ ReplyError errorInvalidParameters [value]
           Left errorReply -> return errorReply
       makePropertyMethod name sigin sigout fun =
         Method
@@ -1029,11 +1043,19 @@ autoMethod iface name fun = DBus.Client.method iface name inSig outSig io where
         , label
         , " signature."])
 
-autoProperty :: (IsValue v) => InterfaceName -> MemberName -> IO v -> (v -> IO ()) -> Property
-autoProperty iface name getter setter =
-  Property iface name (signature_ outTypes) (toVariant <$> getter) variantSetter
-    where (_, outTypes) = funTypes getter
-          variantSetter variant = maybe (return ()) setter (fromVariant variant)
+autoProperty
+  :: (IsValue v)
+  => InterfaceName -> MemberName -> Maybe (IO v) -> Maybe (v -> IO ()) -> Property
+autoProperty iface name mgetter msetter =
+  Property iface name propType
+             (fmap toVariant <$> mgetter) (variantSetter <$> msetter)
+    where propType =
+            head $ case (mgetter, msetter) of
+              (Just getter, _) -> let (_, ot) = funTypes getter in ot
+              (_, Just setter) -> let (it, _) = funTypes setter in it
+          variantSetter setter =
+            let newFun variant = maybe (return ()) setter (fromVariant variant)
+            in newFun
 
 errorFailed :: ErrorName
 errorFailed = errorName_ "org.freedesktop.DBus.Error.Failed"

@@ -66,7 +66,7 @@ module DBus.Introspection
     , signalArgType
 
     -- * Properties
-    , Property
+    , Property(..)
     , property
     , propertyName
     , propertyType
