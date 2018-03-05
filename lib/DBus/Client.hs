@@ -251,7 +251,7 @@ data PathInfo = PathInfo
   , _pathChildren :: Map String PathInfo
   }
 
--- XXX: This instance is needed to make modifyNothingHandler work, but it
+-- NOTE: This instance is needed to make modifyNothingHandler work, but it
 -- shouldn't really be used for much else.
 instance Eq PathInfo where
   a == b = null (_pathInterfaces a) &&
@@ -921,7 +921,7 @@ findMethodOrPropForCall
   | interface == Just introspectableInterface = callIntrospect
   | otherwise = ($ msg) .  methodHandler <$> findMethodForCall info msg
     where
-      -- XXX: Add this once better error handling is supported
+      -- TODO: Add this once better error handling is supported
       -- notAccesible memberName accessType =
       --   ReplyError errorInvalidParameters
       --                [toVariant $ (printf "Member %s is not %s." memberName accessType :: String)]
@@ -965,15 +965,15 @@ findMethodOrPropForCall
               (propertyInterfaceName@(Just _), Just memberName, Just value) ->
                 do
                   property <- getProperty propertyInterfaceName memberName
-                  -- XXX: Use notAccesible here?
+                  -- TODO: Use notAccesible here?
                   setter <- maybeToEither errorInvalidParameters $ propertySetter property
-                  -- XXX: Setter really needs to be able to report errors
+                  -- TODO: Setter really needs to be able to report errors
                   return $ setter value >> return (ReplyReturn [])
               _ -> Left errorInvalidParameters
           _ -> Left errorInvalidParameters
       callIntrospect = do
         targetInfo <- maybeToEither errorUnknownObject $ findPath path info
-        -- XXX: We should probably return a better error here:
+        -- TODO: We should probably return a better error here:
         outputXML <- maybeToEither errorUnknownObject $
                      I.formatXML $ buildIntrospectionObject (coerce path) targetInfo
         return $ return $ makeReply outputXML
@@ -1079,7 +1079,7 @@ buildIntrospectionObject path
      , I.objectInterfaces =
        (if null interfaces then [] else alwaysPresentInterfaces) ++
        map buildIntrospectionInterface interfaces
-     -- XXX: Eventually we should support not outputting everything if there is
+     -- TODO: Eventually we should support not outputting everything if there is
      -- a lot of stuff.
      , I.objectChildren = M.elems $ M.mapWithKey recurseFromString infoChildren
      }
@@ -1165,8 +1165,8 @@ instance IsValue a => AutoMethod (IO a) where
             Nothing -> return [var])
     apply _ _ = returnInvalidParameters
 
--- XXX: This is just a hack to allow the use of this type class to apply.
--- Really, applyable out to be broken out.
+-- NOTE: This is just a hack to allow the use of this type class to apply.
+-- Really, applyable ought to be broken out.
 instance AutoMethod (IO Reply) where
     funTypes _ = undefined
 
