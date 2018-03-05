@@ -166,7 +166,7 @@ import Text.Printf
 
 import DBus
 import DBus.Internal.Message
-import DBus.Internal.Types (pathElements, MemberName(..))
+import DBus.Internal.Types (pathElements, MemberName(..), Signature(..), ObjectPath(..))
 import qualified DBus.Introspection as I
 import qualified DBus.Socket
 import DBus.Transport (TransportOpen, SocketTransport)
@@ -867,14 +867,6 @@ getMemberName = fromString "Get"
 setMemberName :: MemberName
 setMemberName = fromString "Set"
 
-makeIntrospectionProperty :: Property -> I.Property
-makeIntrospectionProperty (Property memberName ptype getter setter) =
-  I.Property { I.propertyName = show memberName
-             , I.propertyType = ptype
-             , I.propertyRead = isJust getter
-             , I.propertyWrite = isJust setter
-             }
-
 -- | Revokes the export of the given 'ObjectPath'. This will remove all
 -- interfaces and methods associated with the path.
 unexport :: Client -> ObjectPath -> IO ()
@@ -915,11 +907,13 @@ findMethodOrPropForCall
     member == getAllMemberName = callGetAll
   | interface == Just propertiesInterface &&
     member == setMemberName = callSet
+  | interface == Just introspectableInterface = callIntrospect
   | otherwise = ($ msg) .  methodHandler <$> findMethodForCall info msg
     where
-      notAccesible memberName accessType =
-        ReplyError errorInvalidParameters
-                     [toVariant $ (printf "Member %s is not %s." memberName accessType :: String)]
+      -- XXX: Add this once better error handling is supported
+      -- notAccesible memberName accessType =
+      --   ReplyError errorInvalidParameters
+      --                [toVariant $ (printf "Member %s is not %s." memberName accessType :: String)]
       runPropGetter getter =
         do
           value <- getter
@@ -966,6 +960,12 @@ findMethodOrPropForCall
                   return $ (setter value) >> (return $ ReplyReturn [])
               _ -> Left errorInvalidParameters
           _ -> Left errorInvalidParameters
+      callIntrospect = do
+        targetInfo <- maybeToEither errorUnknownObject $ findPath path info
+        -- XXX: We should probably return a better error here:
+        outputXML <- maybeToEither errorUnknownObject $
+                     I.formatXML $ buildIntrospectionObject (coerce path) targetInfo
+        return $ return $ makeReply outputXML
 
 findInterfaceAtPath
   :: PathInfo
@@ -984,6 +984,135 @@ findMethodForCall info msg =
 
 returnInvalidParameters :: IO Reply
 returnInvalidParameters = return $ ReplyError errorInvalidParameters []
+
+alwaysPresentInterfaces :: [I.Interface]
+alwaysPresentInterfaces =
+  [ I.Interface { I.interfaceName = propertiesInterface
+                , I.interfaceMethods =
+                  [ I.Method
+                    { I.methodName = "Get"
+                    , I.methodArgs =
+                      [ I.MethodArg { I.methodArgName = "interfaceName"
+                                    , I.methodArgType = TypeString
+                                    , I.methodArgDirection = I.In
+                                    }
+                      , I.MethodArg { I.methodArgName = "memberName"
+                                    , I.methodArgType = TypeString
+                                    , I.methodArgDirection =  I.In
+                                    }
+                      , I.MethodArg { I.methodArgName = "value"
+                                    , I.methodArgType = TypeVariant
+                                    , I.methodArgDirection = I.Out
+                                    }
+                      ]
+                    }
+                  , I.Method
+                    { I.methodName = "Set"
+                    , I.methodArgs =
+                      [ I.MethodArg { I.methodArgName = "interfaceName"
+                                    , I.methodArgType = TypeString
+                                    , I.methodArgDirection = I.In
+                                    }
+                      , I.MethodArg { I.methodArgName = "memberName"
+                                    , I.methodArgType = TypeString
+                                    , I.methodArgDirection =  I.In
+                                    }
+                      , I.MethodArg { I.methodArgName = "value"
+                                    , I.methodArgType = TypeVariant
+                                    , I.methodArgDirection = I.In
+                                    }
+                      ]
+                    }
+                  , I.Method
+                    { I.methodName = "GetAll"
+                    , I.methodArgs =
+                      [ I.MethodArg { I.methodArgName = "interfaceName"
+                                    , I.methodArgType = TypeString
+                                    , I.methodArgDirection = I.In
+                                    }
+                      , I.MethodArg { I.methodArgName = "values"
+                                    , I.methodArgType = TypeDictionary TypeString TypeVariant
+                                    , I.methodArgDirection = I.Out
+                                    }
+                      ]
+                    }
+                  ]
+                , I.interfaceProperties = []
+                , I.interfaceSignals = []
+                }
+  , I.Interface { I.interfaceName = introspectableInterface
+                , I.interfaceMethods =
+                  [ I.Method
+                    { I.methodName = "Introspect"
+                    , I.methodArgs =
+                      [ I.MethodArg { I.methodArgName = "output"
+                                    , I.methodArgType = TypeString
+                                    , I.methodArgDirection = I.Out
+                                    }
+                      ]
+                    }
+                  ]
+                , I.interfaceProperties = []
+                , I.interfaceSignals = []
+                }
+  ]
+
+buildIntrospectionObject :: String -> PathInfo -> I.Object
+buildIntrospectionObject path
+                         PathInfo
+                         { _pathInterfaces = interfaces
+                         , _pathChildren = infoChildren
+                         } =
+  I.Object
+     { I.objectPath = fromString path
+     , I.objectInterfaces =
+       (if null interfaces then [] else alwaysPresentInterfaces) ++
+       (map buildIntrospectionInterface interfaces)
+     -- XXX: Eventually we should support not outputting everything if there is
+     -- a lot of stuff.
+     , I.objectChildren = M.elems $ M.mapWithKey recurseFromString infoChildren
+     }
+    where recurseFromString stringNode nodeInfo =
+            flip buildIntrospectionObject nodeInfo $ printf "%s/%s" path stringNode
+
+buildIntrospectionInterface :: Interface -> I.Interface
+buildIntrospectionInterface Interface
+  { interfaceName = name
+  , interfaceMethods = methods
+  , interfaceProperties = properties
+  , interfaceSignals = signals
+  } =
+  I.Interface
+   { I.interfaceName = name
+   , I.interfaceMethods = map buildIntrospectionMethod methods
+   , I.interfaceProperties = map buildIntrospectionProperty properties
+   , I.interfaceSignals = signals
+   }
+
+buildIntrospectionProperty :: Property -> I.Property
+buildIntrospectionProperty (Property memberName ptype getter setter) =
+  I.Property { I.propertyName = show memberName
+             , I.propertyType = ptype
+             , I.propertyRead = isJust getter
+             , I.propertyWrite = isJust setter
+             }
+
+buildIntrospectionMethod :: Method -> I.Method
+buildIntrospectionMethod Method
+  { methodName = name
+  , inSignature = inSig
+  , outSignature = outSig
+  } = I.Method
+    { I.methodName = name
+    , I.methodArgs = zipWith makeMethodArg ['a'..'z'] $ inTuples ++ outTuples
+    }
+  where inTuples = map (, I.In) $ coerce inSig
+        outTuples = map (, I.Out) $ coerce outSig
+        makeMethodArg nameChar (t, dir) =
+          I.MethodArg { I.methodArgName = [nameChar]
+                      , I.methodArgType = t
+                      , I.methodArgDirection = dir
+                      }
 
 -- | Used to automatically generate method signatures for introspection
 -- documents. To support automatic signatures, a method's parameters and
@@ -1110,8 +1239,8 @@ dbusPath = objectPath_ "/org/freedesktop/DBus"
 dbusInterface :: InterfaceName
 dbusInterface = interfaceName_ "org.freedesktop.DBus"
 
-interfaceIntrospectable :: InterfaceName
-interfaceIntrospectable = interfaceName_ "org.freedesktop.DBus.Introspectable"
+introspectableInterface :: InterfaceName
+introspectableInterface = interfaceName_ "org.freedesktop.DBus.Introspectable"
 
 atomicModifyIORef_ :: IORef a -> (a -> a) -> IO ()
 atomicModifyIORef_ ref fn = atomicModifyIORef ref (fn &&& (const ()))

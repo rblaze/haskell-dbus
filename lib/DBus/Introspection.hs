@@ -20,52 +20,13 @@ module DBus.Introspection
     -- * XML conversion
       parseXML
     , formatXML
-
-    -- * Objects
-    , Object
-    , object
-    , objectPath
-    , objectInterfaces
-    , objectChildren
-
-    -- * Interfaces
-    , Interface
-    , interface
-    , interfaceName
-    , interfaceMethods
-    , interfaceSignals
-    , interfaceProperties
-
-    -- * Methods
-    , Method
-    , method
-    , methodName
-    , methodArgs
-
-    -- ** Method arguments
-    , MethodArg
-    , methodArg
-    , methodArgName
-    , methodArgType
-    , methodArgDirection
-
-    , Direction
-    , directionIn
-    , directionOut
-
-    -- * Signals
-    , Signal
-    , signal
-    , signalName
-    , signalArgs
-
-    -- ** Signal arguments
-    , SignalArg
-    , signalArg
-    , signalArgName
-    , signalArgType
-
-    -- * Properties
+    , Object(..)
+    , Interface(..)
+    , Method(..)
+    , MethodArg(..)
+    , Direction(..)
+    , Signal(..)
+    , SignalArg(..)
     , Property(..)
     ) where
 
@@ -89,9 +50,6 @@ data Object = Object
     }
     deriving (Show, Eq)
 
-object :: T.ObjectPath -> Object
-object path = Object path [] []
-
 data Interface = Interface
     { interfaceName :: T.InterfaceName
     , interfaceMethods :: [Method]
@@ -100,17 +58,11 @@ data Interface = Interface
     }
     deriving (Show, Eq)
 
-interface :: T.InterfaceName -> Interface
-interface name = Interface name [] [] []
-
 data Method = Method
     { methodName :: T.MemberName
     , methodArgs :: [MethodArg]
     }
     deriving (Show, Eq)
-
-method :: T.MemberName -> Method
-method name = Method name []
 
 data MethodArg = MethodArg
     { methodArgName :: String
@@ -119,17 +71,8 @@ data MethodArg = MethodArg
     }
     deriving (Show, Eq)
 
-methodArg :: String -> T.Type -> Direction -> MethodArg
-methodArg = MethodArg
-
 data Direction = In | Out
     deriving (Show, Eq)
-
-directionIn :: Direction
-directionIn = In
-
-directionOut :: Direction
-directionOut = Out
 
 data Signal = Signal
     { signalName :: T.MemberName
@@ -137,17 +80,11 @@ data Signal = Signal
     }
     deriving (Show, Eq)
 
-signal :: T.MemberName -> Signal
-signal name = Signal name []
-
 data SignalArg = SignalArg
     { signalArgName :: String
     , signalArgType :: T.Type
     }
     deriving (Show, Eq)
-
-signalArg :: String -> T.Type -> SignalArg
-signalArg = SignalArg
 
 data Property = Property
     { propertyName :: String
@@ -156,9 +93,6 @@ data Property = Property
     , propertyWrite :: Bool
     }
     deriving (Show, Eq)
-
-property :: String -> T.Type -> Property
-property name t = Property name t False False
 
 parseXML :: T.ObjectPath -> String -> Maybe Object
 parseXML path xml = do
