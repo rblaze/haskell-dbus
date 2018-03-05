@@ -1182,8 +1182,8 @@ instance (IsValue a, AutoMethod fn) => AutoMethod (a -> fn) where
 -- See 'AutoMethod' for details on the limitations of this function.
 --
 -- See 'method' for exporting functions with user-defined types.
-autoMethod :: (AutoMethod fn) => InterfaceName -> MemberName -> fn -> Method
-autoMethod iface name fun = makeMethod name inSig outSig io where
+autoMethod :: (AutoMethod fn) => MemberName -> fn -> Method
+autoMethod name fun = makeMethod name inSig outSig io where
     (typesIn, typesOut) = funTypes fun
     inSig = case signature typesIn of
         Just sig -> sig
@@ -1195,7 +1195,6 @@ autoMethod iface name fun = makeMethod name inSig outSig io where
 
     invalid label = error (concat
         [ "Method "
-        , formatInterfaceName iface
         , "."
         , formatMemberName name
         , " has an invalid "
