@@ -95,6 +95,7 @@ module DBus.Client
     , autoMethod
     , Property(..)
     , autoProperty
+    , readOnlyProperty
     , Reply(..)
     , throwError
 
@@ -1216,6 +1217,9 @@ autoProperty name mgetter msetter =
           variantSetter setter =
             let newFun variant = maybe (return ()) setter (fromVariant variant)
             in newFun
+
+readOnlyProperty :: (IsValue v) => MemberName -> IO v -> Property
+readOnlyProperty name getter = autoProperty name (Just getter) Nothing
 
 errorFailed :: ErrorName
 errorFailed = errorName_ "org.freedesktop.DBus.Error.Failed"
