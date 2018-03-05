@@ -272,12 +272,12 @@ writeInterface (Interface name methods signals properties) = writeElement "inter
 
 writeMethod :: Method -> XmlWriter ()
 writeMethod (Method name args) = writeElement "method"
-    [("name", T.formatMemberName name)] $ do
+    [("name", T.formatMemberName name)] $
         mapM_ writeMethodArg args
 
 writeSignal :: Signal -> XmlWriter ()
 writeSignal (Signal name args) = writeElement "signal"
-    [("name", T.formatMemberName name)] $ do
+    [("name", T.formatMemberName name)] $
         mapM_ writeSignalArg args
 
 formatType :: T.Type -> XmlWriter String
@@ -293,7 +293,7 @@ writeMethodArg (MethodArg name t dir) = do
     let dirAttr = case dir of
             In -> "in"
             Out -> "out"
-    writeEmptyElement "arg" $
+    writeEmptyElement "arg"
         [ ("name", name)
         , ("type", typeStr)
         , ("direction", dirAttr)
@@ -302,7 +302,7 @@ writeMethodArg (MethodArg name t dir) = do
 writeSignalArg :: SignalArg -> XmlWriter ()
 writeSignalArg (SignalArg name t) = do
     typeStr <- formatType t
-    writeEmptyElement "arg" $
+    writeEmptyElement "arg"
         [ ("name", name)
         , ("type", typeStr)
         ]

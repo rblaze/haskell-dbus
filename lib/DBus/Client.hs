@@ -216,14 +216,14 @@ data Method = Method
   { methodName :: MemberName
   , inSignature :: Signature
   , outSignature :: Signature
-  , methodHandler :: (MethodCall -> IO Reply)
+  , methodHandler :: MethodCall -> IO Reply
   }
 
 data Property = Property
   { propertyName :: MemberName
   , propertyType :: Type
-  , propertyGetter :: (Maybe (IO Variant))
-  , propertySetter :: (Maybe (Variant -> IO ()))
+  , propertyGetter :: Maybe (IO Variant)
+  , propertySetter :: Maybe (Variant -> IO ())
   }
 
 data Reply
@@ -261,12 +261,12 @@ emptyPathInfo = PathInfo
 traverseElement
   :: Applicative f
   => (a -> Maybe PathInfo -> f (Maybe PathInfo))
-  -> [Char]
+  -> String
   -> a
   -> PathInfo
   -> f PathInfo
 traverseElement nothingHandler pathElement =
-  pathChildren . (at pathElement) . nothingHandler
+  pathChildren . at pathElement . nothingHandler
 
 lookupNothingHandler
   :: (a -> Const (Data.Monoid.First PathInfo) b)
@@ -288,7 +288,7 @@ pathLens ::
   -> PathInfo
   -> f PathInfo
 pathLens path nothingHandler =
-  foldl (\f pathElem -> f . (traverseElement nothingHandler pathElem)) id $
+  foldl (\f pathElem -> f . traverseElement nothingHandler pathElem) id $
   pathElements path
 
 findPath :: ObjectPath -> PathInfo -> Maybe PathInfo
@@ -304,7 +304,7 @@ modifyPathInterfacesLens
      -> ([Interface] -> Identity [Interface])
      -> PathInfo
      -> Identity PathInfo
-modifyPathInterfacesLens path = (modifyPathInfoLens path . pathInterfaces)
+modifyPathInterfacesLens path = modifyPathInfoLens path . pathInterfaces
 
 addInterface :: ObjectPath -> Interface -> PathInfo -> PathInfo
 addInterface path interface =
@@ -405,7 +405,7 @@ disconnect client = do
 disconnect' :: Client -> IO ()
 disconnect' client = do
     pendingCalls <- atomicModifyIORef (clientPendingCalls client) (\p -> (M.empty, p))
-    forM_ (M.toList pendingCalls) $ \(k, v) -> do
+    forM_ (M.toList pendingCalls) $ \(k, v) ->
         putMVar v (Left (methodError k errorDisconnected))
 
     atomicWriteIORef (clientSignalHandlers client) M.empty
@@ -433,7 +433,7 @@ dispatch client = go where
     go (ReceivedMethodError _ msg) = dispatchReply (methodErrorSerial msg) (Left msg)
     go (ReceivedSignal _ msg) = do
         handlers <- readIORef (clientSignalHandlers client)
-        forM_ (M.toAscList handlers) (\(_, SignalHandler _ _ _ h) -> forkIO (h msg) >> return ())
+        forM_ (M.toAscList handlers) (\(_, SignalHandler _ _ _ h) -> forkIO $ void $ h msg)
     go (ReceivedMethodCall serial msg) = do
         pathInfo <- readIORef (clientObjects client)
         let sender = methodCallSender msg
@@ -527,7 +527,7 @@ data ReleaseNameReply
     deriving (Eq, Show)
 
 encodeFlags :: [RequestNameFlag] -> Word32
-encodeFlags = foldr (.|.) 0 . map flagValue where
+encodeFlags = foldr ((.|.) . flagValue) 0  where
     flagValue AllowReplacement = 0x1
     flagValue ReplaceExisting  = 0x2
     flagValue DoNotQueue       = 0x4
@@ -706,7 +706,7 @@ removeMatch client (SignalHandler handlerId formatted registered _) = do
 
 -- | Equivalent to 'addMatch', but does not return the added 'SignalHandler'.
 listen :: Client -> MatchRule -> (Signal -> IO ()) -> IO ()
-listen client rule io = addMatch client rule io >> return ()
+listen client rule io = void $ addMatch client rule io
 {-# DEPRECATED listen "Prefer DBus.Client.addMatch in new code." #-}
 
 -- | Emit the signal on the bus.
@@ -920,7 +920,7 @@ findMethodOrPropForCall
           return $ makeReply value
       makeReply value = ReplyReturn [toVariant value]
       getProperty propertyInterfaceName memberName =
-        (findInterfaceAtPath info path (fromString <$> propertyInterfaceName)) >>=
+        findInterfaceAtPath info path (fromString <$> propertyInterfaceName) >>=
         (maybeToEither errorInvalidParameters .
                        findProperty (fromString memberName))
       callGet =
@@ -940,7 +940,7 @@ findMethodOrPropForCall
                                    (fromString <$> propertyInterfaceName)
               let properties = interfaceProperties propertyInterface
                   nameGetters :: [IO (String, Variant)]
-                  nameGetters = [ ((coerce name,) <$> getter) |
+                  nameGetters = [ (coerce name,) <$> getter |
                                  Property { propertyName = name
                                           , propertyGetter = Just getter
                                           } <- properties]
@@ -957,7 +957,7 @@ findMethodOrPropForCall
                   -- XXX: Use notAccesible here?
                   setter <- maybeToEither errorInvalidParameters $ propertySetter property
                   -- XXX: Setter really needs to be able to report errors
-                  return $ (setter value) >> (return $ ReplyReturn [])
+                  return $ setter value >> return (ReplyReturn [])
               _ -> Left errorInvalidParameters
           _ -> Left errorInvalidParameters
       callIntrospect = do
@@ -973,13 +973,13 @@ findInterfaceAtPath
   -> Maybe InterfaceName
   -> Either ErrorName Interface
 findInterfaceAtPath info path name =
-  (maybeToEither errorUnknownObject $ findPath path info) >>=
+  maybeToEither errorUnknownObject (findPath path info) >>=
   (maybeToEither errorUnknownInterface .
                  maybe (const Nothing) findInterface name)
 
 findMethodForCall :: PathInfo -> MethodCall -> Either ErrorName Method
 findMethodForCall info msg =
-  (findInterfaceAtPath info (methodCallPath msg) (methodCallInterface msg)) >>=
+  findInterfaceAtPath info (methodCallPath msg) (methodCallInterface msg) >>=
   (maybeToEither errorUnknownMethod . findMethod (methodCallMember msg))
 
 returnInvalidParameters :: IO Reply
@@ -1067,7 +1067,7 @@ buildIntrospectionObject path
      { I.objectPath = fromString path
      , I.objectInterfaces =
        (if null interfaces then [] else alwaysPresentInterfaces) ++
-       (map buildIntrospectionInterface interfaces)
+       map buildIntrospectionInterface interfaces
      -- XXX: Eventually we should support not outputting everything if there is
      -- a lot of stuff.
      , I.objectChildren = M.elems $ M.mapWithKey recurseFromString infoChildren
@@ -1134,7 +1134,7 @@ class AutoMethod a where
 instance AutoMethod (IO ()) where
     funTypes _ = ([], [])
 
-    apply io [] = (io >> (return $ ReplyReturn []))
+    apply io [] = io >> return (ReplyReturn [])
     apply _ _ = returnInvalidParameters
 
 instance IsValue a => AutoMethod (IO a) where
@@ -1185,12 +1185,8 @@ instance (IsValue a, AutoMethod fn) => AutoMethod (a -> fn) where
 autoMethod :: (AutoMethod fn) => MemberName -> fn -> Method
 autoMethod name fun = makeMethod name inSig outSig io where
     (typesIn, typesOut) = funTypes fun
-    inSig = case signature typesIn of
-        Just sig -> sig
-        Nothing -> invalid "input"
-    outSig = case signature typesOut of
-        Just sig -> sig
-        Nothing -> invalid "output"
+    inSig = fromMaybe (invalid "input") $ signature typesIn
+    outSig = fromMaybe (invalid "output") $ signature typesOut
     io msg = apply fun (methodCallBody msg)
 
     invalid label = error (concat
@@ -1242,9 +1238,9 @@ introspectableInterface :: InterfaceName
 introspectableInterface = interfaceName_ "org.freedesktop.DBus.Introspectable"
 
 atomicModifyIORef_ :: IORef a -> (a -> a) -> IO ()
-atomicModifyIORef_ ref fn = atomicModifyIORef ref (fn &&& (const ()))
+atomicModifyIORef_ ref fn = atomicModifyIORef ref (fn &&& const ())
 
 #if !MIN_VERSION_base(4,6,0)
 atomicWriteIORef :: IORef a -> a -> IO ()
-atomicWriteIORef ref x = atomicModifyIORef ref (\_ -> (x, ()))
+atomicWriteIORef ref x = atomicModifyIORef ref $ const x &&& const ()
 #endif
