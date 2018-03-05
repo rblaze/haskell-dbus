@@ -65,6 +65,15 @@ module DBus.Client
     -- * Clients
       Client
 
+    -- * Path/Interface storage
+    , PathInfo(..)
+    , pathInterfaces
+    , pathChildren
+    , pathLens
+    , findPath
+    , Interface(..)
+    , defaultInterface
+
     -- * Connecting to a bus
     , connect
     , connectSystem
@@ -80,22 +89,14 @@ module DBus.Client
     -- * Receiving method calls
     , export
     , unexport
-    , PathInfo(..)
-    , pathLens
-    , findPath
-    , Interface(..)
-    , pathInterfaces
-    , pathChildren
     , Method(..)
     , makeMethod
-    , Property(..)
-    , Reply(..)
-    , throwError
-
-    -- ** Automatic method signatures
     , AutoMethod
     , autoMethod
+    , Property(..)
     , autoProperty
+    , Reply(..)
+    , throwError
 
     -- * Signals
     , SignalHandler
@@ -236,6 +237,13 @@ data Interface = Interface
   , interfaceProperties :: [Property]
   , interfaceSignals :: [I.Signal]
   }
+
+defaultInterface =
+  Interface { interfaceName = ""
+            , interfaceMethods = []
+            , interfaceProperties = []
+            , interfaceSignals = []
+            }
 
 data PathInfo = PathInfo
   { _pathInterfaces :: [Interface]
@@ -409,8 +417,8 @@ disconnect' client = do
         putMVar v (Left (methodError k errorDisconnected))
 
     atomicWriteIORef (clientSignalHandlers client) M.empty
-    -- XXX fix
-    -- atomicWriteIORef (clientObjects client) M.empty
+
+    atomicWriteIORef (clientObjects client) emptyPathInfo
 
     DBus.Socket.close (clientSocket client)
 
@@ -835,7 +843,6 @@ makeMethod name inSig outSig io = Method name inSig outSig
 -- Use 'method' to construct a 'Method' from a function that handles parameter
 -- conversion manually.
 --
--- XXX: fix this example:
 -- @
 --ping :: MethodCall -> IO 'Reply'
 --ping _ = ReplyReturn []
@@ -843,10 +850,13 @@ makeMethod name inSig outSig io = Method name inSig outSig
 --sayHello :: String -> IO String
 --sayHello name = return (\"Hello \" ++ name ++ \"!\")
 --
---export client \"/hello_world\"
---    [ 'method' \"com.example.HelloWorld\" \"Ping\" ping
---    , 'autoMethod' \"com.example.HelloWorld\" \"Hello\" sayHello
---    ]
+-- export client \"/hello_world\"
+--   defaultInterface { interfaceName = \"com.example.HelloWorld\"
+--                    , interfaceMethods =
+--                      [ 'method' \"com.example.HelloWorld\" \"Ping\" ping
+--                      , 'autoMethod' \"com.example.HelloWorld\" \"Hello\" sayHello
+--                      ]
+--                    }
 -- @
 export :: Client -> ObjectPath -> Interface -> IO ()
 export client path interface =
