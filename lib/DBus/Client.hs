@@ -145,7 +145,7 @@ import qualified Data.Traversable as T
 import Data.List (foldl', intercalate, isPrefixOf)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
-import Data.Maybe (catMaybes, listToMaybe, fromMaybe)
+import Data.Maybe (catMaybes, listToMaybe, fromMaybe, isJust)
 import Data.String
 import Data.Typeable (Typeable)
 import Data.Unique
@@ -879,6 +879,14 @@ buildPropertiesMethods properties =
           "GetAll" [TypeString] [TypeDictionary TypeString TypeVariant]
                      (apply getAll . methodCallBody)
   in [getPropMethod, setPropMethod, getAllMethod]
+
+makeIntrospectionProperty :: Property -> I.Property
+makeIntrospectionProperty (Property _ memberName ptype getter setter) =
+  I.Property { I.propertyName = show memberName
+             , I.propertyType = ptype
+             , I.propertyRead = isJust getter
+             , I.propertyWrite = isJust setter
+             }
 
 -- | Revokes the export of the given 'ObjectPath'. This will remove all
 -- interfaces and methods associated with the path.
