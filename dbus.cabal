@@ -84,10 +84,12 @@ library
     , cereal
     , containers
     , deepseq
+    , lens
     , libxml-sax
     , network
     , parsec
     , random
+    , split
     , text
     , transformers
     , unix

@@ -67,11 +67,6 @@ module DBus.Introspection
 
     -- * Properties
     , Property(..)
-    , property
-    , propertyName
-    , propertyType
-    , propertyRead
-    , propertyWrite
     ) where
 
 import qualified Control.Applicative
