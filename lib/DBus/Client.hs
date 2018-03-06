@@ -85,6 +85,9 @@ module DBus.Client
     , call
     , call_
     , callNoReply
+    , getProperty
+    , setProperty
+    , getAllProperties
 
     -- * Receiving method calls
     , export
@@ -168,7 +171,7 @@ import Text.Printf
 
 import DBus
 import DBus.Internal.Message
-import DBus.Internal.Types (pathElements, MemberName(..), Signature(..), ObjectPath(..))
+import qualified DBus.Internal.Types as T
 import qualified DBus.Introspection as I
 import qualified DBus.Socket
 import DBus.Transport (TransportOpen, SocketTransport)
@@ -299,7 +302,7 @@ pathLens ::
   -> f PathInfo
 pathLens path nothingHandler =
   foldl (\f pathElem -> f . traverseElement nothingHandler pathElem) id $
-  pathElements path
+  T.pathElements path
 
 modifyPathInfoLens
   :: ObjectPath
@@ -524,7 +527,7 @@ findMethodOrPropForCall
           value <- getter
           return $ makeReply value
       makeReply value = ReplyReturn [toVariant value]
-      getProperty propertyInterfaceName memberName =
+      getPropertyObj propertyInterfaceName memberName =
         findInterfaceAtPath info path (fromString <$> propertyInterfaceName) >>=
         (maybeToEither errorInvalidParameters .
                        findProperty (fromString memberName))
@@ -532,7 +535,7 @@ findMethodOrPropForCall
         case map fromVariant args of
           [propertyInterfaceName@(Just _), Just memberName] ->
             do
-              property <- getProperty propertyInterfaceName memberName
+              property <- getPropertyObj propertyInterfaceName memberName
               -- Use notAccesible here?
               getter <- maybeToEither errorInvalidParameters $ propertyGetter property
               return $ runPropGetter getter
@@ -558,7 +561,7 @@ findMethodOrPropForCall
             case (fromVariant minterface, fromVariant mname, fromVariant mvalue) of
               (propertyInterfaceName@(Just _), Just memberName, Just value) ->
                 do
-                  property <- getProperty propertyInterfaceName memberName
+                  property <- getPropertyObj propertyInterfaceName memberName
                   -- TODO: Use notAccesible here?
                   setter <- maybeToEither errorInvalidParameters $ propertySetter property
                   -- TODO: Setter really needs to be able to report errors
@@ -791,6 +794,49 @@ callNoReply client msg = do
             }
     send_ client safeMsg (\_ -> return ())
 
+orDefaultInterface :: Maybe InterfaceName -> InterfaceName
+orDefaultInterface = fromMaybe "org.freedesktop.DBus"
+
+-- | Retrieve a property using the method call parameters that were provided.
+--
+-- Throws a 'ClientError' if the property request couldn't be sent.
+getProperty :: Client -> MethodCall -> IO (Either MethodError MethodReturn)
+getProperty client
+            msg@MethodCall { methodCallInterface = interface
+                           , methodCallMember = member
+                           } =
+            call client msg { methodCallInterface = Just propertiesInterface
+                             , methodCallMember = getMemberName
+                             , methodCallBody = [ toVariant (coerce (orDefaultInterface interface) :: String)
+                                                , toVariant (coerce member :: String)
+                                                ]
+                            }
+
+setProperty :: Client -> MethodCall -> Variant -> IO (Either MethodError MethodReturn)
+setProperty client
+            msg@MethodCall { methodCallInterface = interface
+                           , methodCallMember = member
+                           } value =
+            call client msg { methodCallInterface = Just propertiesInterface
+                             , methodCallMember = setMemberName
+                             , methodCallBody = [ toVariant (coerce (orDefaultInterface interface) :: String)
+                                                , toVariant (coerce member :: String)
+                                                , value
+                                                ]
+                            }
+
+getAllProperties :: Client -> MethodCall -> IO (Either MethodError MethodReturn)
+getAllProperties client
+               msg@MethodCall { methodCallInterface = interface } =
+               call client msg { methodCallInterface = Just propertiesInterface
+                                , methodCallMember = getAllMemberName
+                                , methodCallBody = [toVariant (coerce (orDefaultInterface interface) :: String)]
+                                }
+
+
+
+-- Signals
+
 -- | Request that the bus forward signals matching the given rule to this
 -- client, and process them in a callback.
 --
@@ -836,9 +882,6 @@ removeMatch client (SignalHandler handlerId formatted registered _) = do
 listen :: Client -> MatchRule -> (Signal -> IO ()) -> IO ()
 listen client rule io = void $ addMatch client rule io
 {-# DEPRECATED listen "Prefer DBus.Client.addMatch in new code." #-}
-
-
--- Signals
 
 -- | Emit the signal on the bus.
 --
