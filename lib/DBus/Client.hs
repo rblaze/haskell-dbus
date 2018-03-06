@@ -239,6 +239,7 @@ data Interface = Interface
   , interfaceSignals :: [I.Signal]
   }
 
+defaultInterface :: Interface
 defaultInterface =
   Interface { interfaceName = ""
             , interfaceMethods = []
@@ -300,9 +301,6 @@ pathLens path nothingHandler =
   foldl (\f pathElem -> f . traverseElement nothingHandler pathElem) id $
   pathElements path
 
-findPath :: ObjectPath -> PathInfo -> Maybe PathInfo
-findPath path = preview (pathLens path lookupNothingHandler)
-
 modifyPathInfoLens
   :: ObjectPath
      -> (PathInfo -> Identity PathInfo) -> PathInfo -> Identity PathInfo
@@ -318,6 +316,27 @@ modifyPathInterfacesLens path = modifyPathInfoLens path . pathInterfaces
 addInterface :: ObjectPath -> Interface -> PathInfo -> PathInfo
 addInterface path interface =
   over (modifyPathInterfacesLens path) (interface :)
+
+findPath :: ObjectPath -> PathInfo -> Maybe PathInfo
+findPath path = preview (pathLens path lookupNothingHandler)
+
+findByGetterAndName
+  :: (Show a1, Foldable t)
+  => t a2 -> (a2 -> a1) -> String -> Maybe a2
+findByGetterAndName options getter name =
+  find ((== name) . show . getter) options
+
+findInterface :: InterfaceName -> PathInfo -> Maybe Interface
+findInterface name info =
+  findByGetterAndName (_pathInterfaces info) interfaceName (show name)
+
+findMethod :: MemberName -> Interface -> Maybe Method
+findMethod name interface =
+  findByGetterAndName (interfaceMethods interface) methodName (show name)
+
+findProperty :: MemberName -> Interface -> Maybe Property
+findProperty name interface =
+  findByGetterAndName (interfaceProperties interface) propertyName (show name)
 
 -- | Connect to the bus specified in the environment variable
 -- @DBUS_SYSTEM_BUS_ADDRESS@, or to
@@ -436,6 +455,9 @@ mainLoop client = do
 
     dispatch client msg
 
+
+-- Dispatch
+
 dispatch :: Client -> ReceivedMessage -> IO ()
 dispatch client = go where
     go (ReceivedMethodReturn _ msg) = dispatchReply (methodReturnSerial msg) (Right msg)
@@ -473,6 +495,100 @@ dispatch client = go where
         case pending of
             Just mvar -> putMVar mvar result
             Nothing -> return ()
+
+findMethodOrPropForCall
+  :: PathInfo
+  -> MethodCall
+  -> Either ErrorName (IO Reply)
+findMethodOrPropForCall
+  info msg@MethodCall{ methodCallInterface = interface
+                     , methodCallMember = member
+                     , methodCallBody = args
+                     , methodCallPath = path
+                     }
+  | interface == Just propertiesInterface &&
+    member == getMemberName = callGet
+  | interface == Just propertiesInterface &&
+    member == getAllMemberName = callGetAll
+  | interface == Just propertiesInterface &&
+    member == setMemberName = callSet
+  | interface == Just introspectableInterface = callIntrospect
+  | otherwise = ($ msg) .  methodHandler <$> findMethodForCall info msg
+    where
+      -- TODO: Add this once better error handling is supported
+      -- notAccesible memberName accessType =
+      --   ReplyError errorInvalidParameters
+      --                [toVariant $ (printf "Member %s is not %s." memberName accessType :: String)]
+      runPropGetter getter =
+        do
+          value <- getter
+          return $ makeReply value
+      makeReply value = ReplyReturn [toVariant value]
+      getProperty propertyInterfaceName memberName =
+        findInterfaceAtPath info path (fromString <$> propertyInterfaceName) >>=
+        (maybeToEither errorInvalidParameters .
+                       findProperty (fromString memberName))
+      callGet =
+        case map fromVariant args of
+          [propertyInterfaceName@(Just _), Just memberName] ->
+            do
+              property <- getProperty propertyInterfaceName memberName
+              -- Use notAccesible here?
+              getter <- maybeToEither errorInvalidParameters $ propertyGetter property
+              return $ runPropGetter getter
+          _ -> Left errorInvalidParameters
+      callGetAll =
+        case map fromVariant args of
+          [propertyInterfaceName@(Just _)] ->
+            do
+              propertyInterface <- findInterfaceAtPath info path
+                                   (fromString <$> propertyInterfaceName)
+              let properties = interfaceProperties propertyInterface
+                  nameGetters :: [IO (String, Variant)]
+                  nameGetters = [ (coerce name,) <$> getter |
+                                 Property { propertyName = name
+                                          , propertyGetter = Just getter
+                                          } <- properties]
+                  buildResult = (makeReply . M.fromList) <$> T.sequenceA nameGetters
+              return buildResult
+          _ -> Left errorInvalidParameters
+      callSet =
+        case args of
+          [minterface, mname, mvalue] ->
+            case (fromVariant minterface, fromVariant mname, fromVariant mvalue) of
+              (propertyInterfaceName@(Just _), Just memberName, Just value) ->
+                do
+                  property <- getProperty propertyInterfaceName memberName
+                  -- TODO: Use notAccesible here?
+                  setter <- maybeToEither errorInvalidParameters $ propertySetter property
+                  -- TODO: Setter really needs to be able to report errors
+                  return $ setter value >> return (ReplyReturn [])
+              _ -> Left errorInvalidParameters
+          _ -> Left errorInvalidParameters
+      callIntrospect = do
+        targetInfo <- maybeToEither errorUnknownObject $ findPath path info
+        -- TODO: We should probably return a better error here:
+        outputXML <- maybeToEither errorUnknownObject $
+                     I.formatXML $ buildIntrospectionObject (coerce path) targetInfo
+        return $ return $ makeReply outputXML
+
+findInterfaceAtPath
+  :: PathInfo
+  -> ObjectPath
+  -> Maybe InterfaceName
+  -> Either ErrorName Interface
+findInterfaceAtPath info path name =
+  maybeToEither errorUnknownObject (findPath path info) >>=
+  (maybeToEither errorUnknownInterface .
+                 maybe (const Nothing) findInterface name)
+
+findMethodForCall :: PathInfo -> MethodCall -> Either ErrorName Method
+findMethodForCall info msg =
+  findInterfaceAtPath info (methodCallPath msg) (methodCallInterface msg) >>=
+  (maybeToEither errorUnknownMethod . findMethod (methodCallMember msg))
+
+
+-- Request name
 
 data RequestNameFlag
     = AllowReplacement
@@ -613,6 +729,9 @@ releaseName client name = do
         3 -> NameNotOwner
         _ -> UnknownReleaseNameReply code
 
+
+-- Requests
+
 send_ :: Message msg => Client -> msg -> (Serial -> IO a) -> IO a
 send_ client msg io = do
     result <- Control.Exception.try (DBus.Socket.send (clientSocket client) msg io)
@@ -718,6 +837,9 @@ listen :: Client -> MatchRule -> (Signal -> IO ()) -> IO ()
 listen client rule io = void $ addMatch client rule io
 {-# DEPRECATED listen "Prefer DBus.Client.addMatch in new code." #-}
 
+
+-- Signals
+
 -- | Emit the signal on the bus.
 --
 -- Throws a 'ClientError' if the signal message couldn't be sent.
@@ -814,6 +936,108 @@ throwError :: ErrorName
            -> IO a
 throwError name message extra = Control.Exception.throwIO (MethodExc name (toVariant message : extra))
 
+
+-- Method construction
+
+returnInvalidParameters :: IO Reply
+returnInvalidParameters = return $ ReplyError errorInvalidParameters []
+
+-- | Used to automatically generate method signatures for introspection
+-- documents. To support automatic signatures, a method's parameters and
+-- return value must all be instances of 'IsValue'.
+--
+-- This class maps Haskell idioms to D-Bus; it is therefore unable to
+-- generate some signatures. In particular, it does not support methods
+-- which accept/return a single structure, or single-element structures.
+-- It also cannot generate signatures for methods with parameters or return
+-- values which are only instances of 'IsVariant'. For these cases, please
+-- use 'DBus.Client.method'.
+--
+-- To match common Haskell use, if the return value is a tuple, it will be
+-- converted to a list of return values.
+class AutoMethod a where
+    funTypes :: a -> ([Type], [Type])
+    apply :: a -> [Variant] -> IO Reply
+
+instance AutoMethod (IO ()) where
+    funTypes _ = ([], [])
+
+    apply io [] = io >> return (ReplyReturn [])
+    apply _ _ = returnInvalidParameters
+
+instance IsValue a => AutoMethod (IO a) where
+    funTypes io = cased where
+        cased = ([], case ioT io undefined of
+            (_, t) -> case t of
+                TypeStructure ts -> ts
+                _ -> [t])
+
+        ioT :: IsValue a => IO a -> a -> (a, Type)
+        ioT _ a = (a, typeOf a)
+
+    apply io [] = ReplyReturn <$> (do
+        var <- fmap toVariant io
+        case fromVariant var of
+            Just struct -> return (structureItems struct)
+            Nothing -> return [var])
+    apply _ _ = returnInvalidParameters
+
+-- NOTE: This is just a hack to allow the use of this type class to apply.
+-- Really, applyable ought to be broken out.
+instance AutoMethod (IO Reply) where
+    funTypes _ = undefined
+
+    apply io [] = io
+    apply _ _ = returnInvalidParameters
+
+instance (IsValue a, AutoMethod fn) => AutoMethod (a -> fn) where
+    funTypes fn = cased where
+        cased = case valueT undefined of
+            (a, t) -> case funTypes (fn a) of
+                (ts, ts') -> (t : ts, ts')
+
+        valueT :: IsValue a => a -> (a, Type)
+        valueT a = (a, typeOf a)
+
+    apply _ [] = returnInvalidParameters
+    apply fn (v:vs) = case fromVariant v of
+        Just v' -> apply (fn v') vs
+        Nothing -> returnInvalidParameters
+
+-- | Prepare a Haskell function for export, automatically detecting the
+-- function's type signature.
+--
+-- See 'AutoMethod' for details on the limitations of this function.
+--
+-- See 'method' for exporting functions with user-defined types.
+autoMethod :: (AutoMethod fn) => MemberName -> fn -> Method
+autoMethod name fun = makeMethod name inSig outSig io where
+    (typesIn, typesOut) = funTypes fun
+    inSig = fromMaybe (invalid "input") $ signature typesIn
+    outSig = fromMaybe (invalid "output") $ signature typesOut
+    io msg = apply fun (methodCallBody msg)
+
+    invalid label = error (concat
+        [ "Method "
+        , "."
+        , formatMemberName name
+        , " has an invalid "
+        , label
+        , " signature."])
+
+autoProperty
+  :: forall v. (IsValue v)
+  => MemberName -> Maybe (IO v) -> Maybe (v -> IO ()) -> Property
+autoProperty name mgetter msetter =
+  Property name propType (fmap toVariant <$> mgetter) (variantSetter <$> msetter)
+    where propType = typeOf (undefined :: v)
+          variantSetter setter =
+            let newFun variant = maybe (return ()) setter (fromVariant variant)
+            in newFun
+
+readOnlyProperty :: (IsValue v) => MemberName -> IO v -> Property
+readOnlyProperty name getter = autoProperty name (Just getter) Nothing
+
 -- | Define a method handler, which will accept method calls with the given
 -- interface and member name.
 --
@@ -863,138 +1087,14 @@ export :: Client -> ObjectPath -> Interface -> IO ()
 export client path interface =
   atomicModifyIORef_ (clientObjects client) $ addInterface path interface
 
-maybeToEither :: b -> Maybe a -> Either b a
-maybeToEither = flip maybe Right . Left
-
-propertiesInterface :: InterfaceName
-propertiesInterface = fromString "org.freedesktop.DBus.Properties"
-
-getAllMemberName :: MemberName
-getAllMemberName = fromString "GetAll"
-
-getMemberName :: MemberName
-getMemberName = fromString "Get"
-
-setMemberName :: MemberName
-setMemberName = fromString "Set"
-
 -- | Revokes the export of the given 'ObjectPath'. This will remove all
 -- interfaces and methods associated with the path.
 unexport :: Client -> ObjectPath -> IO ()
 unexport client path = atomicModifyIORef_ (clientObjects client) clear
   where clear = over (modifyPathInterfacesLens path) $ const []
 
-findByGetterAndName
-  :: (Show a1, Foldable t)
-  => t a2 -> (a2 -> a1) -> String -> Maybe a2
-findByGetterAndName options getter name =
-  find ((== name) . show . getter) options
-
-findInterface :: InterfaceName -> PathInfo -> Maybe Interface
-findInterface name info =
-  findByGetterAndName (_pathInterfaces info) interfaceName (show name)
-
-findMethod :: MemberName -> Interface -> Maybe Method
-findMethod name interface =
-  findByGetterAndName (interfaceMethods interface) methodName (show name)
-
-findProperty :: MemberName -> Interface -> Maybe Property
-findProperty name interface =
-  findByGetterAndName (interfaceProperties interface) propertyName (show name)
-
-findMethodOrPropForCall
-  :: PathInfo
-  -> MethodCall
-  -> Either ErrorName (IO Reply)
-findMethodOrPropForCall
-  info msg@MethodCall{ methodCallInterface = interface
-                     , methodCallMember = member
-                     , methodCallBody = args
-                     , methodCallPath = path
-                     }
-  | interface == Just propertiesInterface &&
-    member == getMemberName = callGet
-  | interface == Just propertiesInterface &&
-    member == getAllMemberName = callGetAll
-  | interface == Just propertiesInterface &&
-    member == setMemberName = callSet
-  | interface == Just introspectableInterface = callIntrospect
-  | otherwise = ($ msg) .  methodHandler <$> findMethodForCall info msg
-    where
-      -- TODO: Add this once better error handling is supported
-      -- notAccesible memberName accessType =
-      --   ReplyError errorInvalidParameters
-      --                [toVariant $ (printf "Member %s is not %s." memberName accessType :: String)]
-      runPropGetter getter =
-        do
-          value <- getter
-          return $ makeReply value
-      makeReply value = ReplyReturn [toVariant value]
-      getProperty propertyInterfaceName memberName =
-        findInterfaceAtPath info path (fromString <$> propertyInterfaceName) >>=
-        (maybeToEither errorInvalidParameters .
-                       findProperty (fromString memberName))
-      callGet =
-        case map fromVariant args of
-          [propertyInterfaceName@(Just _), Just memberName] ->
-            do
-              property <- getProperty propertyInterfaceName memberName
-              -- Use notAccesible here?
-              getter <- maybeToEither errorInvalidParameters $ propertyGetter property
-              return $ runPropGetter getter
-          _ -> Left errorInvalidParameters
-      callGetAll =
-        case map fromVariant args of
-          [propertyInterfaceName@(Just _)] ->
-            do
-              propertyInterface <- findInterfaceAtPath info path
-                                   (fromString <$> propertyInterfaceName)
-              let properties = interfaceProperties propertyInterface
-                  nameGetters :: [IO (String, Variant)]
-                  nameGetters = [ (coerce name,) <$> getter |
-                                 Property { propertyName = name
-                                          , propertyGetter = Just getter
-                                          } <- properties]
-                  buildResult = (makeReply . M.fromList) <$> T.sequenceA nameGetters
-              return buildResult
-          _ -> Left errorInvalidParameters
-      callSet =
-        case args of
-          [minterface, mname, mvalue] ->
-            case (fromVariant minterface, fromVariant mname, fromVariant mvalue) of
-              (propertyInterfaceName@(Just _), Just memberName, Just value) ->
-                do
-                  property <- getProperty propertyInterfaceName memberName
-                  -- TODO: Use notAccesible here?
-                  setter <- maybeToEither errorInvalidParameters $ propertySetter property
-                  -- TODO: Setter really needs to be able to report errors
-                  return $ setter value >> return (ReplyReturn [])
-              _ -> Left errorInvalidParameters
-          _ -> Left errorInvalidParameters
-      callIntrospect = do
-        targetInfo <- maybeToEither errorUnknownObject $ findPath path info
-        -- TODO: We should probably return a better error here:
-        outputXML <- maybeToEither errorUnknownObject $
-                     I.formatXML $ buildIntrospectionObject (coerce path) targetInfo
-        return $ return $ makeReply outputXML
-
-findInterfaceAtPath
-  :: PathInfo
-  -> ObjectPath
-  -> Maybe InterfaceName
-  -> Either ErrorName Interface
-findInterfaceAtPath info path name =
-  maybeToEither errorUnknownObject (findPath path info) >>=
-  (maybeToEither errorUnknownInterface .
-                 maybe (const Nothing) findInterface name)
-
-findMethodForCall :: PathInfo -> MethodCall -> Either ErrorName Method
-findMethodForCall info msg =
-  findInterfaceAtPath info (methodCallPath msg) (methodCallInterface msg) >>=
-  (maybeToEither errorUnknownMethod . findMethod (methodCallMember msg))
-
-returnInvalidParameters :: IO Reply
-returnInvalidParameters = return $ ReplyError errorInvalidParameters []
+
+-- Introspection
 
 alwaysPresentInterfaces :: [I.Interface]
 alwaysPresentInterfaces =
@@ -1125,101 +1225,8 @@ buildIntrospectionMethod Method
                       , I.methodArgDirection = dir
                       }
 
--- | Used to automatically generate method signatures for introspection
--- documents. To support automatic signatures, a method's parameters and
--- return value must all be instances of 'IsValue'.
---
--- This class maps Haskell idioms to D-Bus; it is therefore unable to
--- generate some signatures. In particular, it does not support methods
--- which accept/return a single structure, or single-element structures.
--- It also cannot generate signatures for methods with parameters or return
--- values which are only instances of 'IsVariant'. For these cases, please
--- use 'DBus.Client.method'.
---
--- To match common Haskell use, if the return value is a tuple, it will be
--- converted to a list of return values.
-class AutoMethod a where
-    funTypes :: a -> ([Type], [Type])
-    apply :: a -> [Variant] -> IO Reply
-
-instance AutoMethod (IO ()) where
-    funTypes _ = ([], [])
-
-    apply io [] = io >> return (ReplyReturn [])
-    apply _ _ = returnInvalidParameters
-
-instance IsValue a => AutoMethod (IO a) where
-    funTypes io = cased where
-        cased = ([], case ioT io undefined of
-            (_, t) -> case t of
-                TypeStructure ts -> ts
-                _ -> [t])
-
-        ioT :: IsValue a => IO a -> a -> (a, Type)
-        ioT _ a = (a, typeOf a)
-
-    apply io [] = ReplyReturn <$> (do
-        var <- fmap toVariant io
-        case fromVariant var of
-            Just struct -> return (structureItems struct)
-            Nothing -> return [var])
-    apply _ _ = returnInvalidParameters
-
--- NOTE: This is just a hack to allow the use of this type class to apply.
--- Really, applyable ought to be broken out.
-instance AutoMethod (IO Reply) where
-    funTypes _ = undefined
-
-    apply io [] = io
-    apply _ _ = returnInvalidParameters
-
-instance (IsValue a, AutoMethod fn) => AutoMethod (a -> fn) where
-    funTypes fn = cased where
-        cased = case valueT undefined of
-            (a, t) -> case funTypes (fn a) of
-                (ts, ts') -> (t : ts, ts')
-
-        valueT :: IsValue a => a -> (a, Type)
-        valueT a = (a, typeOf a)
-
-    apply _ [] = returnInvalidParameters
-    apply fn (v:vs) = case fromVariant v of
-        Just v' -> apply (fn v') vs
-        Nothing -> returnInvalidParameters
-
--- | Prepare a Haskell function for export, automatically detecting the
--- function's type signature.
---
--- See 'AutoMethod' for details on the limitations of this function.
---
--- See 'method' for exporting functions with user-defined types.
-autoMethod :: (AutoMethod fn) => MemberName -> fn -> Method
-autoMethod name fun = makeMethod name inSig outSig io where
-    (typesIn, typesOut) = funTypes fun
-    inSig = fromMaybe (invalid "input") $ signature typesIn
-    outSig = fromMaybe (invalid "output") $ signature typesOut
-    io msg = apply fun (methodCallBody msg)
-
-    invalid label = error (concat
-        [ "Method "
-        , "."
-        , formatMemberName name
-        , " has an invalid "
-        , label
-        , " signature."])
-
-autoProperty
-  :: forall v. (IsValue v)
-  => MemberName -> Maybe (IO v) -> Maybe (v -> IO ()) -> Property
-autoProperty name mgetter msetter =
-  Property name propType (fmap toVariant <$> mgetter) (variantSetter <$> msetter)
-    where propType = typeOf (undefined :: v)
-          variantSetter setter =
-            let newFun variant = maybe (return ()) setter (fromVariant variant)
-            in newFun
-
-readOnlyProperty :: (IsValue v) => MemberName -> IO v -> Property
-readOnlyProperty name getter = autoProperty name (Just getter) Nothing
+
+-- Constants
 
 errorFailed :: ErrorName
 errorFailed = errorName_ "org.freedesktop.DBus.Error.Failed"
@@ -1250,6 +1257,24 @@ dbusInterface = interfaceName_ "org.freedesktop.DBus"
 
 introspectableInterface :: InterfaceName
 introspectableInterface = interfaceName_ "org.freedesktop.DBus.Introspectable"
+
+propertiesInterface :: InterfaceName
+propertiesInterface = fromString "org.freedesktop.DBus.Properties"
+
+getAllMemberName :: MemberName
+getAllMemberName = fromString "GetAll"
+
+getMemberName :: MemberName
+getMemberName = fromString "Get"
+
+setMemberName :: MemberName
+setMemberName = fromString "Set"
+
+
+-- Miscellaneous
+
+maybeToEither :: b -> Maybe a -> Either b a
+maybeToEither = flip maybe Right . Left
 
 atomicModifyIORef_ :: IORef a -> (a -> a) -> IO ()
 atomicModifyIORef_ ref fn = atomicModifyIORef ref (fn &&& const ())
