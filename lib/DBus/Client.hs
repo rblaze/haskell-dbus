@@ -86,8 +86,11 @@ module DBus.Client
     , call_
     , callNoReply
     , getProperty
+    , getPropertyValue
     , setProperty
+    , setPropertyValue
     , getAllProperties
+    , getAllPropertiesMap
 
     -- * Receiving method calls
     , export
@@ -811,34 +814,50 @@ getProperty client
             msg@MethodCall { methodCallInterface = interface
                            , methodCallMember = member
                            } =
-            call client msg { methodCallInterface = Just propertiesInterface
-                             , methodCallMember = getMemberName
-                             , methodCallBody = [ toVariant (coerce (orDefaultInterface interface) :: String)
-                                                , toVariant (coerce member :: String)
-                                                ]
-                            }
+  call client msg { methodCallInterface = Just propertiesInterface
+                  , methodCallMember = getMemberName
+                  , methodCallBody = [ toVariant (coerce (orDefaultInterface interface) :: String)
+                                     , toVariant (coerce member :: String)
+                                     ]
+                  }
+
+getPropertyValue :: IsValue a => Client -> MethodCall -> IO (Either MethodError a)
+getPropertyValue client msg =
+  (>>= (maybeToEither MethodError {} . fromVariant . head . methodReturnBody))
+  <$> getProperty client msg
 
 setProperty :: Client -> MethodCall -> Variant -> IO (Either MethodError MethodReturn)
 setProperty client
             msg@MethodCall { methodCallInterface = interface
                            , methodCallMember = member
                            } value =
-            call client msg { methodCallInterface = Just propertiesInterface
-                             , methodCallMember = setMemberName
-                             , methodCallBody = [ toVariant (coerce (orDefaultInterface interface) :: String)
-                                                , toVariant (coerce member :: String)
-                                                , value
-                                                ]
-                            }
+  call client msg { methodCallInterface = Just propertiesInterface
+                  , methodCallMember = setMemberName
+                  , methodCallBody = [ toVariant (coerce (orDefaultInterface interface) :: String)
+                                     , toVariant (coerce member :: String)
+                                     , value
+                                     ]
+                  }
+
+setPropertyValue
+  :: IsValue a
+  => Client -> MethodCall -> a -> IO (Either MethodError MethodReturn)
+setPropertyValue client msg v = setProperty client msg (toVariant v)
 
 getAllProperties :: Client -> MethodCall -> IO (Either MethodError MethodReturn)
 getAllProperties client
                msg@MethodCall { methodCallInterface = interface } =
-               call client msg { methodCallInterface = Just propertiesInterface
-                                , methodCallMember = getAllMemberName
-                                , methodCallBody = [toVariant (coerce (orDefaultInterface interface) :: String)]
-                                }
+  call client msg { methodCallInterface = Just propertiesInterface
+                  , methodCallMember = getAllMemberName
+                  , methodCallBody = [toVariant (coerce (orDefaultInterface interface) :: String)]
+                  }
 
+getAllPropertiesMap :: Client -> MethodCall -> IO (Either MethodError (M.Map String Variant))
+getAllPropertiesMap client msg =
+  -- NOTE: We should never hit the error case here really unless the client
+  -- returns the wrong type of object.
+  (>>= (maybeToEither MethodError {} . fromVariant . head . methodReturnBody))
+  <$> getAllProperties client msg
 
 
 -- Signals
