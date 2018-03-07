@@ -823,8 +823,9 @@ getProperty client
                                      ]
                   }
 
+dummyMethodError :: MethodError
 dummyMethodError =
-  MethodError { methodErrorName = fromString "PropertyError"
+  MethodError { methodErrorName = errorName_ "org.PropertyError"
               , methodErrorSerial = T.Serial 1
               , methodErrorSender = Nothing
               , methodErrorDestination = Nothing
@@ -832,9 +833,16 @@ dummyMethodError =
               }
 
 getPropertyValue :: IsValue a => Client -> MethodCall -> IO (Either MethodError a)
-getPropertyValue client msg =
-  (>>= (maybeToEither dummyMethodError . fromVariant . head . methodReturnBody))
-  <$> getProperty client msg
+-- getPropertyValue client msg =
+--   (>>= (maybeToEither dummyMethodError . fromVariant . head . methodReturnBody))
+--   <$> getProperty client msg
+getPropertyValue client msg = do
+  res <- getProperty client msg
+  return $ head . methodReturnBody <$> res >>= \variant ->
+    maybeToEither dummyMethodError { methodErrorBody = [variant] }
+                    -- We have two calls to fromVariant here because getProperty
+                    -- always returns a variant type.
+                  $ join $ fromVariant <$> fromVariant variant
 
 setProperty :: Client -> MethodCall -> Variant -> IO (Either MethodError MethodReturn)
 setProperty client
