@@ -823,9 +823,17 @@ getProperty client
                                      ]
                   }
 
+dummyMethodError =
+  MethodError { methodErrorName = fromString "PropertyError"
+              , methodErrorSerial = T.Serial 1
+              , methodErrorSender = Nothing
+              , methodErrorDestination = Nothing
+              , methodErrorBody = []
+              }
+
 getPropertyValue :: IsValue a => Client -> MethodCall -> IO (Either MethodError a)
 getPropertyValue client msg =
-  (>>= (maybeToEither MethodError {} . fromVariant . head . methodReturnBody))
+  (>>= (maybeToEither dummyMethodError . fromVariant . head . methodReturnBody))
   <$> getProperty client msg
 
 setProperty :: Client -> MethodCall -> Variant -> IO (Either MethodError MethodReturn)
