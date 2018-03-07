@@ -23,7 +23,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 
 import DBus
-import qualified DBus.Introspection as Introspection
+import qualified DBus.Introspection as I
 
 import DBusTests.InterfaceName ()
 import DBusTests.MemberName ()
@@ -41,27 +41,27 @@ test_Introspection = testGroup "Introspection"
 
 test_XmlPassthrough :: TestTree
 test_XmlPassthrough = testProperty "xml-passthrough" $ \obj -> let
-    path = Introspection.objectPath obj
-    Just xml = Introspection.formatXML obj
-    in Introspection.parseXML path xml == Just obj
+    path = I.objectPath obj
+    Just xml = I.formatXML obj
+    in I.parseXML path xml == Just obj
 
 test_XmlParse :: TestTree
 test_XmlParse = testCase "xml-parse" $ do
     -- root object path can be inferred
-    Introspection.parseXML (objectPath_ "/") "<node><node name='foo'/></node>"
-        @?= Just (Introspection.object (objectPath_ "/"))
-            { Introspection.objectChildren =
-                [ Introspection.object (objectPath_ "/foo")
+    I.parseXML (objectPath_ "/") "<node><node name='foo'/></node>"
+        @?= Just (I.object (objectPath_ "/"))
+            { I.objectChildren =
+                [ I.object (objectPath_ "/foo")
                 ]
             }
 
 test_XmlParseFailed :: TestTree
 test_XmlParseFailed = testCase "xml-parse-failed" $ do
-    Nothing @=? Introspection.parseXML (objectPath_ "/") "<invalid>"
-    Nothing @=? Introspection.parseXML (objectPath_ "/") "<invalid/>"
+    Nothing @=? I.parseXML (objectPath_ "/") "<invalid>"
+    Nothing @=? I.parseXML (objectPath_ "/") "<invalid/>"
 
     -- invalid property access
-    Nothing @=? Introspection.parseXML (objectPath_ "/")
+    Nothing @=? I.parseXML (objectPath_ "/")
         "<node>\
         \  <interface name='com.example.Foo'>\
         \    <property type='s' access='invalid'>\
@@ -70,7 +70,7 @@ test_XmlParseFailed = testCase "xml-parse-failed" $ do
         \</node>"
 
     -- invalid parameter type
-    Nothing @=? Introspection.parseXML (objectPath_ "/")
+    Nothing @=? I.parseXML (objectPath_ "/")
         "<node>\
         \  <interface name='com.example.Foo'>\
         \    <method name='Foo'>\
@@ -82,22 +82,19 @@ test_XmlParseFailed = testCase "xml-parse-failed" $ do
 test_XmlWriteFailed :: TestTree
 test_XmlWriteFailed = testCase "xml-write-failed" $ do
     -- child's object path isn't under parent's
-    Nothing @=? Introspection.formatXML (Introspection.object (objectPath_ "/foo"))
-        { Introspection.objectChildren =
-            [ Introspection.object (objectPath_ "/bar")
+    Nothing @=? I.formatXML (I.Object (objectPath_ "/foo") [] [])
+        { I.objectChildren =
+            [ I.Object (objectPath_ "/bar") [] []
             ]
         }
 
     -- invalid type
-    Nothing @=? Introspection.formatXML (Introspection.object (objectPath_ "/foo"))
-        { Introspection.objectInterfaces =
-            [ (Introspection.interface (interfaceName_ "/bar"))
-                { Introspection.interfaceProperties =
-                    [ Introspection.property "prop" (TypeDictionary TypeVariant TypeVariant)
-                    ]
-                }
-            ]
-        }
+    Nothing @=? I.formatXML $
+            I.Object (objectPath_ "/foo")
+               [ I.Interface (interfaceName_ "/bar") []
+                               [ I.Property "prop" (TypeDictionary TypeVariant TypeVariant) True True ]
+                               []
+               ] [] []
 
 instance Arbitrary Type where
     arbitrary = oneof [atom, container] where
@@ -122,10 +119,10 @@ instance Arbitrary Type where
             , liftM TypeStructure (listOf1 (halfSized arbitrary))
             ]
 
-instance Arbitrary Introspection.Object where
+instance Arbitrary I.Object where
     arbitrary = arbitrary >>= subObject
 
-subObject :: ObjectPath -> Gen Introspection.Object
+subObject :: ObjectPath -> Gen I.Object
 subObject parentPath = sized $ \n -> resize (min n 4) $ do
     let nonRoot = do
         x <- resize 10 arbitrary
@@ -140,62 +137,53 @@ subObject parentPath = sized $ \n -> resize (min n 4) $ do
     let path = objectPath_ path'
     ifaces <- arbitrary
     children <- halfSized (listOf (subObject path))
-    return (Introspection.object path)
-        { Introspection.objectInterfaces = ifaces
-        , Introspection.objectChildren = children
-        }
+    return $ I.Object path ifaces children
 
-instance Arbitrary Introspection.Interface where
+instance Arbitrary I.Interface where
     arbitrary = do
         name <- arbitrary
         methods <- arbitrary
         signals <- arbitrary
         properties <- arbitrary
-        return (Introspection.interface name)
-            { Introspection.interfaceMethods = methods
-            , Introspection.interfaceSignals = signals
-            , Introspection.interfaceProperties = properties
-            }
+        return $ I.Interface name methods signals properties
 
-instance Arbitrary Introspection.Method where
+instance Arbitrary I.Method where
     arbitrary = do
         name <- arbitrary
         args <- arbitrary
-        return (Introspection.method name)
-            { Introspection.methodArgs = args
-            }
+        return $ (I.Method name args)
 
-instance Arbitrary Introspection.Signal where
+instance Arbitrary I.Signal where
     arbitrary = do
         name <- arbitrary
         args <- arbitrary
-        return (Introspection.signal name)
-            { Introspection.signalArgs = args
-            }
+        return $ I.Signal name args
 
-instance Arbitrary Introspection.MethodArg where
-    arbitrary = Introspection.methodArg
+instance Arbitrary I.MethodArg where
+    arbitrary = I.MethodArg
         <$> gen_Ascii
         <*> arbitrary
         <*> arbitrary
 
-instance Arbitrary Introspection.Direction where
-    arbitrary = elements [Introspection.directionIn, Introspection.directionOut]
+instance Arbitrary I.Direction where
+    arbitrary = elements [I.In, I.Out]
 
-instance Arbitrary Introspection.SignalArg where
-    arbitrary = Introspection.signalArg
+instance Arbitrary I.SignalArg where
+    arbitrary = I.SignalArg
         <$> gen_Ascii
         <*> arbitrary
 
-instance Arbitrary Introspection.Property where
+instance Arbitrary I.Property where
     arbitrary = do
         name <- gen_Ascii
         t <- arbitrary
         canRead <- arbitrary
         canWrite <- arbitrary
-        return (Introspection.property name t)
-            { Introspection.propertyRead = canRead
-            , Introspection.propertyWrite = canWrite
+        return I.Property
+            { I.propertyName = name
+            , I.propertyType = t
+            , I.propertyRead = canRead
+            , I.propertyWrite = canWrite
             }
 
 gen_Ascii :: Gen String
