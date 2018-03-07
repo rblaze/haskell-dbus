@@ -6,6 +6,7 @@ import           DBus.Client as C
 import qualified DBus.Internal.Message as M
 import qualified DBus.Internal.Types as T
 import qualified DBus.Introspection as I
+import qualified Data.Char as Char
 import           Data.Coerce
 import           Data.Int
 import           Data.List
@@ -61,10 +62,14 @@ mkFunD name argNames body =
   FunD name [Clause (map VarP argNames) (NormalB body) []]
 
 generateClient :: GenerationParams -> I.Interface -> Q [Dec]
-generateClient params interface = do
+generateClient params interface@I.Interface{ I.interfaceName = name} = do
+  let params' = params { genInterfaceName = coerce name }
   (fmap concat) <$> sequenceA $
-                map (generateClientMethod params) $
-                    I.interfaceMethods interface
+                  (map (generateClientMethod params') $
+                    I.interfaceMethods interface)
+                  ++
+                  (map (generateClientProperty params') $
+                    I.interfaceProperties interface)
 
 generateClientMethod :: GenerationParams -> I.Method -> Q [Dec]
 generateClientMethod GenerationParams
@@ -137,7 +142,8 @@ generateClientMethod GenerationParams
             1 -> getArgType $ I.methodArgType $ head outputArgs
             _ -> foldl addOutArg (TupleT outputLength) outputArgs
         addOutArg target arg = AppT target $ getArgType $ I.methodArgType arg
-        functionN = (mkName methodString)
+        functionNameFirst:functionNameRest = methodString
+        functionN = mkName $ (Char.toLower functionNameFirst):functionNameRest
         fullSignature = addArg (ConT ''C.Client) $
                         addArg (ConT ''T.BusName) $
                         addArg (ConT ''T.ObjectPath) methodSignature
