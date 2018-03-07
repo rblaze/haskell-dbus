@@ -5,6 +5,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE IncoherentInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE DeriveLift #-}
 
 -- Copyright (C) 2009-2012 John Millikin <john@john-millikin.com>
 --
@@ -48,6 +49,7 @@ import           Data.Vector (Vector)
 import           Data.Word
 import qualified Foreign
 import           GHC.Generics
+import qualified Language.Haskell.TH.Syntax as TH
 import           System.IO.Unsafe (unsafePerformIO)
 import           System.Posix.Types (Fd)
 import           Text.ParserCombinators.Parsec ((<|>), oneOf)
@@ -639,7 +641,7 @@ varToVal a = case toVariant a of
 -- <http://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-marshaling-object-path>
 -- for details.
 newtype ObjectPath = ObjectPath String
-    deriving (Eq, Ord, Show, NFData)
+    deriving (Eq, Ord, Show, NFData, TH.Lift)
 
 pathElements :: ObjectPath -> [String]
 pathElements = filter (not . null) . splitOn "/" . coerce
@@ -688,7 +690,7 @@ parserObjectPath = root <|> object where
 -- <http://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-names-interface>
 -- for details.
 newtype InterfaceName = InterfaceName String
-    deriving (Eq, Ord, Show, NFData)
+    deriving (Eq, Ord, Show, NFData, TH.Lift)
 
 formatInterfaceName :: InterfaceName -> String
 formatInterfaceName (InterfaceName s) = s
@@ -728,7 +730,7 @@ parserInterfaceName = name >> Parsec.eof where
 -- <http://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-names-member>
 -- for details.
 newtype MemberName = MemberName String
-    deriving (Eq, Ord, Show, NFData)
+    deriving (Eq, Ord, Show, NFData, TH.Lift)
 
 formatMemberName :: MemberName -> String
 formatMemberName (MemberName s) = s
@@ -795,7 +797,7 @@ instance IsVariant ErrorName where
 -- <http://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-names-bus>
 -- for details.
 newtype BusName = BusName String
-    deriving (Eq, Ord, Show, NFData)
+    deriving (Eq, Ord, Show, NFData, TH.Lift)
 
 formatBusName :: BusName -> String
 formatBusName (BusName s) = s

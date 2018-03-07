@@ -1,7 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 module DBus.Generate where
 
-import qualified DBus as D
 import           DBus.Client as C
 import qualified DBus.Internal.Message as M
 import qualified DBus.Internal.Types as T
@@ -11,6 +10,7 @@ import           Data.Coerce
 import           Data.Int
 import           Data.List
 import qualified Data.Map as Map
+import           Data.Maybe
 import           Data.String
 import           Data.Word
 import           Language.Haskell.TH
@@ -19,7 +19,7 @@ import           System.Posix.Types (Fd(..))
 data GenerationParams = GenerationParams
   { genBusName :: Maybe T.BusName
   , genObjectPath :: Maybe T.ObjectPath
-  , genInterfaceName :: String
+  , genInterfaceName :: T.InterfaceName
   , getTHType :: T.Type -> Type
   }
 
@@ -52,10 +52,17 @@ defaultGenerationParams =
   { genBusName = Nothing
   , genInterfaceName = fromString ""
   , getTHType = defaultGetTHType
+  , genObjectPath = Nothing
   }
 
-addArg :: Type -> Type -> Type
-addArg argT = AppT (AppT ArrowT argT)
+addTypeArg :: Type -> Type -> Type
+addTypeArg argT = AppT (AppT ArrowT argT)
+
+addTypeArgIf :: Bool -> Type -> Type -> Type
+addTypeArgIf condition theType = if condition then addTypeArg theType else id
+
+addArgIf :: Bool -> a -> [a] -> [a]
+addArgIf condition name = if condition then (name:) else id
 
 mkFunD :: Name -> [Name] -> Exp -> Dec
 mkFunD name argNames body =
@@ -71,10 +78,42 @@ generateClient params interface@I.Interface{ I.interfaceName = name} = do
                   (map (generateClientProperty params') $
                     I.interfaceProperties interface)
 
+maybeName :: a -> Bool -> Maybe a
+maybeName name condition = if condition then Just name else Nothing
+
+getSetMethodCallParams ::
+  Name -> Maybe Name -> Maybe Name -> ExpQ -> ExpQ
+getSetMethodCallParams methodCallN mBusN mObjectPathN variantsE =
+  case (mBusN, mObjectPathN) of
+    (Just busN, Just objectPathN) -> [|
+                       $( varE methodCallN )
+                          { M.methodCallDestination = Just $( varE busN )
+                          , M.methodCallPath = $( varE objectPathN )
+                          , M.methodCallBody = $( variantsE )
+                          }
+                     |]
+    (Just busN, Nothing) -> [|
+                        $( varE methodCallN )
+                          { M.methodCallDestination = Just $( varE busN )
+                          , M.methodCallBody = $( variantsE )
+                          }
+                      |]
+    (Nothing, Just objectPathN) -> [|
+                        $( varE methodCallN )
+                          { M.methodCallPath = $( varE objectPathN )
+                          , M.methodCallBody = $( variantsE )
+                          }
+                      |]
+    (Nothing, Nothing) -> [|
+                         $( varE methodCallN ) { M.methodCallBody = $( variantsE ) }
+                      |]
+
 generateClientMethod :: GenerationParams -> I.Method -> Q [Dec]
 generateClientMethod GenerationParams
                        { getTHType = getArgType
                        , genInterfaceName = methodInterface
+                       , genObjectPath = objectPathM
+                       , genBusName = busNameM
                        }
                      I.Method
                        { I.methodArgs = args
@@ -85,8 +124,13 @@ generateClientMethod GenerationParams
         outputLength = length outputArgs
         buildArgNames = mapM (newName . I.methodArgName) inputArgs
         buildOutputNames = mapM (newName . I.methodArgName) outputArgs
-        interfaceString :: String
-        interfaceString = coerce methodInterface
+        takeBusArg = isNothing busNameM
+        takeObjectPathArg = isNothing objectPathM
+        functionNameFirst:functionNameRest = coerce methodNameMN
+        functionName = (Char.toLower functionNameFirst):functionNameRest
+        functionN = mkName $ (Char.toLower functionNameFirst):functionNameRest
+        methodCallDefN = mkName $ functionName ++ "MethodCall"
+        defObjectPath = fromMaybe (fromString "/") objectPathM
     clientN <- newName "client"
     busN <- newName "busName"
     objectPathN <- newName "objectPath"
@@ -99,8 +143,6 @@ generateClientMethod GenerationParams
     finalOutputNames <- buildOutputNames
     let makeToVariantApp name = AppE (VarE 'T.toVariant) $ VarE name
         variantListExp = map makeToVariantApp methodArgNames
-        methodString :: String
-        methodString = coerce methodNameMN
         makeFromVariantApp name = AppE (VarE 'T.fromVariant) $ VarE name
         mapOrHead fn names cons =
           case outputLength of
@@ -110,15 +152,26 @@ generateClientMethod GenerationParams
         finalResultTuple = mapOrHead VarE finalOutputNames TupE
         makeJustPattern name = ConP 'Just [VarP name]
         maybeExtractionPattern = mapOrHead makeJustPattern finalOutputNames TupP
+        getMethodCallDefDec = [d|
+               $( varP methodCallDefN ) =
+                 M.MethodCall { M.methodCallPath = defObjectPath
+                              , M.methodCallInterface = Just methodInterface
+                              , M.methodCallMember = methodNameMN
+                              , M.methodCallDestination = busNameM
+                              , M.methodCallSender = Nothing
+                              , M.methodCallReplyExpected = True
+                              , M.methodCallAutoStart = True
+                              , M.methodCallBody = []
+                              }
+                 |]
+        setMethodCallParamsE = getSetMethodCallParams methodCallDefN
+                               (maybeName busN takeBusArg)
+                               (maybeName objectPathN takeObjectPathArg)
+                               (varE variantsN)
         getFunctionBody = [|
              do
                let $( varP variantsN ) = $( return $ ListE variantListExp )
-                   $( varP methodCallN ) =
-                     (D.methodCall $( return $ VarE objectPathN )
-                                   (fromString interfaceString)
-                                   (fromString methodString)) { M.methodCallDestination = Just $( return $ VarE busN )
-                                                              , M.methodCallBody = $( return $ VarE variantsN )
-                                                              }
+                   $( varP methodCallN ) = $( setMethodCallParamsE )
                $( varP callResultN ) <- call $( return $ VarE clientN ) $( varE methodCallN )
                return $ case $( varE callResultN ) of
                  Right $( varP replySuccessN ) ->
@@ -131,8 +184,9 @@ generateClientMethod GenerationParams
                  Left _ -> Left C.errorInvalidParameters
                |]
     functionBody <- getFunctionBody
+    methodCallDef <- getMethodCallDefDec
     let methodSignature = foldr addInArg fullOutputSignature inputArgs
-        addInArg arg = addArg $ getArgType $ I.methodArgType arg
+        addInArg arg = addTypeArg $ getArgType $ I.methodArgType arg
         fullOutputSignature = AppT (ConT ''IO) $
                               AppT (AppT (ConT ''Either)
                                          (ConT ''T.ErrorName))
@@ -142,20 +196,23 @@ generateClientMethod GenerationParams
             1 -> getArgType $ I.methodArgType $ head outputArgs
             _ -> foldl addOutArg (TupleT outputLength) outputArgs
         addOutArg target arg = AppT target $ getArgType $ I.methodArgType arg
-        functionNameFirst:functionNameRest = methodString
-        functionN = mkName $ (Char.toLower functionNameFirst):functionNameRest
-        fullSignature = addArg (ConT ''C.Client) $
-                        addArg (ConT ''T.BusName) $
-                        addArg (ConT ''T.ObjectPath) methodSignature
-        fullArgNames = clientN:busN:objectPathN:methodArgNames
+        fullSignature = addTypeArg (ConT ''C.Client) $
+                        addTypeArgIf takeBusArg (ConT ''T.BusName) $
+                        addTypeArgIf takeObjectPathArg (ConT ''T.ObjectPath) methodSignature
+        fullArgNames =
+          clientN:(addArgIf takeBusArg busN $
+                             addArgIf takeObjectPathArg
+                                       objectPathN methodArgNames)
         definitionDec = SigD functionN fullSignature
         function = FunD functionN [Clause (map VarP fullArgNames) (NormalB functionBody) []]
-    return [definitionDec, function]
+    return $ methodCallDef ++ [definitionDec, function]
 
 generateClientProperty :: GenerationParams -> I.Property -> Q [Dec]
 generateClientProperty GenerationParams
                          { getTHType = getArgType
                          , genInterfaceName = propertyInterface
+                         , genObjectPath = objectPathM
+                         , genBusName = busNameM
                          }
                        I.Property
                          { I.propertyName = name
@@ -169,44 +226,55 @@ generateClientProperty GenerationParams
     objectPathN <- newName "objectPath"
     methodCallN <- newName "methodCall"
     argN <- newName "arg"
-    let interfaceString :: String
-        interfaceString = coerce propertyInterface
-        propertyString :: String
-        propertyString = coerce name
+    let takeBusArg = isNothing busNameM
+        takeObjectPathArg = isNothing objectPathM
+        defObjectPath = fromMaybe (fromString "/") objectPathM
+        methodCallDefN = mkName $ "methodCallFor" ++ name
+        getMethodCallDefDec = [d|
+               $( varP methodCallDefN ) =
+                 M.MethodCall { M.methodCallPath = defObjectPath
+                              , M.methodCallInterface = Just propertyInterface
+                              , M.methodCallMember = fromString name
+                              , M.methodCallDestination = busNameM
+                              , M.methodCallSender = Nothing
+                              , M.methodCallReplyExpected = True
+                              , M.methodCallAutoStart = True
+                              , M.methodCallBody = []
+                              }
+                 |]
+        setMethodCallParamsE = getSetMethodCallParams methodCallDefN
+                                   (maybeName busN takeBusArg)
+                                   (maybeName objectPathN takeObjectPathArg)
+                                   (return $ ListE [])
         makeGetterBody = [|
           do
-            let $( varP methodCallN ) =
-                  (D.methodCall $( varE objectPathN )
-                                (fromString interfaceString)
-                                (fromString propertyString))
-                     { M.methodCallDestination = Just $( return $ VarE busN ) }
+            let $( varP methodCallN ) = $( setMethodCallParamsE )
             getPropertyValue $( return $ VarE clientN )
                              $( varE methodCallN )
           |]
         makeSetterBody = [|
           do
-            let $( varP methodCallN ) =
-                  (D.methodCall $( varE objectPathN )
-                                (fromString interfaceString)
-                                (fromString propertyString))
-                     { M.methodCallDestination = Just $( return $ VarE busN ) }
+            let $( varP methodCallN ) = $( setMethodCallParamsE )
             setPropertyValue $( varE clientN ) $( varE methodCallN ) $( varE argN )
           |]
-
+    methodCallDefs <- getMethodCallDefDec
     getterBody <- makeGetterBody
     setterBody <- makeSetterBody
-    let getterSigType = addArg (ConT ''C.Client) $
-                        addArg (ConT ''T.BusName) $
-                        addArg (ConT ''T.ObjectPath) $
-                               AppT (ConT ''IO) $
-                               AppT (AppT (ConT ''Either)
+    let buildSignature = addTypeArg (ConT ''C.Client) .
+                         addTypeArgIf takeBusArg (ConT ''T.BusName) .
+                         addTypeArgIf takeObjectPathArg (ConT ''T.ObjectPath)
+        getterSigType = buildSignature $
+                        AppT (ConT ''IO) $
+                             AppT (AppT (ConT ''Either)
                                           (ConT ''M.MethodError)) $ getArgType propType
-        setterSigType = addArg (ConT ''C.Client) $
-                        addArg (ConT ''T.BusName) $
-                        addArg (ConT ''T.ObjectPath) $
-                               AppT (ConT ''IO) $ AppT (ConT ''Maybe) (ConT ''M.MethodError)
-        getterArgNames = [clientN, busN, objectPathN]
-        setterArgNames = [clientN, busN, objectPathN, argN]
+        setterSigType = buildSignature $
+                        AppT (ConT ''IO) $ AppT (ConT ''Maybe) (ConT ''M.MethodError)
+        buildArgs rest = clientN:(addArgIf takeBusArg busN $
+                                           addArgIf takeObjectPathArg
+                                                    objectPathN rest)
+        getterArgNames = buildArgs []
+        setterArgNames = buildArgs [argN]
+        propertyString = coerce name
         getterName = mkName $ "get" ++ propertyString
         setterName = mkName $ "set" ++ propertyString
         getterFunction = mkFunD getterName getterArgNames getterBody
@@ -215,4 +283,6 @@ generateClientProperty GenerationParams
         setterSignature = SigD setterName setterSigType
         getterDefs = if readable then [getterSignature, getterFunction] else []
         setterDefs = if writable then [setterSignature, setterFunction] else []
-    return $ getterDefs ++ setterDefs
+    return $ methodCallDefs ++ getterDefs ++ setterDefs
+
+-- flycheck-ghc-args: ("-Wno-unused-pattern-binds")
