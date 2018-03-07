@@ -1,6 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 module DBus.Generate where
 
+import qualified DBus as D
 import           DBus.Client as C
 import qualified DBus.Internal.Message as M
 import qualified DBus.Internal.Types as T
@@ -16,6 +17,7 @@ import           System.Posix.Types (Fd(..))
 
 data GenerationParams = GenerationParams
   { genBusName :: Maybe T.BusName
+  , genInterfaceName :: String
   , getTHType :: T.Type -> Type
   }
 
@@ -46,22 +48,34 @@ defaultGenerationParams :: GenerationParams
 defaultGenerationParams =
   GenerationParams
   { genBusName = Nothing
+  , genInterfaceName = fromString ""
   , getTHType = defaultGetTHType
   }
 
-generateMethodCall :: GenerationParams -> String -> I.Method -> Q [Dec]
-generateMethodCall GenerationParams
-                     { getTHType = getArgType
-                     } interfaceNameString
-                   I.Method
-                     { I.methodArgs = args
-                     , I.methodName = methodNameMN
-                     } =
+
+addArg :: Type -> Type -> Type
+addArg argT = AppT (AppT ArrowT argT)
+
+mkFunD :: Name -> [Name] -> Exp -> Dec
+mkFunD name argNames body =
+  FunD name [Clause (map VarP argNames) (NormalB body) []]
+
+generateClientMethod :: GenerationParams -> I.Method -> Q [Dec]
+generateClientMethod GenerationParams
+                       { getTHType = getArgType
+                       , genInterfaceName = methodInterface
+                       }
+                     I.Method
+                       { I.methodArgs = args
+                       , I.methodName = methodNameMN
+                       } =
   do
     let (inputArgs, outputArgs) = partition ((== I.In) . I.methodArgDirection) args
         outputLength = length outputArgs
         buildArgNames = mapM (newName . I.methodArgName) inputArgs
         buildOutputNames = mapM (newName . I.methodArgName) outputArgs
+        interfaceString :: String
+        interfaceString = coerce methodInterface
     clientN <- newName "client"
     busN <- newName "busName"
     objectPathN <- newName "objectPath"
@@ -89,14 +103,12 @@ generateMethodCall GenerationParams
              do
                let $( varP variantsN ) = $( return $ ListE variantListExp )
                    $( varP methodCallN ) =
-                     (methodCall $( return $ VarE objectPathN )
-                                   (fromString interfaceNameString)
-                                   (fromString methodString))
-                     { M.methodCallDestination = Just $( return $ VarE busN )
-                     , M.methodCallBody = $( return $ VarE variantsN )
-                     }
-               $( return $ VarP callResultN ) <- call $( return $ VarE clientN )
-                                                           $( varE methodCallN )
+                     (D.methodCall $( return $ VarE objectPathN )
+                                   (fromString interfaceString)
+                                   (fromString methodString)) { M.methodCallDestination = Just $( return $ VarE busN )
+                                                              , M.methodCallBody = $( return $ VarE variantsN )
+                                                              }
+               $( varP callResultN ) <- call $( return $ VarE clientN ) $( varE methodCallN )
                return $ case $( varE callResultN ) of
                  Right $( varP replySuccessN ) ->
                    case (M.methodReturnBody $( varE replySuccessN )) of
@@ -106,10 +118,9 @@ generateMethodCall GenerationParams
                          _ -> Left C.errorInvalidParameters
                      _ -> Left C.errorInvalidParameters
                  Left _ -> Left C.errorInvalidParameters
-           |]
+               |]
     functionBody <- getFunctionBody
     let methodSignature = foldr addInArg fullOutputSignature inputArgs
-        addArg argT = AppT (AppT ArrowT argT)
         addInArg arg = addArg $ getArgType $ I.methodArgType arg
         fullOutputSignature = AppT (ConT ''IO) $
                               AppT (AppT (ConT ''Either)
@@ -128,3 +139,68 @@ generateMethodCall GenerationParams
         definitionDec = SigD functionN fullSignature
         function = FunD functionN [Clause (map VarP fullArgNames) (NormalB functionBody) []]
     return [definitionDec, function]
+
+generateClientProperty :: GenerationParams -> I.Property -> Q [Dec]
+generateClientProperty GenerationParams
+                         { getTHType = getArgType
+                         , genInterfaceName = propertyInterface
+                         }
+                       I.Property
+                         { I.propertyName = name
+                         , I.propertyType = propType
+                         , I.propertyRead = readable
+                         , I.propertyWrite = writable
+                         } =
+  do
+    clientN <- newName "client"
+    busN <- newName "busName"
+    objectPathN <- newName "objectPath"
+    methodCallN <- newName "methodCall"
+    argN <- newName "arg"
+    let interfaceString :: String
+        interfaceString = coerce propertyInterface
+        propertyString :: String
+        propertyString = coerce name
+        makeGetterBody = [|
+          do
+            let $( varP methodCallN ) =
+                  (D.methodCall $( varE objectPathN )
+                                (fromString interfaceString)
+                                (fromString propertyString))
+                     { M.methodCallDestination = Just $( return $ VarE busN ) }
+            getPropertyValue $( return $ VarE clientN )
+                             $( varE methodCallN )
+          |]
+        makeSetterBody = [|
+          do
+            let $( varP methodCallN ) =
+                  (D.methodCall $( varE objectPathN )
+                                (fromString interfaceString)
+                                (fromString propertyString))
+                     { M.methodCallDestination = Just $( return $ VarE busN ) }
+            setPropertyValue $( varE clientN ) $( varE methodCallN ) $( varE argN )
+          |]
+
+    getterBody <- makeGetterBody
+    setterBody <- makeSetterBody
+    let getterSigType = addArg (ConT ''C.Client) $
+                        addArg (ConT ''T.BusName) $
+                        addArg (ConT ''T.ObjectPath) $
+                               AppT (ConT ''IO) $
+                               AppT (AppT (ConT ''Either)
+                                          (ConT ''M.MethodError)) $ getArgType propType
+        setterSigType = addArg (ConT ''C.Client) $
+                        addArg (ConT ''T.BusName) $
+                        addArg (ConT ''T.ObjectPath) $
+                               AppT (ConT ''IO) $ AppT (ConT ''Maybe) (ConT ''M.MethodError)
+        getterArgNames = [clientN, busN, objectPathN]
+        setterArgNames = [clientN, busN, objectPathN, argN]
+        getterName = mkName $ "get" ++ propertyString
+        setterName = mkName $ "set" ++ propertyString
+        getterFunction = mkFunD getterName getterArgNames getterBody
+        setterFunction = mkFunD setterName setterArgNames setterBody
+        getterSignature = SigD getterName getterSigType
+        setterSignature = SigD setterName setterSigType
+        getterDefs = if readable then [getterSignature, getterFunction] else []
+        setterDefs = if writable then [setterSignature, setterFunction] else []
+    return $ getterDefs ++ setterDefs
