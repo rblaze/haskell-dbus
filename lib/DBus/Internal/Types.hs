@@ -322,6 +322,10 @@ parseSigFull bytes = unsafePerformIO io where
                             return (ii' + 1, TypeDictionary t1 t2)
                         else throwIO SigParseError
 
+extractFromVariant :: IsValue a => Variant -> Maybe a
+extractFromVariant (Variant (ValueVariant v)) = extractFromVariant v
+extractFromVariant v = fromVariant v
+
 class IsVariant a where
     toVariant :: a -> Variant
     fromVariant :: Variant -> Maybe a

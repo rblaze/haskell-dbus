@@ -808,41 +808,38 @@ callNoReply client msg = do
 orDefaultInterface :: Maybe InterfaceName -> InterfaceName
 orDefaultInterface = fromMaybe "org.freedesktop.DBus"
 
--- | Retrieve a property using the method call parameters that were provided.
---
--- Throws a 'ClientError' if the property request couldn't be sent.
-getProperty :: Client -> MethodCall -> IO (Either MethodError MethodReturn)
-getProperty client
-            msg@MethodCall { methodCallInterface = interface
-                           , methodCallMember = member
-                           } =
-  call client msg { methodCallInterface = Just propertiesInterface
-                  , methodCallMember = getMemberName
-                  , methodCallBody = [ toVariant (coerce (orDefaultInterface interface) :: String)
-                                     , toVariant (coerce member :: String)
-                                     ]
-                  }
-
 dummyMethodError :: MethodError
 dummyMethodError =
-  MethodError { methodErrorName = errorName_ "org.PropertyError"
+  MethodError { methodErrorName = errorName_ "org.ClientTypeMismatch"
               , methodErrorSerial = T.Serial 1
               , methodErrorSender = Nothing
               , methodErrorDestination = Nothing
               , methodErrorBody = []
               }
 
+unpackVariant :: IsValue a => Variant -> Either MethodError a
+unpackVariant variant =
+  maybeToEither dummyMethodError { methodErrorBody = [variant] } $ fromVariant variant
+
+-- | Retrieve a property using the method call parameters that were provided.
+--
+-- Throws a 'ClientError' if the property request couldn't be sent.
+getProperty :: Client -> MethodCall -> IO (Either MethodError Variant)
+getProperty client
+            msg@MethodCall { methodCallInterface = interface
+                           , methodCallMember = member
+                           } =
+  (>>= (unpackVariant . head . methodReturnBody)) <$>
+    call client msg { methodCallInterface = Just propertiesInterface
+                    , methodCallMember = getMemberName
+                    , methodCallBody = [ toVariant (coerce (orDefaultInterface interface) :: String)
+                                       , toVariant (coerce member :: String)
+                                       ]
+                    }
+
 getPropertyValue :: IsValue a => Client -> MethodCall -> IO (Either MethodError a)
--- getPropertyValue client msg =
---   (>>= (maybeToEither dummyMethodError . fromVariant . head . methodReturnBody))
---   <$> getProperty client msg
-getPropertyValue client msg = do
-  res <- getProperty client msg
-  return $ head . methodReturnBody <$> res >>= \variant ->
-    maybeToEither dummyMethodError { methodErrorBody = [variant] }
-                    -- We have two calls to fromVariant here because getProperty
-                    -- always returns a variant type.
-                  $ join $ fromVariant <$> fromVariant variant
+getPropertyValue client msg =
+  (>>= unpackVariant) <$> getProperty client msg
 
 setProperty :: Client -> MethodCall -> Variant -> IO (Either MethodError MethodReturn)
 setProperty client
@@ -877,7 +874,7 @@ getAllPropertiesMap :: Client -> MethodCall -> IO (Either MethodError (M.Map Str
 getAllPropertiesMap client msg =
   -- NOTE: We should never hit the error case here really unless the client
   -- returns the wrong type of object.
-  (>>= (maybeToEither MethodError {} . fromVariant . head . methodReturnBody))
+  (>>= (maybeToEither dummyMethodError . fromVariant . head . methodReturnBody))
   <$> getAllProperties client msg
 
 
