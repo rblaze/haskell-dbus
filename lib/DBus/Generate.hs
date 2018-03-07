@@ -17,6 +17,7 @@ import           System.Posix.Types (Fd(..))
 
 data GenerationParams = GenerationParams
   { genBusName :: Maybe T.BusName
+  , genObjectPath :: Maybe T.ObjectPath
   , genInterfaceName :: String
   , getTHType :: T.Type -> Type
   }
@@ -52,13 +53,18 @@ defaultGenerationParams =
   , getTHType = defaultGetTHType
   }
 
-
 addArg :: Type -> Type -> Type
 addArg argT = AppT (AppT ArrowT argT)
 
 mkFunD :: Name -> [Name] -> Exp -> Dec
 mkFunD name argNames body =
   FunD name [Clause (map VarP argNames) (NormalB body) []]
+
+generateClient :: GenerationParams -> I.Interface -> Q [Dec]
+generateClient params interface = do
+  (fmap concat) <$> sequenceA $
+                map (generateClientMethod params) $
+                    I.interfaceMethods interface
 
 generateClientMethod :: GenerationParams -> I.Method -> Q [Dec]
 generateClientMethod GenerationParams
