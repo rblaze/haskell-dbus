@@ -120,6 +120,12 @@ module DBus.Client
     , matchMember
     , matchPathNamespace
 
+    -- * Introspection
+    , buildIntrospectionObject
+    , buildIntrospectionInterface
+    , buildIntrospectionMethod
+    , buildIntrospectionProperty
+
     -- * Name reservation
     , requestName
     , releaseName
