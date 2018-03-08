@@ -168,10 +168,10 @@ import Control.Monad
 import Data.Bits ((.|.))
 import Data.Coerce
 import Data.Function
-import Data.Foldable
+import Data.Foldable hiding (forM_, and)
 import Data.Functor ((<$>))
 import Data.IORef
-import Data.List (intercalate, isPrefixOf, find)
+import Data.List (intercalate, isPrefixOf)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
 import Data.Maybe
@@ -181,7 +181,7 @@ import qualified Data.Traversable as T
 import Data.Typeable (Typeable)
 import Data.Unique
 import Data.Word (Word32)
-import Prelude
+import Prelude hiding (foldl, foldr, concat)
 
 import DBus
 import DBus.Internal.Message
