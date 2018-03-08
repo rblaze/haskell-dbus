@@ -159,14 +159,17 @@ module DBus.Client
 
 import Control.Concurrent
 
+import Control.Applicative
 import Control.Arrow
 import qualified Control.Exception
 import Control.Exception (SomeException, throwIO)
-import Control.Lens
+import Control.Lens hiding (coerce)
 import Control.Monad
 import Data.Bits ((.|.))
 import Data.Coerce
 import Data.Function
+import Data.Foldable
+import Data.Functor ((<$>))
 import Data.IORef
 import Data.List (intercalate, isPrefixOf, find)
 import Data.Map.Strict (Map)
@@ -178,6 +181,7 @@ import qualified Data.Traversable as T
 import Data.Typeable (Typeable)
 import Data.Unique
 import Data.Word (Word32)
+import Prelude
 
 import DBus
 import DBus.Internal.Message
