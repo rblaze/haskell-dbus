@@ -153,6 +153,8 @@ module DBus.Client
     , clientThreadRunner
     , defaultClientOptions
     , connectWith
+
+    , errorInvalidParameters
     ) where
 
 import Control.Concurrent
@@ -833,16 +835,19 @@ setProperty client
                            } value =
   call client msg { methodCallInterface = Just propertiesInterface
                   , methodCallMember = setMemberName
-                  , methodCallBody = [ toVariant (coerce (orDefaultInterface interface) :: String)
-                                     , toVariant (coerce member :: String)
-                                     , value
-                                     ]
+                  , methodCallBody =
+                    [ toVariant (coerce (orDefaultInterface interface) :: String)
+                    , toVariant (coerce member :: String)
+                    , value
+                    ]
                   }
 
 setPropertyValue
   :: IsValue a
-  => Client -> MethodCall -> a -> IO (Either MethodError MethodReturn)
-setPropertyValue client msg v = setProperty client msg (toVariant v)
+  => Client -> MethodCall -> a -> IO (Maybe MethodError)
+setPropertyValue client msg v = eitherToMaybe <$> setProperty client msg (toVariant v)
+  where eitherToMaybe (Left a) = Just a
+        eitherToMaybe (Right _) = Nothing
 
 getAllProperties :: Client -> MethodCall -> IO (Either MethodError MethodReturn)
 getAllProperties client
@@ -1270,7 +1275,7 @@ buildIntrospectionInterface Interface
 
 buildIntrospectionProperty :: Property -> I.Property
 buildIntrospectionProperty (Property memberName ptype getter setter) =
-  I.Property { I.propertyName = show memberName
+  I.Property { I.propertyName = coerce memberName
              , I.propertyType = ptype
              , I.propertyRead = isJust getter
              , I.propertyWrite = isJust setter
