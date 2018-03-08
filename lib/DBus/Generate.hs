@@ -14,6 +14,7 @@ import           Data.Maybe
 import           Data.String
 import           Data.Word
 import           Language.Haskell.TH
+import           Prelude hiding (mapM)
 import           System.Posix.Types (Fd(..))
 
 data GenerationParams = GenerationParams
