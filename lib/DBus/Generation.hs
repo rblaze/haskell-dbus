@@ -14,6 +14,7 @@ import qualified Data.ByteString as BS
 import qualified Data.Map as Map
 import           Data.Maybe
 import           Data.String
+import           Data.Traversable
 import           Data.Word
 import           Language.Haskell.TH
 import           Prelude hiding (mapM)
