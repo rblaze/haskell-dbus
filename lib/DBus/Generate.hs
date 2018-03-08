@@ -69,17 +69,27 @@ mkFunD name argNames body =
   FunD name [Clause (map VarP argNames) (NormalB body) []]
 
 generateClient :: GenerationParams -> I.Interface -> Q [Dec]
-generateClient params interface@I.Interface{ I.interfaceName = name} = do
-  let params' = params { genInterfaceName = coerce name }
+generateClient params
+               I.Interface{ I.interfaceName = name
+                          , I.interfaceProperties = properties
+                          , I.interfaceMethods = methods
+                          } =
+  let params' = params { genInterfaceName = coerce name } in
   (fmap concat) <$> sequenceA $
-                  (map (generateClientMethod params') $
-                    I.interfaceMethods interface)
+                  (map (generateClientMethod params') methods)
                   ++
-                  (map (generateClientProperty params') $
-                    I.interfaceProperties interface)
+                  (map (generateClientProperty params') properties)
 
 maybeName :: a -> Bool -> Maybe a
 maybeName name condition = if condition then Just name else Nothing
+
+makeToVariantApp :: Name -> Exp
+makeToVariantApp name = AppE (VarE 'T.toVariant) $ VarE name
+
+buildGeneratedSignature :: Bool -> Bool -> Type -> Type
+buildGeneratedSignature takeBusArg takeObjectPathArg =
+  addTypeArg (ConT ''C.Client) . addTypeArgIf takeBusArg (ConT ''T.BusName) .
+  addTypeArgIf takeObjectPathArg (ConT ''T.ObjectPath)
 
 getSetMethodCallParams ::
   Name -> Maybe Name -> Maybe Name -> ExpQ -> ExpQ
@@ -141,8 +151,7 @@ generateClientMethod GenerationParams
     methodArgNames <- buildArgNames
     fromVariantOutputNames <- buildOutputNames
     finalOutputNames <- buildOutputNames
-    let makeToVariantApp name = AppE (VarE 'T.toVariant) $ VarE name
-        variantListExp = map makeToVariantApp methodArgNames
+    let variantListExp = map makeToVariantApp methodArgNames
         makeFromVariantApp name = AppE (VarE 'T.fromVariant) $ VarE name
         mapOrHead fn names cons =
           case outputLength of
@@ -196,15 +205,13 @@ generateClientMethod GenerationParams
             1 -> getArgType $ I.methodArgType $ head outputArgs
             _ -> foldl addOutArg (TupleT outputLength) outputArgs
         addOutArg target arg = AppT target $ getArgType $ I.methodArgType arg
-        fullSignature = addTypeArg (ConT ''C.Client) $
-                        addTypeArgIf takeBusArg (ConT ''T.BusName) $
-                        addTypeArgIf takeObjectPathArg (ConT ''T.ObjectPath) methodSignature
+        fullSignature = buildGeneratedSignature takeBusArg takeObjectPathArg methodSignature
         fullArgNames =
           clientN:(addArgIf takeBusArg busN $
                              addArgIf takeObjectPathArg
                                        objectPathN methodArgNames)
         definitionDec = SigD functionN fullSignature
-        function = FunD functionN [Clause (map VarP fullArgNames) (NormalB functionBody) []]
+        function = mkFunD functionN fullArgNames functionBody
     return $ methodCallDef ++ [definitionDec, function]
 
 generateClientProperty :: GenerationParams -> I.Property -> Q [Dec]
@@ -260,13 +267,11 @@ generateClientProperty GenerationParams
     methodCallDefs <- getMethodCallDefDec
     getterBody <- makeGetterBody
     setterBody <- makeSetterBody
-    let buildSignature = addTypeArg (ConT ''C.Client) .
-                         addTypeArgIf takeBusArg (ConT ''T.BusName) .
-                         addTypeArgIf takeObjectPathArg (ConT ''T.ObjectPath)
-        getterSigType = buildSignature $
-                        AppT (ConT ''IO) $
-                             AppT (AppT (ConT ''Either)
-                                          (ConT ''M.MethodError)) $ getArgType propType
+    let buildSignature = buildGeneratedSignature takeBusArg takeObjectPathArg
+        getterSigType =
+          buildSignature $ AppT (ConT ''IO) $
+                         AppT (AppT (ConT ''Either)
+                                      (ConT ''M.MethodError)) $ getArgType propType
         setterSigType = buildSignature $
                         AppT (ConT ''IO) $ AppT (ConT ''Maybe) (ConT ''M.MethodError)
         buildArgs rest = clientN:(addArgIf takeBusArg busN $
@@ -285,4 +290,95 @@ generateClientProperty GenerationParams
         setterDefs = if writable then [setterSignature, setterFunction] else []
     return $ methodCallDefs ++ getterDefs ++ setterDefs
 
--- flycheck-ghc-args: ("-Wno-unused-pattern-binds")
+generateSignalsFromInterface :: GenerationParams -> I.Interface -> Q [Dec]
+generateSignalsFromInterface params
+                             I.Interface{ I.interfaceName = name
+                                        , I.interfaceSignals = signals
+                                        } = generateSignals params name signals
+
+generateSignals :: GenerationParams -> T.InterfaceName -> [I.Signal] -> Q [Dec]
+generateSignals params name signals =
+  (fmap concat) <$> sequenceA $
+                map (generateSignal params { genInterfaceName = coerce name })
+                    signals
+
+generateSignal :: GenerationParams -> I.Signal -> Q [Dec]
+generateSignal GenerationParams
+                 { getTHType = getArgType
+                 , genInterfaceName = signalInterface
+                 , genObjectPath = objectPathM
+                 , genBusName = busNameM
+                 }
+               I.Signal
+                 { I.signalName = name
+                 , I.signalArgs = args
+                 } =
+  do
+    let buildArgNames = mapM (newName . I.signalArgName) args
+
+    argNames <- buildArgNames
+    objectPathN <- newName "objectPath"
+    variantsN <- newName "variants"
+    signalN <- newName "signal"
+    clientN <- newName "client"
+    busN <- newName "busName"
+
+    let variantListExp = map makeToVariantApp argNames
+        signalString = coerce name
+        signalDefN = mkName $ "signalFor" ++ signalString
+        takeBusArg = isNothing busNameM
+        takeObjectPathArg = isNothing objectPathM
+        defObjectPath = fromMaybe (fromString "/") objectPathM
+        getSignalDefDec = [d|
+          $( varP signalDefN ) =
+            M.Signal { M.signalPath = defObjectPath
+                     , M.signalInterface = signalInterface
+                     , M.signalMember = name
+                     , M.signalDestination = Nothing
+                     , M.signalSender = Nothing
+                     , M.signalBody = []
+                     }
+                 |]
+    let getSetSignal  =
+          case (takeBusArg, takeObjectPathArg) of
+            (True, True) -> [|
+                               $( varE signalDefN )
+                                  { M.signalDestination = Just $( varE busN )
+                                  , M.signalPath = $( varE objectPathN )
+                                  , M.signalBody = $( varE variantsN )
+                                  }
+                             |]
+            (True, False) -> [|
+                                $( varE signalDefN )
+                                  { M.signalDestination = Just $( varE busN )
+                                  , M.signalBody = $( varE variantsN )
+                                  }
+                              |]
+            (False, True) -> [|
+                                $( varE signalDefN )
+                                  { M.signalPath = $( varE objectPathN )
+                                  , M.signalBody = $( varE variantsN )
+                                  }
+                              |]
+            (False, False) -> [|
+                                 $( varE signalDefN ) { M.signalBody = $( varE variantsN ) }
+                              |]
+        getFunctionBody = [|
+                             let $( varP variantsN ) = $( return $ ListE variantListExp )
+                                 $( varP signalN ) = $( getSetSignal )
+                             in
+                               emit $( varE clientN ) $( varE signalN )
+                            |]
+    signalDef <- getSignalDefDec
+    functionBody <- getFunctionBody
+    let methodSignature = foldr addInArg (AppT (ConT ''IO) (TupleT 0)) args
+        addInArg arg = addTypeArg $ getArgType $ I.signalArgType arg
+        fullArgNames = clientN:(addArgIf takeBusArg busN $
+                             addArgIf takeObjectPathArg
+                                       objectPathN argNames)
+        fullSignature =
+            buildGeneratedSignature takeBusArg takeObjectPathArg methodSignature
+        functionN = mkName $ "emit" ++ signalString
+        signatureD = SigD functionN fullSignature
+        function = mkFunD functionN fullArgNames functionBody
+    return $ signalDef ++ [signatureD, function]
