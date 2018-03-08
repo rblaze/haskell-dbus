@@ -644,6 +644,9 @@ newtype ObjectPath = ObjectPath String
 pathElements :: ObjectPath -> [String]
 pathElements = filter (not . null) . splitOn "/" . coerce
 
+fromElements :: [String] -> ObjectPath
+fromElements elems = objectPath_ $ '/':(intercalate "/" elems)
+
 formatObjectPath :: ObjectPath -> String
 formatObjectPath (ObjectPath s) = s
 

@@ -59,11 +59,18 @@ test_Client = withDaemon "client" $ \addr -> do
     clientB <- connect addr
 
     export clientA "/"
-        [ method "com.example.Echo" "Echo" (signature_ [TypeString]) (signature_ []) (
-            \msg -> if map variantType (methodCallBody msg) == [TypeString]
-                then return (ReplyReturn (methodCallBody msg))
-                else return (ReplyError "com.example.Error" [toVariant ("bad body: " ++ show (methodCallBody msg))]))
-        ]
+           defaultInterface
+           { interfaceName = "com.example.Echo"
+           , interfaceMethods =
+               [ Method "Echo" (signature_ [TypeString]) (signature_ []) (
+                 \msg -> if map variantType (methodCallBody msg) == [TypeString]
+                         then return (ReplyReturn (methodCallBody msg))
+                         else
+                           return $ ReplyError
+                                    "com.example.Error"
+                                    [toVariant ("bad body: " ++ show (methodCallBody msg))])
+               ]
+           }
 
     -- TODO: get bus address of clientA with a function
     let busAddrA = ":1.0"

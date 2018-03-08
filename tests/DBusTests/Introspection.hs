@@ -45,13 +45,15 @@ test_XmlPassthrough = testProperty "xml-passthrough" $ \obj -> let
     Just xml = I.formatXML obj
     in I.parseXML path xml == Just obj
 
+buildEmptyObject name = I.Object (objectPath_ name) [] []
+
 test_XmlParse :: TestTree
 test_XmlParse = testCase "xml-parse" $ do
     -- root object path can be inferred
     I.parseXML (objectPath_ "/") "<node><node name='foo'/></node>"
-        @?= Just (I.object (objectPath_ "/"))
+        @?= Just (buildEmptyObject "/")
             { I.objectChildren =
-                [ I.object (objectPath_ "/foo")
+                [ buildEmptyObject "/foo"
                 ]
             }
 
@@ -82,19 +84,17 @@ test_XmlParseFailed = testCase "xml-parse-failed" $ do
 test_XmlWriteFailed :: TestTree
 test_XmlWriteFailed = testCase "xml-write-failed" $ do
     -- child's object path isn't under parent's
-    Nothing @=? I.formatXML (I.Object (objectPath_ "/foo") [] [])
+    Nothing @=? I.formatXML (buildEmptyObject "/foo")
         { I.objectChildren =
-            [ I.Object (objectPath_ "/bar") [] []
-            ]
+            [ buildEmptyObject "/bar" ]
         }
 
     -- invalid type
-    Nothing @=? I.formatXML $
-            I.Object (objectPath_ "/foo")
-               [ I.Interface (interfaceName_ "/bar") []
-                               [ I.Property "prop" (TypeDictionary TypeVariant TypeVariant) True True ]
-                               []
-               ] [] []
+    Nothing @=? I.formatXML
+            ((buildEmptyObject "/foo")
+            { I.objectInterfaces =
+                [ I.Interface (interfaceName_ "/bar") [] []
+                                [ I.Property "prop" (TypeDictionary TypeVariant TypeVariant) True True ]]})
 
 instance Arbitrary Type where
     arbitrary = oneof [atom, container] where

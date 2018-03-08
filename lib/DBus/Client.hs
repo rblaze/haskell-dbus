@@ -178,7 +178,6 @@ import qualified Data.Traversable as T
 import Data.Typeable (Typeable)
 import Data.Unique
 import Data.Word (Word32)
-import Text.Printf
 
 import DBus
 import DBus.Internal.Message
@@ -583,7 +582,8 @@ findMethodOrPropForCall
         targetInfo <- maybeToEither errorUnknownObject $ findPath path info
         -- TODO: We should probably return a better error here:
         outputXML <- maybeToEither errorUnknownObject $
-                     I.formatXML $ buildIntrospectionObject (coerce path) targetInfo
+                     I.formatXML $ buildIntrospectionObject
+                        (T.pathElements path) targetInfo
         return $ return $ makeReply outputXML
 
 findInterfaceAtPath
@@ -1254,14 +1254,14 @@ alwaysPresentInterfaces =
                 }
   ]
 
-buildIntrospectionObject :: String -> PathInfo -> I.Object
-buildIntrospectionObject path
+buildIntrospectionObject :: [String] -> PathInfo -> I.Object
+buildIntrospectionObject elems
                          PathInfo
                          { _pathInterfaces = interfaces
                          , _pathChildren = infoChildren
                          } =
   I.Object
-     { I.objectPath = fromString path
+     { I.objectPath = T.fromElements elems
      , I.objectInterfaces =
        (if null interfaces then [] else alwaysPresentInterfaces) ++
        map buildIntrospectionInterface interfaces
@@ -1270,7 +1270,7 @@ buildIntrospectionObject path
      , I.objectChildren = M.elems $ M.mapWithKey recurseFromString infoChildren
      }
     where recurseFromString stringNode nodeInfo =
-            flip buildIntrospectionObject nodeInfo $ printf "%s/%s" path stringNode
+            flip buildIntrospectionObject nodeInfo $ elems ++ [stringNode]
 
 buildIntrospectionInterface :: Interface -> I.Interface
 buildIntrospectionInterface Interface
