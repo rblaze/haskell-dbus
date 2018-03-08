@@ -61,6 +61,9 @@ addTypeArg argT = AppT (AppT ArrowT argT)
 addTypeArgIf :: Bool -> Type -> Type -> Type
 addTypeArgIf condition theType = if condition then addTypeArg theType else id
 
+unitIOType :: Type
+unitIOType = AppT (ConT ''IO) (TupleT 0)
+
 addArgIf :: Bool -> a -> [a] -> [a]
 addArgIf condition name = if condition then (name:) else id
 
@@ -85,6 +88,19 @@ maybeName name condition = if condition then Just name else Nothing
 
 makeToVariantApp :: Name -> Exp
 makeToVariantApp name = AppE (VarE 'T.toVariant) $ VarE name
+
+makeFromVariantApp :: Name -> Exp
+makeFromVariantApp name = AppE (VarE 'T.fromVariant) $ VarE name
+
+makeJustPattern :: Name -> Pat
+makeJustPattern name = ConP 'Just [VarP name]
+
+mapOrHead ::
+  (Num a, Eq a) => a -> (t -> b) -> [t] -> ([b] -> b) -> b
+mapOrHead outputLength fn names cons =
+  case outputLength of
+    1 -> fn $ head names
+    _ -> cons $ map fn names
 
 buildGeneratedSignature :: Bool -> Bool -> Type -> Type
 buildGeneratedSignature takeBusArg takeObjectPathArg =
@@ -152,15 +168,10 @@ generateClientMethod GenerationParams
     fromVariantOutputNames <- buildOutputNames
     finalOutputNames <- buildOutputNames
     let variantListExp = map makeToVariantApp methodArgNames
-        makeFromVariantApp name = AppE (VarE 'T.fromVariant) $ VarE name
-        mapOrHead fn names cons =
-          case outputLength of
-            1 -> fn $ head fromVariantOutputNames
-            _ -> cons $ map fn names
-        fromVariantExp = mapOrHead makeFromVariantApp fromVariantOutputNames TupE
-        finalResultTuple = mapOrHead VarE finalOutputNames TupE
-        makeJustPattern name = ConP 'Just [VarP name]
-        maybeExtractionPattern = mapOrHead makeJustPattern finalOutputNames TupP
+        mapOrHead' = mapOrHead outputLength
+        fromVariantExp = mapOrHead' makeFromVariantApp fromVariantOutputNames TupE
+        finalResultTuple = mapOrHead' VarE finalOutputNames TupE
+        maybeExtractionPattern = mapOrHead' makeJustPattern finalOutputNames TupP
         getMethodCallDefDec = [d|
                $( varP methodCallDefN ) =
                  M.MethodCall { M.methodCallPath = defObjectPath
@@ -185,7 +196,7 @@ generateClientMethod GenerationParams
                return $ case $( varE callResultN ) of
                  Right $( varP replySuccessN ) ->
                    case (M.methodReturnBody $( varE replySuccessN )) of
-                     $( return $ ListP $ map VarP fromVariantOutputNames) ->
+                     $( return $ ListP $ map VarP fromVariantOutputNames ) ->
                        case $( return $ fromVariantExp ) of
                          $( return maybeExtractionPattern ) -> Right $( return finalResultTuple )
                          _ -> Left C.errorInvalidParameters
@@ -317,10 +328,16 @@ generateSignal GenerationParams
     let buildArgNames = mapM (newName . I.signalArgName) args
 
     argNames <- buildArgNames
+    fromVariantOutputNames <- buildArgNames
+    toHandlerOutputNames <- buildArgNames
     objectPathN <- newName "objectPath"
     variantsN <- newName "variants"
     signalN <- newName "signal"
+    receivedSignalN <- newName "signal"
     clientN <- newName "client"
+    handlerArgN <- newName "handlerArg"
+    matchRuleN <- newName "matchRule"
+    matchRuleArgN <- newName "matchRuleArg"
     busN <- newName "busName"
 
     let variantListExp = map makeToVariantApp argNames
@@ -329,6 +346,7 @@ generateSignal GenerationParams
         takeBusArg = isNothing busNameM
         takeObjectPathArg = isNothing objectPathM
         defObjectPath = fromMaybe (fromString "/") objectPathM
+        argCount = length argNames
         getSignalDefDec = [d|
           $( varP signalDefN ) =
             M.Signal { M.signalPath = defObjectPath
@@ -339,7 +357,15 @@ generateSignal GenerationParams
                      , M.signalBody = []
                      }
                  |]
-    let getSetSignal  =
+    let mapOrHead' = mapOrHead argCount
+        fromVariantExp = mapOrHead' makeFromVariantApp fromVariantOutputNames TupE
+        maybeExtractionPattern = mapOrHead' makeJustPattern toHandlerOutputNames TupP
+        applyToName toApply n = AppE toApply $ VarE n
+        finalApplication = foldl applyToName (VarE handlerArgN)
+                           (receivedSignalN:toHandlerOutputNames)
+        makeHandlerN = mkName $ "makeHandlerFor" ++ signalString
+        makeHandlerCall = AppE (VarE makeHandlerN) (VarE handlerArgN)
+        getSetSignal  =
           case (takeBusArg, takeObjectPathArg) of
             (True, True) -> [|
                                $( varE signalDefN )
@@ -363,15 +389,33 @@ generateSignal GenerationParams
             (False, False) -> [|
                                  $( varE signalDefN ) { M.signalBody = $( varE variantsN ) }
                               |]
-        getFunctionBody = [|
+        getEmitBody = [|
                              let $( varP variantsN ) = $( return $ ListE variantListExp )
                                  $( varP signalN ) = $( getSetSignal )
                              in
                                emit $( varE clientN ) $( varE signalN )
                             |]
+        getMakeHandlerBody = [|
+          case M.signalBody $( varE receivedSignalN ) of
+            $( return $ ListP $ map VarP fromVariantOutputNames ) ->
+              case $( return $ fromVariantExp ) of
+                $( return maybeExtractionPattern ) -> $( return finalApplication )
+                _ -> return ()
+            _ -> return ()
+              |]
+        getRegisterBody = [|
+          let $( varP matchRuleN ) = $( varE matchRuleArgN )
+                                       { C.matchInterface = Just signalInterface
+                                       , C.matchMember = Just name
+                                       }
+          in
+            C.addMatch $( varE clientN ) $( varE matchRuleN ) $ $( return makeHandlerCall )
+            |]
+    registerBody <- getRegisterBody
+    makeHandlerBody <- getMakeHandlerBody
     signalDef <- getSignalDefDec
-    functionBody <- getFunctionBody
-    let methodSignature = foldr addInArg (AppT (ConT ''IO) (TupleT 0)) args
+    emitBody <- getEmitBody
+    let methodSignature = foldr addInArg unitIOType args
         addInArg arg = addTypeArg $ getArgType $ I.signalArgType arg
         fullArgNames = clientN:(addArgIf takeBusArg busN $
                              addArgIf takeObjectPathArg
@@ -379,6 +423,21 @@ generateSignal GenerationParams
         fullSignature =
             buildGeneratedSignature takeBusArg takeObjectPathArg methodSignature
         functionN = mkName $ "emit" ++ signalString
-        signatureD = SigD functionN fullSignature
-        function = mkFunD functionN fullArgNames functionBody
-    return $ signalDef ++ [signatureD, function]
+        emitSignature = SigD functionN fullSignature
+        emitFunction = mkFunD functionN fullArgNames emitBody
+        handlerType = addTypeArg (ConT ''M.Signal) methodSignature
+        registerN = mkName $ "registerFor" ++ signalString
+        registerArgs = [clientN, matchRuleArgN, handlerArgN]
+        registerFunction = mkFunD registerN registerArgs registerBody
+        registerType = addTypeArg (ConT ''C.Client) $
+                       addTypeArg (ConT ''C.MatchRule) $
+                       addTypeArg handlerType $ AppT (ConT ''IO) (ConT ''C.SignalHandler)
+        registerSignature = SigD registerN registerType
+        makeHandlerArgs = [handlerArgN, receivedSignalN]
+        makeHandlerFunction = mkFunD makeHandlerN makeHandlerArgs makeHandlerBody
+        makeHandlerType = addTypeArg handlerType $ addTypeArg (ConT ''M.Signal) unitIOType
+        makeHandlerSignature = SigD makeHandlerN makeHandlerType
+    return $ signalDef ++ [ emitSignature, emitFunction
+                          , makeHandlerSignature, makeHandlerFunction
+                          , registerSignature, registerFunction
+                          ]
