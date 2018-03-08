@@ -4,8 +4,8 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE IncoherentInstances #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE DeriveLift #-}
 
 -- Copyright (C) 2009-2012 John Millikin <john@john-millikin.com>
 --
@@ -49,7 +49,7 @@ import           Data.Vector (Vector)
 import           Data.Word
 import qualified Foreign
 import           GHC.Generics
-import qualified Language.Haskell.TH.Syntax as TH
+import qualified Language.Haskell.TH.Lift as THL
 import           System.IO.Unsafe (unsafePerformIO)
 import           System.Posix.Types (Fd)
 import           Text.ParserCombinators.Parsec ((<|>), oneOf)
@@ -641,13 +641,13 @@ varToVal a = case toVariant a of
 -- <http://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-marshaling-object-path>
 -- for details.
 newtype ObjectPath = ObjectPath String
-    deriving (Eq, Ord, Show, NFData, TH.Lift)
+    deriving (Eq, Ord, Show, NFData)
 
 pathElements :: ObjectPath -> [String]
 pathElements = filter (not . null) . splitOn "/" . coerce
 
 fromElements :: [String] -> ObjectPath
-fromElements elems = objectPath_ $ '/':(intercalate "/" elems)
+fromElements elems = objectPath_ $ '/':intercalate "/" elems
 
 formatObjectPath :: ObjectPath -> String
 formatObjectPath (ObjectPath s) = s
@@ -690,7 +690,7 @@ parserObjectPath = root <|> object where
 -- <http://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-names-interface>
 -- for details.
 newtype InterfaceName = InterfaceName String
-    deriving (Eq, Ord, Show, NFData, TH.Lift)
+    deriving (Eq, Ord, Show, NFData)
 
 formatInterfaceName :: InterfaceName -> String
 formatInterfaceName (InterfaceName s) = s
@@ -730,7 +730,7 @@ parserInterfaceName = name >> Parsec.eof where
 -- <http://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-names-member>
 -- for details.
 newtype MemberName = MemberName String
-    deriving (Eq, Ord, Show, NFData, TH.Lift)
+    deriving (Eq, Ord, Show, NFData)
 
 formatMemberName :: MemberName -> String
 formatMemberName (MemberName s) = s
@@ -797,7 +797,7 @@ instance IsVariant ErrorName where
 -- <http://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-names-bus>
 -- for details.
 newtype BusName = BusName String
-    deriving (Eq, Ord, Show, NFData, TH.Lift)
+    deriving (Eq, Ord, Show, NFData)
 
 formatBusName :: BusName -> String
 formatBusName (BusName s) = s
@@ -1358,3 +1358,5 @@ maybeParseString :: Parsec.Parser a -> String -> Maybe a
 maybeParseString parser s = case Parsec.parse parser "" s of
     Left _ -> Nothing
     Right a -> Just a
+
+THL.deriveLiftMany [''BusName, ''ObjectPath, ''InterfaceName, ''MemberName]
