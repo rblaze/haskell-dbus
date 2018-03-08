@@ -63,7 +63,7 @@
 module DBus.Client
     (
     -- * Clients
-      Client
+      Client(..)
 
     -- * Path/Interface storage
     , PathInfo(..)
