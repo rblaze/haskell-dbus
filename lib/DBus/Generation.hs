@@ -7,6 +7,7 @@ import qualified DBus.Internal.Types as T
 import qualified DBus.Introspection as I
 import qualified Data.Char as Char
 import           Data.Coerce
+import           Data.Functor ((<$>))
 import           Data.Int
 import           Data.List
 import qualified Data.Map as Map
