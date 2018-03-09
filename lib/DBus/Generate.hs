@@ -397,11 +397,11 @@ generateSignal GenerationParams
                                  $( varE signalDefN ) { M.signalBody = $( varE variantsN ) }
                               |]
         getEmitBody = [|
-                             let $( varP variantsN ) = $( return $ ListE variantListExp )
-                                 $( varP signalN ) = $( getSetSignal )
-                             in
-                               emit $( varE clientN ) $( varE signalN )
-                            |]
+          let $( varP variantsN ) = $( return $ ListE variantListExp )
+              $( varP signalN ) = $( getSetSignal )
+          in
+            emit $( varE clientN ) $( varE signalN )
+          |]
         getMakeHandlerBody = [|
           case M.signalBody $( varE receivedSignalN ) of
             $( return $ ListP $ map VarP fromVariantOutputNames ) ->

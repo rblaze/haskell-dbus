@@ -146,6 +146,7 @@ test-suite dbus_tests
     DBusTests.BusName
     DBusTests.Client
     DBusTests.ErrorName
+    DBusTests.Generation
     DBusTests.Integration
     DBusTests.InterfaceName
     DBusTests.Introspection
@@ -155,6 +156,7 @@ test-suite dbus_tests
     DBusTests.Serialization
     DBusTests.Signature
     DBusTests.Socket
+    DBusTests.TH
     DBusTests.Transport
     DBusTests.Util
     DBusTests.Variant

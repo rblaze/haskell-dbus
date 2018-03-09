@@ -18,6 +18,7 @@ module DBusTests.Client (test_Client) where
 import Control.Concurrent
 import Control.Exception (try)
 import Data.Word
+import Data.Int
 import Test.Tasty
 import Test.Tasty.HUnit
 import qualified Data.Map as Map
@@ -27,6 +28,9 @@ import qualified DBus.Client
 import qualified DBus.Socket
 
 import DBusTests.Util
+import qualified DBusTests.TH as TH
+import qualified DBusTests.Generation as G
+import qualified DBus.Internal.Message as M
 
 doExport client path name methods =
   DBus.Client.export client (objectPath_ path) DBus.Client.defaultInterface
@@ -39,6 +43,7 @@ test_Client = testGroup "Client" $
     [ test_RequestName
     , test_ReleaseName
     , test_Call
+    , test_CallWithGeneration
     , test_CallNoReply
     , test_AddMatch
     , test_AutoMethod
@@ -282,6 +287,31 @@ test_Call = withConnectedClient $ \res -> testCase "call" $ do
         reply <- requireRight response
 
         reply @?= methodReturn (methodReturnSerial reply)
+
+test_CallWithGeneration :: TestTree
+test_CallWithGeneration = withConnectedClient $ \res -> testCase "callGeneration" $ do
+    (sock, client) <- res
+    let string = "test"
+        busName = busName_ "org.freeDesktop.DBus"
+        int = 32 :: Int32
+        path = objectPath_ "/a/b/c"
+        returnValue = Map.fromList [(string, int)]
+
+    DBus.Client.export client path G.testInterface
+
+    do
+        response <- stubMethodCall sock
+            (TH.sampleMethod1 client busName path string int)
+            (methodCall path (DBus.Client.interfaceName G.testInterface) $
+                        memberName_ "SampleMethod1")
+             { methodCallDestination = Just busName
+             , methodCallBody = [toVariant string, toVariant int]
+             }
+            (\x -> (methodReturn x)
+                   { methodReturnBody = [toVariant returnValue]})
+        reply <- requireRight response
+
+        reply @?= returnValue
 
 test_CallNoReply :: TestTree
 test_CallNoReply = withConnectedClient $ \res -> testCase "callNoReply" $ do
