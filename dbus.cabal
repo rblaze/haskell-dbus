@@ -101,7 +101,7 @@ library
   exposed-modules:
     DBus
     DBus.Client
-    DBus.Generate
+    DBus.Generation
     DBus.Introspection
     DBus.Socket
     DBus.Transport

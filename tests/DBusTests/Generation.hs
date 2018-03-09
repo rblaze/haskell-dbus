@@ -3,7 +3,7 @@
 module DBusTests.Generation where
 
 import           DBus.Client
-import           DBus.Generate
+import           DBus.Generation
 import qualified DBus.Internal.Types as T
 import qualified DBus.Introspection as I
 import           Data.Int

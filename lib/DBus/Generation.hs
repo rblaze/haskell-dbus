@@ -1,5 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
-module DBus.Generate where
+module DBus.Generation where
 
 import           DBus.Client as C
 import qualified DBus.Internal.Message as M
