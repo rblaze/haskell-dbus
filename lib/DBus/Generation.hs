@@ -24,28 +24,35 @@ data GenerationParams = GenerationParams
   , getTHType :: T.Type -> Type
   }
 
+defaultGetDictType :: Type -> Type -> Type
+defaultGetDictType k v =
+  AppT (AppT (ConT ''Map.Map) k) (v)
+
 defaultGetTHType :: T.Type -> Type
-defaultGetTHType t =
-  case t of
-    T.TypeBoolean -> ConT ''Bool
-    T.TypeWord8 -> ConT ''Word8
-    T.TypeWord16 -> ConT ''Word16
-    T.TypeWord32 -> ConT ''Word32
-    T.TypeWord64 -> ConT ''Word64
-    T.TypeInt16 -> ConT ''Int16
-    T.TypeInt32 -> ConT ''Int32
-    T.TypeInt64 -> ConT ''Int64
-    T.TypeDouble -> ConT ''Double
-    T.TypeUnixFd -> ConT ''Fd
-    T.TypeString -> ConT ''String
-    T.TypeSignature -> ConT ''T.Signature
-    T.TypeObjectPath -> ConT ''T.ObjectPath
-    T.TypeVariant -> ConT ''T.Variant
-    T.TypeArray arrayType -> AppT ListT $ defaultGetTHType arrayType
-    T.TypeDictionary k v -> (AppT (AppT (ConT ''Map.Map)
-                                          (defaultGetTHType k))
-                             (defaultGetTHType v))
-    T.TypeStructure ts -> foldl AppT (TupleT $ length ts) $ map defaultGetTHType ts
+defaultGetTHType = buildGetTHType (AppT ListT) defaultGetDictType
+
+buildGetTHType ::
+  (Type -> Type) -> (Type -> Type -> Type) -> T.Type -> Type
+buildGetTHType arrayTypeBuilder dictTypeBuilder = fn
+  where fn t =
+          case t of
+            T.TypeBoolean -> ConT ''Bool
+            T.TypeWord8 -> ConT ''Word8
+            T.TypeWord16 -> ConT ''Word16
+            T.TypeWord32 -> ConT ''Word32
+            T.TypeWord64 -> ConT ''Word64
+            T.TypeInt16 -> ConT ''Int16
+            T.TypeInt32 -> ConT ''Int32
+            T.TypeInt64 -> ConT ''Int64
+            T.TypeDouble -> ConT ''Double
+            T.TypeUnixFd -> ConT ''Fd
+            T.TypeString -> ConT ''String
+            T.TypeSignature -> ConT ''T.Signature
+            T.TypeObjectPath -> ConT ''T.ObjectPath
+            T.TypeVariant -> ConT ''T.Variant
+            T.TypeArray arrayType -> arrayTypeBuilder $ fn arrayType
+            T.TypeDictionary k v -> dictTypeBuilder (fn k) (fn v)
+            T.TypeStructure ts -> foldl AppT (TupleT $ length ts) $ map fn ts
 
 newNameDef n =
   case n of
