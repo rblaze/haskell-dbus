@@ -99,6 +99,7 @@ module DBus.Client
     , makeMethod
     , AutoMethod
     , autoMethod
+    , autoMethodWithMsg
     , Property(..)
     , autoProperty
     , readOnlyProperty
@@ -515,6 +516,7 @@ dispatch client = go where
             Just mvar -> putMVar mvar result
             Nothing -> return ()
 
+-- TODO: Make actual interface objects for property and introspection methods
 findMethodOrPropForCall
   :: PathInfo
   -> MethodCall
@@ -823,9 +825,12 @@ dummyMethodError =
               , methodErrorBody = []
               }
 
-unpackVariant :: IsValue a => Variant -> Either MethodError a
-unpackVariant variant =
-  maybeToEither dummyMethodError { methodErrorBody = [variant] } $ fromVariant variant
+unpackVariant :: IsValue a => MethodCall -> Variant -> Either MethodError a
+unpackVariant MethodCall { methodCallSender = sender } variant =
+  maybeToEither dummyMethodError { methodErrorBody =
+                                     [variant, toVariant $ show $ variantType variant]
+                                 , methodErrorSender = sender
+                                 } $ fromVariant variant
 
 -- | Retrieve a property using the method call parameters that were provided.
 --
@@ -835,7 +840,7 @@ getProperty client
             msg@MethodCall { methodCallInterface = interface
                            , methodCallMember = member
                            } =
-  (>>= (unpackVariant . head . methodReturnBody)) <$>
+  (>>= (unpackVariant msg . head . methodReturnBody)) <$>
     call client msg { methodCallInterface = Just propertiesInterface
                     , methodCallMember = getMemberName
                     , methodCallBody = [ toVariant (coerce (orDefaultInterface interface) :: String)
@@ -845,7 +850,7 @@ getProperty client
 
 getPropertyValue :: IsValue a => Client -> MethodCall -> IO (Either MethodError a)
 getPropertyValue client msg =
-  (>>= unpackVariant) <$> getProperty client msg
+  (>>= unpackVariant msg) <$> getProperty client msg
 
 setProperty :: Client -> MethodCall -> Variant -> IO (Either MethodError MethodReturn)
 setProperty client
@@ -1103,11 +1108,14 @@ instance (IsValue a, AutoMethod fn) => AutoMethod (a -> fn) where
 --
 -- See 'method' for exporting functions with user-defined types.
 autoMethod :: (AutoMethod fn) => MemberName -> fn -> Method
-autoMethod name fun = makeMethod name inSig outSig io where
-    (typesIn, typesOut) = funTypes fun
+autoMethod name fun = autoMethodWithMsg name $ const fun
+
+autoMethodWithMsg :: (AutoMethod fn) => MemberName -> (MethodCall -> fn) -> Method
+autoMethodWithMsg name fun = makeMethod name inSig outSig io where
+    (typesIn, typesOut) = funTypes (fun undefined)
     inSig = fromMaybe (invalid "input") $ signature typesIn
     outSig = fromMaybe (invalid "output") $ signature typesOut
-    io msg = apply fun (methodCallBody msg)
+    io msg = apply (fun msg) (methodCallBody msg)
 
     invalid label = error (concat
         [ "Method "
