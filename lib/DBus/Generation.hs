@@ -10,6 +10,7 @@ import           Data.Coerce
 import           Data.Functor ((<$>))
 import           Data.Int
 import           Data.List
+import qualified Data.ByteString as BS
 import qualified Data.Map as Map
 import           Data.Maybe
 import           Data.String
@@ -37,6 +38,9 @@ buildGetTHType ::
 buildGetTHType arrayTypeBuilder dictTypeBuilder = fn
   where fn t =
           case t of
+            -- Because of a quirk in how we unmarshal things, we currently HAVE
+            -- to decorde arrays of Word8 in this way.
+            T.TypeArray T.TypeWord8 -> ConT ''BS.ByteString
             T.TypeBoolean -> ConT ''Bool
             T.TypeWord8 -> ConT ''Word8
             T.TypeWord16 -> ConT ''Word16
