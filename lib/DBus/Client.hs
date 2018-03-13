@@ -163,7 +163,7 @@ import Control.Applicative
 import Control.Arrow
 import qualified Control.Exception
 import Control.Exception (SomeException, throwIO)
-import Control.Lens hiding (coerce)
+import Control.Lens
 import Control.Monad
 import Data.Bits ((.|.))
 import Data.Coerce
@@ -270,7 +270,9 @@ data PathInfo = PathInfo
   }
 
 -- NOTE: This instance is needed to make modifyNothingHandler work, but it
--- shouldn't really be used for much else.
+-- shouldn't really be used for much else. A more complete implementation can't
+-- be provided because PathInfo > Interface > Method conatain functions which
+-- can't/don't have an eq instance.
 instance Eq PathInfo where
   a == b = null (_pathInterfaces a) &&
            null (_pathInterfaces b) &&
