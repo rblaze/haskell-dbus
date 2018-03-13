@@ -46,6 +46,12 @@ defaultGetTHType t =
                              (defaultGetTHType v))
     T.TypeStructure ts -> foldl AppT (TupleT $ length ts) $ map defaultGetTHType ts
 
+newNameDef n =
+  case n of
+    "" -> newName "arg"
+    "data" -> newName "arg"
+    _ -> newName n
+
 defaultGenerationParams :: GenerationParams
 defaultGenerationParams =
   GenerationParams
@@ -148,8 +154,8 @@ generateClientMethod GenerationParams
   do
     let (inputArgs, outputArgs) = partition ((== I.In) . I.methodArgDirection) args
         outputLength = length outputArgs
-        buildArgNames = mapM (newName . I.methodArgName) inputArgs
-        buildOutputNames = mapM (newName . I.methodArgName) outputArgs
+        buildArgNames = mapM (newNameDef . I.methodArgName) inputArgs
+        buildOutputNames = mapM (newNameDef . I.methodArgName) outputArgs
         takeBusArg = isNothing busNameM
         takeObjectPathArg = isNothing objectPathM
         functionNameFirst:functionNameRest = coerce methodNameMN
@@ -325,7 +331,7 @@ generateSignal GenerationParams
                  , I.signalArgs = args
                  } =
   do
-    let buildArgNames = mapM (newName . I.signalArgName) args
+    let buildArgNames = mapM (newNameDef . I.signalArgName) args
 
     argNames <- buildArgNames
     fromVariantOutputNames <- buildArgNames
