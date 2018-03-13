@@ -23,32 +23,34 @@
 
 module DBus.Internal.Types where
 
-import Control.DeepSeq
-import Control.Exception (Exception, handle, throwIO)
-import Control.Monad (liftM, when, (>=>))
-import Data.ByteString (ByteString)
-import Data.Char (ord)
-import Data.Int
-import Data.List (intercalate)
-import Data.Map (Map)
-import Data.Text (Text)
-import Data.Typeable (Typeable)
-import Data.Vector (Vector)
-import Data.Word
-import GHC.Generics
-import System.IO.Unsafe (unsafePerformIO)
-import System.Posix.Types (Fd)
-import Text.ParserCombinators.Parsec ((<|>), oneOf)
+import           Control.DeepSeq
+import           Control.Exception (Exception, handle, throwIO)
+import           Control.Monad (liftM, when, (>=>))
 import qualified Data.ByteString
+import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as Char8
 import qualified Data.ByteString.Lazy
 import qualified Data.ByteString.Unsafe
+import           Data.Char (ord)
+import           Data.Coerce
+import           Data.Int
+import           Data.List (intercalate)
+import           Data.List.Split (splitOn)
 import qualified Data.Map
+import           Data.Map (Map)
 import qualified Data.String
 import qualified Data.Text
+import           Data.Text (Text)
 import qualified Data.Text.Lazy
+import           Data.Typeable (Typeable)
 import qualified Data.Vector
+import           Data.Vector (Vector)
+import           Data.Word
 import qualified Foreign
+import           GHC.Generics
+import           System.IO.Unsafe (unsafePerformIO)
+import           System.Posix.Types (Fd)
+import           Text.ParserCombinators.Parsec ((<|>), oneOf)
 import qualified Text.ParserCombinators.Parsec as Parsec
 
 data Type
@@ -319,6 +321,10 @@ parseSigFull bytes = unsafePerformIO io where
                             t1 <- parseAtom c1 return (throwIO SigParseError)
                             return (ii' + 1, TypeDictionary t1 t2)
                         else throwIO SigParseError
+
+extractFromVariant :: IsValue a => Variant -> Maybe a
+extractFromVariant (Variant (ValueVariant v)) = extractFromVariant v
+extractFromVariant v = fromVariant v
 
 class IsVariant a where
     toVariant :: a -> Variant
@@ -634,6 +640,12 @@ varToVal a = case toVariant a of
 -- for details.
 newtype ObjectPath = ObjectPath String
     deriving (Eq, Ord, Show, NFData)
+
+pathElements :: ObjectPath -> [String]
+pathElements = filter (not . null) . splitOn "/" . coerce
+
+fromElements :: [String] -> ObjectPath
+fromElements elems = objectPath_ $ '/':(intercalate "/" elems)
 
 formatObjectPath :: ObjectPath -> String
 formatObjectPath (ObjectPath s) = s

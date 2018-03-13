@@ -77,10 +77,10 @@ printMethod method = do
 
 printMethodArg :: I.MethodArg -> IO ()
 printMethodArg arg = do
-    let dir = case I.methodArgDirection arg of
-        d | d == I.directionIn -> "IN "
-        d | d == I.directionOut -> "OUT"
-        _ -> "   "
+    let dir =
+          case I.methodArgDirection arg of
+            I.In -> "IN "
+            I.Out -> "OUT"
     putStr ("            [" ++ dir ++ " ")
     putStr (show (formatSignature (signature_ [I.methodArgType arg])) ++ "] ")
     putStrLn (I.methodArgName arg)

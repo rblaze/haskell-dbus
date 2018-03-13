@@ -28,6 +28,12 @@ import qualified DBus.Socket
 
 import DBusTests.Util
 
+doExport client path name methods =
+  DBus.Client.export client (objectPath_ path) DBus.Client.defaultInterface
+        { DBus.Client.interfaceMethods = methods
+        , DBus.Client.interfaceName = interfaceName_ name
+        }
+
 test_Client :: TestTree
 test_Client = testGroup "Client" $
     [ test_RequestName
@@ -346,9 +352,9 @@ test_AutoMethod = withConnectedClient $ \res -> testCase "autoMethod" $ do
 
     let methodPair = (\x y -> return (x, y)) :: String -> String -> IO (String, String)
 
-    DBus.Client.export client (objectPath_ "/")
-        [ DBus.Client.autoMethod (interfaceName_ "com.example.Foo") (memberName_ "Max") methodMax
-        , DBus.Client.autoMethod (interfaceName_ "com.example.Foo") (memberName_ "Pair") methodPair
+    doExport client "/" "com.example.Foo"
+        [ DBus.Client.autoMethod (memberName_ "Max") methodMax
+        , DBus.Client.autoMethod (memberName_ "Pair") methodPair
         ]
 
     -- valid call to com.example.Foo.Max
@@ -373,14 +379,14 @@ test_AutoMethod = withConnectedClient $ \res -> testCase "autoMethod" $ do
 test_ExportIntrospection :: TestTree
 test_ExportIntrospection = withConnectedClient $ \res -> testCase "exportIntrospection" $ do
     (sock, client) <- res
-    DBus.Client.export client (objectPath_ "/foo")
-        [ DBus.Client.autoMethod (interfaceName_ "com.example.Foo") (memberName_ "Method1")
-          (undefined :: String -> IO ())
-        , DBus.Client.autoMethod (interfaceName_ "com.example.Foo") (memberName_ "Method2")
-          (undefined :: String -> IO String)
-        , DBus.Client.autoMethod (interfaceName_ "com.example.Foo") (memberName_ "Method3")
-          (undefined :: String -> IO (String, String))
-        ]
+    doExport client "/foo" "com.example.Echo"
+               [ DBus.Client.autoMethod (memberName_ "Method1")
+                 (undefined :: String -> IO ())
+               , DBus.Client.autoMethod (memberName_ "Method2")
+                 (undefined :: String -> IO String)
+               , DBus.Client.autoMethod (memberName_ "Method3")
+                 (undefined :: String -> IO (String, String))
+               ]
 
     let introspect path = do
         (_, response) <- callClientMethod sock path "org.freedesktop.DBus.Introspectable" "Introspect" []
@@ -393,40 +399,10 @@ test_ExportIntrospection = withConnectedClient $ \res -> testCase "exportIntrosp
 
     root <- introspect "/"
     root @?=
-        "<!DOCTYPE node PUBLIC '-//freedesktop//DTD D-BUS Object Introspection 1.0//EN' 'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>\n\
-        \<node name='/'>\
-            \<interface name='org.freedesktop.DBus.Introspectable'>\
-                \<method name='Introspect'>\
-                    \<arg name='' type='s' direction='out'/>\
-                \</method>\
-            \</interface>\
-            \<node name='foo'></node>\
-        \</node>"
-
+         "<!DOCTYPE node PUBLIC '-//freedesktop//DTD D-BUS Object Introspection 1.0//EN' 'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>\n<node name='/'><node name='foo'><interface name='org.freedesktop.DBus.Properties'><method name='Get'><arg name='interfaceName' type='s' direction='in'/><arg name='memberName' type='s' direction='in'/><arg name='value' type='v' direction='out'/></method><method name='Set'><arg name='interfaceName' type='s' direction='in'/><arg name='memberName' type='s' direction='in'/><arg name='value' type='v' direction='in'/></method><method name='GetAll'><arg name='interfaceName' type='s' direction='in'/><arg name='values' type='a{sv}' direction='out'/></method></interface><interface name='org.freedesktop.DBus.Introspectable'><method name='Introspect'><arg name='output' type='s' direction='out'/></method></interface><interface name='com.example.Echo'><method name='Method1'><arg name='a' type='s' direction='in'/></method><method name='Method2'><arg name='a' type='s' direction='in'/><arg name='b' type='s' direction='out'/></method><method name='Method3'><arg name='a' type='s' direction='in'/><arg name='b' type='s' direction='out'/><arg name='c' type='s' direction='out'/></method></interface></node></node>"
     foo <- introspect "/foo"
     foo @?=
-        "<!DOCTYPE node PUBLIC '-//freedesktop//DTD D-BUS Object Introspection 1.0//EN' 'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>\n\
-        \<node name='/foo'>\
-            \<interface name='com.example.Foo'>\
-                \<method name='Method1'>\
-                    \<arg name='' type='s' direction='in'/>\
-                \</method>\
-                \<method name='Method2'>\
-                    \<arg name='' type='s' direction='in'/>\
-                    \<arg name='' type='s' direction='out'/>\
-                \</method>\
-                \<method name='Method3'>\
-                    \<arg name='' type='s' direction='in'/>\
-                    \<arg name='' type='s' direction='out'/>\
-                    \<arg name='' type='s' direction='out'/>\
-                \</method>\
-            \</interface>\
-            \<interface name='org.freedesktop.DBus.Introspectable'>\
-                \<method name='Introspect'>\
-                    \<arg name='' type='s' direction='out'/>\
-                \</method>\
-            \</interface>\
-        \</node>"
+        "<!DOCTYPE node PUBLIC '-//freedesktop//DTD D-BUS Object Introspection 1.0//EN' 'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>\n<node name='/foo'><interface name='org.freedesktop.DBus.Properties'><method name='Get'><arg name='interfaceName' type='s' direction='in'/><arg name='memberName' type='s' direction='in'/><arg name='value' type='v' direction='out'/></method><method name='Set'><arg name='interfaceName' type='s' direction='in'/><arg name='memberName' type='s' direction='in'/><arg name='value' type='v' direction='in'/></method><method name='GetAll'><arg name='interfaceName' type='s' direction='in'/><arg name='values' type='a{sv}' direction='out'/></method></interface><interface name='org.freedesktop.DBus.Introspectable'><method name='Introspect'><arg name='output' type='s' direction='out'/></method></interface><interface name='com.example.Echo'><method name='Method1'><arg name='a' type='s' direction='in'/></method><method name='Method2'><arg name='a' type='s' direction='in'/><arg name='b' type='s' direction='out'/></method><method name='Method3'><arg name='a' type='s' direction='in'/><arg name='b' type='s' direction='out'/><arg name='c' type='s' direction='out'/></method></interface></node>"
 
 startDummyBus :: IO (Address, MVar DBus.Socket.Socket)
 startDummyBus = do

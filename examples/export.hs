@@ -45,14 +45,20 @@ main = do
         exitFailure
 
     -- Export two example objects
-    export client "/a"
-        [ autoMethod "test.iface_1" "Foo" (onFoo "hello" "a")
-        , autoMethod "test.iface_1" "Bar" (onBar "hello" "a")
-        ]
-    export client "/b"
-        [ autoMethod "test.iface_1" "Foo" (onFoo "hello")
-        , autoMethod "test.iface_1" "Bar" (onBar "hello")
-        ]
+    export client "/a" defaultInterface
+             { interfaceName = "test.iface_1"
+             , interfaceMethods =
+               [ autoMethod "Foo" (onFoo "hello" "a")
+               , autoMethod "Bar" (onBar "hello" "a")
+               ]
+             }
+    export client "/b" defaultInterface
+             { interfaceName = "test.iface_2"
+             , interfaceMethods =
+               [ autoMethod "Foo" (onFoo "hello")
+               , autoMethod "Bar" (onBar "hello")
+               ]
+             }
 
     putStrLn "Exported objects /a and /b to bus name com.example.exporting"
 

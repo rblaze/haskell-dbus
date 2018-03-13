@@ -1,5 +1,5 @@
 name: dbus
-version: 0.10.15
+version: 1.0.0
 license: GPL-3
 license-file: license.txt
 author: John Millikin <john@john-millikin.com>
@@ -84,10 +84,12 @@ library
     , cereal
     , containers
     , deepseq
+    , lens
     , libxml-sax
     , network
     , parsec
     , random
+    , split
     , text
     , transformers
     , unix
