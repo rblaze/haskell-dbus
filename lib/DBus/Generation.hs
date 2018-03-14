@@ -207,20 +207,26 @@ generateClientMethod GenerationParams
         setMethodCallParamsE = getSetMethodCallParams methodCallDefN
                                (maybeName busN takeBusArg)
                                (maybeName objectPathN takeObjectPathArg)
-                               (varE variantsN)
-        getFunctionBody = [|
-             do
-               let $( varP variantsN ) = $( return $ ListE variantListExp )
-                   $( varP methodCallN ) = $( setMethodCallParamsE )
-               $( varP callResultN ) <- call $( return $ VarE clientN ) $( varE methodCallN )
-               return $ case $( varE callResultN ) of
-                 Right $( varP replySuccessN ) ->
-                   case (M.methodReturnBody $( varE replySuccessN )) of
+                               (return $ ListE variantListExp)
+        handleReplySuccess =
+          if outputLength == 0
+          then
+            [| Right () |]
+          else
+            [|
+               case (M.methodReturnBody $( varE replySuccessN )) of
                      $( return $ ListP $ map VarP fromVariantOutputNames ) ->
                        case $( return $ fromVariantExp ) of
                          $( return maybeExtractionPattern ) -> Right $( return finalResultTuple )
                          _ -> Left C.errorInvalidParameters
                      _ -> Left C.errorInvalidParameters
+             |]
+        getFunctionBody = [|
+             do
+               let $( varP methodCallN ) = $( setMethodCallParamsE )
+               $( varP callResultN ) <- call $( return $ VarE clientN ) $( varE methodCallN )
+               return $ case $( varE callResultN ) of
+                 Right $( varP replySuccessN ) -> $( handleReplySuccess )
                  Left _ -> Left C.errorInvalidParameters
                |]
     functionBody <- getFunctionBody
@@ -415,14 +421,19 @@ generateSignal GenerationParams
           in
             emit $( varE clientN ) $( varE signalN )
           |]
-        getMakeHandlerBody = [|
-          case M.signalBody $( varE receivedSignalN ) of
-            $( return $ ListP $ map VarP fromVariantOutputNames ) ->
-              case $( return $ fromVariantExp ) of
-                $( return maybeExtractionPattern ) -> $( return finalApplication )
-                _ -> return ()
-            _ -> return ()
-              |]
+        getMakeHandlerBody =
+          if argCount == 0
+          then
+            [| $( return finalApplication ) |]
+          else
+            [|
+               case M.signalBody $( varE receivedSignalN ) of
+                 $( return $ ListP $ map VarP fromVariantOutputNames ) ->
+                   case $( return $ fromVariantExp ) of
+                     $( return maybeExtractionPattern ) -> $( return finalApplication )
+                     _ -> return ()
+                 _ -> return ()
+                   |]
         getRegisterBody = [|
           let $( varP matchRuleN ) = $( varE matchRuleArgN )
                                        { C.matchInterface = Just signalInterface
