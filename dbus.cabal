@@ -86,6 +86,7 @@ library
     , deepseq
     , lens
     , libxml-sax
+    , mtl
     , network
     , parsec
     , random

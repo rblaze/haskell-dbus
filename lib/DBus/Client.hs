@@ -158,18 +158,19 @@ module DBus.Client
     , errorInvalidParameters
     ) where
 
-import Control.Concurrent
-
 import Control.Applicative
 import Control.Arrow
+import Control.Concurrent
 import qualified Control.Exception
 import Control.Exception (SomeException, throwIO)
 import Control.Lens
 import Control.Monad
+import Control.Monad.Trans
+import Control.Monad.Trans.Except
 import Data.Bits ((.|.))
 import Data.Coerce
-import Data.Function
 import Data.Foldable hiding (forM_, and)
+import Data.Function
 import Data.Functor ((<$>))
 import Data.IORef
 import Data.List (intercalate, isPrefixOf)
@@ -210,6 +211,7 @@ data Client = Client
     , clientSignalHandlers :: IORef (Map Unique SignalHandler)
     , clientObjects :: IORef PathInfo
     , clientThreadID :: ThreadId
+    , clientInterfaces :: [Interface]
     }
 
 data ClientOptions t = ClientOptions
@@ -227,6 +229,10 @@ data ClientOptions t = ClientOptions
     --
     -- The default implementation is 'forever'.
     , clientThreadRunner :: IO () -> IO ()
+    -- | A function to build the interfaces that should be present at every
+    -- point where there is an object present. The default value builds the
+    -- property and introspection interfaces.
+    , clientBuildInterfaces :: Client -> [Interface]
     }
 
 type FormattedMatchRule = String
@@ -340,23 +346,23 @@ addInterface path interface =
 findPath :: ObjectPath -> PathInfo -> Maybe PathInfo
 findPath path = preview (pathLens path lookupNothingHandler)
 
-findByGetterAndName
-  :: (Show a1, Foldable t)
-  => t a2 -> (a2 -> a1) -> String -> Maybe a2
+findByGetterAndName ::
+  (Coercible a2 a1, Eq a1, Foldable t) =>
+  t a3 -> (a3 -> a2) -> a1 -> Maybe a3
 findByGetterAndName options getter name =
-  find ((== name) . show . getter) options
+  find ((== name) . coerce . getter) options
 
-findInterface :: InterfaceName -> PathInfo -> Maybe Interface
-findInterface name info =
-  findByGetterAndName (_pathInterfaces info) interfaceName (show name)
+findInterface :: [Interface] -> InterfaceName -> PathInfo -> Maybe Interface
+findInterface alwaysPresent (T.InterfaceName name) info =
+  findByGetterAndName (_pathInterfaces info ++ alwaysPresent) interfaceName name
 
 findMethod :: MemberName -> Interface -> Maybe Method
-findMethod name interface =
-  findByGetterAndName (interfaceMethods interface) methodName (show name)
+findMethod (T.MemberName name) interface =
+  findByGetterAndName (interfaceMethods interface) methodName name
 
 findProperty :: MemberName -> Interface -> Maybe Property
-findProperty name interface =
-  findByGetterAndName (interfaceProperties interface) propertyName (show name)
+findProperty (T.MemberName name) interface =
+  findByGetterAndName (interfaceProperties interface) propertyName name
 
 -- | Connect to the bus specified in the environment variable
 -- @DBUS_SYSTEM_BUS_ADDRESS@, or to
@@ -427,6 +433,7 @@ connectWith opts addr = do
             , clientSignalHandlers = signalHandlers
             , clientObjects = objects
             , clientThreadID = threadID
+            , clientInterfaces = clientBuildInterfaces opts client
             }
     putMVar clientMVar client
 
@@ -436,12 +443,79 @@ connectWith opts addr = do
 
     return client
 
+makeSuccessReply :: Variant -> Reply
+makeSuccessReply value = ReplyReturn [value]
+
+makeErrorReply :: ErrorName -> Reply
+makeErrorReply errorName = ReplyError errorName []
+
+buildPropertiesInterface :: Client -> Interface
+buildPropertiesInterface client =
+  let alwaysPresent = clientInterfaces client
+      getPropertyObjF propertyInterfaceName memberName path info =
+        findInterfaceAtPath alwaysPresent info path (Just $ fromString propertyInterfaceName) >>=
+        (maybeToEither errorUnknownMethod . findProperty (fromString memberName))
+      getPropertyObj propertyInterfaceName memberName path =
+        getPropertyObjF propertyInterfaceName memberName path <$>
+                        (readIORef $ clientObjects client)
+      callGet MethodCall { methodCallPath = path } propertyInterfaceName memberName =
+        left makeErrorReply <$>
+        (runExceptT $ do
+          property <- ExceptT $ getPropertyObj propertyInterfaceName memberName path
+          ExceptT $ sequenceA $ maybeToEither errorNotAuthorized $ propertyGetter property)
+      callSet MethodCall { methodCallPath = path } propertyInterfaceName memberName value =
+        left makeErrorReply <$>
+        (runExceptT $ do
+          property <- ExceptT $ getPropertyObj propertyInterfaceName memberName path
+          setter <- ExceptT $ return $ maybeToEither errorNotAuthorized $ propertySetter property
+          lift $ setter value)
+      callGetAll MethodCall { methodCallPath = path } propertyInterfaceName =
+        left makeErrorReply <$>
+        (runExceptT $ do
+          info <- lift $ readIORef (clientObjects client)
+          propertyInterface <-
+            ExceptT $ return $ findInterfaceAtPath alwaysPresent info path $
+                    Just $ fromString propertyInterfaceName
+          let properties = interfaceProperties propertyInterface
+              nameGetters :: [IO (String, Variant)]
+              nameGetters = [ (coerce name,) <$> getter |
+                              Property { propertyName = name
+                                       , propertyGetter = Just getter
+                                       } <- properties]
+          lift $ M.fromList <$> T.sequenceA nameGetters)
+  in
+    defaultInterface { interfaceName = propertiesInterfaceName
+                     , interfaceMethods =
+                       [ autoMethodWithMsg "Get" callGet
+                       , autoMethodWithMsg "GetAll" callGetAll
+                       , autoMethodWithMsg "Set" callSet
+                       ]
+                     }
+
+buildIntrospectableInterface :: Client -> Interface
+buildIntrospectableInterface client =
+  defaultInterface
+  { interfaceName = introspectableInterfaceName
+  , interfaceMethods = [ autoMethodWithMsg "Introspect" callIntrospect ]
+  } where
+  callIntrospect MethodCall { methodCallPath = path } = do
+    info <- readIORef (clientObjects client)
+    return $ left makeErrorReply $ do
+      targetInfo <- maybeToEither errorUnknownObject $ findPath path info
+      -- TODO: We should probably return a better error here:
+      maybeToEither errorUnknownObject $ I.formatXML $
+                    buildIntrospectionObject defaultInterfaces
+                    targetInfo (T.pathElements path)
+  defaultInterfaces = map buildIntrospectionInterface $ clientInterfaces client
+
 -- | Default client options. Uses the built-in Socket-based transport, which
 -- supports the @tcp:@ and @unix:@ methods.
 defaultClientOptions :: ClientOptions SocketTransport
 defaultClientOptions = ClientOptions
     { clientSocketOptions = DBus.Socket.defaultSocketOptions
     , clientThreadRunner = forever
+    , clientBuildInterfaces =
+      \client -> map ($ client) [buildPropertiesInterface, buildIntrospectableInterface]
     }
 
 -- | Stop a 'Client''s callback thread and close its underlying socket.
@@ -498,8 +572,8 @@ dispatch client = go where
                                       { methodErrorDestination = sender
                                       , methodErrorBody = vs
                                       } (\_ -> return ())
-        _ <- forkIO $ case findMethodOrPropForCall pathInfo msg of
-            Right action -> action >>= sendResult
+        _ <- forkIO $ case findMethodForCall (clientInterfaces client) pathInfo msg of
+            Right Method { methodHandler = handler } -> handler msg >>= sendResult
             Left errName -> send_ client
                 (methodError serial errName) { methodErrorDestination = sender }
                 (\_ -> return ())
@@ -516,98 +590,26 @@ dispatch client = go where
             Just mvar -> putMVar mvar result
             Nothing -> return ()
 
--- TODO: Make actual interface objects for property and introspection methods
-findMethodOrPropForCall
-  :: PathInfo
-  -> MethodCall
-  -> Either ErrorName (IO Reply)
-findMethodOrPropForCall
-  info msg@MethodCall{ methodCallInterface = interface
-                     , methodCallMember = member
-                     , methodCallBody = args
-                     , methodCallPath = path
-                     }
-  | interface == Just propertiesInterface &&
-    member == getMemberName = callGet
-  | interface == Just propertiesInterface &&
-    member == getAllMemberName = callGetAll
-  | interface == Just propertiesInterface &&
-    member == setMemberName = callSet
-  | interface == Just introspectableInterface = callIntrospect
-  | otherwise = ($ msg) .  methodHandler <$> findMethodForCall info msg
-    where
-      -- TODO: Add this once better error handling is supported
-      -- notAccesible memberName accessType =
-      --   ReplyError errorInvalidParameters
-      --                [toVariant $ (printf "Member %s is not %s." memberName accessType :: String)]
-      runPropGetter getter =
-        do
-          value <- getter
-          return $ makeReply value
-      makeReply value = ReplyReturn [toVariant value]
-      getPropertyObj propertyInterfaceName memberName =
-        findInterfaceAtPath info path (fromString <$> propertyInterfaceName) >>=
-        (maybeToEither errorInvalidParameters .
-                       findProperty (fromString memberName))
-      callGet =
-        case map fromVariant args of
-          [propertyInterfaceName@(Just _), Just memberName] ->
-            do
-              property <- getPropertyObj propertyInterfaceName memberName
-              -- Use notAccesible here?
-              getter <- maybeToEither errorInvalidParameters $ propertyGetter property
-              return $ runPropGetter getter
-          _ -> Left errorInvalidParameters
-      callGetAll =
-        case map fromVariant args of
-          [propertyInterfaceName@(Just _)] ->
-            do
-              propertyInterface <- findInterfaceAtPath info path
-                                   (fromString <$> propertyInterfaceName)
-              let properties = interfaceProperties propertyInterface
-                  nameGetters :: [IO (String, Variant)]
-                  nameGetters = [ (coerce name,) <$> getter |
-                                 Property { propertyName = name
-                                          , propertyGetter = Just getter
-                                          } <- properties]
-                  buildResult = (makeReply . M.fromList) <$> T.sequenceA nameGetters
-              return buildResult
-          _ -> Left errorInvalidParameters
-      callSet =
-        case args of
-          [minterface, mname, mvalue] ->
-            case (fromVariant minterface, fromVariant mname, fromVariant mvalue) of
-              (propertyInterfaceName@(Just _), Just memberName, Just value) ->
-                do
-                  property <- getPropertyObj propertyInterfaceName memberName
-                  -- TODO: Use notAccesible here?
-                  setter <- maybeToEither errorInvalidParameters $ propertySetter property
-                  -- TODO: Setter really needs to be able to report errors
-                  return $ setter value >> return (ReplyReturn [])
-              _ -> Left errorInvalidParameters
-          _ -> Left errorInvalidParameters
-      callIntrospect = do
-        targetInfo <- maybeToEither errorUnknownObject $ findPath path info
-        -- TODO: We should probably return a better error here:
-        outputXML <- maybeToEither errorUnknownObject $
-                     I.formatXML $ buildIntrospectionObject
-                        (T.pathElements path) targetInfo
-        return $ return $ makeReply outputXML
-
 findInterfaceAtPath
-  :: PathInfo
+  :: [Interface]
+  -> PathInfo
   -> ObjectPath
   -> Maybe InterfaceName
   -> Either ErrorName Interface
-findInterfaceAtPath info path name =
+findInterfaceAtPath defaultInterfaces info path name =
   maybeToEither errorUnknownObject (findPath path info) >>=
   (maybeToEither errorUnknownInterface .
-                 maybe (const Nothing) findInterface name)
+                 maybe (const Nothing) (findInterface defaultInterfaces) name)
 
-findMethodForCall :: PathInfo -> MethodCall -> Either ErrorName Method
-findMethodForCall info msg =
-  findInterfaceAtPath info (methodCallPath msg) (methodCallInterface msg) >>=
-  (maybeToEither errorUnknownMethod . findMethod (methodCallMember msg))
+findMethodForCall ::
+  [Interface] -> PathInfo -> MethodCall -> Either ErrorName Method
+findMethodForCall defaultInterfaces info
+                  MethodCall { methodCallInterface = interface
+                             , methodCallMember = member
+                             , methodCallPath = path
+                             } =
+  findInterfaceAtPath defaultInterfaces info path interface >>=
+  (maybeToEither errorUnknownMethod . findMethod member)
 
 
 -- Request name
@@ -841,7 +843,7 @@ getProperty client
                            , methodCallMember = member
                            } =
   (>>= (unpackVariant msg . head . methodReturnBody)) <$>
-    call client msg { methodCallInterface = Just propertiesInterface
+    call client msg { methodCallInterface = Just propertiesInterfaceName
                     , methodCallMember = getMemberName
                     , methodCallBody = [ toVariant (coerce (orDefaultInterface interface) :: String)
                                        , toVariant (coerce member :: String)
@@ -857,7 +859,7 @@ setProperty client
             msg@MethodCall { methodCallInterface = interface
                            , methodCallMember = member
                            } value =
-  call client msg { methodCallInterface = Just propertiesInterface
+  call client msg { methodCallInterface = Just propertiesInterfaceName
                   , methodCallMember = setMemberName
                   , methodCallBody =
                     [ toVariant (coerce (orDefaultInterface interface) :: String)
@@ -876,7 +878,7 @@ setPropertyValue client msg v = eitherToMaybe <$> setProperty client msg (toVari
 getAllProperties :: Client -> MethodCall -> IO (Either MethodError MethodReturn)
 getAllProperties client
                msg@MethodCall { methodCallInterface = interface } =
-  call client msg { methodCallInterface = Just propertiesInterface
+  call client msg { methodCallInterface = Just propertiesInterfaceName
                   , methodCallMember = getAllMemberName
                   , methodCallBody = [toVariant (coerce (orDefaultInterface interface) :: String)]
                   }
@@ -1056,12 +1058,6 @@ class AutoMethod a where
     funTypes :: a -> ([Type], [Type])
     apply :: a -> [Variant] -> IO Reply
 
-instance AutoMethod (IO ()) where
-    funTypes _ = ([], [])
-
-    apply io [] = io >> return (ReplyReturn [])
-    apply _ _ = returnInvalidParameters
-
 instance IsValue a => AutoMethod (IO a) where
     funTypes io = cased where
         cased = ([], case ioT io undefined of
@@ -1079,12 +1075,16 @@ instance IsValue a => AutoMethod (IO a) where
             Nothing -> return [var])
     apply _ _ = returnInvalidParameters
 
--- NOTE: This is just a hack to allow the use of this type class to apply.
--- Really, applyable ought to be broken out.
-instance AutoMethod (IO Reply) where
-    funTypes _ = undefined
+instance IsValue a => AutoMethod (IO (Either Reply a)) where
+    funTypes _ = ([], outTypes) where
+      aType :: Type
+      aType = typeOf (undefined :: a)
+      outTypes =
+        case aType of
+          TypeStructure ts -> ts
+          _ -> [aType]
 
-    apply io [] = io
+    apply io [] = either id (makeSuccessReply . toVariant) <$> io
     apply _ _ = returnInvalidParameters
 
 instance (IsValue a, AutoMethod fn) => AutoMethod (a -> fn) where
@@ -1196,95 +1196,23 @@ unexport client path = atomicModifyIORef_ (clientObjects client) clear
 
 -- Introspection
 
-alwaysPresentInterfaces :: [I.Interface]
-alwaysPresentInterfaces =
-  [ I.Interface { I.interfaceName = propertiesInterface
-                , I.interfaceMethods =
-                  [ I.Method
-                    { I.methodName = "Get"
-                    , I.methodArgs =
-                      [ I.MethodArg { I.methodArgName = "interfaceName"
-                                    , I.methodArgType = TypeString
-                                    , I.methodArgDirection = I.In
-                                    }
-                      , I.MethodArg { I.methodArgName = "memberName"
-                                    , I.methodArgType = TypeString
-                                    , I.methodArgDirection =  I.In
-                                    }
-                      , I.MethodArg { I.methodArgName = "value"
-                                    , I.methodArgType = TypeVariant
-                                    , I.methodArgDirection = I.Out
-                                    }
-                      ]
-                    }
-                  , I.Method
-                    { I.methodName = "Set"
-                    , I.methodArgs =
-                      [ I.MethodArg { I.methodArgName = "interfaceName"
-                                    , I.methodArgType = TypeString
-                                    , I.methodArgDirection = I.In
-                                    }
-                      , I.MethodArg { I.methodArgName = "memberName"
-                                    , I.methodArgType = TypeString
-                                    , I.methodArgDirection =  I.In
-                                    }
-                      , I.MethodArg { I.methodArgName = "value"
-                                    , I.methodArgType = TypeVariant
-                                    , I.methodArgDirection = I.In
-                                    }
-                      ]
-                    }
-                  , I.Method
-                    { I.methodName = "GetAll"
-                    , I.methodArgs =
-                      [ I.MethodArg { I.methodArgName = "interfaceName"
-                                    , I.methodArgType = TypeString
-                                    , I.methodArgDirection = I.In
-                                    }
-                      , I.MethodArg { I.methodArgName = "values"
-                                    , I.methodArgType = TypeDictionary TypeString TypeVariant
-                                    , I.methodArgDirection = I.Out
-                                    }
-                      ]
-                    }
-                  ]
-                , I.interfaceProperties = []
-                , I.interfaceSignals = []
-                }
-  , I.Interface { I.interfaceName = introspectableInterface
-                , I.interfaceMethods =
-                  [ I.Method
-                    { I.methodName = "Introspect"
-                    , I.methodArgs =
-                      [ I.MethodArg { I.methodArgName = "output"
-                                    , I.methodArgType = TypeString
-                                    , I.methodArgDirection = I.Out
-                                    }
-                      ]
-                    }
-                  ]
-                , I.interfaceProperties = []
-                , I.interfaceSignals = []
-                }
-  ]
-
-buildIntrospectionObject :: [String] -> PathInfo -> I.Object
-buildIntrospectionObject elems
+buildIntrospectionObject :: [I.Interface] -> PathInfo -> [String] -> I.Object
+buildIntrospectionObject defaultInterfaces
                          PathInfo
                          { _pathInterfaces = interfaces
                          , _pathChildren = infoChildren
-                         } =
+                         } elems =
   I.Object
      { I.objectPath = T.fromElements elems
      , I.objectInterfaces =
-       (if null interfaces then [] else alwaysPresentInterfaces) ++
+       (if null interfaces then [] else defaultInterfaces) ++
        map buildIntrospectionInterface interfaces
      -- TODO: Eventually we should support not outputting everything if there is
      -- a lot of stuff.
      , I.objectChildren = M.elems $ M.mapWithKey recurseFromString infoChildren
      }
     where recurseFromString stringNode nodeInfo =
-            flip buildIntrospectionObject nodeInfo $ elems ++ [stringNode]
+            buildIntrospectionObject defaultInterfaces nodeInfo $ elems ++ [stringNode]
 
 buildIntrospectionInterface :: Interface -> I.Interface
 buildIntrospectionInterface Interface
@@ -1346,6 +1274,9 @@ errorUnknownMethod = errorName_ "org.freedesktop.DBus.Error.UnknownMethod"
 errorInvalidParameters :: ErrorName
 errorInvalidParameters = errorName_ "org.freedesktop.DBus.Error.InvalidParameters"
 
+errorNotAuthorized :: ErrorName
+errorNotAuthorized = errorName_ "org.freedesktop.DBus.Error.NotAuthorized"
+
 dbusName :: BusName
 dbusName = busName_ "org.freedesktop.DBus"
 
@@ -1355,11 +1286,11 @@ dbusPath = objectPath_ "/org/freedesktop/DBus"
 dbusInterface :: InterfaceName
 dbusInterface = interfaceName_ "org.freedesktop.DBus"
 
-introspectableInterface :: InterfaceName
-introspectableInterface = interfaceName_ "org.freedesktop.DBus.Introspectable"
+introspectableInterfaceName :: InterfaceName
+introspectableInterfaceName = interfaceName_ "org.freedesktop.DBus.Introspectable"
 
-propertiesInterface :: InterfaceName
-propertiesInterface = fromString "org.freedesktop.DBus.Properties"
+propertiesInterfaceName :: InterfaceName
+propertiesInterfaceName = fromString "org.freedesktop.DBus.Properties"
 
 getAllMemberName :: MemberName
 getAllMemberName = fromString "GetAll"

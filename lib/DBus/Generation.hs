@@ -60,6 +60,7 @@ buildGetTHType arrayTypeBuilder dictTypeBuilder = fn
             T.TypeDictionary k v -> dictTypeBuilder (fn k) (fn v)
             T.TypeStructure ts -> foldl AppT (TupleT $ length ts) $ map fn ts
 
+newNameDef :: [Char] -> Q Name
 newNameDef n =
   case n of
     "" -> newName "arg"
@@ -180,7 +181,6 @@ generateClientMethod GenerationParams
     clientN <- newName "client"
     busN <- newName "busName"
     objectPathN <- newName "objectPath"
-    variantsN <- newName "variants"
     methodCallN <- newName "methodCall"
     callResultN <- newName "callResult"
     replySuccessN <- newName "replySuccess"

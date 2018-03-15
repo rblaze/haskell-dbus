@@ -610,6 +610,17 @@ instance (Ord k, IsAtom k, IsValue v) => IsVariant (Map k v) where
     toVariant = Variant . toValue
     fromVariant (Variant val) = fromValue val
 
+instance IsValue () where
+  typeOf _ = TypeStructure []
+  toValue _ = ValueStructure []
+  fromValue (ValueStructure []) = return ()
+  fromValue _ = Nothing
+
+instance IsVariant () where
+  toVariant () = Variant (ValueStructure [])
+  fromVariant (Variant (ValueStructure [])) = Just ()
+  fromVariant _ = Nothing
+
 instance (IsValue a1, IsValue a2) => IsValue (a1, a2) where
     typeOf ~(a1, a2) = TypeStructure [typeOf a1, typeOf a2]
     toValue (a1, a2) = ValueStructure [toValue a1, toValue a2]
