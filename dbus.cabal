@@ -103,13 +103,14 @@ library
     DBus
     DBus.Client
     DBus.Generation
-    DBus.Introspection
-    DBus.Socket
-    DBus.Transport
     DBus.Internal.Address
     DBus.Internal.Message
     DBus.Internal.Types
     DBus.Internal.Wire
+    DBus.Introspection
+    DBus.Socket
+    DBus.TH
+    DBus.Transport
 
 test-suite dbus_tests
   type: exitcode-stdio-1.0

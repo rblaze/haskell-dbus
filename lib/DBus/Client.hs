@@ -91,6 +91,7 @@ module DBus.Client
     , setPropertyValue
     , getAllProperties
     , getAllPropertiesMap
+    , buildPropertiesInterface
 
     -- * Receiving method calls
     , export
@@ -129,6 +130,7 @@ module DBus.Client
     , buildIntrospectionInterface
     , buildIntrospectionMethod
     , buildIntrospectionProperty
+    , buildIntrospectableInterface
 
     -- * Name reservation
     , requestName
@@ -453,21 +455,27 @@ buildPropertiesInterface :: Client -> Interface
 buildPropertiesInterface client =
   let alwaysPresent = clientInterfaces client
       getPropertyObjF propertyInterfaceName memberName path info =
-        findInterfaceAtPath alwaysPresent info path (Just $ fromString propertyInterfaceName) >>=
+        findInterfaceAtPath alwaysPresent info path
+        (Just $ fromString propertyInterfaceName) >>=
         (maybeToEither errorUnknownMethod . findProperty (fromString memberName))
       getPropertyObj propertyInterfaceName memberName path =
         getPropertyObjF propertyInterfaceName memberName path <$>
                         readIORef (clientObjects client)
-      callGet MethodCall { methodCallPath = path } propertyInterfaceName memberName =
+      callGet MethodCall { methodCallPath = path }
+              propertyInterfaceName memberName =
+        left makeErrorReply <$>
+        runExceptT (do
+          property <- ExceptT $ getPropertyObj propertyInterfaceName
+                      memberName path
+          ExceptT $ sequenceA $ maybeToEither errorNotAuthorized $
+                  propertyGetter property)
+      callSet MethodCall { methodCallPath = path }
+              propertyInterfaceName memberName value =
         left makeErrorReply <$>
         runExceptT (do
           property <- ExceptT $ getPropertyObj propertyInterfaceName memberName path
-          ExceptT $ sequenceA $ maybeToEither errorNotAuthorized $ propertyGetter property)
-      callSet MethodCall { methodCallPath = path } propertyInterfaceName memberName value =
-        left makeErrorReply <$>
-        runExceptT (do
-          property <- ExceptT $ getPropertyObj propertyInterfaceName memberName path
-          setter <- ExceptT $ return $ maybeToEither errorNotAuthorized $ propertySetter property
+          setter <- ExceptT $ return $ maybeToEither errorNotAuthorized $
+                    propertySetter property
           lift $ setter value)
       callGetAll MethodCall { methodCallPath = path } propertyInterfaceName =
         left makeErrorReply <$>
@@ -484,13 +492,33 @@ buildPropertiesInterface client =
                                        } <- properties]
           lift $ M.fromList <$> T.sequenceA nameGetters)
   in
-    defaultInterface { interfaceName = propertiesInterfaceName
-                     , interfaceMethods =
-                       [ autoMethodWithMsg "Get" callGet
-                       , autoMethodWithMsg "GetAll" callGetAll
-                       , autoMethodWithMsg "Set" callSet
-                       ]
-                     }
+    defaultInterface
+    { interfaceName = propertiesInterfaceName
+    , interfaceMethods =
+      [ autoMethodWithMsg "Get" callGet
+      , autoMethodWithMsg "GetAll" callGetAll
+      , autoMethodWithMsg "Set" callSet
+      ]
+    , interfaceSignals =
+      [ I.Signal
+        { I.signalName = "PropertiesChanged"
+        , I.signalArgs =
+          [ I.SignalArg
+            { I.signalArgName = "interface_name"
+            , I.signalArgType = T.TypeString
+            }
+          , I.SignalArg
+            { I.signalArgName = "changed_properties"
+            , I.signalArgType = T.TypeDictionary T.TypeString T.TypeVariant
+            }
+          , I.SignalArg
+            { I.signalArgName = "invalidated_properties"
+            , I.signalArgType = T.TypeArray T.TypeString
+            }
+          ]
+        }
+      ]
+    }
 
 buildIntrospectableInterface :: Client -> Interface
 buildIntrospectableInterface client =
