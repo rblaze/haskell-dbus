@@ -457,21 +457,21 @@ buildPropertiesInterface client =
         (maybeToEither errorUnknownMethod . findProperty (fromString memberName))
       getPropertyObj propertyInterfaceName memberName path =
         getPropertyObjF propertyInterfaceName memberName path <$>
-                        (readIORef $ clientObjects client)
+                        readIORef (clientObjects client)
       callGet MethodCall { methodCallPath = path } propertyInterfaceName memberName =
         left makeErrorReply <$>
-        (runExceptT $ do
+        runExceptT (do
           property <- ExceptT $ getPropertyObj propertyInterfaceName memberName path
           ExceptT $ sequenceA $ maybeToEither errorNotAuthorized $ propertyGetter property)
       callSet MethodCall { methodCallPath = path } propertyInterfaceName memberName value =
         left makeErrorReply <$>
-        (runExceptT $ do
+        runExceptT (do
           property <- ExceptT $ getPropertyObj propertyInterfaceName memberName path
           setter <- ExceptT $ return $ maybeToEither errorNotAuthorized $ propertySetter property
           lift $ setter value)
       callGetAll MethodCall { methodCallPath = path } propertyInterfaceName =
         left makeErrorReply <$>
-        (runExceptT $ do
+        runExceptT (do
           info <- lift $ readIORef (clientObjects client)
           propertyInterface <-
             ExceptT $ return $ findInterfaceAtPath alwaysPresent info path $
