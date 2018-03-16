@@ -182,7 +182,9 @@ signature = check where
 --
 -- Throws an exception if the given types are not a valid signature.
 signature_ :: [Type] -> Signature
-signature_ ts = fromMaybe ("invalid signature: " ++ show ts) $ signature ts
+signature_ ts = case signature ts of
+    Just sig -> sig
+    Nothing -> error ("invalid signature: " ++ show ts)
 
 -- | Parse a signature string into a valid signature.
 --
@@ -593,10 +595,10 @@ instance (Ord k, IsAtom k, IsValue v) => IsValue (Map k v) where
     fromValue _ = Nothing
 
 bimap :: Ord k' => (k -> v -> (k', v')) -> Map k v -> Map k' v'
-bimap f = Data.Map.fromList . map uncurry f . Data.Map.toList
+bimap f = Data.Map.fromList . map (\(k, v) -> f k v) . Data.Map.toList
 
 bimapM :: (Monad m, Ord k') => (k -> v -> m (k', v')) -> Map k v -> m (Map k' v')
-bimapM f = fmap Data.Map.fromList . mapM uncurry . Data.Map.toList
+bimapM f = liftM Data.Map.fromList . mapM (\(k, v) -> f k v) . Data.Map.toList
 
 mapItemType :: (IsValue k, IsValue v) => Map k v -> (Type, Type)
 mapItemType m = (typeOf k, typeOf v) where
@@ -685,7 +687,7 @@ parserObjectPath = root <|> object where
 
     element = Parsec.skipMany1 (oneOf chars)
 
-    slash = void $ Parsec.char '/'
+    slash = Parsec.char '/' >> return ()
     chars = concat [ ['a'..'z']
                    , ['A'..'Z']
                    , ['0'..'9']
@@ -839,14 +841,14 @@ parserBusName = name >> Parsec.eof where
 
     wellKnown = elements alpha
 
-    elements :: String -> Parsec.Parser ()
+    elements :: [Char] -> Parsec.Parser ()
     elements start = do
         element start
         Parsec.skipMany1 $ do
             _ <- Parsec.char '.'
             element start
 
-    element :: String -> Parsec.Parser ()
+    element :: [Char] -> Parsec.Parser ()
     element start = do
         _ <- oneOf start
         Parsec.skipMany (oneOf alphanum)
@@ -1359,8 +1361,9 @@ skipSepBy1 p sep = do
     Parsec.skipMany (sep >> p)
 
 forceParse :: String -> (String -> Maybe a) -> String -> a
-forceParse label parse str =
-  fromMaybe error ("Invalid " ++ label ++ ": " ++ show str) parse str
+forceParse label parse str = case parse str of
+    Just x -> x
+    Nothing -> error ("Invalid " ++ label ++ ": " ++ show str)
 
 maybeParseString :: Parsec.Parser a -> String -> Maybe a
 maybeParseString parser s = case Parsec.parse parser "" s of

@@ -1092,7 +1092,7 @@ class AutoMethod a where
 
 handleTopLevelReturn value =
   case toVariant value of
-    Variant (ValueStructure xs) -> fmap Variant xs
+    T.Variant (T.ValueStructure xs) -> fmap T.Variant xs
     v -> [v]
 
 instance IsValue a => AutoMethod (IO a) where
