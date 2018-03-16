@@ -14,6 +14,7 @@ import           Data.Int
 import           Data.List
 import qualified Data.Map as Map
 import           Data.Maybe
+import           Data.Monoid
 import           Data.String
 import           Data.Traversable
 import           Data.Word
@@ -124,6 +125,9 @@ mapOrHead outputLength fn names cons =
   case outputLength of
     1 -> fn $ head names
     _ -> cons $ map fn names
+
+runGetFirst :: [Maybe a] -> Maybe a
+runGetFirst options = getFirst $  mconcat $ map First options
 
 buildGeneratedSignature :: Bool -> Bool -> Type -> Type
 buildGeneratedSignature takeBusArg takeObjectPathArg =
@@ -440,6 +444,16 @@ generateSignal GenerationParams
           let $( varP matchRuleN ) = $( varE matchRuleArgN )
                                        { C.matchInterface = Just signalInterface
                                        , C.matchMember = Just name
+                                       , C.matchSender =
+                                         runGetFirst
+                                         [ C.matchSender $( varE matchRuleArgN )
+                                         , busNameM
+                                         ]
+                                       , C.matchPath =
+                                         runGetFirst
+                                         [ C.matchPath $( varE matchRuleArgN )
+                                         , objectPathM
+                                         ]
                                        }
           in
             C.addMatch $( varE clientN ) $( varE matchRuleN ) $ $( return makeHandlerCall )
