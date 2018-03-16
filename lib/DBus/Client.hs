@@ -160,6 +160,7 @@ module DBus.Client
     , dbusName
     , dbusPath
 
+    , ErrorName
     , errorInvalidParameters
     ) where
 
@@ -1089,6 +1090,11 @@ class AutoMethod a where
     funTypes :: a -> ([Type], [Type])
     apply :: a -> [Variant] -> IO Reply
 
+handleTopLevelReturn value =
+  case toVariant value of
+    Variant (ValueStructure xs) -> fmap Variant xs
+    v -> [v]
+
 instance IsValue a => AutoMethod (IO a) where
     funTypes io = cased where
         cased = ([], case ioT io undefined of
@@ -1099,11 +1105,7 @@ instance IsValue a => AutoMethod (IO a) where
         ioT :: IsValue a => IO a -> a -> (a, Type)
         ioT _ a = (a, typeOf a)
 
-    apply io [] = ReplyReturn <$> (do
-        var <- fmap toVariant io
-        case fromVariant var of
-            Just struct -> return (structureItems struct)
-            Nothing -> return [var])
+    apply io [] = ReplyReturn . handleTopLevelReturn <$> io
     apply _ _ = returnInvalidParameters
 
 instance IsValue a => AutoMethod (IO (Either Reply a)) where
@@ -1115,7 +1117,7 @@ instance IsValue a => AutoMethod (IO (Either Reply a)) where
           TypeStructure ts -> ts
           _ -> [aType]
 
-    apply io [] = either id (makeSuccessReply . toVariant) <$> io
+    apply io [] = either id (ReplyReturn . handleTopLevelReturn) <$> io
     apply _ _ = returnInvalidParameters
 
 instance (IsValue a, AutoMethod fn) => AutoMethod (a -> fn) where
