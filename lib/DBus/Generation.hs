@@ -161,6 +161,20 @@ getSetMethodCallParams methodCallN mBusN mObjectPathN variantsE =
                          $( varE methodCallN ) { M.methodCallBody = $( variantsE ) }
                       |]
 
+clientArgumentUnpackingMessage :: String
+clientArgumentUnpackingMessage =
+  "The client method could not unpack the message that was received."
+
+clientArgumentUnpackingError :: [T.Variant] -> M.MethodError
+clientArgumentUnpackingError variants =
+  M.MethodError
+  { M.methodErrorName = C.errorFailed
+  , M.methodErrorSerial = T.Serial 0
+  , M.methodErrorSender = Nothing
+  , M.methodErrorDestination = Nothing
+  , M.methodErrorBody = T.toVariant clientArgumentUnpackingMessage : variants
+  }
+
 generateClientMethod :: GenerationParams -> I.Method -> Q [Dec]
 generateClientMethod GenerationParams
                        { getTHType = getArgType
@@ -224,8 +238,10 @@ generateClientMethod GenerationParams
                      $( return $ ListP $ map VarP fromVariantOutputNames ) ->
                        case $( return $ fromVariantExp ) of
                          $( return maybeExtractionPattern ) -> Right $( return finalResultTuple )
-                         _ -> Left C.errorInvalidParameters
-                     _ -> Left C.errorInvalidParameters
+                         _ -> Left $ clientArgumentUnpackingError $
+                              M.methodReturnBody $( varE replySuccessN )
+                     _ -> Left $ clientArgumentUnpackingError $
+                          M.methodReturnBody $( varE replySuccessN )
              |]
         getFunctionBody = [|
              do
@@ -233,7 +249,7 @@ generateClientMethod GenerationParams
                $( varP callResultN ) <- call $( return $ VarE clientN ) $( varE methodCallN )
                return $ case $( varE callResultN ) of
                  Right $( varP replySuccessN ) -> $( handleReplySuccess )
-                 Left _ -> Left C.errorInvalidParameters
+                 Left e -> Left e
                |]
     functionBody <- getFunctionBody
     methodCallDef <- getMethodCallDefDec
@@ -241,7 +257,7 @@ generateClientMethod GenerationParams
         addInArg arg = addTypeArg $ getArgType $ I.methodArgType arg
         fullOutputSignature = AppT (ConT ''IO) $
                               AppT (AppT (ConT ''Either)
-                                         (ConT ''T.ErrorName))
+                                         (ConT ''M.MethodError))
                               outputSignature
         outputSignature =
           case outputLength of

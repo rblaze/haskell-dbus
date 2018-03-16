@@ -161,7 +161,9 @@ module DBus.Client
     , dbusPath
 
     , ErrorName
+    , errorFailed
     , errorInvalidParameters
+    , errorUnknownMethod
     ) where
 
 import Control.Applicative
