@@ -69,6 +69,7 @@ extra-source-files:
   examples/export.hs
   examples/introspect.hs
   examples/list-names.hs
+  idlxml/dbus.xml
 
 source-repository head
   type: git
@@ -84,6 +85,7 @@ library
     , cereal
     , containers
     , deepseq
+    , filepath
     , lens
     , libxml-sax
     , mtl

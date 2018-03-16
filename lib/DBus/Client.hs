@@ -157,6 +157,9 @@ module DBus.Client
     , defaultClientOptions
     , connectWith
 
+    , dbusName
+    , dbusPath
+
     , errorInvalidParameters
     ) where
 

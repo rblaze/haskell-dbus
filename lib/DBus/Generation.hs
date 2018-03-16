@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 module DBus.Generation where
 
@@ -5,12 +6,12 @@ import           DBus.Client as C
 import qualified DBus.Internal.Message as M
 import qualified DBus.Internal.Types as T
 import qualified DBus.Introspection as I
+import qualified Data.ByteString as BS
 import qualified Data.Char as Char
 import           Data.Coerce
 import           Data.Functor ((<$>))
 import           Data.Int
 import           Data.List
-import qualified Data.ByteString as BS
 import qualified Data.Map as Map
 import           Data.Maybe
 import           Data.String
@@ -18,6 +19,7 @@ import           Data.Traversable
 import           Data.Word
 import           Language.Haskell.TH
 import           Prelude hiding (mapM)
+import           System.IO.Unsafe
 import           System.Posix.Types (Fd(..))
 
 data GenerationParams = GenerationParams
@@ -472,3 +474,12 @@ generateSignal GenerationParams
                           , makeHandlerSignature, makeHandlerFunction
                           , registerSignature, registerFunction
                           ]
+
+generateFromFilePath :: GenerationParams -> FilePath -> Q [Dec]
+generateFromFilePath generationParams filepath =
+  let obj = unsafePerformIO $
+            head . maybeToList . I.parseXML "/" <$> readFile filepath
+      interface = head $ I.objectInterfaces obj
+      signals = generateSignalsFromInterface generationParams interface
+      client = generateClient generationParams interface
+  in fmap (++) signals <*> client
