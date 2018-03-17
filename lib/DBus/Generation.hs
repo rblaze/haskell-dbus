@@ -2,6 +2,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 module DBus.Generation where
 
+import           Control.Monad.Reader
 import           DBus.Client as C
 import qualified DBus.Internal.Message as M
 import qualified DBus.Internal.Types as T
@@ -23,11 +24,30 @@ import           Prelude hiding (mapM)
 import           System.IO.Unsafe
 import           System.Posix.Types (Fd(..))
 
+type ClientBusPathR a = ReaderT (Client, T.BusName, T.ObjectPath) IO a
+
+dbusInvoke :: (Client -> T.BusName -> T.ObjectPath -> a) -> ClientBusPathR a
+dbusInvoke fn = (\(c, b, p) -> fn c b p) <$> ask
+
+-- Use these operators together with dbusInvoke to invoke functions of the form
+-- Client -> T.BusName -> T.ObjectPath
+infixl 4 ??
+(??) :: Functor f => f (a -> b) -> a -> f b
+fab ?? a = fmap ($ a) fab
+{-# INLINE (??) #-}
+
+infixl 4 ?/?
+(?/?) :: ClientBusPathR (a -> IO b) -> a -> ClientBusPathR b
+soFar ?/? arg = do
+  returnValue <- fmap ($ arg) soFar
+  lift returnValue
+
 data GenerationParams = GenerationParams
   { genBusName :: Maybe T.BusName
   , genObjectPath :: Maybe T.ObjectPath
   , genInterfaceName :: T.InterfaceName
   , getTHType :: T.Type -> Type
+  , useDBusR :: Bool
   }
 
 defaultGetDictType :: Type -> Type -> Type

@@ -64,6 +64,7 @@ module DBus.Client
     (
     -- * Clients
       Client(..)
+    , DBusR
 
     -- * Path/Interface storage
     , PathInfo(..)
@@ -173,7 +174,7 @@ import qualified Control.Exception
 import Control.Exception (SomeException, throwIO)
 import Control.Lens
 import Control.Monad
-import Control.Monad.Trans
+import Control.Monad.Reader
 import Control.Monad.Trans.Except
 import Data.Bits ((.|.))
 import Data.Coerce
@@ -222,6 +223,8 @@ data Client = Client
     , clientInterfaces :: [Interface]
     }
 
+type DBusR a = ReaderT Client IO a
+
 data ClientOptions t = ClientOptions
     {
     -- | Options for the underlying socket, for advanced use cases. See
@@ -244,13 +247,14 @@ data ClientOptions t = ClientOptions
     }
 
 type FormattedMatchRule = String
-data SignalHandler = SignalHandler Unique FormattedMatchRule (IORef Bool) (Signal -> IO ())
+data SignalHandler =
+  SignalHandler Unique FormattedMatchRule (IORef Bool) (Signal -> IO ())
 
 data Method = Method
   { methodName :: MemberName
   , inSignature :: Signature
   , outSignature :: Signature
-  , methodHandler :: MethodCall -> IO Reply
+  , methodHandler :: MethodCall -> DBusR Reply
   }
 
 data Property = Property
@@ -451,9 +455,6 @@ connectWith opts addr = do
 
     return client
 
-makeSuccessReply :: Variant -> Reply
-makeSuccessReply value = ReplyReturn [value]
-
 makeErrorReply :: ErrorName -> Reply
 makeErrorReply errorName = ReplyError errorName []
 
@@ -607,7 +608,8 @@ dispatch client = go where
                                       , methodErrorBody = vs
                                       } (\_ -> return ())
         _ <- forkIO $ case findMethodForCall (clientInterfaces client) pathInfo msg of
-            Right Method { methodHandler = handler } -> handler msg >>= sendResult
+            Right Method { methodHandler = handler } ->
+              runReaderT (handler msg) client >>= sendResult
             Left errName -> send_ client
                 (methodError serial errName) { methodErrorDestination = sender }
                 (\_ -> return ())
@@ -1072,7 +1074,7 @@ throwError name message extra = Control.Exception.throwIO (MethodExc name (toVar
 
 -- Method construction
 
-returnInvalidParameters :: IO Reply
+returnInvalidParameters :: Monad m => m Reply
 returnInvalidParameters = return $ ReplyError errorInvalidParameters []
 
 -- | Used to automatically generate method signatures for introspection
@@ -1090,27 +1092,35 @@ returnInvalidParameters = return $ ReplyError errorInvalidParameters []
 -- converted to a list of return values.
 class AutoMethod a where
     funTypes :: a -> ([Type], [Type])
-    apply :: a -> [Variant] -> IO Reply
+    apply :: a -> [Variant] -> DBusR Reply
 
+handleTopLevelReturn :: IsVariant a => a -> [Variant]
 handleTopLevelReturn value =
   case toVariant value of
     T.Variant (T.ValueStructure xs) -> fmap T.Variant xs
     v -> [v]
 
 instance IsValue a => AutoMethod (IO a) where
-    funTypes io = cased where
-        cased = ([], case ioT io undefined of
-            (_, t) -> case t of
-                TypeStructure ts -> ts
-                _ -> [t])
+  funTypes io = funTypes $ (lift io :: DBusR a)
+  apply io v = apply (lift io :: DBusR a) v
 
-        ioT :: IsValue a => IO a -> a -> (a, Type)
-        ioT _ a = (a, typeOf a)
+instance IsValue a => AutoMethod (DBusR a) where
+    funTypes _ = ([], outTypes) where
+      aType :: Type
+      aType = typeOf (undefined :: a)
+      outTypes =
+        case aType of
+          TypeStructure ts -> ts
+          _ -> [aType]
 
     apply io [] = ReplyReturn . handleTopLevelReturn <$> io
     apply _ _ = returnInvalidParameters
 
 instance IsValue a => AutoMethod (IO (Either Reply a)) where
+  funTypes io = funTypes $ (lift io :: DBusR (Either Reply a))
+  apply io v = apply (lift io :: DBusR (Either Reply a)) v
+
+instance IsValue a => AutoMethod (DBusR (Either Reply a)) where
     funTypes _ = ([], outTypes) where
       aType :: Type
       aType = typeOf (undefined :: a)
@@ -1185,12 +1195,14 @@ makeMethod
   :: MemberName
   -> Signature -- ^ Input parameter signature
   -> Signature -- ^ Output parameter signature
-  -> (MethodCall -> IO Reply)
+  -> (MethodCall -> DBusR Reply)
   -> Method
 makeMethod name inSig outSig io = Method name inSig outSig
-    (\msg -> Control.Exception.catch
+    (\msg -> do
+       fromReader <- ask
+       lift $ Control.Exception.catch
         (Control.Exception.catch
-            (io msg)
+            (runReaderT (io msg) fromReader)
             (\(MethodExc name' vs') -> return (ReplyError name' vs')))
         (\exc -> return (ReplyError errorFailed
             [toVariant (show (exc :: SomeException))])))
