@@ -46,6 +46,7 @@ data GenerationParams = GenerationParams
   { genBusName :: Maybe T.BusName
   , genObjectPath :: Maybe T.ObjectPath
   , genInterfaceName :: T.InterfaceName
+  , genTakeSignalErrorHandler :: Bool
   , getTHType :: T.Type -> Type
   , useDBusR :: Bool
   }
@@ -97,6 +98,7 @@ defaultGenerationParams =
   , genInterfaceName = fromString ""
   , getTHType = defaultGetTHType
   , genObjectPath = Nothing
+  , genTakeSignalErrorHandler = False
   }
 
 addTypeArg :: Type -> Type -> Type
@@ -387,6 +389,7 @@ generateSignal GenerationParams
                  , genInterfaceName = signalInterface
                  , genObjectPath = objectPathM
                  , genBusName = busNameM
+                 , genTakeSignalErrorHandler = takeErrorHandler
                  }
                I.Signal
                  { I.signalName = name
@@ -404,14 +407,13 @@ generateSignal GenerationParams
     receivedSignalN <- newName "signal"
     clientN <- newName "client"
     handlerArgN <- newName "handlerArg"
+    errorHandlerN <- newName "errorHandler"
     matchRuleN <- newName "matchRule"
     matchRuleArgN <- newName "matchRuleArg"
-    busN <- newName "busName"
 
     let variantListExp = map makeToVariantApp argNames
         signalString = coerce name
         signalDefN = mkName $ "signalFor" ++ signalString
-        takeBusArg = isNothing busNameM
         takeObjectPathArg = isNothing objectPathM
         defObjectPath = fromMaybe (fromString "/") objectPathM
         argCount = length argNames
@@ -432,37 +434,32 @@ generateSignal GenerationParams
         finalApplication = foldl applyToName (VarE handlerArgN)
                            (receivedSignalN:toHandlerOutputNames)
         makeHandlerN = mkName $ "makeHandlerFor" ++ signalString
-        makeHandlerCall = AppE (VarE makeHandlerN) (VarE handlerArgN)
+        makeHandlerCall =
+          if takeErrorHandler
+          then AppE base (VarE errorHandlerN)
+          else base
+            where base = AppE (VarE makeHandlerN) (VarE handlerArgN)
         getSetSignal  =
-          case (takeBusArg, takeObjectPathArg) of
-            (True, True) -> [|
-                               $( varE signalDefN )
-                                  { M.signalDestination = Just $( varE busN )
-                                  , M.signalPath = $( varE objectPathN )
-                                  , M.signalBody = $( varE variantsN )
-                                  }
-                             |]
-            (True, False) -> [|
-                                $( varE signalDefN )
-                                  { M.signalDestination = Just $( varE busN )
-                                  , M.signalBody = $( varE variantsN )
-                                  }
-                              |]
-            (False, True) -> [|
-                                $( varE signalDefN )
-                                  { M.signalPath = $( varE objectPathN )
-                                  , M.signalBody = $( varE variantsN )
-                                  }
-                              |]
-            (False, False) -> [|
-                                 $( varE signalDefN ) { M.signalBody = $( varE variantsN ) }
-                              |]
+          case takeObjectPathArg of
+            True -> [|
+                       $( varE signalDefN )
+                          { M.signalPath = $( varE objectPathN )
+                          , M.signalBody = $( varE variantsN )
+                          }
+                         |]
+            False -> [| $( varE signalDefN )
+                        { M.signalBody = $( varE variantsN ) }
+                      |]
         getEmitBody = [|
           let $( varP variantsN ) = $( return $ ListE variantListExp )
               $( varP signalN ) = $( getSetSignal )
           in
             emit $( varE clientN ) $( varE signalN )
           |]
+        getErrorHandler =
+          if takeErrorHandler then
+            [| $( varE errorHandlerN  ) $( varE receivedSignalN )|]
+          else [| return () |]
         getMakeHandlerBody =
           if argCount == 0
           then
@@ -473,8 +470,8 @@ generateSignal GenerationParams
                  $( return $ ListP $ map VarP fromVariantOutputNames ) ->
                    case $( return $ fromVariantExp ) of
                      $( return maybeExtractionPattern ) -> $( return finalApplication )
-                     _ -> return ()
-                 _ -> return ()
+                     _ -> $( getErrorHandler )
+                 _ -> $( getErrorHandler )
                    |]
         getRegisterBody = [|
           let $( varP matchRuleN ) = $( varE matchRuleArgN )
@@ -500,25 +497,32 @@ generateSignal GenerationParams
     emitBody <- getEmitBody
     let methodSignature = foldr addInArg unitIOType args
         addInArg arg = addTypeArg $ getArgType $ I.signalArgType arg
-        fullArgNames = clientN:(addArgIf takeBusArg busN $
-                             addArgIf takeObjectPathArg
-                                       objectPathN argNames)
+        fullArgNames = clientN:(addArgIf takeObjectPathArg objectPathN argNames)
+        -- Never take bus arg because it is set automatically anyway
         fullSignature =
-            buildGeneratedSignature takeBusArg takeObjectPathArg methodSignature
+            buildGeneratedSignature False takeObjectPathArg methodSignature
         functionN = mkName $ "emit" ++ signalString
         emitSignature = SigD functionN fullSignature
         emitFunction = mkFunD functionN fullArgNames emitBody
         handlerType = addTypeArg (ConT ''M.Signal) methodSignature
+        errorHandlerType = addTypeArg (ConT ''M.Signal) unitIOType
         registerN = mkName $ "registerFor" ++ signalString
-        registerArgs = [clientN, matchRuleArgN, handlerArgN]
+        registerArgs = clientN:matchRuleArgN:handlerArgN:
+                       addArgIf takeErrorHandler errorHandlerN []
         registerFunction = mkFunD registerN registerArgs registerBody
-        registerType = addTypeArg (ConT ''C.Client) $
-                       addTypeArg (ConT ''C.MatchRule) $
-                       addTypeArg handlerType $ AppT (ConT ''IO) (ConT ''C.SignalHandler)
+        registerType =
+          addTypeArg (ConT ''C.Client) $
+          addTypeArg (ConT ''C.MatchRule) $
+          addTypeArg handlerType $
+          addTypeArgIf takeErrorHandler (addTypeArg (ConT ''M.Signal) unitIOType) $
+          AppT (ConT ''IO) (ConT ''C.SignalHandler)
         registerSignature = SigD registerN registerType
-        makeHandlerArgs = [handlerArgN, receivedSignalN]
+        makeHandlerArgs = handlerArgN:(addArgIf takeErrorHandler
+                                                errorHandlerN [receivedSignalN])
         makeHandlerFunction = mkFunD makeHandlerN makeHandlerArgs makeHandlerBody
-        makeHandlerType = addTypeArg handlerType $ addTypeArg (ConT ''M.Signal) unitIOType
+        makeHandlerType = addTypeArg handlerType $
+                          addTypeArgIf takeErrorHandler errorHandlerType $
+                          addTypeArg (ConT ''M.Signal) unitIOType
         makeHandlerSignature = SigD makeHandlerN makeHandlerType
     return $ signalDef ++ [ emitSignature, emitFunction
                           , makeHandlerSignature, makeHandlerFunction
