@@ -174,7 +174,8 @@ import qualified Control.Exception
 import Control.Exception (SomeException, throwIO)
 import Control.Lens
 import Control.Monad
-import Control.Monad.Reader
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Except
 import Data.Bits ((.|.))
 import Data.Coerce
@@ -1101,8 +1102,8 @@ handleTopLevelReturn value =
     v -> [v]
 
 instance IsValue a => AutoMethod (IO a) where
-  funTypes io = funTypes $ (lift io :: DBusR a)
-  apply io v = apply (lift io :: DBusR a) v
+  funTypes io = funTypes (lift io :: DBusR a)
+  apply io = apply (lift io :: DBusR a)
 
 instance IsValue a => AutoMethod (DBusR a) where
     funTypes _ = ([], outTypes) where
@@ -1117,8 +1118,8 @@ instance IsValue a => AutoMethod (DBusR a) where
     apply _ _ = returnInvalidParameters
 
 instance IsValue a => AutoMethod (IO (Either Reply a)) where
-  funTypes io = funTypes $ (lift io :: DBusR (Either Reply a))
-  apply io v = apply (lift io :: DBusR (Either Reply a)) v
+  funTypes io = funTypes (lift io :: DBusR (Either Reply a))
+  apply io = apply (lift io :: DBusR (Either Reply a))
 
 instance IsValue a => AutoMethod (DBusR (Either Reply a)) where
     funTypes _ = ([], outTypes) where

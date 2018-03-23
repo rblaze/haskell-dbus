@@ -4,7 +4,6 @@ module DBus.TH where
 
 import           DBus.Client
 import           DBus.Generation
-import qualified DBus.Introspection as I
 import           System.FilePath
 
 

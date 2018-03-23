@@ -2,7 +2,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 module DBus.Generation where
 
-import           Control.Monad.Reader
+import           Control.Monad.Trans.Class
+import           Control.Monad.Trans.Reader
 import           DBus.Client as C
 import qualified DBus.Internal.Message as M
 import qualified DBus.Internal.Types as T
@@ -48,12 +49,11 @@ data GenerationParams = GenerationParams
   , genInterfaceName :: T.InterfaceName
   , genTakeSignalErrorHandler :: Bool
   , getTHType :: T.Type -> Type
-  , useDBusR :: Bool
   }
 
 defaultGetDictType :: Type -> Type -> Type
-defaultGetDictType k v =
-  AppT (AppT (ConT ''Map.Map) k) (v)
+defaultGetDictType k =
+  AppT (AppT (ConT ''Map.Map) k)
 
 defaultGetTHType :: T.Type -> Type
 defaultGetTHType = buildGetTHType (AppT ListT) defaultGetDictType
@@ -84,7 +84,7 @@ buildGetTHType arrayTypeBuilder dictTypeBuilder = fn
             T.TypeDictionary k v -> dictTypeBuilder (fn k) (fn v)
             T.TypeStructure ts -> foldl AppT (TupleT $ length ts) $ map fn ts
 
-newNameDef :: [Char] -> Q Name
+newNameDef :: String -> Q Name
 newNameDef n =
   case n of
     "" -> newName "arg"
@@ -124,10 +124,10 @@ generateClient params
                           , I.interfaceMethods = methods
                           } =
   let params' = params { genInterfaceName = coerce name } in
-  (fmap concat) <$> sequenceA $
-                  (map (generateClientMethod params') methods)
+  fmap concat <$> sequenceA $
+                  map (generateClientMethod params') methods
                   ++
-                  (map (generateClientProperty params') properties)
+                  map (generateClientProperty params') properties
 
 maybeName :: a -> Bool -> Maybe a
 maybeName name condition = if condition then Just name else Nothing
@@ -216,8 +216,8 @@ generateClientMethod GenerationParams
         takeBusArg = isNothing busNameM
         takeObjectPathArg = isNothing objectPathM
         functionNameFirst:functionNameRest = coerce methodNameMN
-        functionName = (Char.toLower functionNameFirst):functionNameRest
-        functionN = mkName $ (Char.toLower functionNameFirst):functionNameRest
+        functionName = Char.toLower functionNameFirst:functionNameRest
+        functionN = mkName $ Char.toLower functionNameFirst:functionNameRest
         methodCallDefN = mkName $ functionName ++ "MethodCall"
         defObjectPath = fromMaybe (fromString "/") objectPathM
     clientN <- newName "client"
@@ -256,9 +256,9 @@ generateClientMethod GenerationParams
             [| Right () |]
           else
             [|
-               case (M.methodReturnBody $( varE replySuccessN )) of
+               case M.methodReturnBody $( varE replySuccessN ) of
                      $( return $ ListP $ map VarP fromVariantOutputNames ) ->
-                       case $( return $ fromVariantExp ) of
+                       case $( return fromVariantExp ) of
                          $( return maybeExtractionPattern ) -> Right $( return finalResultTuple )
                          _ -> Left $ clientArgumentUnpackingError $
                               M.methodReturnBody $( varE replySuccessN )
@@ -288,12 +288,12 @@ generateClientMethod GenerationParams
         addOutArg target arg = AppT target $ getArgType $ I.methodArgType arg
         fullSignature = buildGeneratedSignature takeBusArg takeObjectPathArg methodSignature
         fullArgNames =
-          clientN:(addArgIf takeBusArg busN $
-                             addArgIf takeObjectPathArg
-                                       objectPathN methodArgNames)
+          clientN:addArgIf takeBusArg busN
+                   (addArgIf takeObjectPathArg objectPathN methodArgNames)
         definitionDec = SigD functionN fullSignature
         function = mkFunD functionN fullArgNames functionBody
-    return $ methodCallDef ++ [definitionDec, function]
+        methodCallSignature = SigD methodCallDefN $ ConT ''M.MethodCall
+    return $ methodCallSignature:methodCallDef ++ [definitionDec, function]
 
 generateClientProperty :: GenerationParams -> I.Property -> Q [Dec]
 generateClientProperty GenerationParams
@@ -355,9 +355,8 @@ generateClientProperty GenerationParams
                                       (ConT ''M.MethodError)) $ getArgType propType
         setterSigType = buildSignature $
                         AppT (ConT ''IO) $ AppT (ConT ''Maybe) (ConT ''M.MethodError)
-        buildArgs rest = clientN:(addArgIf takeBusArg busN $
-                                           addArgIf takeObjectPathArg
-                                                    objectPathN rest)
+        buildArgs rest = clientN:addArgIf takeBusArg busN
+                         (addArgIf takeObjectPathArg objectPathN rest)
         getterArgNames = buildArgs []
         setterArgNames = buildArgs [argN]
         propertyString = coerce name
@@ -369,7 +368,8 @@ generateClientProperty GenerationParams
         setterSignature = SigD setterName setterSigType
         getterDefs = if readable then [getterSignature, getterFunction] else []
         setterDefs = if writable then [setterSignature, setterFunction] else []
-    return $ methodCallDefs ++ getterDefs ++ setterDefs
+        methodCallSignature = SigD methodCallDefN $ ConT ''M.MethodCall
+    return $ methodCallSignature:methodCallDefs ++ getterDefs ++ setterDefs
 
 generateSignalsFromInterface :: GenerationParams -> I.Interface -> Q [Dec]
 generateSignalsFromInterface params
@@ -379,7 +379,7 @@ generateSignalsFromInterface params
 
 generateSignals :: GenerationParams -> T.InterfaceName -> [I.Signal] -> Q [Dec]
 generateSignals params name signals =
-  (fmap concat) <$> sequenceA $
+  fmap concat <$> sequenceA $
                 map (generateSignal params { genInterfaceName = coerce name })
                     signals
 
@@ -440,16 +440,16 @@ generateSignal GenerationParams
           else base
             where base = AppE (VarE makeHandlerN) (VarE handlerArgN)
         getSetSignal  =
-          case takeObjectPathArg of
-            True -> [|
-                       $( varE signalDefN )
-                          { M.signalPath = $( varE objectPathN )
-                          , M.signalBody = $( varE variantsN )
-                          }
-                         |]
-            False -> [| $( varE signalDefN )
-                        { M.signalBody = $( varE variantsN ) }
-                      |]
+          if takeObjectPathArg
+          then [|
+                  $( varE signalDefN )
+                     { M.signalPath = $( varE objectPathN )
+                     , M.signalBody = $( varE variantsN )
+                     }
+                 |]
+          else [| $( varE signalDefN )
+                  { M.signalBody = $( varE variantsN ) }
+                |]
         getEmitBody = [|
           let $( varP variantsN ) = $( return $ ListE variantListExp )
               $( varP signalN ) = $( getSetSignal )
@@ -468,7 +468,7 @@ generateSignal GenerationParams
             [|
                case M.signalBody $( varE receivedSignalN ) of
                  $( return $ ListP $ map VarP fromVariantOutputNames ) ->
-                   case $( return $ fromVariantExp ) of
+                   case $( return fromVariantExp ) of
                      $( return maybeExtractionPattern ) -> $( return finalApplication )
                      _ -> $( getErrorHandler )
                  _ -> $( getErrorHandler )
@@ -497,7 +497,7 @@ generateSignal GenerationParams
     emitBody <- getEmitBody
     let methodSignature = foldr addInArg unitIOType args
         addInArg arg = addTypeArg $ getArgType $ I.signalArgType arg
-        fullArgNames = clientN:(addArgIf takeObjectPathArg objectPathN argNames)
+        fullArgNames = clientN:addArgIf takeObjectPathArg objectPathN argNames
         -- Never take bus arg because it is set automatically anyway
         fullSignature =
             buildGeneratedSignature False takeObjectPathArg methodSignature
@@ -517,17 +517,19 @@ generateSignal GenerationParams
           addTypeArgIf takeErrorHandler (addTypeArg (ConT ''M.Signal) unitIOType) $
           AppT (ConT ''IO) (ConT ''C.SignalHandler)
         registerSignature = SigD registerN registerType
-        makeHandlerArgs = handlerArgN:(addArgIf takeErrorHandler
-                                                errorHandlerN [receivedSignalN])
+        makeHandlerArgs =
+          handlerArgN:addArgIf takeErrorHandler errorHandlerN [receivedSignalN]
         makeHandlerFunction = mkFunD makeHandlerN makeHandlerArgs makeHandlerBody
         makeHandlerType = addTypeArg handlerType $
                           addTypeArgIf takeErrorHandler errorHandlerType $
                           addTypeArg (ConT ''M.Signal) unitIOType
         makeHandlerSignature = SigD makeHandlerN makeHandlerType
-    return $ signalDef ++ [ emitSignature, emitFunction
-                          , makeHandlerSignature, makeHandlerFunction
-                          , registerSignature, registerFunction
-                          ]
+        signalSignature = SigD signalDefN (ConT ''M.Signal)
+    return $ signalSignature:
+           signalDef ++ [ emitSignature, emitFunction
+                        , makeHandlerSignature, makeHandlerFunction
+                        , registerSignature, registerFunction
+                        ]
 
 generateFromFilePath :: GenerationParams -> FilePath -> Q [Dec]
 generateFromFilePath generationParams filepath =
