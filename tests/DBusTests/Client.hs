@@ -32,8 +32,8 @@ import DBus.Internal.Types
 import DBusTests.Util
 import qualified DBusTests.TH as TH
 import qualified DBusTests.Generation as G
-import qualified DBus.Internal.Message as M
 
+doExport :: DBus.Client.Client -> String -> String -> [DBus.Client.Method] -> IO ()
 doExport client path name methods =
   DBus.Client.export client (objectPath_ path) DBus.Client.defaultInterface
         { DBus.Client.interfaceMethods = methods
