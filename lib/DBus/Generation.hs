@@ -270,9 +270,12 @@ generateClientMethod GenerationParams
                let $( varP methodCallN ) = $( setMethodCallParamsE )
                $( varP callResultN ) <- call $( return $ VarE clientN ) $( varE methodCallN )
                return $ case $( varE callResultN ) of
-                 Right $( varP replySuccessN ) -> $( handleReplySuccess )
+                 Right $( return rightPattern  ) -> $( handleReplySuccess )
                  Left e -> Left e
                |]
+                    where rightPattern = if outputLength == 0
+                                         then WildP
+                                         else VarP replySuccessN
     functionBody <- getFunctionBody
     methodCallDef <- getMethodCallDefDec
     let methodSignature = foldr addInArg fullOutputSignature inputArgs
