@@ -45,6 +45,7 @@ test_XmlPassthrough = testProperty "xml-passthrough" $ \obj -> let
     Just xml = I.formatXML obj
     in I.parseXML path xml == Just obj
 
+buildEmptyObject :: String -> I.Object
 buildEmptyObject name = I.Object (objectPath_ name) [] []
 
 test_XmlParse :: TestTree

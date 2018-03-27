@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE IncoherentInstances #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
 -- Copyright (C) 2009-2012 John Millikin <john@john-millikin.com>
@@ -48,6 +49,7 @@ import           Data.Vector (Vector)
 import           Data.Word
 import qualified Foreign
 import           GHC.Generics
+import qualified Language.Haskell.TH.Lift as THL
 import           System.IO.Unsafe (unsafePerformIO)
 import           System.Posix.Types (Fd)
 import           Text.ParserCombinators.Parsec ((<|>), oneOf)
@@ -608,6 +610,17 @@ instance (Ord k, IsAtom k, IsValue v) => IsVariant (Map k v) where
     toVariant = Variant . toValue
     fromVariant (Variant val) = fromValue val
 
+instance IsValue () where
+  typeOf _ = TypeStructure []
+  toValue _ = ValueStructure []
+  fromValue (ValueStructure []) = return ()
+  fromValue _ = Nothing
+
+instance IsVariant () where
+  toVariant () = Variant (ValueStructure [])
+  fromVariant (Variant (ValueStructure [])) = Just ()
+  fromVariant _ = Nothing
+
 instance (IsValue a1, IsValue a2) => IsValue (a1, a2) where
     typeOf ~(a1, a2) = TypeStructure [typeOf a1, typeOf a2]
     toValue (a1, a2) = ValueStructure [toValue a1, toValue a2]
@@ -645,7 +658,7 @@ pathElements :: ObjectPath -> [String]
 pathElements = filter (not . null) . splitOn "/" . coerce
 
 fromElements :: [String] -> ObjectPath
-fromElements elems = objectPath_ $ '/':(intercalate "/" elems)
+fromElements elems = objectPath_ $ '/':intercalate "/" elems
 
 formatObjectPath :: ObjectPath -> String
 formatObjectPath (ObjectPath s) = s
@@ -1356,3 +1369,5 @@ maybeParseString :: Parsec.Parser a -> String -> Maybe a
 maybeParseString parser s = case Parsec.parse parser "" s of
     Left _ -> Nothing
     Right a -> Just a
+
+THL.deriveLiftMany [''BusName, ''ObjectPath, ''InterfaceName, ''MemberName]

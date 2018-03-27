@@ -69,6 +69,7 @@ extra-source-files:
   examples/export.hs
   examples/introspect.hs
   examples/list-names.hs
+  idlxml/dbus.xml
 
 source-repository head
   type: git
@@ -84,13 +85,16 @@ library
     , cereal
     , containers
     , deepseq
+    , filepath
     , lens
     , libxml-sax
     , network
     , parsec
     , random
     , split
+    , template-haskell
     , text
+    , th-lift
     , transformers
     , unix
     , vector
@@ -99,13 +103,15 @@ library
   exposed-modules:
     DBus
     DBus.Client
-    DBus.Introspection
-    DBus.Socket
-    DBus.Transport
+    DBus.Generation
     DBus.Internal.Address
     DBus.Internal.Message
     DBus.Internal.Types
     DBus.Internal.Wire
+    DBus.Introspection
+    DBus.Socket
+    DBus.TH
+    DBus.Transport
 
 test-suite dbus_tests
   type: exitcode-stdio-1.0
@@ -143,6 +149,7 @@ test-suite dbus_tests
     DBusTests.BusName
     DBusTests.Client
     DBusTests.ErrorName
+    DBusTests.Generation
     DBusTests.Integration
     DBusTests.InterfaceName
     DBusTests.Introspection
@@ -152,6 +159,7 @@ test-suite dbus_tests
     DBusTests.Serialization
     DBusTests.Signature
     DBusTests.Socket
+    DBusTests.TH
     DBusTests.Transport
     DBusTests.Util
     DBusTests.Variant

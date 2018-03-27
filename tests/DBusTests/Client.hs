@@ -18,6 +18,7 @@ module DBusTests.Client (test_Client) where
 import Control.Concurrent
 import Control.Exception (try)
 import Data.Word
+import Data.Int
 import Test.Tasty
 import Test.Tasty.HUnit
 import qualified Data.Map as Map
@@ -25,9 +26,14 @@ import qualified Data.Map as Map
 import DBus
 import qualified DBus.Client
 import qualified DBus.Socket
+import DBus.Introspection
+import DBus.Internal.Types
 
 import DBusTests.Util
+import qualified DBusTests.TH as TH
+import qualified DBusTests.Generation as G
 
+doExport :: DBus.Client.Client -> String -> String -> [DBus.Client.Method] -> IO ()
 doExport client path name methods =
   DBus.Client.export client (objectPath_ path) DBus.Client.defaultInterface
         { DBus.Client.interfaceMethods = methods
@@ -39,6 +45,7 @@ test_Client = testGroup "Client" $
     [ test_RequestName
     , test_ReleaseName
     , test_Call
+    , test_CallWithGeneration
     , test_CallNoReply
     , test_AddMatch
     , test_AutoMethod
@@ -283,6 +290,31 @@ test_Call = withConnectedClient $ \res -> testCase "call" $ do
 
         reply @?= methodReturn (methodReturnSerial reply)
 
+test_CallWithGeneration :: TestTree
+test_CallWithGeneration = withConnectedClient $ \res -> testCase "callGeneration" $ do
+    (sock, client) <- res
+    let string = "test"
+        busName = busName_ "org.freeDesktop.DBus"
+        int = 32 :: Int32
+        path = objectPath_ "/a/b/c"
+        returnValue = Map.fromList [(string, int)]
+
+    DBus.Client.export client path G.testInterface
+
+    do
+        response <- stubMethodCall sock
+            (TH.sampleMethod1 client busName path string int)
+            (methodCall path (DBus.Client.interfaceName G.testInterface) $
+                        memberName_ "SampleMethod1")
+             { methodCallDestination = Just busName
+             , methodCallBody = [toVariant string, toVariant int]
+             }
+            (\x -> (methodReturn x)
+                   { methodReturnBody = [toVariant returnValue]})
+        reply <- requireRight response
+
+        reply @?= returnValue
+
 test_CallNoReply :: TestTree
 test_CallNoReply = withConnectedClient $ \res -> testCase "callNoReply" $ do
     (sock, client) <- res
@@ -377,32 +409,207 @@ test_AutoMethod = withConnectedClient $ \res -> testCase "autoMethod" $ do
         response @?= Left (methodError serial (errorName_ "org.freedesktop.DBus.Error.InvalidParameters"))
 
 test_ExportIntrospection :: TestTree
-test_ExportIntrospection = withConnectedClient $ \res -> testCase "exportIntrospection" $ do
-    (sock, client) <- res
-    doExport client "/foo" "com.example.Echo"
-               [ DBus.Client.autoMethod (memberName_ "Method1")
-                 (undefined :: String -> IO ())
-               , DBus.Client.autoMethod (memberName_ "Method2")
-                 (undefined :: String -> IO String)
-               , DBus.Client.autoMethod (memberName_ "Method3")
-                 (undefined :: String -> IO (String, String))
-               ]
-
-    let introspect path = do
-        (_, response) <- callClientMethod sock path "org.freedesktop.DBus.Introspectable" "Introspect" []
-        ret <- requireRight response
-        let body = methodReturnBody ret
-
-        length body @?= 1
-        let Just xml = fromVariant (head body)
-        return xml
-
-    root <- introspect "/"
-    root @?=
-         "<!DOCTYPE node PUBLIC '-//freedesktop//DTD D-BUS Object Introspection 1.0//EN' 'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>\n<node name='/'><node name='foo'><interface name='org.freedesktop.DBus.Properties'><method name='Get'><arg name='interfaceName' type='s' direction='in'/><arg name='memberName' type='s' direction='in'/><arg name='value' type='v' direction='out'/></method><method name='Set'><arg name='interfaceName' type='s' direction='in'/><arg name='memberName' type='s' direction='in'/><arg name='value' type='v' direction='in'/></method><method name='GetAll'><arg name='interfaceName' type='s' direction='in'/><arg name='values' type='a{sv}' direction='out'/></method></interface><interface name='org.freedesktop.DBus.Introspectable'><method name='Introspect'><arg name='output' type='s' direction='out'/></method></interface><interface name='com.example.Echo'><method name='Method1'><arg name='a' type='s' direction='in'/></method><method name='Method2'><arg name='a' type='s' direction='in'/><arg name='b' type='s' direction='out'/></method><method name='Method3'><arg name='a' type='s' direction='in'/><arg name='b' type='s' direction='out'/><arg name='c' type='s' direction='out'/></method></interface></node></node>"
-    foo <- introspect "/foo"
-    foo @?=
-        "<!DOCTYPE node PUBLIC '-//freedesktop//DTD D-BUS Object Introspection 1.0//EN' 'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>\n<node name='/foo'><interface name='org.freedesktop.DBus.Properties'><method name='Get'><arg name='interfaceName' type='s' direction='in'/><arg name='memberName' type='s' direction='in'/><arg name='value' type='v' direction='out'/></method><method name='Set'><arg name='interfaceName' type='s' direction='in'/><arg name='memberName' type='s' direction='in'/><arg name='value' type='v' direction='in'/></method><method name='GetAll'><arg name='interfaceName' type='s' direction='in'/><arg name='values' type='a{sv}' direction='out'/></method></interface><interface name='org.freedesktop.DBus.Introspectable'><method name='Introspect'><arg name='output' type='s' direction='out'/></method></interface><interface name='com.example.Echo'><method name='Method1'><arg name='a' type='s' direction='in'/></method><method name='Method2'><arg name='a' type='s' direction='in'/><arg name='b' type='s' direction='out'/></method><method name='Method3'><arg name='a' type='s' direction='in'/><arg name='b' type='s' direction='out'/><arg name='c' type='s' direction='out'/></method></interface></node>"
+test_ExportIntrospection =
+  withConnectedClient $ \res ->
+    testCase "exportIntrospection" $ do
+      (sock, client) <- res
+      let interface =
+            DBus.Client.defaultInterface
+            { DBus.Client.interfaceMethods =
+                [ DBus.Client.autoMethod
+                    (memberName_ "Method1")
+                    (undefined :: String -> IO ())
+                , DBus.Client.autoMethod
+                    (memberName_ "Method2")
+                    (undefined :: String -> IO String)
+                , DBus.Client.autoMethod
+                    (memberName_ "Method3")
+                    (undefined :: String -> IO (String, String))
+                ]
+            , DBus.Client.interfaceName = interfaceName_ "com.example.Echo"
+            }
+          expectedIntrospectionInterface =
+            Object
+            { objectPath = ObjectPath "/foo"
+            , objectInterfaces =
+                [ Interface
+                  { interfaceName =
+                      InterfaceName "org.freedesktop.DBus.Properties"
+                  , interfaceMethods =
+                      [ Method
+                        { methodName = MemberName "Get"
+                        , methodArgs =
+                            [ MethodArg
+                              { methodArgName = "a"
+                              , methodArgType = TypeString
+                              , methodArgDirection = In
+                              }
+                            , MethodArg
+                              { methodArgName = "b"
+                              , methodArgType = TypeString
+                              , methodArgDirection = In
+                              }
+                            , MethodArg
+                              { methodArgName = "c"
+                              , methodArgType = TypeVariant
+                              , methodArgDirection = Out
+                              }
+                            ]
+                        }
+                      , Method
+                        { methodName = MemberName "GetAll"
+                        , methodArgs =
+                            [ MethodArg
+                              { methodArgName = "a"
+                              , methodArgType = TypeString
+                              , methodArgDirection = In
+                              }
+                            , MethodArg
+                              { methodArgName = "b"
+                              , methodArgType = TypeDictionary TypeString TypeVariant
+                              , methodArgDirection = Out
+                              }
+                            ]
+                        }
+                      , Method
+                        { methodName = MemberName "Set"
+                        , methodArgs =
+                            [ MethodArg
+                              { methodArgName = "a"
+                              , methodArgType = TypeString
+                              , methodArgDirection = In
+                              }
+                            , MethodArg
+                              { methodArgName = "b"
+                              , methodArgType = TypeString
+                              , methodArgDirection = In
+                              }
+                            , MethodArg
+                              { methodArgName = "c"
+                              , methodArgType = TypeVariant
+                              , methodArgDirection = In
+                              }
+                            ]
+                        }
+                      ]
+                  , interfaceSignals =
+                      [ Signal
+                        { signalName = MemberName "PropertiesChanged"
+                        , signalArgs =
+                            [ SignalArg
+                              { signalArgName = "interface_name"
+                              , signalArgType = TypeString
+                              }
+                            , SignalArg
+                              { signalArgName = "changed_properties"
+                              , signalArgType = TypeDictionary TypeString TypeVariant
+                              }
+                            , SignalArg
+                              { signalArgName = "invalidated_properties"
+                              , signalArgType = TypeArray TypeString
+                              }
+                            ]
+                        }
+                      ]
+                  , interfaceProperties = []
+                  }
+                , Interface
+                  { interfaceName =
+                      InterfaceName "org.freedesktop.DBus.Introspectable"
+                  , interfaceMethods =
+                      [ Method
+                        { methodName = MemberName "Introspect"
+                        , methodArgs =
+                            [ MethodArg
+                              { methodArgName = "a"
+                              , methodArgType = TypeString
+                              , methodArgDirection = Out
+                              }
+                            ]
+                        }
+                      ]
+                  , interfaceSignals = []
+                  , interfaceProperties = []
+                  }
+                , Interface
+                  { interfaceName = InterfaceName "com.example.Echo"
+                  , interfaceMethods =
+                      [ Method
+                        { methodName = MemberName "Method1"
+                        , methodArgs =
+                            [ MethodArg
+                              { methodArgName = "a"
+                              , methodArgType = TypeString
+                              , methodArgDirection = In
+                              }
+                            ]
+                        }
+                      , Method
+                        { methodName = MemberName "Method2"
+                        , methodArgs =
+                            [ MethodArg
+                              { methodArgName = "a"
+                              , methodArgType = TypeString
+                              , methodArgDirection = In
+                              }
+                            , MethodArg
+                              { methodArgName = "b"
+                              , methodArgType = TypeString
+                              , methodArgDirection = Out
+                              }
+                            ]
+                        }
+                      , Method
+                        { methodName = MemberName "Method3"
+                        , methodArgs =
+                            [ MethodArg
+                              { methodArgName = "a"
+                              , methodArgType = TypeString
+                              , methodArgDirection = In
+                              }
+                            , MethodArg
+                              { methodArgName = "b"
+                              , methodArgType = TypeString
+                              , methodArgDirection = Out
+                              }
+                            , MethodArg
+                              { methodArgName = "c"
+                              , methodArgType = TypeString
+                              , methodArgDirection = Out
+                              }
+                            ]
+                        }
+                      ]
+                  , interfaceSignals = []
+                  , interfaceProperties = []
+                  }
+                ]
+            , objectChildren = []
+            }
+      DBus.Client.export client (objectPath_ "/foo") interface
+      let introspect path = do
+            (_, response) <-
+              callClientMethod
+                sock
+                path
+                "org.freedesktop.DBus.Introspectable"
+                "Introspect"
+                []
+            ret <- requireRight response
+            let body = methodReturnBody ret
+            length body @?= 1
+            let Just xml = fromVariant (head body)
+            return $ parseXML (objectPath_ "/") xml
+      root <- introspect "/"
+      root @?=
+        Just
+          (Object
+           { objectPath = ObjectPath "/"
+           , objectInterfaces = []
+           , objectChildren = [ expectedIntrospectionInterface ]
+           })
+      foo <- introspect "/foo"
+      foo @?= Just expectedIntrospectionInterface
 
 startDummyBus :: IO (Address, MVar DBus.Socket.Socket)
 startDummyBus = do
