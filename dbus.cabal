@@ -1,6 +1,6 @@
 name: dbus
 version: 1.0.0
-license: GPL-3
+license: Apache-2.0
 license-file: license.txt
 author: John Millikin <john@john-millikin.com>
 maintainer: Andrey Sverdlichenko <blaze@ruddy.ru>
