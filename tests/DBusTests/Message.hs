@@ -1,5 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 -- Copyright (C) 2012 John Millikin <john@john-millikin.com>
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,36 +14,33 @@
 
 module DBusTests.Message (test_Message) where
 
-import           Test.Chell
+import Test.Tasty
+import Test.Tasty.HUnit
 
 import           DBus
 
-test_Message :: Suite
-test_Message = suite "Message"
-	[ test_MethodErrorMessage
-	]
+test_Message :: TestTree
+test_Message = testGroup "Message"
+    [ test_MethodErrorMessage
+    ]
 
-test_MethodErrorMessage :: Test
-test_MethodErrorMessage = assertions "methodErrorMessage" $ do
-	let emptyError = methodError firstSerial (errorName_ "com.example.Error")
-	
-	$expect (equal
-		"(no error message)"
-		(methodErrorMessage emptyError
-			{ methodErrorBody = []
-			}))
-	$expect (equal
-		"(no error message)"
-		(methodErrorMessage emptyError
-			{ methodErrorBody = [toVariant True]
-			}))
-	$expect (equal
-		"(no error message)"
-		(methodErrorMessage emptyError
-			{ methodErrorBody = [toVariant ""]
-			}))
-	$expect (equal
-		"error"
-		(methodErrorMessage emptyError
-			{ methodErrorBody = [toVariant "error"]
-			}))
+test_MethodErrorMessage :: TestTree
+test_MethodErrorMessage = testCase "methodErrorMessage" $ do
+    let emptyError = methodError firstSerial (errorName_ "com.example.Error")
+
+    "(no error message)" @=?
+        methodErrorMessage emptyError
+            { methodErrorBody = []
+            }
+    "(no error message)" @=?
+        methodErrorMessage emptyError
+            { methodErrorBody = [toVariant True]
+            }
+    "(no error message)" @=?
+        methodErrorMessage emptyError
+            { methodErrorBody = [toVariant ""]
+            }
+    "error" @=?
+        methodErrorMessage emptyError
+            { methodErrorBody = [toVariant "error"]
+            }

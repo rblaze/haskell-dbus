@@ -1,15 +1,14 @@
 name: dbus
-version: 0.10.12
+version: 1.0.0
 license: Apache-2.0
 license-file: license.txt
 author: John Millikin <john@john-millikin.com>
-maintainer: John Millikin <john@john-millikin.com>
+maintainer: Andrey Sverdlichenko <blaze@ruddy.ru>
 build-type: Simple
 cabal-version: >= 1.8
 category: Network, Desktop
 stability: experimental
-homepage: https://john-millikin.com/software/haskell-dbus/
-bug-reports: mailto:jmillikin@gmail.com
+homepage: https://github.com/rblaze/haskell-dbus#readme
 
 synopsis: A client library for the D-Bus IPC system.
 description:
@@ -66,101 +65,113 @@ description:
 
 
 extra-source-files:
-  benchmarks/DBusBenchmarks.hs
-  --
   examples/dbus-monitor.hs
   examples/export.hs
   examples/introspect.hs
   examples/list-names.hs
-  --
-  tests/DBusTests.hs
-  tests/DBusTests/*.hs
+  idlxml/dbus.xml
 
 source-repository head
   type: git
-  location: https://john-millikin.com/code/haskell-dbus/
-
-source-repository this
-  type: git
-  location: https://john-millikin.com/code/haskell-dbus/
-  tag: haskell-dbus_0.10.12
+  location: https://github.com/rblaze/haskell-dbus
 
 library
-  ghc-options: -Wall -O2
+  ghc-options: -W -Wall
   hs-source-dirs: lib
 
-  if impl(ghc>=7.10)
-    ghc-options: -fno-warn-tabs
-
-  -- IMPORTANT: keep these in sync with the test suite
   build-depends:
-      base >= 4.0 && < 5.0
-    , bytestring >= 0.10.2
-    , cereal >= 0.3.4 && < 0.6
-    , containers >= 0.1 && < 0.6
-    , libxml-sax >= 0.7 && < 0.8
-    , network >= 2.2.3
-    , parsec >= 2.0 && < 3.2
-    , random >= 1.0 && < 2.0
-    , text >= 0.11.1.5
-    , transformers >= 0.2
-    , unix >= 2.2
-    , vector >= 0.7 && < 0.12
-    , xml-types >= 0.3 && < 0.4
+      base >=4 && <5
+    , bytestring
+    , cereal
+    , containers
+    , deepseq
+    , filepath
+    , lens
+    , libxml-sax
+    , network
+    , parsec
+    , random
+    , split
+    , template-haskell
+    , text
+    , th-lift
+    , transformers
+    , unix
+    , vector
+    , xml-types
 
   exposed-modules:
     DBus
     DBus.Client
+    DBus.Generation
+    DBus.Internal.Address
+    DBus.Internal.Message
+    DBus.Internal.Types
+    DBus.Internal.Wire
     DBus.Introspection
     DBus.Socket
+    DBus.TH
     DBus.Transport
-
-  other-modules:
-    DBus.Address
-    DBus.Message
-    DBus.Types
-    DBus.Wire
 
 test-suite dbus_tests
   type: exitcode-stdio-1.0
   main-is: DBusTests.hs
-  hs-source-dirs: lib,tests
-
-  if impl(ghc>=7.10)
-    ghc-options: -fno-warn-tabs
+  hs-source-dirs: tests
+  ghc-options: -W -Wall
 
   build-depends:
-      base >= 4.0 && < 5.0
-    , bytestring >= 0.10.2
-    , cereal >= 0.3.4 && < 0.6
-    , chell >= 0.4 && < 0.5
-    , chell-quickcheck >= 0.2 && < 0.3
-    , containers >= 0.1 && < 0.6
+      dbus
+    , base
+    , bytestring
+    , cereal
+    , containers
     , directory
+    , extra
     , filepath
-    , libxml-sax >= 0.7 && < 0.8
-    , network >= 2.2.3
-    , parsec >= 2.0 && < 3.2
-    , process >= 1.0 && < 2.0
-    , QuickCheck >= 2.4
-    , random >= 1.0 && < 2.0
-    , text >= 0.11.1.5
-    , transformers >= 0.2
-    , unix >= 2.2
-    , vector >= 0.7 && < 0.12
-    , xml-types >= 0.3 && < 0.4
+    , libxml-sax
+    , network
+    , parsec
+    , process
+    , QuickCheck
+    , random
+    , resourcet
+    , tasty
+    , tasty-hunit
+    , tasty-quickcheck
+    , text
+    , transformers
+    , unix
+    , vector
+    , xml-types
+
+  other-modules:
+    DBusTests.Address
+    DBusTests.BusName
+    DBusTests.Client
+    DBusTests.ErrorName
+    DBusTests.Generation
+    DBusTests.Integration
+    DBusTests.InterfaceName
+    DBusTests.Introspection
+    DBusTests.MemberName
+    DBusTests.Message
+    DBusTests.ObjectPath
+    DBusTests.Serialization
+    DBusTests.Signature
+    DBusTests.Socket
+    DBusTests.TH
+    DBusTests.Transport
+    DBusTests.Util
+    DBusTests.Variant
+    DBusTests.Wire
 
 benchmark dbus_benchmarks
   type: exitcode-stdio-1.0
   main-is: DBusBenchmarks.hs
   hs-source-dirs: benchmarks
-  ghc-options: -Wall -O2 -fno-warn-orphans
-
-  if impl(ghc>=7.10)
-    ghc-options: -fno-warn-tabs
+  ghc-options: -Wall -fno-warn-orphans
 
   build-depends:
       dbus
-    , base > 4.0 && < 5.0
-    , criterion >= 1.0 && < 2.0
-    , deepseq
+    , base
+    , criterion

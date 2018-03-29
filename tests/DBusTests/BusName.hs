@@ -1,5 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 -- Copyright (C) 2010-2012 John Millikin <john@john-millikin.com>
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,80 +14,82 @@
 
 module DBusTests.BusName (test_BusName) where
 
-import           Test.Chell
-import           Test.Chell.QuickCheck
-import           Test.QuickCheck hiding (property)
+import Data.List (intercalate)
+import Data.Maybe (isJust)
+import Test.QuickCheck
+import Test.Tasty
+import Test.Tasty.HUnit
+import Test.Tasty.QuickCheck
 
-import           Data.List (intercalate)
+import DBus
+import DBusTests.Util
 
-import           DBus
+test_BusName :: TestTree
+test_BusName = testGroup "BusName"
+    [ test_Parse
+    , test_ParseInvalid
+    , test_IsVariant
+    ]
 
-import           DBusTests.Util
+test_Parse :: TestTree
+test_Parse = testProperty "parse" prop where
+    prop = forAll gen_BusName check
+    check x = case parseBusName x of
+        Nothing -> False
+        Just parsed -> formatBusName parsed == x
 
-test_BusName :: Suite
-test_BusName = suite "BusName"
-	[ test_Parse
-	, test_ParseInvalid
-	, test_IsVariant
-	]
+test_ParseInvalid :: TestTree
+test_ParseInvalid = testCase "parse-invalid" $ do
+    -- empty
+    Nothing @=? parseBusName ""
 
-test_Parse :: Test
-test_Parse = property "parse" prop where
-	prop = forAll gen_BusName check
-	check x = case parseBusName x of
-		Nothing -> False
-		Just parsed -> formatBusName parsed == x
+    -- well-known starting with a digit
+    Nothing @=? parseBusName "foo.0bar"
 
-test_ParseInvalid :: Test
-test_ParseInvalid = assertions "parse-invalid" $ do
-	-- empty
-	$expect (nothing (parseBusName ""))
-	
-	-- well-known starting with a digit
-	$expect (nothing (parseBusName "foo.0bar"))
-	
-	-- well-known with one element
-	$expect (nothing (parseBusName "foo"))
-	
-	-- unique with one element
-	$expect (nothing (parseBusName ":foo"))
-	
-	-- trailing characters
-	$expect (nothing (parseBusName "foo.bar!"))
-	
-	-- at most 255 characters
-	$expect (just (parseBusName (":0." ++ replicate 251 'y')))
-	$expect (just (parseBusName (":0." ++ replicate 252 'y')))
-	$expect (nothing (parseBusName (":0." ++ replicate 253 'y')))
+    -- well-known with one element
+    Nothing @=? parseBusName "foo"
 
-test_IsVariant :: Test
-test_IsVariant = assertions "IsVariant" $ do
-	assertVariant TypeString (busName_ "foo.bar")
+    -- unique with one element
+    Nothing @=? parseBusName ":foo"
+
+    -- trailing characters
+    Nothing @=? parseBusName "foo.bar!"
+
+    -- at most 255 characters
+    assertBool "valid parse failed"
+        $ isJust (parseBusName (":0." ++ replicate 251 'y'))
+    assertBool "valid parse failed"
+        $ isJust (parseBusName (":0." ++ replicate 252 'y'))
+    Nothing @=? parseBusName (":0." ++ replicate 253 'y')
+
+test_IsVariant :: TestTree
+test_IsVariant = testCase "IsVariant" $
+    assertVariant TypeString (busName_ "foo.bar")
 
 gen_BusName :: Gen String
 gen_BusName = oneof [unique, wellKnown] where
-	alpha = ['a'..'z'] ++ ['A'..'Z'] ++ "_-"
-	alphanum = alpha ++ ['0'..'9']
-	
-	unique = trim $ do
-		x <- chunks alphanum
-		return (":" ++ x)
-	wellKnown = trim (chunks alpha)
-	
-	trim gen = do
-		x <- gen
-		if length x > 255
-			then return (dropWhileEnd (== '.') (take 255 x))
-			else return x
-	
-	chunks start = do
-		x <- chunk start
-		xs <- listOf1 (chunk start)
-		return (intercalate "." (x:xs))
-	chunk start = do
-		x <- elements start
-		xs <- listOf (elements alphanum)
-		return (x:xs)
+    alpha = ['a'..'z'] ++ ['A'..'Z'] ++ "_-"
+    alphanum = alpha ++ ['0'..'9']
+
+    unique = trim $ do
+        x <- chunks alphanum
+        return (":" ++ x)
+    wellKnown = trim (chunks alpha)
+
+    trim gen = do
+        x <- gen
+        if length x > 255
+            then return (dropWhileEnd (== '.') (take 255 x))
+            else return x
+
+    chunks start = do
+        x <- chunk start
+        xs <- listOf1 (chunk start)
+        return (intercalate "." (x:xs))
+    chunk start = do
+        x <- elements start
+        xs <- listOf (elements alphanum)
+        return (x:xs)
 
 instance Arbitrary BusName where
-	arbitrary = fmap busName_ gen_BusName
+    arbitrary = fmap busName_ gen_BusName

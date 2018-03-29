@@ -1,0 +1,9 @@
+engines:
+  hlint:
+    enabled: true
+  fixme:
+    enabled: true
+
+ratings:
+  paths:
+    - "**.hs"
