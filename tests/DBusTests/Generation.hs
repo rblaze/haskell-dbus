@@ -26,6 +26,11 @@ testInterface :: Interface
 testInterface =
   defaultInterface { interfaceMethods =
                        [autoMethod "SampleMethod1" sampleMethod1]
+                   , interfaceProperties =
+                     [autoProperty "SampleWriteProperty"
+                                     (Just $ return (1 :: Int32))
+                                     (Just $ const $ return ())
+                     ]
                    , interfaceName = "org.TestInterface"
                    , interfaceSignals = testSignals
                    }

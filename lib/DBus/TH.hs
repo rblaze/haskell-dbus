@@ -6,7 +6,6 @@ import           DBus.Client
 import           DBus.Generation
 import           System.FilePath
 
-
 generateSignalsFromInterface defaultGenerationParams $
                              buildIntrospectionInterface $
                              buildPropertiesInterface undefined
