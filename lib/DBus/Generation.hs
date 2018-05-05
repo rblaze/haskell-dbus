@@ -356,7 +356,7 @@ generateClientProperty GenerationParams
           buildSignature $ AppT (ConT ''IO) $
                          AppT (AppT (ConT ''Either)
                                       (ConT ''M.MethodError)) $ getArgType propType
-        setterSigType = buildSignature $
+        setterSigType = buildSignature $ addTypeArg (getArgType propType) $
                         AppT (ConT ''IO) $ AppT (ConT ''Maybe) (ConT ''M.MethodError)
         buildArgs rest = clientN:addArgIf takeBusArg busN
                          (addArgIf takeObjectPathArg objectPathN rest)
