@@ -83,11 +83,11 @@ library
       base >=4 && <5
     , bytestring
     , cereal
+    , conduit
     , containers
     , deepseq
     , filepath
     , lens
-    , libxml-sax
     , network
     , parsec
     , random
@@ -98,6 +98,7 @@ library
     , transformers
     , unix
     , vector
+    , xml-conduit
     , xml-types
 
   exposed-modules:
@@ -128,7 +129,6 @@ test-suite dbus_tests
     , directory
     , extra
     , filepath
-    , libxml-sax
     , network
     , parsec
     , process
@@ -142,7 +142,6 @@ test-suite dbus_tests
     , transformers
     , unix
     , vector
-    , xml-types
 
   other-modules:
     DBusTests.Address

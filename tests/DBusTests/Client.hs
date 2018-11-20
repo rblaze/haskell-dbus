@@ -20,6 +20,7 @@ import Data.Word
 import Data.Int
 import Test.Tasty
 import Test.Tasty.HUnit
+import qualified Data.ByteString.Lazy.Char8 as BL8
 import qualified Data.Map as Map
 
 import DBus
@@ -598,7 +599,7 @@ test_ExportIntrospection =
             let body = methodReturnBody ret
             length body @?= 1
             let Just xml = fromVariant (head body)
-            return $ parseXML (objectPath_ "/") xml
+            return $ parseXML (objectPath_ "/") (BL8.pack xml)
       root <- introspect "/"
       root @?=
         Just

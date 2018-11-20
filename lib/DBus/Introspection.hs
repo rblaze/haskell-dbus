@@ -29,16 +29,15 @@ module DBus.Introspection
     , Property(..)
     ) where
 
+import           Conduit
 import qualified Control.Applicative
-import           Control.Monad ((>=>), ap, liftM)
-import           Control.Monad.ST (runST)
+import           Control.Monad (ap, liftM)
+import qualified Data.ByteString.Lazy as BL
 import           Data.List (isPrefixOf)
-import qualified Data.STRef as ST
-import qualified Data.Text
-import           Data.Text (Text)
-import qualified Data.Text.Encoding
-import qualified Data.XML.Types as X
-import qualified Text.XML.LibXML.SAX as SAX
+import           Data.Maybe
+import qualified Data.Text as Text
+import           Data.XML.Types
+import qualified Text.XML.Stream.Parse as X
 
 import qualified DBus as T
 
@@ -93,124 +92,136 @@ data Property = Property
     }
     deriving (Show, Eq)
 
-parseXML :: T.ObjectPath -> String -> Maybe Object
-parseXML path xml = do
-    root <- parseElement (Data.Text.pack xml)
-    parseRoot path root
+data ObjectChildren
+    = InterfaceDefinition Interface
+    | SubNode Object
 
-parseElement :: Text -> Maybe X.Element
-parseElement xml = runST $ do
-    stackRef <- ST.newSTRef [([], [])]
-    let onError _ = do
-        ST.writeSTRef stackRef []
-        return False
-    let onBegin _ attrs = do
-        ST.modifySTRef stackRef ((attrs, []):)
-        return True
-    let onEnd name = do
-        stack <- ST.readSTRef stackRef
-        let (attrs, children'):stack' = stack
-        let e = X.Element name attrs (map X.NodeElement (reverse children'))
-        let (pAttrs, pChildren):stack'' = stack'
-        let parent = (pAttrs, e:pChildren)
-        ST.writeSTRef stackRef (parent:stack'')
-        return True
+data InterfaceChildren
+    = MethodDefinition Method
+    | SignalDefinition Signal
+    | PropertyDefinition Property
 
-    p <- SAX.newParserST Nothing
-    SAX.setCallback p SAX.parsedBeginElement onBegin
-    SAX.setCallback p SAX.parsedEndElement onEnd
-    SAX.setCallback p SAX.reportError onError
-    SAX.parseBytes p (Data.Text.Encoding.encodeUtf8 xml)
-    SAX.parseComplete p
-    stack <- ST.readSTRef stackRef
-    return $ case stack of
-        [] -> Nothing
-        (_, children'):_ -> Just (head children')
+parseXML :: T.ObjectPath -> BL.ByteString -> Maybe Object
+parseXML path xml =
+    runConduit $ X.parseLBS X.def xml .| X.force "parse error" (parseObject $ getRootName path)
 
-parseRoot :: T.ObjectPath -> X.Element -> Maybe Object
-parseRoot defaultPath e = do
-    path <- case X.attributeText "name" e of
-        Nothing -> Just defaultPath
-        Just x  -> T.parseObjectPath (Data.Text.unpack x)
-    parseObject path e
+getRootName :: T.ObjectPath -> X.AttrParser T.ObjectPath
+getRootName defaultPath = do
+    nodeName <- X.attr "name"
+    pure $ maybe defaultPath (T.objectPath_ . Text.unpack) nodeName
 
-parseChild :: T.ObjectPath -> X.Element -> Maybe Object
-parseChild parentPath e = do
+getChildName :: T.ObjectPath -> X.AttrParser T.ObjectPath
+getChildName parentPath = do
+    nodeName <- X.requireAttr "name"
     let parentPath' = case T.formatObjectPath parentPath of
             "/" -> "/"
             x   -> x ++ "/"
-    pathSegment <- X.attributeText "name" e
-    path <- T.parseObjectPath (parentPath' ++ Data.Text.unpack pathSegment)
-    parseObject path e
+    pure $ T.objectPath_ (parentPath' ++ Text.unpack nodeName)
 
-parseObject :: T.ObjectPath -> X.Element -> Maybe Object
-parseObject path e | X.elementName e == "node" = do
-    interfaces <- children parseInterface (X.isNamed "interface") e
-    children' <- children (parseChild path) (X.isNamed "node") e
-    return (Object path interfaces children')
-parseObject _ _ = Nothing
+parseObject
+    :: X.AttrParser T.ObjectPath
+    -> ConduitT Event o Maybe (Maybe Object)
+parseObject getPath = X.tag' "node" getPath parseContent
+  where
+    parseContent objPath = do
+        elems <- X.many $ X.choose
+            [ fmap SubNode <$> parseObject (getChildName objPath)
+            , fmap InterfaceDefinition <$> parseInterface
+            ]
+        let base = Object objPath [] []
+            addElem e (Object p is cs) = case e of
+                InterfaceDefinition i -> Object p (i:is) cs
+                SubNode c -> Object p is (c:cs)
+        pure $ foldr addElem base elems
 
-parseInterface :: X.Element -> Maybe Interface
-parseInterface e = do
-    name <- T.parseInterfaceName =<< attributeString "name" e
-    methods <- children parseMethod (X.isNamed "method") e
-    signals <- children parseSignal (X.isNamed "signal") e
-    properties <- children parseProperty (X.isNamed "property") e
-    return (Interface name methods signals properties)
+parseInterface
+    :: ConduitT Event o Maybe (Maybe Interface)
+parseInterface = X.tag' "interface" getName parseContent
+  where
+    getName = do
+        ifName <- X.requireAttr "name"
+        pure $ T.interfaceName_ (Text.unpack ifName)
+    parseContent ifName = do
+        elems <- X.many $ X.choose
+            [ parseMethod
+            , parseSignal
+            , parseProperty
+            ]
+        let base = Interface ifName [] [] []
+            addElem e (Interface n ms ss ps) = case e of
+                MethodDefinition m -> Interface n (m:ms) ss ps
+                SignalDefinition s -> Interface n ms (s:ss) ps
+                PropertyDefinition p -> Interface n ms ss (p:ps)
+        pure $ foldr addElem base elems
 
-parseMethod :: X.Element -> Maybe Method
-parseMethod e = do
-    name <- T.parseMemberName =<< attributeString "name" e
-    args <- children parseMethodArg (isArg ["in", "out", ""]) e
-    return (Method name args)
+parseMethod :: ConduitT Event o Maybe (Maybe InterfaceChildren)
+parseMethod = X.tag' "method" getName parseArgs
+  where
+    getName = do
+        ifName <- X.requireAttr "name"
+        case T.parseMemberName (Text.unpack ifName) of
+            Just n -> pure n
+            Nothing -> throwM $ userError "invalid method name"
+    parseArgs name = do
+        args <- X.many $
+            X.tag' "arg" getArg pure
+        pure $ MethodDefinition $ Method name args
+    getArg = do
+        name <- fromMaybe "" <$> X.attr "name"
+        typeStr <- X.requireAttr "type"
+        dirStr <- fromMaybe "in" <$> X.attr "direction"
+        X.ignoreAttrs
+        typ <- parseType typeStr
+        let dir = if dirStr == "in" then In else Out
+        pure $ MethodArg (Text.unpack name) typ dir
 
-parseSignal :: X.Element -> Maybe Signal
-parseSignal e = do
-    name <- T.parseMemberName =<< attributeString "name" e
-    args <- children parseSignalArg (isArg ["out", ""]) e
-    return (Signal name args)
+parseSignal :: ConduitT Event o Maybe (Maybe InterfaceChildren)
+parseSignal = X.tag' "signal" getName parseArgs
+  where
+    getName = do
+        ifName <- X.requireAttr "name"
+        case T.parseMemberName (Text.unpack ifName) of
+            Just n -> pure n
+            Nothing -> throwM $ userError "invalid signal name"
+    parseArgs name = do
+        args <- X.many $
+            X.tag' "arg" getArg pure
+        pure $ SignalDefinition $ Signal name args
+    getArg = do
+        name <- fromMaybe "" <$> X.attr "name"
+        typeStr <- X.requireAttr "type"
+        X.ignoreAttrs
+        typ <- parseType typeStr
+        pure $ SignalArg (Text.unpack name) typ
 
-parseType :: X.Element -> Maybe T.Type
-parseType e = do
-    typeStr <- attributeString "type" e
-    sig <- T.parseSignature typeStr
-    case T.signatureTypes sig of
-        [t] -> Just t
-        _ -> Nothing
+parseProperty :: ConduitT Event o Maybe (Maybe InterfaceChildren)
+parseProperty = X.tag' "property" getProp $ \p -> do
+    X.many_ X.ignoreAnyTreeContent
+    pure p
+  where
+    getProp = do
+        name <- Text.unpack <$> X.requireAttr "name"
+        typeStr <- X.requireAttr "type"
+        accessStr <- fromMaybe "" <$> X.attr "access"
+        X.ignoreAttrs
+        typ <- parseType typeStr
+        (canRead, canWrite) <- case accessStr of
+            ""          -> pure (False, False)
+            "read"      -> pure (True, False)
+            "write"     -> pure (False, True)
+            "readwrite" -> pure (True, True)
+            _           -> throwM $ userError "invalid access value"
 
-parseMethodArg :: X.Element -> Maybe MethodArg
-parseMethodArg e = do
-    t <- parseType e
-    let dir = case getattr "direction" e of
-            "out" -> Out
-            _ -> In
-    Just (MethodArg (getattr "name" e) t dir)
+        pure $ PropertyDefinition $ Property name typ canRead canWrite
 
-parseSignalArg :: X.Element -> Maybe SignalArg
-parseSignalArg e = do
-    t <- parseType e
-    Just (SignalArg (getattr "name" e) t)
-
-isArg :: [String] -> X.Element -> [X.Element]
-isArg dirs = X.isNamed "arg" >=> checkDir where
-    checkDir e = [e | getattr "direction" e `elem` dirs]
-
-parseProperty :: X.Element -> Maybe Property
-parseProperty e = do
-    t <- parseType e
-    (canRead, canWrite) <- case getattr "access" e of
-        ""          -> Just (False, False)
-        "read"      -> Just (True, False)
-        "write"     -> Just (False, True)
-        "readwrite" -> Just (True, True)
-        _           -> Nothing
-    Just (Property (getattr "name" e) t canRead canWrite)
-
-getattr :: X.Name -> X.Element -> String
-getattr name e = maybe "" Data.Text.unpack (X.attributeText name e)
-
-children :: Monad m => (X.Element -> m b) -> (X.Element -> [X.Element]) -> X.Element -> m [b]
-children f p = mapM f . concatMap p . X.elementChildren
+parseType :: MonadThrow m => Text.Text -> m T.Type
+parseType typeStr = do
+    typ <- case T.parseSignature (Text.unpack typeStr) of
+        Nothing -> throwM $ userError "invalid type sig"
+        Just t -> pure t
+    case T.signatureTypes typ of
+        [t] -> pure t
+        _ -> throwM $ userError "invalid type sig"
 
 newtype XmlWriter a = XmlWriter { runXmlWriter :: Maybe (a, String) }
 
@@ -317,8 +328,8 @@ writeProperty (Property name t canRead canWrite) = do
         , ("access", readS ++ writeS)
         ]
 
-attributeString :: X.Name -> X.Element -> Maybe String
-attributeString name e = fmap Data.Text.unpack (X.attributeText name e)
+--attributeString :: X.Name -> X.Element -> Maybe String
+--attributeString name e = fmap Data.Text.unpack (X.attributeText name e)
 
 writeElement :: String -> [(String, String)] -> XmlWriter () -> XmlWriter ()
 writeElement name attrs content = do
