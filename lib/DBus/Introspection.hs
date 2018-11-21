@@ -159,9 +159,7 @@ parseMethod = X.tag' "method" getName parseArgs
   where
     getName = do
         ifName <- X.requireAttr "name"
-        case T.parseMemberName (Text.unpack ifName) of
-            Just n -> pure n
-            Nothing -> throwM $ userError "invalid method name"
+        T.parseMemberName (Text.unpack ifName)
     parseArgs name = do
         args <- X.many $
             X.tag' "arg" getArg pure
@@ -180,9 +178,7 @@ parseSignal = X.tag' "signal" getName parseArgs
   where
     getName = do
         ifName <- X.requireAttr "name"
-        case T.parseMemberName (Text.unpack ifName) of
-            Just n -> pure n
-            Nothing -> throwM $ userError "invalid signal name"
+        T.parseMemberName (Text.unpack ifName)
     parseArgs name = do
         args <- X.many $
             X.tag' "arg" getArg pure
@@ -216,9 +212,7 @@ parseProperty = X.tag' "property" getProp $ \p -> do
 
 parseType :: MonadThrow m => Text.Text -> m T.Type
 parseType typeStr = do
-    typ <- case T.parseSignature (Text.unpack typeStr) of
-        Nothing -> throwM $ userError "invalid type sig"
-        Just t -> pure t
+    typ <- T.parseSignature (Text.unpack typeStr)
     case T.signatureTypes typ of
         [t] -> pure t
         _ -> throwM $ userError "invalid type sig"

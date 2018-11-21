@@ -1,15 +1,11 @@
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE IncoherentInstances #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeSynonymInstances #-}
 
 -- Copyright (C) 2009-2012 John Millikin <john@john-millikin.com>
---
--- This program is free software: you can redistribute it and/or modify
 -- it under the terms of the GNU General Public License as published by
 -- the Free Software Foundation, either version 3 of the License, or
 -- any later version.
@@ -25,13 +21,11 @@
 module DBus.Internal.Types where
 
 import           Control.DeepSeq
-import           Control.Exception (Exception, handle, throwIO)
 import           Control.Monad (liftM, when, (>=>))
-import qualified Data.ByteString
-import           Data.ByteString (ByteString)
-import qualified Data.ByteString.Char8 as Char8
-import qualified Data.ByteString.Lazy
-import qualified Data.ByteString.Unsafe
+import           Control.Monad.Catch
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BS8
+import qualified Data.ByteString.Lazy as BL
 import           Data.Char (ord)
 import           Data.Coerce
 import           Data.Int
@@ -47,10 +41,8 @@ import           Data.Typeable (Typeable)
 import qualified Data.Vector
 import           Data.Vector (Vector)
 import           Data.Word
-import qualified Foreign
 import           GHC.Generics
 import qualified Language.Haskell.TH.Lift as THL
-import           System.IO.Unsafe (unsafePerformIO)
 import           System.Posix.Types (Fd)
 import           Text.ParserCombinators.Parsec ((<|>), oneOf)
 import qualified Text.ParserCombinators.Parsec as Parsec
@@ -188,29 +180,29 @@ signature_ ts = case signature ts of
 
 -- | Parse a signature string into a valid signature.
 --
--- Returns @Nothing@ if the given string is not a valid signature.
-parseSignature :: String -> Maybe Signature
+-- Throws if the given string is not a valid signature.
+parseSignature :: MonadThrow m => String -> m Signature
 parseSignature s = do
-    when (length s > 255) Nothing
-    when (any (\c -> ord c > 0x7F) s) Nothing
-    parseSignatureBytes (Char8.pack s)
+    when (length s > 255) $ throwM $ userError "string too long"
+    when (any (\c -> ord c > 0x7F) s) $ throwM $ userError "invalid signature"
+    parseSignatureBytes (BS8.pack s)
 
-parseSignatureBytes :: ByteString -> Maybe Signature
+parseSignatureBytes :: MonadThrow m => BS.ByteString -> m Signature
 parseSignatureBytes bytes =
-    case Data.ByteString.length bytes of
-        0 -> Just (Signature [])
+    case BS.length bytes of
+        0 -> pure (Signature [])
         1 -> parseSigFast bytes
         len | len <= 255 -> parseSigFull bytes
-        _ -> Nothing
+        _ -> throwM $ userError "string too long"
 
-parseSigFast :: ByteString -> Maybe Signature
+parseSigFast :: MonadThrow m => BS.ByteString -> m Signature
 parseSigFast bytes =
-    let byte = Data.ByteString.Unsafe.unsafeHead bytes in
-    parseAtom (fromIntegral byte)
-        (\t -> Just (Signature [t]))
-        (case byte of
-            0x76 -> Just (Signature [TypeVariant])
-            _ -> Nothing)
+    let byte = BS.head bytes
+     in parseAtom (fromIntegral byte)
+            (\t -> pure (Signature [t]))
+            (case byte of
+                0x76 -> pure (Signature [TypeVariant])
+                _ -> throwM $ userError "invalid signature")
 
 parseAtom :: Int -> (Type -> a) -> a -> a
 parseAtom byte yes no = case byte of
@@ -235,94 +227,82 @@ data SigParseError = SigParseError
 
 instance Exception SigParseError
 
-peekWord8AsInt :: Foreign.Ptr Word8 -> Int -> IO Int
-peekWord8AsInt ptr off = do
-    w <- Foreign.peekElemOff ptr off
-    return (fromIntegral w)
+peekWord8AsInt :: BS.ByteString -> Int -> Int
+peekWord8AsInt str i = fromIntegral $ BS.index str i
 
-parseSigFull :: ByteString -> Maybe Signature
-parseSigFull bytes = unsafePerformIO io where
-    io = handle
-        (\SigParseError -> return Nothing)
-        $ Data.ByteString.Unsafe.unsafeUseAsCStringLen bytes
-        $ \(ptr, len) -> do
-            ts <- parseSigBuf (Foreign.castPtr ptr, len)
-            return (Just (Signature ts))
+parseSigFull :: MonadThrow m => BS.ByteString -> m Signature
+parseSigFull bytes = Signature <$> mainLoop [] 0
+  where
+    len = BS.length bytes
+    mainLoop acc ii | ii >= len = pure (reverse acc)
+    mainLoop acc ii = do
+        let c = peekWord8AsInt bytes ii
+        let next t = mainLoop (t : acc) (ii + 1)
+        parseAtom c next $ case c of
+            0x76 -> next TypeVariant
+            0x28 -> do -- '('
+                (ii', t) <- structure (ii + 1)
+                mainLoop (t : acc) ii'
+            0x61 -> do -- 'a'
+                (ii', t) <- array (ii + 1)
+                mainLoop (t : acc) ii'
+            _ -> throwM SigParseError
 
-    parseSigBuf (buf, len) = mainLoop [] 0 where
-
-        mainLoop acc ii | ii >= len = return (reverse acc)
-        mainLoop acc ii = do
-            c <- peekWord8AsInt buf ii
-            let next t = mainLoop (t : acc) (ii + 1)
+    structure = loop [] where
+        loop _ ii | ii >= len = throwM SigParseError
+        loop acc ii = do
+            let c = peekWord8AsInt bytes ii
+            let next t = loop (t : acc) (ii + 1)
             parseAtom c next $ case c of
                 0x76 -> next TypeVariant
                 0x28 -> do -- '('
                     (ii', t) <- structure (ii + 1)
-                    mainLoop (t : acc) ii'
+                    loop (t : acc) ii'
                 0x61 -> do -- 'a'
                     (ii', t) <- array (ii + 1)
-                    mainLoop (t : acc) ii'
-                _ -> throwIO SigParseError
+                    loop (t : acc) ii'
+                -- ')'
+                0x29 -> case acc of
+                    [] -> throwM SigParseError
+                    _ -> pure (ii + 1, TypeStructure (reverse acc))
+                _ -> throwM SigParseError
 
-        structure :: Int -> IO (Int, Type)
-        structure = loop [] where
-            loop _ ii | ii >= len = throwIO SigParseError
-            loop acc ii = do
-                c <- peekWord8AsInt buf ii
-                let next t = loop (t : acc) (ii + 1)
-                parseAtom c next $ case c of
-                    0x76 -> next TypeVariant
-                    0x28 -> do -- '('
-                        (ii', t) <- structure (ii + 1)
-                        loop (t : acc) ii'
-                    0x61 -> do -- 'a'
-                        (ii', t) <- array (ii + 1)
-                        loop (t : acc) ii'
-                    -- ')'
-                    0x29 -> case acc of
-                        [] -> throwIO SigParseError
-                        _ -> return (ii + 1, TypeStructure (reverse acc))
-                    _ -> throwIO SigParseError
+    array ii | ii >= len = throwM SigParseError
+    array ii = do
+        let c = peekWord8AsInt bytes ii
+        let next t = pure (ii + 1, TypeArray t)
+        parseAtom c next $ case c of
+            0x76 -> next TypeVariant
+            0x7B -> dict (ii + 1) -- '{'
+            0x28 -> do -- '('
+                (ii', t) <- structure (ii + 1)
+                pure (ii', TypeArray t)
+            0x61 -> do -- 'a'
+                (ii', t) <- array (ii + 1)
+                pure (ii', TypeArray t)
+            _ -> throwM SigParseError
 
-        array :: Int -> IO (Int, Type)
-        array ii | ii >= len = throwIO SigParseError
-        array ii = do
-            c <- peekWord8AsInt buf ii
-            let next t = return (ii + 1, TypeArray t)
-            parseAtom c next $ case c of
-                0x76 -> next TypeVariant
-                0x7B -> dict (ii + 1) -- '{'
-                0x28 -> do -- '('
-                    (ii', t) <- structure (ii + 1)
-                    return (ii', TypeArray t)
-                0x61 -> do -- 'a'
-                    (ii', t) <- array (ii + 1)
-                    return (ii', TypeArray t)
-                _ -> throwIO SigParseError
+    dict ii | ii + 1 >= len = throwM SigParseError
+    dict ii = do
+        let c1 = peekWord8AsInt bytes ii
+        let c2 = peekWord8AsInt bytes (ii + 1)
 
-        dict :: Int -> IO (Int, Type)
-        dict ii | ii + 1 >= len = throwIO SigParseError
-        dict ii = do
-            c1 <- peekWord8AsInt buf ii
-            c2 <- peekWord8AsInt buf (ii + 1)
+        let next t = pure (ii + 2, t)
+        (ii', t2) <- parseAtom c2 next $ case c2 of
+            0x76 -> next TypeVariant
+            0x28 -> structure (ii + 2) -- '('
+            0x61 -> array (ii + 2) -- 'a'
+            _ -> throwM SigParseError
 
-            let next t = return (ii + 2, t)
-            (ii', t2) <- parseAtom c2 next $ case c2 of
-                0x76 -> next TypeVariant
-                0x28 -> structure (ii + 2) -- '('
-                0x61 -> array (ii + 2) -- 'a'
-                _ -> throwIO SigParseError
-
-            if ii' >= len
-                then throwIO SigParseError
-                else do
-                    c3 <- peekWord8AsInt buf ii'
-                    if c3 == 0x7D
-                        then do
-                            t1 <- parseAtom c1 return (throwIO SigParseError)
-                            return (ii' + 1, TypeDictionary t1 t2)
-                        else throwIO SigParseError
+        if ii' >= len
+            then throwM SigParseError
+            else do
+                let c3 = peekWord8AsInt bytes ii'
+                if c3 == 0x7D
+                    then do
+                        t1 <- parseAtom c1 pure (throwM SigParseError)
+                        pure (ii' + 1, TypeDictionary t1 t2)
+                    else throwM SigParseError
 
 extractFromVariant :: IsValue a => Variant -> Maybe a
 extractFromVariant (Variant (ValueVariant v)) = extractFromVariant v
@@ -359,7 +339,7 @@ newtype Variant = Variant Value
 data Value
     = ValueAtom Atom
     | ValueVariant Variant
-    | ValueBytes ByteString
+    | ValueBytes BS.ByteString
     | ValueVector Type (Vector Value)
     | ValueMap Type Type (Map Atom Value)
     | ValueStructure [Value]
@@ -427,8 +407,8 @@ showValue _ (ValueStructure xs) = showThings "(" (showValue False) ")" xs
 showThings :: String -> (a -> String) -> String -> [a] -> String
 showThings a s z xs = a ++ intercalate ", " (map s xs) ++ z
 
-vectorToBytes :: Vector Value -> ByteString
-vectorToBytes = Data.ByteString.pack
+vectorToBytes :: Vector Value -> BS.ByteString
+vectorToBytes = BS.pack
               . Data.Vector.toList
               . Data.Vector.map (\(ValueAtom (AtomWord8 x)) -> x)
 
@@ -556,26 +536,26 @@ instance IsValue a => IsVariant [a] where
     toVariant = toVariant . Data.Vector.fromList
     fromVariant = fmap Data.Vector.toList . fromVariant
 
-instance IsValue ByteString where
+instance IsValue BS.ByteString where
     typeOf _ = TypeArray TypeWord8
     toValue = ValueBytes
     fromValue (ValueBytes bs) = Just bs
     fromValue (ValueVector TypeWord8 v) = Just (vectorToBytes v)
     fromValue _ = Nothing
 
-instance IsVariant ByteString where
+instance IsVariant BS.ByteString where
     toVariant = Variant . toValue
     fromVariant (Variant val) = fromValue val
 
-instance IsValue Data.ByteString.Lazy.ByteString where
+instance IsValue BL.ByteString where
     typeOf _ = TypeArray TypeWord8
     toValue = toValue
-            . Data.ByteString.concat
-            . Data.ByteString.Lazy.toChunks
-    fromValue = fmap (\bs -> Data.ByteString.Lazy.fromChunks [bs])
+            . BS.concat
+            . BL.toChunks
+    fromValue = fmap (\bs -> BL.fromChunks [bs])
               . fromValue
 
-instance IsVariant Data.ByteString.Lazy.ByteString where
+instance IsVariant BL.ByteString where
     toVariant = Variant . toValue
     fromVariant (Variant val) = fromValue val
 
@@ -663,7 +643,7 @@ fromElements elems = objectPath_ $ '/':intercalate "/" elems
 formatObjectPath :: ObjectPath -> String
 formatObjectPath (ObjectPath s) = s
 
-parseObjectPath :: String -> Maybe ObjectPath
+parseObjectPath :: MonadThrow m => String -> m ObjectPath
 parseObjectPath s = do
     maybeParseString parserObjectPath s
     return (ObjectPath s)
@@ -706,9 +686,9 @@ newtype InterfaceName = InterfaceName String
 formatInterfaceName :: InterfaceName -> String
 formatInterfaceName (InterfaceName s) = s
 
-parseInterfaceName :: String -> Maybe InterfaceName
+parseInterfaceName :: MonadThrow m => String -> m InterfaceName
 parseInterfaceName s = do
-    when (length s > 255) Nothing
+    when (length s > 255) $ throwM $ userError "name too long"
     maybeParseString parserInterfaceName s
     return (InterfaceName s)
 
@@ -746,9 +726,9 @@ newtype MemberName = MemberName String
 formatMemberName :: MemberName -> String
 formatMemberName (MemberName s) = s
 
-parseMemberName :: String -> Maybe MemberName
+parseMemberName :: MonadThrow m => String -> m MemberName
 parseMemberName s = do
-    when (length s > 255) Nothing
+    when (length s > 255) $ throwM $ userError "name too long"
     maybeParseString parserMemberName s
     return (MemberName s)
 
@@ -783,9 +763,9 @@ newtype ErrorName = ErrorName String
 formatErrorName :: ErrorName -> String
 formatErrorName (ErrorName s) = s
 
-parseErrorName :: String -> Maybe ErrorName
+parseErrorName :: MonadThrow m => String -> m ErrorName
 parseErrorName s = do
-    when (length s > 255) Nothing
+    when (length s > 255) $ throwM $ userError "name too long"
     maybeParseString parserInterfaceName s
     return (ErrorName s)
 
@@ -813,9 +793,9 @@ newtype BusName = BusName String
 formatBusName :: BusName -> String
 formatBusName (BusName s) = s
 
-parseBusName :: String -> Maybe BusName
+parseBusName :: MonadThrow m => String -> m BusName
 parseBusName s = do
-    when (length s > 255) Nothing
+    when (length s > 255) $ throwM $ userError "name too long"
     maybeParseString parserBusName s
     return (BusName s)
 
@@ -883,7 +863,7 @@ structureItems (Structure xs) = map Variant xs
 -- 'IsValue'.
 data Array
     = Array Type (Vector Value)
-    | ArrayBytes ByteString
+    | ArrayBytes BS.ByteString
 
 instance Show Array where
     show (Array t xs) = showValue True (ValueVector t xs)
@@ -904,7 +884,7 @@ instance IsVariant Array where
 
 arrayItems :: Array -> [Variant]
 arrayItems (Array _ xs) = map Variant (Data.Vector.toList xs)
-arrayItems (ArrayBytes bs) = map toVariant (Data.ByteString.unpack bs)
+arrayItems (ArrayBytes bs) = map toVariant (BS.unpack bs)
 
 -- | A D-Bus Dictionary is a container type similar to Haskell maps, storing
 -- zero or more associations between keys and values.
@@ -1365,9 +1345,9 @@ forceParse label parse str = case parse str of
     Just x -> x
     Nothing -> error ("Invalid " ++ label ++ ": " ++ show str)
 
-maybeParseString :: Parsec.Parser a -> String -> Maybe a
+maybeParseString :: MonadThrow m => Parsec.Parser a -> String -> m a
 maybeParseString parser s = case Parsec.parse parser "" s of
-    Left _ -> Nothing
-    Right a -> Just a
+    Left err -> throwM $ userError $ show err
+    Right a -> pure a
 
 THL.deriveLiftMany [''BusName, ''ObjectPath, ''InterfaceName, ''MemberName]
