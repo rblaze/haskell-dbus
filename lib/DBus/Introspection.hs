@@ -32,7 +32,7 @@ module DBus.Introspection
 import           Conduit
 import qualified Control.Applicative
 import           Control.Monad (ap, liftM)
-import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString.Lazy.Char8 as BL8
 import           Data.List (isPrefixOf)
 import           Data.Maybe
 import qualified Data.Text as Text
@@ -101,9 +101,9 @@ data InterfaceChildren
     | SignalDefinition Signal
     | PropertyDefinition Property
 
-parseXML :: T.ObjectPath -> BL.ByteString -> Maybe Object
+parseXML :: T.ObjectPath -> String -> Maybe Object
 parseXML path xml =
-    runConduit $ X.parseLBS X.def xml .| X.force "parse error" (parseObject $ getRootName path)
+    runConduit $ X.parseLBS X.def (BL8.pack xml) .| X.force "parse error" (parseObject $ getRootName path)
 
 getRootName :: T.ObjectPath -> X.AttrParser T.ObjectPath
 getRootName defaultPath = do

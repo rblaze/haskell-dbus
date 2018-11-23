@@ -21,7 +21,6 @@ import Test.QuickCheck
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
-import qualified Data.ByteString.Lazy.Char8 as BL8
 
 import DBus
 import qualified DBus.Introspection as I
@@ -44,7 +43,7 @@ test_XmlPassthrough :: TestTree
 test_XmlPassthrough = testProperty "xml-passthrough" $ \obj -> let
     path = I.objectPath obj
     Just xml = I.formatXML obj
-    in I.parseXML path (BL8.pack xml) == Just obj
+    in I.parseXML path xml == Just obj
 
 buildEmptyObject :: String -> I.Object
 buildEmptyObject name = I.Object (objectPath_ name) [] []
