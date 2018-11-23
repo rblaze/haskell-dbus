@@ -40,13 +40,16 @@ benchUnmarshal :: Message msg => String -> msg -> Benchmark
 benchUnmarshal name msg = bench name (whnf unmarshal bytes) where
     Right bytes = marshal LittleEndian (serial 0) msg
 
+parseSig :: String -> Maybe Signature
+parseSig = parseSignature
+
 benchmarks :: [Benchmark]
 benchmarks =
     [  bgroup "Types"
         [ bgroup "Signature"
-            [ bench "parseSignature/small" (nf parseSignature "y")
-            , bench "parseSignature/medium" (nf parseSignature "yyyyuua(yv)")
-            , bench "parseSignature/large" (nf parseSignature "a{s(asiiiiasa(siiia{s(iiiiv)}))}")
+            [ bench "parseSignature/small" (nf parseSig "y")
+            , bench "parseSignature/medium" (nf parseSig "yyyyuua(yv)")
+            , bench "parseSignature/large" (nf parseSig "a{s(asiiiiasa(siiia{s(iiiiv)}))}")
             ]
         , bgroup "ObjectPath"
             [ bench "objectPath_/small" (nf objectPath_ "/")
