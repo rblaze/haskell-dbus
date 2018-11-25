@@ -21,6 +21,7 @@ import Test.QuickCheck
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
+import qualified Data.Text as T
 
 import DBus
 import qualified DBus.Introspection as I
@@ -43,7 +44,7 @@ test_XmlPassthrough :: TestTree
 test_XmlPassthrough = testProperty "xml-passthrough" $ \obj -> let
     path = I.objectPath obj
     Just xml = I.formatXML obj
-    in I.parseXML path xml == Just obj
+    in I.parseXML path (T.pack xml) == Just obj
 
 buildEmptyObject :: String -> I.Object
 buildEmptyObject name = I.Object (objectPath_ name) [] []

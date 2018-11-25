@@ -18,6 +18,7 @@ import qualified Data.Map as Map
 import           Data.Maybe
 import           Data.Monoid
 import           Data.String
+import qualified Data.Text.IO as Text
 import           Data.Traversable
 import           Data.Word
 import           Language.Haskell.TH
@@ -537,7 +538,7 @@ generateSignal GenerationParams
 generateFromFilePath :: GenerationParams -> FilePath -> Q [Dec]
 generateFromFilePath generationParams filepath =
   let obj = unsafePerformIO $
-            head . maybeToList . I.parseXML "/" <$> readFile filepath
+            head . maybeToList . I.parseXML "/" <$> Text.readFile filepath
       interface = head $ I.objectInterfaces obj
       signals = generateSignalsFromInterface generationParams interface
       client = generateClient generationParams interface
