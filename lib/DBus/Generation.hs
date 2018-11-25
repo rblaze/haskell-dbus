@@ -7,7 +7,8 @@ import           Control.Monad.Trans.Reader
 import           DBus.Client as C
 import qualified DBus.Internal.Message as M
 import qualified DBus.Internal.Types as T
-import qualified DBus.Introspection as I
+import qualified DBus.Introspection.Parse as I
+import qualified DBus.Introspection.Types as I
 import qualified Data.ByteString as BS
 import qualified Data.Char as Char
 import           Data.Coerce

@@ -24,7 +24,9 @@ import Test.Tasty.QuickCheck
 import qualified Data.Text as T
 
 import DBus
-import qualified DBus.Introspection as I
+import qualified DBus.Introspection.Parse as I
+import qualified DBus.Introspection.Render as I
+import qualified DBus.Introspection.Types as I
 
 import DBusTests.InterfaceName ()
 import DBusTests.MemberName ()

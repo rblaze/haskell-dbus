@@ -197,7 +197,8 @@ import Prelude hiding (foldl, foldr, concat)
 import DBus
 import DBus.Internal.Message
 import qualified DBus.Internal.Types as T
-import qualified DBus.Introspection as I
+import qualified DBus.Introspection.Types as I
+import qualified DBus.Introspection.Render as I
 import qualified DBus.Socket
 import DBus.Transport (TransportOpen, SocketTransport)
 
