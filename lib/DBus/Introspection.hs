@@ -141,11 +141,14 @@ parseInterface = X.tag' "interface" getName parseContent
         ifName <- X.requireAttr "name"
         pure $ T.interfaceName_ (Text.unpack ifName)
     parseContent ifName = do
-        elems <- X.many $ X.choose
-            [ parseMethod
-            , parseSignal
-            , parseProperty
-            ]
+        elems <- X.many $ do
+            X.many_ $ X.ignoreTreeContent "annotation"
+            X.choose
+                [ parseMethod
+                , parseSignal
+                , parseProperty
+                ]
+        X.many_ $ X.ignoreTreeContent "annotation"
         let base = Interface ifName [] [] []
             addElem e (Interface n ms ss ps) = case e of
                 MethodDefinition m -> Interface n (m:ms) ss ps
@@ -160,8 +163,10 @@ parseMethod = X.tag' "method" getName parseArgs
         ifName <- X.requireAttr "name"
         T.parseMemberName (Text.unpack ifName)
     parseArgs name = do
-        args <- X.many $
+        args <- X.many $ do
+            X.many_ $ X.ignoreTreeContent "annotation"
             X.tag' "arg" getArg pure
+        X.many_ $ X.ignoreTreeContent "annotation"
         pure $ MethodDefinition $ Method name args
     getArg = do
         name <- fromMaybe "" <$> X.attr "name"
@@ -179,8 +184,10 @@ parseSignal = X.tag' "signal" getName parseArgs
         ifName <- X.requireAttr "name"
         T.parseMemberName (Text.unpack ifName)
     parseArgs name = do
-        args <- X.many $
+        args <- X.many $ do
+            X.many_ $ X.ignoreTreeContent "annotation"
             X.tag' "arg" getArg pure
+        X.many_ $ X.ignoreTreeContent "annotation"
         pure $ SignalDefinition $ Signal name args
     getArg = do
         name <- fromMaybe "" <$> X.attr "name"
