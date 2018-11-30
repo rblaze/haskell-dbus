@@ -7,10 +7,11 @@ module DBus.Introspection.Render
     ) where
 
 import Conduit
-import Control.Monad
 import Control.Monad.ST
 import Control.Monad.Catch.Pure
 import Data.List (isPrefixOf)
+import Data.Monoid ((<>))
+import Data.XML.Types (Event)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Text.XML.Stream.Render as R
@@ -30,13 +31,16 @@ formatXML obj =
             Left _ -> Nothing
             Right r -> Just $ TL.unpack r
 
+renderRoot :: MonadThrow m => Object -> ConduitT i Event m ()
 renderRoot obj = renderObject (formatObjectPath $ objectPath obj) obj
 
+renderObject :: MonadThrow m => String -> Object -> ConduitT i Event m ()
 renderObject path Object{..} = R.tag "node"
     (R.attr "name" (T.pack path)) $ do
     mapM_ renderInterface objectInterfaces
     mapM_ (renderChild objectPath) objectChildren
 
+renderChild :: MonadThrow m => ObjectPath -> Object -> ConduitT i Event m ()
 renderChild parentPath obj
     | not (parent' `isPrefixOf` path') =
         throwM $ userError "invalid child path"
@@ -46,16 +50,19 @@ renderChild parentPath obj
     path' = formatObjectPath (objectPath obj)
     parent' = formatObjectPath parentPath
 
+renderInterface :: MonadThrow m => Interface -> ConduitT i Event m ()
 renderInterface Interface{..} = R.tag "interface"
     (R.attr "name" $ T.pack $ formatInterfaceName interfaceName) $ do
         mapM_ renderMethod interfaceMethods
         mapM_ renderSignal interfaceSignals
         mapM_ renderProperty interfaceProperties
 
+renderMethod :: MonadThrow m => Method -> ConduitT i Event m ()
 renderMethod Method{..} = R.tag "method"
     (R.attr "name" $ T.pack $ formatMemberName methodName) $
         mapM_ renderMethodArg methodArgs
 
+renderMethodArg :: MonadThrow m => MethodArg -> ConduitT i Event m ()
 renderMethodArg MethodArg{..} = do
     typeStr <- formatType methodArgType
     let typeAttr = R.attr "type" $ T.pack typeStr
@@ -65,16 +72,19 @@ renderMethodArg MethodArg{..} = do
             Out -> "out"
     R.tag "arg" (nameAttr <> typeAttr <> dirAttr) $ pure ()
 
+renderSignal :: MonadThrow m => Signal -> ConduitT i Event m ()
 renderSignal Signal{..} = R.tag "signal"
     (R.attr "name" $ T.pack $ formatMemberName signalName) $
         mapM_ renderSignalArg signalArgs
 
+renderSignalArg :: MonadThrow m => SignalArg -> ConduitT i Event m ()
 renderSignalArg SignalArg{..} = do
     typeStr <- formatType signalArgType
     let typeAttr = R.attr "type" $ T.pack typeStr
         nameAttr = R.attr "name" $ T.pack signalArgName
     R.tag "arg" (nameAttr <> typeAttr) $ pure ()
 
+renderProperty :: MonadThrow m => Property -> ConduitT i Event m ()
 renderProperty Property{..} = do
     typeStr <- formatType propertyType
     let readStr = if propertyRead then "read" else ""
@@ -84,4 +94,5 @@ renderProperty Property{..} = do
         accessAttr = R.attr "access" $ T.pack (readStr ++ writeStr)
     R.tag "property" (nameAttr <> typeAttr <> accessAttr) $ pure ()
 
+formatType :: MonadThrow f => Type -> f String
 formatType t = formatSignature <$> signature [t]
