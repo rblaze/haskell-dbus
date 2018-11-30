@@ -1,161 +1,87 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module DBus.Introspection.Render
     ( formatXML
     ) where
 
+import Conduit
 import Control.Monad
+import Control.Monad.ST
+import Control.Monad.Catch.Pure
 import Data.List (isPrefixOf)
+import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
+import qualified Text.XML.Stream.Render as R
 
 import DBus.Internal.Types
 import DBus.Introspection.Types
 
-{-
-formatXML :: Object -> Maybe String
-formatXML obj = fmap TL.unpack $ runST $ runMaybeT $ runConduit $ renderObject obj .| R.renderText R.def .| sinkLazy
-
-renderObject _ = R.tag "node" mempty (pure ())
--}
-
-newtype XmlWriter a = XmlWriter { runXmlWriter :: Maybe (a, String) }
-
-instance Functor XmlWriter where
-    fmap = liftM
-
-instance Applicative XmlWriter where
-    pure = return
-    (<*>) = ap
-
-instance Monad XmlWriter where
-    return a = XmlWriter $ Just (a, "")
-    m >>= f = XmlWriter $ do
-        (a, w) <- runXmlWriter m
-        (b, w') <- runXmlWriter (f a)
-        return (b, w ++ w')
-
-tell :: String -> XmlWriter ()
-tell s = XmlWriter (Just ((), s))
+instance PrimMonad m => PrimMonad (CatchT m) where
+    type PrimState (CatchT m) = PrimState m
+    primitive = lift . primitive
 
 formatXML :: Object -> Maybe String
-formatXML obj = do
-    (_, xml) <- runXmlWriter (writeRoot obj)
-    return xml
+formatXML obj =
+    let v = runST $ runCatchT $ runConduit $
+            renderRoot obj .| R.renderText (R.def {R.rsPretty = True}) .| sinkLazy
+     in case v of
+            Left _ -> Nothing
+            Right r -> Just $ TL.unpack r
 
-writeRoot :: Object -> XmlWriter ()
-writeRoot obj@(Object path _ _) = do
-    tell "<!DOCTYPE node PUBLIC '-//freedesktop//DTD D-BUS Object Introspection 1.0//EN'"
-    tell " 'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>\n"
-    writeObject (formatObjectPath path) obj
+renderRoot obj = renderObject (formatObjectPath $ objectPath obj) obj
 
-writeChild :: ObjectPath -> Object -> XmlWriter ()
-writeChild parentPath obj@(Object path _ _) = write where
-    path' = formatObjectPath path
-    parent' = formatObjectPath  parentPath
-    relpathM = if parent' `isPrefixOf` path'
-        then Just $ if parent' == "/"
-            then drop 1 path'
-            else drop (length parent' + 1) path'
-        else Nothing
+renderObject path Object{..} = R.tag "node"
+    (R.attr "name" (T.pack path)) $ do
+    mapM_ renderInterface objectInterfaces
+    mapM_ (renderChild objectPath) objectChildren
 
-    write = case relpathM of
-        Just relpath -> writeObject relpath obj
-        Nothing -> XmlWriter Nothing
+renderChild parentPath obj
+    | not (parent' `isPrefixOf` path') =
+        throwM $ userError "invalid child path"
+    | parent' == "/" = renderObject (drop 1 path') obj
+    | otherwise = renderObject (drop (length parent' + 1) path') obj
+  where
+    path' = formatObjectPath (objectPath obj)
+    parent' = formatObjectPath parentPath
 
-writeObject :: String -> Object -> XmlWriter ()
-writeObject path (Object fullPath interfaces children') = writeElement "node"
-    [("name", path)] $ do
-        mapM_ writeInterface interfaces
-        mapM_ (writeChild fullPath) children'
+renderInterface Interface{..} = R.tag "interface"
+    (R.attr "name" $ T.pack $ formatInterfaceName interfaceName) $ do
+        mapM_ renderMethod interfaceMethods
+        mapM_ renderSignal interfaceSignals
+        mapM_ renderProperty interfaceProperties
 
-writeInterface :: Interface -> XmlWriter ()
-writeInterface (Interface name methods signals properties) = writeElement "interface"
-    [("name", formatInterfaceName name)] $ do
-        mapM_ writeMethod methods
-        mapM_ writeSignal signals
-        mapM_ writeProperty properties
+renderMethod Method{..} = R.tag "method"
+    (R.attr "name" $ T.pack $ formatMemberName methodName) $
+        mapM_ renderMethodArg methodArgs
 
-writeMethod :: Method -> XmlWriter ()
-writeMethod (Method name args) = writeElement "method"
-    [("name", formatMemberName name)] $
-        mapM_ writeMethodArg args
-
-writeSignal :: Signal -> XmlWriter ()
-writeSignal (Signal name args) = writeElement "signal"
-    [("name", formatMemberName name)] $
-        mapM_ writeSignalArg args
-
-formatType :: Type -> XmlWriter String
-formatType t = do
-    sig <- case signature [t] of
-        Just x -> return x
-        Nothing -> XmlWriter Nothing
-    return (formatSignature sig)
-
-writeMethodArg :: MethodArg -> XmlWriter ()
-writeMethodArg (MethodArg name t dir) = do
-    typeStr <- formatType t
-    let dirAttr = case dir of
+renderMethodArg MethodArg{..} = do
+    typeStr <- formatType methodArgType
+    let typeAttr = R.attr "type" $ T.pack typeStr
+        nameAttr = R.attr "name" $ T.pack methodArgName
+        dirAttr = R.attr "direction" $ case methodArgDirection of
             In -> "in"
             Out -> "out"
-    writeEmptyElement "arg"
-        [ ("name", name)
-        , ("type", typeStr)
-        , ("direction", dirAttr)
-        ]
+    R.tag "arg" (nameAttr <> typeAttr <> dirAttr) $ pure ()
 
-writeSignalArg :: SignalArg -> XmlWriter ()
-writeSignalArg (SignalArg name t) = do
-    typeStr <- formatType t
-    writeEmptyElement "arg"
-        [ ("name", name)
-        , ("type", typeStr)
-        ]
+renderSignal Signal{..} = R.tag "signal"
+    (R.attr "name" $ T.pack $ formatMemberName signalName) $
+        mapM_ renderSignalArg signalArgs
 
-writeProperty :: Property -> XmlWriter ()
-writeProperty (Property name t canRead canWrite) = do
-    typeStr <- formatType t
-    let readS = if canRead then "read" else ""
-    let writeS = if canWrite then "write" else ""
-    writeEmptyElement "property"
-        [ ("name", name)
-        , ("type", typeStr)
-        , ("access", readS ++ writeS)
-        ]
+renderSignalArg SignalArg{..} = do
+    typeStr <- formatType signalArgType
+    let typeAttr = R.attr "type" $ T.pack typeStr
+        nameAttr = R.attr "name" $ T.pack signalArgName
+    R.tag "arg" (nameAttr <> typeAttr) $ pure ()
 
---attributeString :: X.Name -> X.Element -> Maybe String
---attributeString name e = fmap Data.Text.unpack (X.attributeText name e)
+renderProperty Property{..} = do
+    typeStr <- formatType propertyType
+    let readStr = if propertyRead then "read" else ""
+        writeStr = if propertyWrite then "write" else ""
+        typeAttr = R.attr "type" $ T.pack typeStr
+        nameAttr = R.attr "name" $ T.pack propertyName
+        accessAttr = R.attr "access" $ T.pack (readStr ++ writeStr)
+    R.tag "property" (nameAttr <> typeAttr <> accessAttr) $ pure ()
 
-writeElement :: String -> [(String, String)] -> XmlWriter () -> XmlWriter ()
-writeElement name attrs content = do
-    tell "<"
-    tell name
-    mapM_ writeAttribute attrs
-    tell ">"
-    content
-    tell "</"
-    tell name
-    tell ">"
-
-writeEmptyElement :: String -> [(String, String)] -> XmlWriter ()
-writeEmptyElement name attrs = do
-    tell "<"
-    tell name
-    mapM_ writeAttribute attrs
-    tell "/>"
-
-writeAttribute :: (String, String) -> XmlWriter ()
-writeAttribute (name, content) = do
-    tell " "
-    tell name
-    tell "='"
-    tell (escape content)
-    tell "'"
-
-escape :: String -> String
-escape = concatMap $ \c -> case c of
-    '&' -> "&amp;"
-    '<' -> "&lt;"
-    '>' -> "&gt;"
-    '"' -> "&quot;"
-    '\'' -> "&apos;"
-    _ -> [c]
+formatType t = formatSignature <$> signature [t]

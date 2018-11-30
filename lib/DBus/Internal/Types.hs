@@ -147,12 +147,12 @@ instance Data.String.IsString Signature where
 
 -- | Convert a list of types into a valid signature.
 --
--- Returns @Nothing@ if the given types are not a valid signature.
-signature :: [Type] -> Maybe Signature
+-- Throws if the given types are not a valid signature.
+signature :: MonadThrow m => [Type] -> m Signature
 signature = check where
     check ts = if sumLen ts > 255
-        then Nothing
-        else Just (Signature ts)
+        then throwM $ userError "invalid signature"
+        else pure (Signature ts)
     sumLen :: [Type] -> Int
     sumLen = sum . map len
 

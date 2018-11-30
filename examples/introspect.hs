@@ -24,8 +24,7 @@ import           System.IO (hPutStrLn, stderr)
 
 import           DBus
 import           DBus.Client
-import qualified DBus.Introspection.Parse as I
-import qualified DBus.Introspection.Types as I
+import qualified DBus.Introspection as I
 
 main :: IO ()
 main = do

@@ -110,6 +110,7 @@ library
     DBus.Internal.Message
     DBus.Internal.Types
     DBus.Internal.Wire
+    DBus.Introspection
     DBus.Introspection.Parse
     DBus.Introspection.Render
     DBus.Introspection.Types
