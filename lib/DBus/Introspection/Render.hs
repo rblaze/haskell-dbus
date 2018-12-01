@@ -1,6 +1,9 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module DBus.Introspection.Render
     ( formatXML
@@ -8,7 +11,7 @@ module DBus.Introspection.Render
 
 import Conduit
 import Control.Monad.ST
-import Control.Monad.Catch.Pure
+import Control.Monad.Trans.Maybe
 import Data.List (isPrefixOf)
 import Data.Monoid ((<>))
 import Data.XML.Types (Event)
@@ -19,17 +22,24 @@ import qualified Text.XML.Stream.Render as R
 import DBus.Internal.Types
 import DBus.Introspection.Types
 
-instance PrimMonad m => PrimMonad (CatchT m) where
-    type PrimState (CatchT m) = PrimState m
-    primitive = lift . primitive
+newtype Render s a = Render { runRender :: MaybeT (ST s) a }
+
+deriving instance Functor (Render s)
+deriving instance Applicative (Render s)
+deriving instance Monad (Render s)
+
+instance MonadThrow (Render s) where
+    throwM _ = Render $ MaybeT $ pure Nothing
+
+instance PrimMonad (Render s) where
+    type PrimState (Render s) = s
+    primitive f = Render $ lift $ primitive f
 
 formatXML :: Object -> Maybe String
-formatXML obj =
-    let v = runST $ runCatchT $ runConduit $
-            renderRoot obj .| R.renderText (R.def {R.rsPretty = True}) .| sinkLazy
-     in case v of
-            Left _ -> Nothing
-            Right r -> Just $ TL.unpack r
+formatXML obj = do
+    xml <- runST $ runMaybeT $ runRender $ runConduit $
+        renderRoot obj .| R.renderText (R.def {R.rsPretty = True}) .| sinkLazy
+    pure $ TL.unpack xml
 
 renderRoot :: MonadThrow m => Object -> ConduitT i Event m ()
 renderRoot obj = renderObject (formatObjectPath $ objectPath obj) obj
