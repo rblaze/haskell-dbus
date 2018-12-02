@@ -44,7 +44,9 @@ import DBus.Internal.Address ()
 import DBus.Internal.Message ()
 import DBus.Internal.Types ()
 import DBus.Internal.Wire ()
-import DBus.Introspection ()
+import DBus.Introspection.Parse ()
+import DBus.Introspection.Render ()
+import DBus.Introspection.Types ()
 import DBus.Socket ()
 
 tests :: TestTree

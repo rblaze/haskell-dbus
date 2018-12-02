@@ -25,7 +25,8 @@ import qualified Data.Map as Map
 import DBus
 import qualified DBus.Client
 import qualified DBus.Socket
-import DBus.Introspection
+import DBus.Introspection.Parse
+import DBus.Introspection.Types
 import DBus.Internal.Types
 
 import DBusTests.Util

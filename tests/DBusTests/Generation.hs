@@ -4,7 +4,7 @@ module DBusTests.Generation where
 
 import           DBus.Client
 import qualified DBus.Internal.Types as T
-import qualified DBus.Introspection as I
+import qualified DBus.Introspection.Types as I
 import           Data.Int
 import           Data.Map as M
 

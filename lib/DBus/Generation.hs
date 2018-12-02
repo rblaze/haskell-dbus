@@ -7,7 +7,8 @@ import           Control.Monad.Trans.Reader
 import           DBus.Client as C
 import qualified DBus.Internal.Message as M
 import qualified DBus.Internal.Types as T
-import qualified DBus.Introspection as I
+import qualified DBus.Introspection.Parse as I
+import qualified DBus.Introspection.Types as I
 import qualified Data.ByteString as BS
 import qualified Data.Char as Char
 import           Data.Coerce
@@ -18,6 +19,7 @@ import qualified Data.Map as Map
 import           Data.Maybe
 import           Data.Monoid
 import           Data.String
+import qualified Data.Text.IO as Text
 import           Data.Traversable
 import           Data.Word
 import           Language.Haskell.TH
@@ -537,7 +539,7 @@ generateSignal GenerationParams
 generateFromFilePath :: GenerationParams -> FilePath -> Q [Dec]
 generateFromFilePath generationParams filepath =
   let obj = unsafePerformIO $
-            head . maybeToList . I.parseXML "/" <$> readFile filepath
+            head . maybeToList . I.parseXML "/" <$> Text.readFile filepath
       interface = head $ I.objectInterfaces obj
       signals = generateSignalsFromInterface generationParams interface
       client = generateClient generationParams interface
