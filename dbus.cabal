@@ -122,7 +122,7 @@ test-suite dbus_tests
   type: exitcode-stdio-1.0
   main-is: DBusTests.hs
   hs-source-dirs: tests
-  ghc-options: -W -Wall
+  ghc-options: -W -Wall -fno-warn-orphans
 
   build-depends:
       dbus

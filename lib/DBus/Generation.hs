@@ -537,10 +537,10 @@ generateSignal GenerationParams
                         ]
 
 generateFromFilePath :: GenerationParams -> FilePath -> Q [Dec]
-generateFromFilePath generationParams filepath =
-  let obj = unsafePerformIO $
-            head . maybeToList . I.parseXML "/" <$> Text.readFile filepath
-      interface = head $ I.objectInterfaces obj
-      signals = generateSignalsFromInterface generationParams interface
-      client = generateClient generationParams interface
-  in fmap (++) signals <*> client
+generateFromFilePath generationParams filepath = do
+    xml <- runIO $ Text.readFile filepath
+    let obj = head $ maybeToList $ I.parseXML "/" xml
+        interface = head $ I.objectInterfaces obj
+        signals = generateSignalsFromInterface generationParams interface
+        client = generateClient generationParams interface
+     in fmap (++) signals <*> client
