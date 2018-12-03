@@ -189,7 +189,7 @@ import Data.Maybe
 import Data.Monoid
 import Data.String
 import qualified Data.Traversable as T
-import Data.Typeable (Typeable)
+import Data.Typeable (Typeable, Proxy(..))
 import Data.Unique
 import Data.Word (Word32)
 import Prelude hiding (foldl, foldr, concat)
@@ -1108,7 +1108,7 @@ instance IsValue a => AutoMethod (IO a) where
 instance IsValue a => AutoMethod (DBusR a) where
     funTypes _ = ([], outTypes) where
       aType :: Type
-      aType = typeOf (undefined :: a)
+      aType = typeOf' (Proxy :: Proxy a)
       outTypes =
         case aType of
           TypeStructure ts -> ts
@@ -1124,7 +1124,7 @@ instance IsValue a => AutoMethod (IO (Either Reply a)) where
 instance IsValue a => AutoMethod (DBusR (Either Reply a)) where
     funTypes _ = ([], outTypes) where
       aType :: Type
-      aType = typeOf (undefined :: a)
+      aType = typeOf' (Proxy :: Proxy a)
       outTypes =
         case aType of
           TypeStructure ts -> ts
@@ -1176,7 +1176,7 @@ autoProperty
   => MemberName -> Maybe (IO v) -> Maybe (v -> IO ()) -> Property
 autoProperty name mgetter msetter =
   Property name propType (fmap toVariant <$> mgetter) (variantSetter <$> msetter)
-    where propType = typeOf (undefined :: v)
+    where propType = typeOf' (Proxy :: Proxy v)
           variantSetter setter =
             let newFun variant = maybe (return ()) setter (fromVariant variant)
             in newFun

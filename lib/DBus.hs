@@ -75,6 +75,7 @@ module DBus
     , IsAtom
     , IsValue
     , typeOf
+    , typeOf'
 
     -- * Signatures
     , Signature
@@ -171,6 +172,7 @@ module DBus
 
 import           Control.Monad (replicateM)
 import qualified Data.ByteString.Char8 as Char8
+import           Data.Proxy (Proxy(..))
 import           Data.Word (Word16)
 import           System.Random (randomRIO)
 import           Text.Printf (printf)
@@ -178,13 +180,17 @@ import           Text.Printf (printf)
 import           DBus.Internal.Address
 import           DBus.Internal.Message
 import qualified DBus.Internal.Types
-import           DBus.Internal.Types hiding (typeOf)
+import           DBus.Internal.Types hiding (typeOf, typeOf')
 import           DBus.Internal.Wire
 
--- | Get the D-Bus type corresponding to the given Haskell value. The value
+-- | Deprecated. Get the D-Bus type corresponding to the given Haskell value. The value
 -- may be @undefined@.
 typeOf :: IsValue a => a -> Type
 typeOf = DBus.Internal.Types.typeOf
+
+-- | Get the D-Bus type corresponding to the given Haskell type 'a'.
+typeOf' :: IsValue a => Proxy a -> Type
+typeOf' = DBus.Internal.Types.typeOf'
 
 -- | Construct a new 'MethodCall' for the given object, interface, and method.
 --
