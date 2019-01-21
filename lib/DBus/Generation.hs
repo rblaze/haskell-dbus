@@ -24,7 +24,6 @@ import           Data.Traversable
 import           Data.Word
 import           Language.Haskell.TH
 import           Prelude hiding (mapM)
-import           System.IO.Unsafe
 import           System.Posix.Types (Fd(..))
 
 type ClientBusPathR a = ReaderT (Client, T.BusName, T.ObjectPath) IO a

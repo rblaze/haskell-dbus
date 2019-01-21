@@ -256,11 +256,12 @@ test_OpenTcp_NoUsableAddresses = testCase "no-usable-addresses" $ do
     fdcountBefore @=? fdcountAfter
 
 test_OpenTcp_NotListening :: TestTree
-test_OpenTcp_NotListening = testCase "too-many" $ runResourceT $ do
+test_OpenTcp_NotListening = testCase "not-listening" $ runResourceT $ do
     fdcountBefore <- countFileDescriptors
 
     (addr, _, key) <- listenRandomIPv4
     release key
+
     liftIO $ assertThrows
         (\err -> and
             [ "Connection refused" `isInfixOf` transportErrorMessage err
@@ -537,8 +538,6 @@ test_AcceptSocketClosed = testCase "socket-closed" $ do
     assertThrows
         (\err -> and
             [ "accept" `isInfixOf` transportErrorMessage err
-            , "socket" `isInfixOf` transportErrorMessage err
-            , "Closed" `isInfixOf` transportErrorMessage err
             , transportErrorAddress err == Just listeningAddr
             ])
         (transportAccept listener)

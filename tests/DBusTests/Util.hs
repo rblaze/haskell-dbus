@@ -55,7 +55,6 @@ import qualified Data.ByteString
 import qualified Data.ByteString.Lazy
 import qualified Data.Map as Map
 import qualified Data.Text as T
-import qualified Network as N
 import qualified Network.Socket as NS
 import qualified System.Posix as Posix
 
@@ -97,7 +96,7 @@ listenRandomUnixPath = do
     let sockAddr = NS.SockAddrUnix path
     (_, sock) <- allocate
         (NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol)
-        N.sClose
+        NS.close
     liftIO (NS.bind sock sockAddr)
     liftIO (NS.listen sock 1)
     _ <- register (removeFile path)
@@ -114,7 +113,7 @@ listenRandomUnixAbstract = do
 
     (key, sock) <- allocate
         (NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol)
-        N.sClose
+        NS.close
 
     liftIO $ NS.bind sock sockAddr
     liftIO $ NS.listen sock 1
@@ -124,14 +123,19 @@ listenRandomUnixAbstract = do
             ])
     return (addr, key)
 
-listenRandomIPv4 :: MonadResource m => m (Address, N.Socket, ReleaseKey)
+listenRandomIPv4 :: MonadResource m => m (Address, NS.Socket, ReleaseKey)
 listenRandomIPv4 = do
-    hostAddr <- liftIO $ NS.inet_addr "127.0.0.1"
-    let sockAddr = NS.SockAddrInet 0 hostAddr
+    let hints = NS.defaultHints
+            { NS.addrFlags = [NS.AI_NUMERICHOST]
+            , NS.addrFamily = NS.AF_INET
+            , NS.addrSocketType = NS.Stream
+            }
+    hostAddr <- liftIO $ NS.getAddrInfo (Just hints) (Just "127.0.0.1") Nothing
+    let sockAddr = NS.addrAddress $ head hostAddr
 
     (key, sock) <- allocate
         (NS.socket NS.AF_INET NS.Stream NS.defaultProtocol)
-        N.sClose
+        NS.close
     liftIO $ NS.bind sock sockAddr
     liftIO $ NS.listen sock 1
 
@@ -152,7 +156,7 @@ listenRandomIPv6 = do
 
     (_, sock) <- allocate
         (NS.socket NS.AF_INET6 NS.Stream NS.defaultProtocol)
-        N.sClose
+        NS.close
     liftIO $ NS.bind sock sockAddr
     liftIO $ NS.listen sock 1
 
