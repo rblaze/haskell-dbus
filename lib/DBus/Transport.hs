@@ -198,9 +198,9 @@ instance TransportListen SocketTransport where
 
 -- | Returns the processID, userID, and groupID of the socket's peer.
 --
--- See 'getPeerCred'.
-socketTransportCredentials :: SocketTransport -> IO (CUInt, CUInt, CUInt)
-socketTransportCredentials (SocketTransport a s) = catchIOException a (getPeerCred s)
+-- See 'getPeerCredential'.
+socketTransportCredentials :: SocketTransport -> IO (Maybe CUInt, Maybe CUInt, Maybe CUInt)
+socketTransportCredentials (SocketTransport a s) = catchIOException a (getPeerCredential s)
 
 openUnix :: Address -> IO SocketTransport
 openUnix transportAddr = go where

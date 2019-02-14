@@ -354,7 +354,7 @@ serverAuthExternal t uuid = do
 
     let checkToken token = do
         (_, uid, _) <- socketTransportCredentials t
-        let wantToken = concatMap (printf "%02X" . ord) (show uid)
+        let wantToken = concatMap (printf "%02X" . ord) (maybe "XXX" show uid)
         if token == wantToken
             then do
                 transportPutLine t ("OK " ++ formatUUID uuid)
