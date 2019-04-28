@@ -1,5 +1,5 @@
 name: dbus
-version: 1.2.5
+version: 1.2.6
 license: Apache-2.0
 license-file: license.txt
 author: John Millikin <john@john-millikin.com>
@@ -89,13 +89,13 @@ library
     , exceptions
     , filepath
     , lens
-    , network == 2.8.0.0 || (>= 3.0.1.0 && < 3.1)
+    , network (>= 2.8.0.0 && < 2.9) || (>= 3.0.1.0 && < 3.1)
     , parsec
     , random
     , split
     , template-haskell
     , text
-    , th-lift
+    , th-lift < 0.9
     , transformers
     , unix
     , vector
