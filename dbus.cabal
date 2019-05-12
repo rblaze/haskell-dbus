@@ -1,5 +1,5 @@
 name: dbus
-version: 1.2.6
+version: 1.2.7
 license: Apache-2.0
 license-file: license.txt
 author: John Millikin <john@john-millikin.com>
@@ -89,7 +89,7 @@ library
     , exceptions
     , filepath
     , lens
-    , network (>= 2.8.0.0 && < 2.9) || (>= 3.0.1.0 && < 3.1)
+    , network (>= 2.8.0.0 && < 2.9) || (>= 3.0.1.0 && < 3.2)
     , parsec
     , random
     , split
@@ -133,7 +133,7 @@ test-suite dbus_tests
     , directory
     , extra
     , filepath
-    , network
+    , network (>= 2.8.0.0 && < 2.9) || (>= 3.0.1.0 && < 3.2)
     , parsec
     , process
     , QuickCheck < 2.14
