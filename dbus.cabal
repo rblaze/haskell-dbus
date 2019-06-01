@@ -1,5 +1,5 @@
 name: dbus
-version: 1.2.7
+version: 1.2.8
 license: Apache-2.0
 license-file: license.txt
 author: John Millikin <john@john-millikin.com>
@@ -89,7 +89,7 @@ library
     , exceptions
     , filepath
     , lens
-    , network (>= 2.8.0.0 && < 2.9) || (>= 3.0.1.0 && < 3.2)
+    , network >= 3.0.1.0 && < 3.2
     , parsec
     , random
     , split
@@ -99,7 +99,7 @@ library
     , transformers
     , unix
     , vector
-    , xml-conduit
+    , xml-conduit >= 1.9.0.0 && < 1.10.0.0
     , xml-types
 
   exposed-modules:
@@ -133,7 +133,7 @@ test-suite dbus_tests
     , directory
     , extra
     , filepath
-    , network (>= 2.8.0.0 && < 2.9) || (>= 3.0.1.0 && < 3.2)
+    , network >= 3.0.1.0 && < 3.2
     , parsec
     , process
     , QuickCheck < 2.14

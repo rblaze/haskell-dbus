@@ -45,7 +45,7 @@ import qualified Data.Map as Map
 import           Data.Monoid
 import           Data.Typeable (Typeable)
 import           Foreign.C (CUInt)
-import           Network.Socket hiding (recv)
+import           Network.Socket
 import           Network.Socket.ByteString (sendAll, recv)
 import qualified System.Info
 import           Prelude
