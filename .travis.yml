@@ -60,12 +60,15 @@ matrix:
   - env: BUILD=cabal GHCVER=8.2.2 CABALVER=2.0 HAPPYVER=1.19.5 ALEXVER=3.1.7
     compiler: ": #GHC 8.2.2"
     addons: {apt: {packages: [cabal-install-2.0,ghc-8.2.2,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
-  - env: BUILD=cabal GHCVER=8.4.3 CABALVER=2.2 HAPPYVER=1.19.5 ALEXVER=3.1.7
-    compiler: ": #GHC 8.4.3"
-    addons: {apt: {packages: [cabal-install-2.2,ghc-8.4.3,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
-  - env: BUILD=cabal GHCVER=8.6.3 CABALVER=2.2 HAPPYVER=1.19.5 ALEXVER=3.1.7
-    compiler: ": #GHC 8.6.3"
-    addons: {apt: {packages: [cabal-install-2.2,ghc-8.6.3,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
+  - env: BUILD=cabal GHCVER=8.4.4 CABALVER=2.2 HAPPYVER=1.19.5 ALEXVER=3.1.7
+    compiler: ": #GHC 8.4.4"
+    addons: {apt: {packages: [cabal-install-2.2,ghc-8.4.4,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
+  - env: BUILD=cabal GHCVER=8.6.5 CABALVER=2.4 HAPPYVER=1.19.5 ALEXVER=3.1.7
+    compiler: ": #GHC 8.6.5"
+    addons: {apt: {packages: [cabal-install-2.4,ghc-8.6.5,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
+  - env: BUILD=cabal GHCVER=8.8.1 CABALVER=2.4 HAPPYVER=1.19.5 ALEXVER=3.1.7
+    compiler: ": #GHC 8.8.1"
+    addons: {apt: {packages: [cabal-install-2.4,ghc-8.8.1,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
 
   # Build with the newest GHC and cabal-install. This is an accepted failure,
   # see below.
@@ -95,31 +98,26 @@ matrix:
   #  compiler: ": #stack 8.0.1"
   #  addons: {apt: {packages: [libgmp-dev]}}
 
-  # Conduit is too old in lts-9
   #- env: BUILD=stack ARGS="--resolver lts-9"
   #  compiler: ": #stack 8.0.2"
   #  addons: {apt: {packages: [libgmp-dev]}}
 
-  # Network is too old in lts-11
   #- env: BUILD=stack ARGS="--resolver lts-11"
   #  compiler: ": #stack 8.2.2"
   #  addons: {apt: {packages: [libgmp-dev]}}
 
-  # Network is too old in lts-12
   #- env: BUILD=stack ARGS="--resolver lts-12"
-  #  compiler: ": #stack 8.4.3"
+  #  compiler: ": #stack 8.4.4"
   #  addons: {apt: {packages: [libgmp-dev]}}
 
   - env: BUILD=stack ARGS="--resolver lts-13"
-    compiler: ": #stack 8.6.3"
+    compiler: ": #stack 8.6.5"
     addons: {apt: {packages: [libgmp-dev]}}
 
   # Nightly builds are allowed to fail
   - env: BUILD=stack ARGS="--resolver nightly"
     compiler: ": #stack nightly"
     addons: {apt: {packages: [libgmp-dev]}}
-
-  # MacOS builds are useless for dbus
 
   allow_failures:
   - env: BUILD=cabal GHCVER=head  CABALVER=head HAPPYVER=1.19.5 ALEXVER=3.1.7
