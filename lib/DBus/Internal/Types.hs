@@ -310,7 +310,7 @@ extractFromVariant (Variant (ValueVariant v)) = extractFromVariant v
 extractFromVariant v = fromVariant v
 
 typeOf :: forall a. IsValue a => a -> Type
-typeOf _ = typeOf' (Proxy :: Proxy a)
+typeOf _ = typeOf_ (Proxy :: Proxy a)
 
 class IsVariant a where
     toVariant :: a -> Variant
@@ -322,7 +322,7 @@ class IsVariant a where
 -- Users may not provide new instances of 'IsValue' because this could allow
 -- containers to be created with items of heterogenous types.
 class IsVariant a => IsValue a where
-    typeOf' :: Proxy a -> Type
+    typeOf_ :: Proxy a -> Type
     toValue :: a -> Value
     fromValue :: Value -> Maybe a
 
@@ -456,7 +456,7 @@ atomType (AtomObjectPath _) = TypeObjectPath
     ; fromAtom _ = Nothing \
     }; \
     instance IsValue HsType where \
-    { typeOf' _ = TypeCons \
+    { typeOf_ _ = TypeCons \
     ; toValue = ValueAtom . toAtom \
     ; fromValue (ValueAtom x) = fromAtom x \
     ; fromValue _ = Nothing \
@@ -481,7 +481,7 @@ IS_ATOM(Signature,  AtomSignature,  TypeSignature)
 IS_ATOM(ObjectPath, AtomObjectPath, TypeObjectPath)
 
 instance IsValue Variant where
-    typeOf' _ = TypeVariant
+    typeOf_ _ = TypeVariant
     toValue = ValueVariant
     fromValue (ValueVariant x) = Just x
     fromValue _ = Nothing
@@ -495,7 +495,7 @@ instance IsAtom Data.Text.Lazy.Text where
     fromAtom = fmap Data.Text.Lazy.fromStrict . fromAtom
 
 instance IsValue Data.Text.Lazy.Text where
-    typeOf' _ = TypeString
+    typeOf_ _ = TypeString
     toValue = ValueAtom . toAtom
     fromValue (ValueAtom x) = fromAtom x
     fromValue _ = Nothing
@@ -509,7 +509,7 @@ instance IsAtom String where
     fromAtom = fmap Data.Text.unpack . fromAtom
 
 instance IsValue String where
-    typeOf' _ = TypeString
+    typeOf_ _ = TypeString
     toValue = ValueAtom . toAtom
     fromValue (ValueAtom x) = fromAtom x
     fromValue _ = Nothing
@@ -519,9 +519,9 @@ instance IsVariant String where
     fromVariant (Variant val) = fromValue val
 
 instance IsValue a => IsValue (Vector a) where
-    typeOf' _ = TypeArray (typeOf' (Proxy :: Proxy a))
+    typeOf_ _ = TypeArray (typeOf_ (Proxy :: Proxy a))
     toValue v = ValueVector
-        (typeOf' (Proxy :: Proxy a))
+        (typeOf_ (Proxy :: Proxy a))
         (Data.Vector.map toValue v)
     fromValue (ValueVector _ v) = Data.Vector.mapM fromValue v
     fromValue _ = Nothing
@@ -531,7 +531,7 @@ instance IsValue a => IsVariant (Vector a) where
     fromVariant (Variant val) = fromValue val
 
 instance IsValue a => IsValue [a] where
-    typeOf' _ = TypeArray (typeOf' (Proxy :: Proxy a))
+    typeOf_ _ = TypeArray (typeOf_ (Proxy :: Proxy a))
     toValue = toValue . Data.Vector.fromList
     fromValue = fmap Data.Vector.toList . fromValue
 
@@ -540,7 +540,7 @@ instance IsValue a => IsVariant [a] where
     fromVariant = fmap Data.Vector.toList . fromVariant
 
 instance IsValue BS.ByteString where
-    typeOf' _ = TypeArray TypeWord8
+    typeOf_ _ = TypeArray TypeWord8
     toValue = ValueBytes
     fromValue (ValueBytes bs) = Just bs
     fromValue (ValueVector TypeWord8 v) = Just (vectorToBytes v)
@@ -551,7 +551,7 @@ instance IsVariant BS.ByteString where
     fromVariant (Variant val) = fromValue val
 
 instance IsValue BL.ByteString where
-    typeOf' _ = TypeArray TypeWord8
+    typeOf_ _ = TypeArray TypeWord8
     toValue = toValue
             . BS.concat
             . BL.toChunks
@@ -563,13 +563,13 @@ instance IsVariant BL.ByteString where
     fromVariant (Variant val) = fromValue val
 
 instance (Ord k, IsAtom k, IsValue v) => IsValue (Map k v) where
-    typeOf' _ = TypeDictionary
-        (typeOf' (Proxy :: Proxy k))
-        (typeOf' (Proxy :: Proxy v))
+    typeOf_ _ = TypeDictionary
+        (typeOf_ (Proxy :: Proxy k))
+        (typeOf_ (Proxy :: Proxy v))
 
     toValue m = ValueMap kt vt (bimap box m) where
-        kt = typeOf' (Proxy :: Proxy k)
-        vt = typeOf' (Proxy :: Proxy v)
+        kt = typeOf_ (Proxy :: Proxy k)
+        vt = typeOf_ (Proxy :: Proxy v)
         box k v = (toAtom k, toValue v)
 
     fromValue (ValueMap _ _ m) = bimapM unbox m where
@@ -590,7 +590,7 @@ instance (Ord k, IsAtom k, IsValue v) => IsVariant (Map k v) where
     fromVariant (Variant val) = fromValue val
 
 instance IsValue () where
-  typeOf' _ = TypeStructure []
+  typeOf_ _ = TypeStructure []
   toValue _ = ValueStructure []
   fromValue (ValueStructure []) = return ()
   fromValue _ = Nothing
@@ -601,9 +601,9 @@ instance IsVariant () where
   fromVariant _ = Nothing
 
 instance (IsValue a1, IsValue a2) => IsValue (a1, a2) where
-    typeOf' _ = TypeStructure
-        [ typeOf' (Proxy :: Proxy a1)
-        , typeOf' (Proxy :: Proxy a2)
+    typeOf_ _ = TypeStructure
+        [ typeOf_ (Proxy :: Proxy a1)
+        , typeOf_ (Proxy :: Proxy a2)
         ]
     toValue (a1, a2) = ValueStructure [toValue a1, toValue a2]
     fromValue (ValueStructure [a1, a2]) = do
@@ -912,10 +912,10 @@ dictionaryItems (Dictionary _ _ xs) = do
     return (Variant (ValueAtom k), Variant v)
 
 instance (IsValue a1, IsValue a2, IsValue a3) => IsValue (a1, a2, a3) where
-    typeOf' _ = TypeStructure
-        [ typeOf' (Proxy :: Proxy a1)
-        , typeOf' (Proxy :: Proxy a2)
-        , typeOf' (Proxy :: Proxy a3)
+    typeOf_ _ = TypeStructure
+        [ typeOf_ (Proxy :: Proxy a1)
+        , typeOf_ (Proxy :: Proxy a2)
+        , typeOf_ (Proxy :: Proxy a3)
         ]
     toValue (a1, a2, a3) = ValueStructure [toValue a1, toValue a2, toValue a3]
     fromValue (ValueStructure [a1, a2, a3]) = do
@@ -926,11 +926,11 @@ instance (IsValue a1, IsValue a2, IsValue a3) => IsValue (a1, a2, a3) where
     fromValue _ = Nothing
 
 instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4) => IsValue (a1, a2, a3, a4) where
-    typeOf' _ = TypeStructure
-        [ typeOf' (Proxy :: Proxy a1)
-        , typeOf' (Proxy :: Proxy a2)
-        , typeOf' (Proxy :: Proxy a3)
-        , typeOf' (Proxy :: Proxy a4)
+    typeOf_ _ = TypeStructure
+        [ typeOf_ (Proxy :: Proxy a1)
+        , typeOf_ (Proxy :: Proxy a2)
+        , typeOf_ (Proxy :: Proxy a3)
+        , typeOf_ (Proxy :: Proxy a4)
         ]
     toValue (a1, a2, a3, a4) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4]
     fromValue (ValueStructure [a1, a2, a3, a4]) = do
@@ -942,12 +942,12 @@ instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4) => IsValue (a1, a2, a3
     fromValue _ = Nothing
 
 instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5) => IsValue (a1, a2, a3, a4, a5) where
-    typeOf' _ = TypeStructure
-        [ typeOf' (Proxy :: Proxy a1)
-        , typeOf' (Proxy :: Proxy a2)
-        , typeOf' (Proxy :: Proxy a3)
-        , typeOf' (Proxy :: Proxy a4)
-        , typeOf' (Proxy :: Proxy a5)
+    typeOf_ _ = TypeStructure
+        [ typeOf_ (Proxy :: Proxy a1)
+        , typeOf_ (Proxy :: Proxy a2)
+        , typeOf_ (Proxy :: Proxy a3)
+        , typeOf_ (Proxy :: Proxy a4)
+        , typeOf_ (Proxy :: Proxy a5)
         ]
     toValue (a1, a2, a3, a4, a5) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5]
     fromValue (ValueStructure [a1, a2, a3, a4, a5]) = do
@@ -960,13 +960,13 @@ instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5) => IsValue
     fromValue _ = Nothing
 
 instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6) => IsValue (a1, a2, a3, a4, a5, a6) where
-    typeOf' _ = TypeStructure
-        [ typeOf' (Proxy :: Proxy a1)
-        , typeOf' (Proxy :: Proxy a2)
-        , typeOf' (Proxy :: Proxy a3)
-        , typeOf' (Proxy :: Proxy a4)
-        , typeOf' (Proxy :: Proxy a5)
-        , typeOf' (Proxy :: Proxy a6)
+    typeOf_ _ = TypeStructure
+        [ typeOf_ (Proxy :: Proxy a1)
+        , typeOf_ (Proxy :: Proxy a2)
+        , typeOf_ (Proxy :: Proxy a3)
+        , typeOf_ (Proxy :: Proxy a4)
+        , typeOf_ (Proxy :: Proxy a5)
+        , typeOf_ (Proxy :: Proxy a6)
         ]
     toValue (a1, a2, a3, a4, a5, a6) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6]
     fromValue (ValueStructure [a1, a2, a3, a4, a5, a6]) = do
@@ -980,14 +980,14 @@ instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6
     fromValue _ = Nothing
 
 instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7) => IsValue (a1, a2, a3, a4, a5, a6, a7) where
-    typeOf' _ = TypeStructure
-        [ typeOf' (Proxy :: Proxy a1)
-        , typeOf' (Proxy :: Proxy a2)
-        , typeOf' (Proxy :: Proxy a3)
-        , typeOf' (Proxy :: Proxy a4)
-        , typeOf' (Proxy :: Proxy a5)
-        , typeOf' (Proxy :: Proxy a6)
-        , typeOf' (Proxy :: Proxy a7)
+    typeOf_ _ = TypeStructure
+        [ typeOf_ (Proxy :: Proxy a1)
+        , typeOf_ (Proxy :: Proxy a2)
+        , typeOf_ (Proxy :: Proxy a3)
+        , typeOf_ (Proxy :: Proxy a4)
+        , typeOf_ (Proxy :: Proxy a5)
+        , typeOf_ (Proxy :: Proxy a6)
+        , typeOf_ (Proxy :: Proxy a7)
         ]
     toValue (a1, a2, a3, a4, a5, a6, a7) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7]
     fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7]) = do
@@ -1002,15 +1002,15 @@ instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6
     fromValue _ = Nothing
 
 instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8) where
-    typeOf' _ = TypeStructure
-        [ typeOf' (Proxy :: Proxy a1)
-        , typeOf' (Proxy :: Proxy a2)
-        , typeOf' (Proxy :: Proxy a3)
-        , typeOf' (Proxy :: Proxy a4)
-        , typeOf' (Proxy :: Proxy a5)
-        , typeOf' (Proxy :: Proxy a6)
-        , typeOf' (Proxy :: Proxy a7)
-        , typeOf' (Proxy :: Proxy a8)
+    typeOf_ _ = TypeStructure
+        [ typeOf_ (Proxy :: Proxy a1)
+        , typeOf_ (Proxy :: Proxy a2)
+        , typeOf_ (Proxy :: Proxy a3)
+        , typeOf_ (Proxy :: Proxy a4)
+        , typeOf_ (Proxy :: Proxy a5)
+        , typeOf_ (Proxy :: Proxy a6)
+        , typeOf_ (Proxy :: Proxy a7)
+        , typeOf_ (Proxy :: Proxy a8)
         ]
     toValue (a1, a2, a3, a4, a5, a6, a7, a8) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8]
     fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8]) = do
@@ -1026,16 +1026,16 @@ instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6
     fromValue _ = Nothing
 
 instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8, IsValue a9) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8, a9) where
-    typeOf' _ = TypeStructure
-        [ typeOf' (Proxy :: Proxy a1)
-        , typeOf' (Proxy :: Proxy a2)
-        , typeOf' (Proxy :: Proxy a3)
-        , typeOf' (Proxy :: Proxy a4)
-        , typeOf' (Proxy :: Proxy a5)
-        , typeOf' (Proxy :: Proxy a6)
-        , typeOf' (Proxy :: Proxy a7)
-        , typeOf' (Proxy :: Proxy a8)
-        , typeOf' (Proxy :: Proxy a9)
+    typeOf_ _ = TypeStructure
+        [ typeOf_ (Proxy :: Proxy a1)
+        , typeOf_ (Proxy :: Proxy a2)
+        , typeOf_ (Proxy :: Proxy a3)
+        , typeOf_ (Proxy :: Proxy a4)
+        , typeOf_ (Proxy :: Proxy a5)
+        , typeOf_ (Proxy :: Proxy a6)
+        , typeOf_ (Proxy :: Proxy a7)
+        , typeOf_ (Proxy :: Proxy a8)
+        , typeOf_ (Proxy :: Proxy a9)
         ]
     toValue (a1, a2, a3, a4, a5, a6, a7, a8, a9) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8, toValue a9]
     fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9]) = do
@@ -1052,17 +1052,17 @@ instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6
     fromValue _ = Nothing
 
 instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8, IsValue a9, IsValue a10) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) where
-    typeOf' _ = TypeStructure
-        [ typeOf' (Proxy :: Proxy a1)
-        , typeOf' (Proxy :: Proxy a2)
-        , typeOf' (Proxy :: Proxy a3)
-        , typeOf' (Proxy :: Proxy a4)
-        , typeOf' (Proxy :: Proxy a5)
-        , typeOf' (Proxy :: Proxy a6)
-        , typeOf' (Proxy :: Proxy a7)
-        , typeOf' (Proxy :: Proxy a8)
-        , typeOf' (Proxy :: Proxy a9)
-        , typeOf' (Proxy :: Proxy a10)
+    typeOf_ _ = TypeStructure
+        [ typeOf_ (Proxy :: Proxy a1)
+        , typeOf_ (Proxy :: Proxy a2)
+        , typeOf_ (Proxy :: Proxy a3)
+        , typeOf_ (Proxy :: Proxy a4)
+        , typeOf_ (Proxy :: Proxy a5)
+        , typeOf_ (Proxy :: Proxy a6)
+        , typeOf_ (Proxy :: Proxy a7)
+        , typeOf_ (Proxy :: Proxy a8)
+        , typeOf_ (Proxy :: Proxy a9)
+        , typeOf_ (Proxy :: Proxy a10)
         ]
     toValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8, toValue a9, toValue a10]
     fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10]) = do
@@ -1080,18 +1080,18 @@ instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6
     fromValue _ = Nothing
 
 instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8, IsValue a9, IsValue a10, IsValue a11) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) where
-    typeOf' _ = TypeStructure
-        [ typeOf' (Proxy :: Proxy a1)
-        , typeOf' (Proxy :: Proxy a2)
-        , typeOf' (Proxy :: Proxy a3)
-        , typeOf' (Proxy :: Proxy a4)
-        , typeOf' (Proxy :: Proxy a5)
-        , typeOf' (Proxy :: Proxy a6)
-        , typeOf' (Proxy :: Proxy a7)
-        , typeOf' (Proxy :: Proxy a8)
-        , typeOf' (Proxy :: Proxy a9)
-        , typeOf' (Proxy :: Proxy a10)
-        , typeOf' (Proxy :: Proxy a11)
+    typeOf_ _ = TypeStructure
+        [ typeOf_ (Proxy :: Proxy a1)
+        , typeOf_ (Proxy :: Proxy a2)
+        , typeOf_ (Proxy :: Proxy a3)
+        , typeOf_ (Proxy :: Proxy a4)
+        , typeOf_ (Proxy :: Proxy a5)
+        , typeOf_ (Proxy :: Proxy a6)
+        , typeOf_ (Proxy :: Proxy a7)
+        , typeOf_ (Proxy :: Proxy a8)
+        , typeOf_ (Proxy :: Proxy a9)
+        , typeOf_ (Proxy :: Proxy a10)
+        , typeOf_ (Proxy :: Proxy a11)
         ]
     toValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8, toValue a9, toValue a10, toValue a11]
     fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11]) = do
@@ -1110,19 +1110,19 @@ instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6
     fromValue _ = Nothing
 
 instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8, IsValue a9, IsValue a10, IsValue a11, IsValue a12) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) where
-    typeOf' _ = TypeStructure
-        [ typeOf' (Proxy :: Proxy a1)
-        , typeOf' (Proxy :: Proxy a2)
-        , typeOf' (Proxy :: Proxy a3)
-        , typeOf' (Proxy :: Proxy a4)
-        , typeOf' (Proxy :: Proxy a5)
-        , typeOf' (Proxy :: Proxy a6)
-        , typeOf' (Proxy :: Proxy a7)
-        , typeOf' (Proxy :: Proxy a8)
-        , typeOf' (Proxy :: Proxy a9)
-        , typeOf' (Proxy :: Proxy a10)
-        , typeOf' (Proxy :: Proxy a11)
-        , typeOf' (Proxy :: Proxy a12)
+    typeOf_ _ = TypeStructure
+        [ typeOf_ (Proxy :: Proxy a1)
+        , typeOf_ (Proxy :: Proxy a2)
+        , typeOf_ (Proxy :: Proxy a3)
+        , typeOf_ (Proxy :: Proxy a4)
+        , typeOf_ (Proxy :: Proxy a5)
+        , typeOf_ (Proxy :: Proxy a6)
+        , typeOf_ (Proxy :: Proxy a7)
+        , typeOf_ (Proxy :: Proxy a8)
+        , typeOf_ (Proxy :: Proxy a9)
+        , typeOf_ (Proxy :: Proxy a10)
+        , typeOf_ (Proxy :: Proxy a11)
+        , typeOf_ (Proxy :: Proxy a12)
         ]
     toValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8, toValue a9, toValue a10, toValue a11, toValue a12]
     fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12]) = do
@@ -1142,20 +1142,20 @@ instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6
     fromValue _ = Nothing
 
 instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8, IsValue a9, IsValue a10, IsValue a11, IsValue a12, IsValue a13) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) where
-    typeOf' _ = TypeStructure
-        [ typeOf' (Proxy :: Proxy a1)
-        , typeOf' (Proxy :: Proxy a2)
-        , typeOf' (Proxy :: Proxy a3)
-        , typeOf' (Proxy :: Proxy a4)
-        , typeOf' (Proxy :: Proxy a5)
-        , typeOf' (Proxy :: Proxy a6)
-        , typeOf' (Proxy :: Proxy a7)
-        , typeOf' (Proxy :: Proxy a8)
-        , typeOf' (Proxy :: Proxy a9)
-        , typeOf' (Proxy :: Proxy a10)
-        , typeOf' (Proxy :: Proxy a11)
-        , typeOf' (Proxy :: Proxy a12)
-        , typeOf' (Proxy :: Proxy a13)
+    typeOf_ _ = TypeStructure
+        [ typeOf_ (Proxy :: Proxy a1)
+        , typeOf_ (Proxy :: Proxy a2)
+        , typeOf_ (Proxy :: Proxy a3)
+        , typeOf_ (Proxy :: Proxy a4)
+        , typeOf_ (Proxy :: Proxy a5)
+        , typeOf_ (Proxy :: Proxy a6)
+        , typeOf_ (Proxy :: Proxy a7)
+        , typeOf_ (Proxy :: Proxy a8)
+        , typeOf_ (Proxy :: Proxy a9)
+        , typeOf_ (Proxy :: Proxy a10)
+        , typeOf_ (Proxy :: Proxy a11)
+        , typeOf_ (Proxy :: Proxy a12)
+        , typeOf_ (Proxy :: Proxy a13)
         ]
     toValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8, toValue a9, toValue a10, toValue a11, toValue a12, toValue a13]
     fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13]) = do
@@ -1176,21 +1176,21 @@ instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6
     fromValue _ = Nothing
 
 instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8, IsValue a9, IsValue a10, IsValue a11, IsValue a12, IsValue a13, IsValue a14) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14) where
-    typeOf' _ = TypeStructure
-        [ typeOf' (Proxy :: Proxy a1)
-        , typeOf' (Proxy :: Proxy a2)
-        , typeOf' (Proxy :: Proxy a3)
-        , typeOf' (Proxy :: Proxy a4)
-        , typeOf' (Proxy :: Proxy a5)
-        , typeOf' (Proxy :: Proxy a6)
-        , typeOf' (Proxy :: Proxy a7)
-        , typeOf' (Proxy :: Proxy a8)
-        , typeOf' (Proxy :: Proxy a9)
-        , typeOf' (Proxy :: Proxy a10)
-        , typeOf' (Proxy :: Proxy a11)
-        , typeOf' (Proxy :: Proxy a12)
-        , typeOf' (Proxy :: Proxy a13)
-        , typeOf' (Proxy :: Proxy a14)
+    typeOf_ _ = TypeStructure
+        [ typeOf_ (Proxy :: Proxy a1)
+        , typeOf_ (Proxy :: Proxy a2)
+        , typeOf_ (Proxy :: Proxy a3)
+        , typeOf_ (Proxy :: Proxy a4)
+        , typeOf_ (Proxy :: Proxy a5)
+        , typeOf_ (Proxy :: Proxy a6)
+        , typeOf_ (Proxy :: Proxy a7)
+        , typeOf_ (Proxy :: Proxy a8)
+        , typeOf_ (Proxy :: Proxy a9)
+        , typeOf_ (Proxy :: Proxy a10)
+        , typeOf_ (Proxy :: Proxy a11)
+        , typeOf_ (Proxy :: Proxy a12)
+        , typeOf_ (Proxy :: Proxy a13)
+        , typeOf_ (Proxy :: Proxy a14)
         ]
     toValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8, toValue a9, toValue a10, toValue a11, toValue a12, toValue a13, toValue a14]
     fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14]) = do
@@ -1212,22 +1212,22 @@ instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6
     fromValue _ = Nothing
 
 instance (IsValue a1, IsValue a2, IsValue a3, IsValue a4, IsValue a5, IsValue a6, IsValue a7, IsValue a8, IsValue a9, IsValue a10, IsValue a11, IsValue a12, IsValue a13, IsValue a14, IsValue a15) => IsValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15) where
-    typeOf' _ = TypeStructure
-        [ typeOf' (Proxy :: Proxy a1)
-        , typeOf' (Proxy :: Proxy a2)
-        , typeOf' (Proxy :: Proxy a3)
-        , typeOf' (Proxy :: Proxy a4)
-        , typeOf' (Proxy :: Proxy a5)
-        , typeOf' (Proxy :: Proxy a6)
-        , typeOf' (Proxy :: Proxy a7)
-        , typeOf' (Proxy :: Proxy a8)
-        , typeOf' (Proxy :: Proxy a9)
-        , typeOf' (Proxy :: Proxy a10)
-        , typeOf' (Proxy :: Proxy a11)
-        , typeOf' (Proxy :: Proxy a12)
-        , typeOf' (Proxy :: Proxy a13)
-        , typeOf' (Proxy :: Proxy a14)
-        , typeOf' (Proxy :: Proxy a15)
+    typeOf_ _ = TypeStructure
+        [ typeOf_ (Proxy :: Proxy a1)
+        , typeOf_ (Proxy :: Proxy a2)
+        , typeOf_ (Proxy :: Proxy a3)
+        , typeOf_ (Proxy :: Proxy a4)
+        , typeOf_ (Proxy :: Proxy a5)
+        , typeOf_ (Proxy :: Proxy a6)
+        , typeOf_ (Proxy :: Proxy a7)
+        , typeOf_ (Proxy :: Proxy a8)
+        , typeOf_ (Proxy :: Proxy a9)
+        , typeOf_ (Proxy :: Proxy a10)
+        , typeOf_ (Proxy :: Proxy a11)
+        , typeOf_ (Proxy :: Proxy a12)
+        , typeOf_ (Proxy :: Proxy a13)
+        , typeOf_ (Proxy :: Proxy a14)
+        , typeOf_ (Proxy :: Proxy a15)
         ]
     toValue (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15) = ValueStructure [toValue a1, toValue a2, toValue a3, toValue a4, toValue a5, toValue a6, toValue a7, toValue a8, toValue a9, toValue a10, toValue a11, toValue a12, toValue a13, toValue a14, toValue a15]
     fromValue (ValueStructure [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15]) = do
