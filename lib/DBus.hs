@@ -180,7 +180,7 @@ import           Text.Printf (printf)
 import           DBus.Internal.Address
 import           DBus.Internal.Message
 import qualified DBus.Internal.Types
-import           DBus.Internal.Types hiding (typeOf, typeOf')
+import           DBus.Internal.Types hiding (typeOf)
 import           DBus.Internal.Wire
 
 -- | Deprecated. Get the D-Bus type corresponding to the given Haskell value. The value
@@ -190,7 +190,7 @@ typeOf = DBus.Internal.Types.typeOf
 
 -- | Get the D-Bus type corresponding to the given Haskell type 'a'.
 typeOf' :: IsValue a => Proxy a -> Type
-typeOf' = DBus.Internal.Types.typeOf'
+typeOf' = DBus.Internal.Types.typeOf_
 
 -- | Construct a new 'MethodCall' for the given object, interface, and method.
 --
