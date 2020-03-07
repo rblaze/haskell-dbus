@@ -1,5 +1,5 @@
 name: dbus
-version: 1.2.11
+version: 1.2.12
 license: Apache-2.0
 license-file: license.txt
 author: John Millikin <john@john-millikin.com>
@@ -88,7 +88,7 @@ library
     , deepseq
     , exceptions
     , filepath
-    , lens < 4.19
+    , lens < 4.20
     , network >= 3.0.1.0 && < 3.2
     , parsec
     , random
@@ -131,7 +131,7 @@ test-suite dbus_tests
     , cereal
     , containers
     , directory
-    , extra
+    , extra < 1.8
     , filepath
     , network >= 3.0.1.0 && < 3.2
     , parsec
