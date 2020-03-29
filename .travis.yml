@@ -8,8 +8,8 @@
 # Copy these contents into the root directory of your Github project in a file
 # named .travis.yml
 
-# Use new container infrastructure to enable caching
-sudo: false
+# Run jobs on Linux unless "os" is specified explicitly.
+os: linux
 
 # Do not choose a language; we provide our own build tools.
 language: generic
@@ -30,9 +30,9 @@ cache:
 # cache file per set of arguments.
 #
 # If you need to have different apt packages for each combination in the
-# matrix, you can use a line such as:
+# job matrix, you can use a line such as:
 #     addons: {apt: {packages: [libfcgi-dev,libgmp-dev]}}
-matrix:
+jobs:
   include:
   # We grab the appropriate GHC and cabal-install versions from hvr's PPA. See:
   # https://github.com/hvr/multi-ghc-travis
@@ -66,9 +66,9 @@ matrix:
   - env: BUILD=cabal GHCVER=8.6.5 CABALVER=2.4 HAPPYVER=1.19.5 ALEXVER=3.1.7
     compiler: ": #GHC 8.6.5"
     addons: {apt: {packages: [cabal-install-2.4,ghc-8.6.5,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
-  - env: BUILD=cabal GHCVER=8.8.1 CABALVER=2.4 HAPPYVER=1.19.5 ALEXVER=3.1.7
-    compiler: ": #GHC 8.8.1"
-    addons: {apt: {packages: [cabal-install-2.4,ghc-8.8.1,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
+  - env: BUILD=cabal GHCVER=8.8.3 CABALVER=2.4 HAPPYVER=1.19.5 ALEXVER=3.1.7
+    compiler: ": #GHC 8.8.3"
+    addons: {apt: {packages: [cabal-install-2.4,ghc-8.8.3,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
 
   # Build with the newest GHC and cabal-install. This is an accepted failure,
   # see below.
@@ -110,9 +110,13 @@ matrix:
   #  compiler: ": #stack 8.4.4"
   #  addons: {apt: {packages: [libgmp-dev]}}
 
-  #- env: BUILD=stack ARGS="--resolver lts-13"
+  #- env: BUILD=stack ARGS="--resolver lts-14"
   #  compiler: ": #stack 8.6.5"
   #  addons: {apt: {packages: [libgmp-dev]}}
+
+  - env: BUILD=stack ARGS="--resolver lts-15"
+    compiler: ": #stack 8.8.3"
+    addons: {apt: {packages: [libgmp-dev]}}
 
   # Nightly builds are allowed to fail
   - env: BUILD=stack ARGS="--resolver nightly"
