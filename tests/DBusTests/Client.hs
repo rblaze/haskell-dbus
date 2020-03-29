@@ -102,9 +102,8 @@ test_ConnectSession = test_Connect "connectSession" $ \addr ->
 test_ConnectSession_NoAddress :: TestTree
 test_ConnectSession_NoAddress = testCase "connectSession-no-address" $
     assertException
-        (DBus.Client.clientError "connectSession: DBUS_SESSION_BUS_ADDRESS is missing or invalid.")
-        (withEnv "DBUS_SESSION_BUS_ADDRESS"
-            (Just "invalid")
+        (DBus.Client.clientError "connectSession: DBUS_SESSION_BUS_ADDRESS is invalid.")
+        (withEnv "DBUS_SESSION_BUS_ADDRESS" (Just "invalid")
             DBus.Client.connectSession)
 
 test_ConnectStarter :: TestTree

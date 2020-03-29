@@ -1,3 +1,4 @@
+{-# Language LambdaCase #-}
 -- Copyright (C) 2009-2012 John Millikin <john@john-millikin.com>
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,13 +15,12 @@
 
 module DBus.Internal.Address where
 
-import qualified Control.Exception
 import           Data.Char (digitToInt, ord, chr)
-import           Data.Maybe (listToMaybe)
+import           Data.Maybe (listToMaybe, fromMaybe)
 import           Data.List (intercalate)
 import qualified Data.Map
 import           Data.Map (Map)
-import qualified System.Environment
+import           System.Environment (lookupEnv)
 import           Text.Printf (printf)
 
 import           Text.ParserCombinators.Parsec
@@ -141,18 +141,20 @@ parsecAddress = p where
 getSystemAddress :: IO (Maybe Address)
 getSystemAddress = do
     let system = "unix:path=/var/run/dbus/system_bus_socket"
-    env <- getenv "DBUS_SYSTEM_BUS_ADDRESS"
-    return (parseAddress (maybe system id env))
+    env <- lookupEnv "DBUS_SYSTEM_BUS_ADDRESS"
+    return (parseAddress (fromMaybe system env))
 
 -- | Returns the first address in the environment variable
 -- @DBUS_SESSION_BUS_ADDRESS@, which must be set.
 --
--- Returns 'Nothing' if @DBUS_SYSTEM_BUS_ADDRESS@ is unset or contains an
--- invalid address.
+-- Returns 'Nothing' if @DBUS_SYSTEM_BUS_ADDRESS@ contains an invalid address
+-- or @DBUS_SYSTEM_BUS_ADDRESS@ is unset @XDG_RUNTIME_DIR@ doesn't have @/bus@.
 getSessionAddress :: IO (Maybe Address)
-getSessionAddress = do
-    env <- getenv "DBUS_SESSION_BUS_ADDRESS"
-    return (env >>= parseAddresses >>= listToMaybe)
+getSessionAddress = lookupEnv "DBUS_SESSION_BUS_ADDRESS" >>= \case
+    Just addrs -> pure (parseAddresses addrs >>= listToMaybe)
+    Nothing -> (>>= parseFallback) <$> lookupEnv "XDG_RUNTIME_DIR"
+  where
+    parseFallback dir = parseAddress ("unix:path=" ++ dir ++ "/bus")
 
 -- | Returns the address in the environment variable
 -- @DBUS_STARTER_ADDRESS@, which must be set.
@@ -161,13 +163,8 @@ getSessionAddress = do
 -- invalid address.
 getStarterAddress :: IO (Maybe Address)
 getStarterAddress = do
-    env <- getenv "DBUS_STARTER_ADDRESS"
+    env <- lookupEnv "DBUS_STARTER_ADDRESS"
     return (env >>= parseAddress)
-
-getenv :: String -> IO (Maybe String)
-getenv name = Control.Exception.catch
-    (fmap Just (System.Environment.getEnv name))
-    (\(Control.Exception.SomeException _) -> return Nothing)
 
 hexToInt :: String -> Int
 hexToInt = foldl ((+) . (16 *)) 0 . map digitToInt

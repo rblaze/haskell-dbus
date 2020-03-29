@@ -400,7 +400,7 @@ connectSession :: IO Client
 connectSession = do
     env <- getSessionAddress
     case env of
-        Nothing -> throwIO (clientError "connectSession: DBUS_SESSION_BUS_ADDRESS is missing or invalid.")
+        Nothing -> throwIO (clientError "connectSession: DBUS_SESSION_BUS_ADDRESS is invalid.")
         Just addr -> connect addr
 
 -- | Connect to the bus specified in the environment variable
