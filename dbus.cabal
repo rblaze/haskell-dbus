@@ -34,18 +34,18 @@ description:
   .
   main = do
   &#x20;   client <- connectSession
-  &#x20;   //
-  &#x20;   \-- Request a list of connected clients from the bus
+  &#x20;
+  &#x20;   -- Request a list of connected clients from the bus
   &#x20;   reply <- call_ client (methodCall \"\/org\/freedesktop\/DBus\" \"org.freedesktop.DBus\" \"ListNames\")
   &#x20;       &#x7b; methodCallDestination = Just \"org.freedesktop.DBus\"
   &#x20;       &#x7d;
-  &#x20;   //
-  &#x20;   \-- org.freedesktop.DBus.ListNames() returns a single value, which is
-  &#x20;   \-- a list of names (here represented as [String])
+  &#x20;
+  &#x20;   -- org.freedesktop.DBus.ListNames() returns a single value, which is
+  &#x20;   -- a list of names (here represented as [String])
   &#x20;   let Just names = fromVariant (methodReturnBody reply !! 0)
-  &#x20;   //
-  &#x20;   \-- Print each name on a line, sorted so reserved names are below
-  &#x20;   \-- temporary names.
+  &#x20;
+  &#x20;   -- Print each name on a line, sorted so reserved names are below
+  &#x20;   -- temporary names.
   &#x20;   mapM_ putStrLn (sort names)
   @
   .
