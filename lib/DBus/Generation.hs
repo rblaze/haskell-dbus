@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 module DBus.Generation where
@@ -25,6 +26,13 @@ import           Data.Word
 import           Language.Haskell.TH
 import           Prelude hiding (mapM)
 import           System.Posix.Types (Fd(..))
+
+-- | Compatibility helper to create (total) tuple expressions
+mkTupE :: [Exp] -> Exp
+mkTupE = TupE
+#if MIN_VERSION_template_haskell(2,16,0)
+         . map Just
+#endif
 
 type ClientBusPathR a = ReaderT (Client, T.BusName, T.ObjectPath) IO a
 
@@ -232,8 +240,8 @@ generateClientMethod GenerationParams
     finalOutputNames <- buildOutputNames
     let variantListExp = map makeToVariantApp methodArgNames
         mapOrHead' = mapOrHead outputLength
-        fromVariantExp = mapOrHead' makeFromVariantApp fromVariantOutputNames TupE
-        finalResultTuple = mapOrHead' VarE finalOutputNames TupE
+        fromVariantExp = mapOrHead' makeFromVariantApp fromVariantOutputNames mkTupE
+        finalResultTuple = mapOrHead' VarE finalOutputNames mkTupE
         maybeExtractionPattern = mapOrHead' makeJustPattern finalOutputNames TupP
         getMethodCallDefDec = [d|
                $( varP methodCallDefN ) =
@@ -432,7 +440,7 @@ generateSignal GenerationParams
                      }
                  |]
     let mapOrHead' = mapOrHead argCount
-        fromVariantExp = mapOrHead' makeFromVariantApp fromVariantOutputNames TupE
+        fromVariantExp = mapOrHead' makeFromVariantApp fromVariantOutputNames mkTupE
         maybeExtractionPattern = mapOrHead' makeJustPattern toHandlerOutputNames TupP
         applyToName toApply n = AppE toApply $ VarE n
         finalApplication = foldl applyToName (VarE handlerArgN)
