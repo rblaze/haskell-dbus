@@ -1,5 +1,5 @@
 name: dbus
-version: 1.2.14
+version: 1.2.15
 license: Apache-2.0
 license-file: license.txt
 author: John Millikin <john@john-millikin.com>
@@ -139,7 +139,7 @@ test-suite dbus_tests
     , QuickCheck < 2.15
     , random
     , resourcet
-    , tasty
+    , tasty < 1.4
     , tasty-hunit
     , tasty-quickcheck
     , text
