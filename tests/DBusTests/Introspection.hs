@@ -129,10 +129,10 @@ instance Arbitrary I.Object where
 subObject :: ObjectPath -> Gen I.Object
 subObject parentPath = sized $ \n -> resize (min n 4) $ do
     let nonRoot = do
-        x <- resize 10 arbitrary
-        case formatObjectPath x of
-            "/" -> nonRoot
-            x'  -> return x'
+            x <- resize 10 arbitrary
+            case formatObjectPath x of
+                "/" -> nonRoot
+                x'  -> return x'
 
     thisPath <- nonRoot
     let path' = case formatObjectPath parentPath of

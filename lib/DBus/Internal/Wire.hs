@@ -464,8 +464,8 @@ unmarshalByteArray = do
 unmarshalArray :: Type -> Unmarshal (Vector Value)
 unmarshalArray itemType = do
     let getOffset = do
-        (UnmarshalState _ o) <- getState
-        return o
+            (UnmarshalState _ o) <- getState
+            return o
     byteCount <- unmarshalWord32
     skipPadding (alignment itemType)
     start <- getOffset
@@ -611,10 +611,10 @@ unmarshalMessageM :: Monad m => (Int -> m ByteString)
                   -> m (Either UnmarshalError ReceivedMessage)
 unmarshalMessageM getBytes' = runErrorT $ do
     let getBytes count = do
-        bytes <- ErrorT (liftM Right (getBytes' count))
-        if Data.ByteString.length bytes < count
-            then throwErrorT (UnmarshalError "Unexpected end of input while parsing message header.")
-            else return bytes
+            bytes <- ErrorT (liftM Right (getBytes' count))
+            if Data.ByteString.length bytes < count
+                then throwErrorT (UnmarshalError "Unexpected end of input while parsing message header.")
+                else return bytes
 
     let Just fixedSig = parseSignature "yyyyuuu"
     fixedBytes <- getBytes 16

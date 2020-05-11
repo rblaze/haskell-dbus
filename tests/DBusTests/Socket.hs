@@ -91,32 +91,32 @@ test_SendReceive = testCase "send-receive" $ do
         openedVar <- forkVar (open addr)
 
         bracket (takeMVar acceptedVar) close $ \sock1 -> do
-        bracket (takeMVar openedVar) close $ \sock2 -> do
-            -- client -> server
-            do
-                serialVar <- newEmptyMVar
-                sentVar <- forkVar (send sock2 msg (putMVar serialVar))
-                receivedVar <- forkVar (receive sock1)
+            bracket (takeMVar openedVar) close $ \sock2 -> do
+                -- client -> server
+                do
+                    serialVar <- newEmptyMVar
+                    sentVar <- forkVar (send sock2 msg (putMVar serialVar))
+                    receivedVar <- forkVar (receive sock1)
 
-                serial <- takeMVar serialVar
-                sent <- takeMVar sentVar
-                received <- takeMVar receivedVar
+                    serial <- takeMVar serialVar
+                    sent <- takeMVar sentVar
+                    received <- takeMVar receivedVar
 
-                sent @?= ()
-                received @?= ReceivedMethodCall serial msg
+                    sent @?= ()
+                    received @?= ReceivedMethodCall serial msg
 
-            -- server -> client
-            do
-                serialVar <- newEmptyMVar
-                sentVar <- forkVar (send sock1 msg (putMVar serialVar))
-                receivedVar <- forkVar (receive sock2)
+                -- server -> client
+                do
+                    serialVar <- newEmptyMVar
+                    sentVar <- forkVar (send sock1 msg (putMVar serialVar))
+                    receivedVar <- forkVar (receive sock2)
 
-                serial <- takeMVar serialVar
-                sent <- takeMVar sentVar
-                received <- takeMVar receivedVar
+                    serial <- takeMVar serialVar
+                    sent <- takeMVar sentVar
+                    received <- takeMVar receivedVar
 
-                sent @?= ()
-                received @?= ReceivedMethodCall serial msg
+                    sent @?= ()
+                    received @?= ReceivedMethodCall serial msg
 
 dummyAuth :: Transport t => Authenticator t
 dummyAuth = authenticator

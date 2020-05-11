@@ -347,20 +347,20 @@ clientAuthExternal t = do
 serverAuthExternal :: SocketTransport -> UUID -> IO Bool
 serverAuthExternal t uuid = do
     let waitForBegin = do
-        resp <- transportGetLine t
-        if resp == "BEGIN"
-            then return ()
-            else waitForBegin
+            resp <- transportGetLine t
+            if resp == "BEGIN"
+                then return ()
+                else waitForBegin
 
     let checkToken token = do
-        (_, uid, _) <- socketTransportCredentials t
-        let wantToken = concatMap (printf "%02X" . ord) (maybe "XXX" show uid)
-        if token == wantToken
-            then do
-                transportPutLine t ("OK " ++ formatUUID uuid)
-                waitForBegin
-                return True
-            else return False
+            (_, uid, _) <- socketTransportCredentials t
+            let wantToken = concatMap (printf "%02X" . ord) (maybe "XXX" show uid)
+            if token == wantToken
+                then do
+                    transportPutLine t ("OK " ++ formatUUID uuid)
+                    waitForBegin
+                    return True
+                else return False
 
     c <- transportGet t 1
     if c /= Char8.pack "\x00"
