@@ -90,7 +90,7 @@ library
     , exceptions
     , filepath
     , lens < 4.20
-    , network >= 3.0.1.0 && < 3.2
+    , network >= 3.1.2.1 && < 3.2
     , parsec
     , random < 1.3
     , split
@@ -135,7 +135,7 @@ test-suite dbus_tests
     , directory
     , extra < 1.8
     , filepath
-    , network >= 3.0.1.0 && < 3.2
+    , network >= 3.1.2.1 && < 3.2
     , parsec
     , process
     , QuickCheck < 2.15

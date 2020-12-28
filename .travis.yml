@@ -72,17 +72,17 @@ jobs:
 
   # The Stack builds. We can pass in arbitrary Stack arguments via the ARGS
   # variable, such as using --stack-yaml to point to a different file.
-  - env: BUILD=stack ARGS=""
-    compiler: ": #stack default"
-    addons: {apt: {packages: [libgmp-dev]}}
+  # - env: BUILD=stack ARGS=""
+  #   compiler: ": #stack default"
+  #   addons: {apt: {packages: [libgmp-dev]}}
 
-  - env: BUILD=stack ARGS="--resolver lts-15"
-    compiler: ": #stack 8.8.3"
-    addons: {apt: {packages: [libgmp-dev]}}
+  # - env: BUILD=stack ARGS="--resolver lts-15"
+  #   compiler: ": #stack 8.8.3"
+  #   addons: {apt: {packages: [libgmp-dev]}}
 
-  - env: BUILD=stack ARGS="--resolver lts-16"
-    compiler: ": #stack 8.8.4"
-    addons: {apt: {packages: [libgmp-dev]}}
+  # - env: BUILD=stack ARGS="--resolver lts-16"
+  #   compiler: ": #stack 8.8.4"
+  #   addons: {apt: {packages: [libgmp-dev]}}
 
   # Nightly builds are allowed to fail
   - env: BUILD=stack ARGS="--resolver nightly"

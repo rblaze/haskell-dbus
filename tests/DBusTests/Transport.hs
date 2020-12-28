@@ -418,7 +418,7 @@ test_ListenUnix_InvalidBind = testCase "invalid-bind" $ do
             ])
     assertThrows
         (\err -> and
-            [ "Address already in use" `isInfixOf` transportErrorMessage err
+            [ "Permission denied" `isInfixOf` transportErrorMessage err
             , transportErrorAddress err == Just addr
             ])
         (transportListen socketTransportOptions addr)
