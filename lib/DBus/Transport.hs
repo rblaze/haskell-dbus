@@ -261,10 +261,10 @@ openTcp transportAddr = go where
         , addrSocketType = Stream
         })) (Just hostname) Nothing
 
-    openSocket [] = throwIO (transportError "openTcp: no addresses")
+    openOneSocket [] = throwIO (transportError "openTcp: no addresses")
         { transportErrorAddress = Just transportAddr
         }
-    openSocket (addr:addrs) = do
+    openOneSocket (addr:addrs) = do
         tried <- Control.Exception.try $ bracketOnError
             (socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr))
             close
@@ -276,7 +276,7 @@ openTcp transportAddr = go where
                 [] -> throwIO (transportError (show (err :: IOException)))
                     { transportErrorAddress = Just transportAddr
                     }
-                _ -> openSocket addrs
+                _ -> openOneSocket addrs
             Right sock -> return sock
 
     go = case getPort of
@@ -289,7 +289,7 @@ openTcp transportAddr = go where
                 }
             Right family_ -> catchIOException (Just transportAddr) $ do
                 addrs <- getAddresses family_
-                sock <- openSocket (map (setPort port) addrs)
+                sock <- openOneSocket (map (setPort port) addrs)
                 return (SocketTransport (Just transportAddr) sock)
 
 listenUnix :: UUID -> Address -> TransportOptions SocketTransport -> IO (Address, Socket)
