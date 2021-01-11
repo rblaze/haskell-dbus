@@ -148,7 +148,7 @@ getSystemAddress = do
 -- @DBUS_SESSION_BUS_ADDRESS@, which must be set.
 --
 -- Returns 'Nothing' if @DBUS_SYSTEM_BUS_ADDRESS@ contains an invalid address
--- or @DBUS_SYSTEM_BUS_ADDRESS@ is unset @XDG_RUNTIME_DIR@ doesn't have @/bus@.
+-- or @DBUS_SESSION_BUS_ADDRESS@ is unset @XDG_RUNTIME_DIR@ doesn't have @/bus@.
 getSessionAddress :: IO (Maybe Address)
 getSessionAddress = lookupEnv "DBUS_SESSION_BUS_ADDRESS" >>= \case
     Just addrs -> pure (parseAddresses addrs >>= listToMaybe)
