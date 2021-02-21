@@ -94,7 +94,7 @@ library
     , parsec
     , random < 1.3
     , split
-    , template-haskell < 2.17.0.0
+    , template-haskell < 2.18.0.0
     , text
     , th-lift < 0.9
     , transformers
