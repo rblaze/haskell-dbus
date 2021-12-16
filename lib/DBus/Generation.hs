@@ -148,7 +148,7 @@ makeFromVariantApp :: Name -> Exp
 makeFromVariantApp name = AppE (VarE 'T.fromVariant) $ VarE name
 
 makeJustPattern :: Name -> Pat
-makeJustPattern name = ConP 'Just [VarP name]
+makeJustPattern name = ConP 'Just [] [VarP name]
 
 mapOrHead ::
   (Num a, Eq a) => a -> (t -> b) -> [t] -> ([b] -> b) -> b
