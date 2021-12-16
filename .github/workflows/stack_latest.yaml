@@ -1,0 +1,13 @@
+on: [push]
+name: build
+jobs:
+  build-stack-latest:
+    name: Build and test with latest stack (ignore failures)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: haskell/actions/setup@v1
+        with:
+          enable-stack: true
+          stack-version: 'latest'
+      - run: '(stack test --bench --only-dependencies && stack test --bench --no-run-benchmarks --haddock --no-haddock-deps) || echo "Error: build failed"'

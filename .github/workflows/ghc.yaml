@@ -1,0 +1,19 @@
+on: [push]
+name: build
+jobs:
+  build-ghc:
+    name: Build and test with ghc ${{ matrix.ghc }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ghc: ['8.8', '8.10', '9.0']
+    steps:
+      - uses: actions/checkout@v2
+      - uses: haskell/actions/setup@v1
+        with:
+          ghc-version: ${{ matrix.ghc }}
+      - run: cabal v1-install --only-dependencies --enable-tests --enable-benchmarks
+      - run: cabal v1-configure --enable-tests --enable-benchmarks
+      - run: cabal v1-build
+      - run: cabal v1-test
+      - run: cabal v1-bench
