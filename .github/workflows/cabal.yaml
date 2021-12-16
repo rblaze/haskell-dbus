@@ -1,8 +1,8 @@
 on: [push]
-name: build
+name: Cabal multi-version build
 jobs:
   build-ghc:
-    name: Build and test with ghc ${{ matrix.ghc }}
+    name: ghc ${{ matrix.ghc }}
     runs-on: ubuntu-latest
     strategy:
       matrix:

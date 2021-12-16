@@ -1,0 +1,14 @@
+on: [push]
+name: Stackage nightly (ignore failures)
+jobs:
+  build-stackage-nightly:
+    name: Build with stackage nightly
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: haskell/actions/setup@v1
+        with:
+          enable-stack: true
+      - name: stack test
+        run: 'stack test --resolver nightly --bench --only-dependencies && stack test --resolver nightly --bench --no-run-benchmarks --haddock --no-haddock-deps'
+        continue-on-error: true
