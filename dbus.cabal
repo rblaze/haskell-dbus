@@ -1,5 +1,5 @@
 name: dbus
-version: 1.2.24
+version: 1.2.25
 license: Apache-2.0
 license-file: license.txt
 author: John Millikin <john@john-millikin.com>
@@ -99,7 +99,7 @@ library
     , th-lift < 0.9
     , transformers
     , unix
-    , vector
+    , vector < 0.14
     , xml-conduit >= 1.9.0.0 && < 1.10.0.0
     , xml-types
 
@@ -147,7 +147,7 @@ test-suite dbus_tests
     , text
     , transformers
     , unix
-    , vector
+    , vector < 0.14
 
   other-modules:
     DBusTests.Address
