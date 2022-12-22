@@ -1,4 +1,4 @@
-on: [push]
+on: [push, pull_request]
 name: Stackage nightly (ignore failures)
 jobs:
   build-stackage-nightly:
