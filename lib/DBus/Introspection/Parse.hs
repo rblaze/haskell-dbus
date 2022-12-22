@@ -45,7 +45,7 @@ parseObject
 parseObject getPath = X.tag' "node" getPath parseContent
   where
     parseContent objPath = do
-        elems <- X.many $ X.choose
+        elems <- X.many' $ X.choose
             [ fmap SubNode <$> parseObject (getChildName objPath)
             , fmap InterfaceDefinition <$> parseInterface
             ]
@@ -63,7 +63,7 @@ parseInterface = X.tag' "interface" getName parseContent
         ifName <- X.requireAttr "name"
         pure $ interfaceName_ (T.unpack ifName)
     parseContent ifName = do
-        elems <- X.many $ do
+        elems <- X.many' $ do
             X.many_ $ X.ignoreTreeContent "annotation" X.ignoreAttrs
             X.choose
                 [ parseMethod
@@ -85,7 +85,7 @@ parseMethod = X.tag' "method" getName parseArgs
         ifName <- X.requireAttr "name"
         parseMemberName (T.unpack ifName)
     parseArgs name = do
-        args <- X.many $ do
+        args <- X.many' $ do
             X.many_ $ X.ignoreTreeContent "annotation" X.ignoreAttrs
             X.tag' "arg" getArg pure
         X.many_ $ X.ignoreTreeContent "annotation" X.ignoreAttrs
@@ -106,7 +106,7 @@ parseSignal = X.tag' "signal" getName parseArgs
         ifName <- X.requireAttr "name"
         parseMemberName (T.unpack ifName)
     parseArgs name = do
-        args <- X.many $ do
+        args <- X.many' $ do
             X.many_ $ X.ignoreTreeContent "annotation" X.ignoreAttrs
             X.tag' "arg" getArg pure
         X.many_ $ X.ignoreTreeContent "annotation" X.ignoreAttrs

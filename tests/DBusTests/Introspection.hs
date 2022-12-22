@@ -40,6 +40,7 @@ test_Introspection = testGroup "Introspection"
     , test_XmlParse
     , test_XmlParseFailed
     , test_XmlWriteFailed
+    , test_XmlIgnoreUnrecognizedTag
     ]
 
 test_XmlPassthrough :: TestTree
@@ -66,22 +67,23 @@ test_XmlParseFailed = testCase "xml-parse-failed" $ do
     Nothing @=? I.parseXML (objectPath_ "/") "<invalid>"
     Nothing @=? I.parseXML (objectPath_ "/") "<invalid/>"
 
-    -- invalid property access
+    -- missing closing tag
     Nothing @=? I.parseXML (objectPath_ "/")
         "<node>\
         \  <interface name='com.example.Foo'>\
-        \    <property type='s' access='invalid'>\
-        \    </property>\
+        \</node>"
+
+    -- missing attribute name
+    Nothing @=? I.parseXML (objectPath_ "/")
+        "<node>\
+        \  <interface 'com.example.Foo'>\
         \  </interface>\
         \</node>"
 
-    -- invalid parameter type
+    -- invalid interface name
     Nothing @=? I.parseXML (objectPath_ "/")
         "<node>\
-        \  <interface name='com.example.Foo'>\
-        \    <method name='Foo'>\
-        \      <arg type='yy'/>\
-        \    </method>\
+        \  <interface name=5>\
         \  </interface>\
         \</node>"
 
@@ -99,6 +101,54 @@ test_XmlWriteFailed = testCase "xml-write-failed" $ do
             { I.objectInterfaces =
                 [ I.Interface (interfaceName_ "/bar") [] []
                                 [ I.Property "prop" (TypeDictionary TypeVariant TypeVariant) True True ]]})
+
+test_XmlIgnoreUnrecognizedTag :: TestTree
+test_XmlIgnoreUnrecognizedTag = testCase "xml-ignore-unrecognized-tag" $ do
+    -- ignore tp namespace tags
+    I.parseXML (objectPath_ "/")
+        "<node xmlns:tp='http://telepathy.freedesktop.org/wiki/DbusSpec#extensions-v0' name='/'> \
+        \  <node name='foo'/>\
+        \  <tp:enum name='FOO' type='s'>\
+        \    <tp:docstring>sample docstring</tp:docstring>\
+        \    <tp:enumvalue suffix='BAR' value=''/>\
+        \  </tp:enum>\
+        \</node>"
+        @?= Just (buildEmptyObject "/")
+            { I.objectChildren =
+                [ buildEmptyObject "/foo"
+                ]
+            }
+
+    -- ignore nested tp tags
+    I.parseXML (objectPath_ "/")
+        "<node xmlns:tp='http://telepathy.freedesktop.org/wiki/DbusSpec#extensions-v0' name='/'> \
+        \  <interface name='com.example.Foo'>\
+        \    <tp:docstring>sample docstring</tp:docstring>\
+        \    <method name='bar'>\
+        \      <tp:docstring>bar docstring</tp:docstring>\
+        \    </method>\
+        \  </interface>\
+        \</node>"
+        @?= Just (buildEmptyObject "/")
+            { I.objectInterfaces =
+                [ I.Interface (interfaceName_ "com.example.Foo") [I.Method (memberName_ "bar") []] [] []
+                ]
+            }
+
+    -- ignore invalid parameter type
+    I.parseXML (objectPath_ "/")
+        "<node>\
+        \  <interface name='com.example.Foo'>\
+        \    <method name='Foo'>\
+        \      <arg type='yy'/>\
+        \    </method>\
+        \  </interface>\
+        \</node>"
+        @?= Just (buildEmptyObject "/")
+            { I.objectInterfaces =
+                [ I.Interface (interfaceName_ "com.example.Foo") [I.Method (memberName_ "Foo") []] [] []
+                ]
+            }
 
 instance Arbitrary Type where
     arbitrary = oneof [atom, container] where
