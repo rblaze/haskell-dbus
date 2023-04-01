@@ -69,6 +69,22 @@ test_Connect name connect = testCase name $ do
     client <- readMVar clientVar
     DBus.Client.disconnect client
 
+test_ConnectWithName :: TestTree
+test_ConnectWithName = testCase "connectWithName" $ do
+    (addr, sockVar) <- startDummyBus
+    clientVar <- forkVar (DBus.Client.connectWithName DBus.Client.defaultClientOptions addr)
+
+    sock <- readMVar sockVar
+    receivedHello <- DBus.Socket.receive sock
+    let (ReceivedMethodCall helloSerial _) = receivedHello
+
+    let helloReturn = (methodReturn helloSerial) { methodReturnBody = [toVariant ":1.123"] }
+    DBus.Socket.send sock helloReturn (\_ -> return ())
+
+    (client, clientName) <- readMVar clientVar
+    assertEqual "client name not as expected" (busName_ ":1.123") clientName
+    DBus.Client.disconnect client
+
 suite_Connect :: TestTree
 suite_Connect = testGroup "connect"
     [ test_ConnectSystem
@@ -77,6 +93,7 @@ suite_Connect = testGroup "connect"
     , test_ConnectSession_NoAddress
     , test_ConnectStarter
     , test_ConnectStarter_NoAddress
+    , test_ConnectWithName
     ]
 
 test_ConnectSystem :: TestTree

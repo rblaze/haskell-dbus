@@ -156,6 +156,7 @@ module DBus.Client
     , clientThreadRunner
     , defaultClientOptions
     , connectWith
+    , connectWithName
 
     , dbusName
     , dbusPath
@@ -427,6 +428,36 @@ connect = connectWith defaultClientOptions
 -- Throws a 'ClientError' on failure.
 connectWith :: TransportOpen t => ClientOptions t -> Address -> IO Client
 connectWith opts addr = do
+    client <- connectWith' opts addr
+
+    callNoReply client (methodCall dbusPath dbusInterface "Hello")
+        { methodCallDestination = Just dbusName
+        }
+
+    return client
+
+-- | Connect to the bus at the specified address, with the given connection
+-- options, and return the unique client bus name. Most users should use
+-- 'connect' or 'connectWith' instead.
+--
+-- Throws a 'ClientError' on failure.
+connectWithName :: TransportOpen t => ClientOptions t -> Address -> IO (Client, BusName)
+connectWithName opts addr = do
+    client <- connectWith' opts addr
+
+    reply <- call_ client (methodCall dbusPath dbusInterface "Hello")
+        { methodCallDestination = Just dbusName
+        }
+    
+    case methodReturnBody reply of
+      [name] | Just nameStr <- fromVariant name -> do
+        busName <- parseBusName nameStr
+        return (client, busName)
+      _ ->
+        throwIO (clientError "connectWithName: Hello response did not contain client name.")
+
+connectWith' :: TransportOpen t => ClientOptions t -> Address -> IO Client
+connectWith' opts addr = do
     sock <- DBus.Socket.openWith (clientSocketOptions opts) addr
 
     pendingCalls <- newIORef M.empty
@@ -449,10 +480,6 @@ connectWith opts addr = do
             , clientInterfaces = clientBuildInterfaces opts client
             }
     putMVar clientMVar client
-
-    callNoReply client (methodCall dbusPath dbusInterface "Hello")
-        { methodCallDestination = Just dbusName
-        }
 
     return client
 
