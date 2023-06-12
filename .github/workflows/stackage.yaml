@@ -1,0 +1,17 @@
+
+on: [push, pull_request]
+name: Stackage multi-version build
+jobs:
+  build-stackage:
+    name: LTS ${{ matrix.lts }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        lts: ['20.25']
+    steps:
+      - uses: actions/checkout@v2
+      - uses: haskell/actions/setup@v1
+        with:
+          enable-stack: true
+      - name: stack test
+        run: 'stack test --resolver lts-${{ matrix.lts }} --bench --only-dependencies && stack test --resolver nightly --bench --no-run-benchmarks --haddock --no-haddock-deps'
