@@ -52,32 +52,32 @@ test_MethodCall :: TestTree
 test_MethodCall = testProperty "MethodCall" prop where
     prop = forAll gen_MethodCall check
     check msg endianness serial = let
-        Right bytes = marshal endianness serial msg
-        Right received = unmarshal bytes
+        Right (bytes, fds) = marshal endianness serial msg
+        Right received = unmarshal bytes fds
         in ReceivedMethodCall serial msg == received
 
 test_MethodReturn :: TestTree
 test_MethodReturn = testProperty "MethodReturn" prop where
     prop = forAll gen_MethodReturn check
     check msg endianness serial = let
-        Right bytes = marshal endianness serial msg
-        Right received = unmarshal bytes
+        Right (bytes, fds) = marshal endianness serial msg
+        Right received = unmarshal bytes fds
         in ReceivedMethodReturn serial msg == received
 
 test_MethodError :: TestTree
 test_MethodError = testProperty "MethodError" prop where
     prop = forAll gen_MethodError check
     check msg endianness serial = let
-        Right bytes = marshal endianness serial msg
-        Right received = unmarshal bytes
+        Right (bytes, fds) = marshal endianness serial msg
+        Right received = unmarshal bytes fds
         in ReceivedMethodError serial msg == received
 
 test_Signal :: TestTree
 test_Signal = testProperty "Signal" prop where
     prop = forAll gen_Signal check
     check msg endianness serial = let
-        Right bytes = marshal endianness serial msg
-        Right received = unmarshal bytes
+        Right (bytes, fds) = marshal endianness serial msg
+        Right received = unmarshal bytes fds
         in ReceivedSignal serial msg == received
 
 gen_Atom :: Gen Variant

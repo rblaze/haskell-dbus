@@ -174,6 +174,7 @@ import           Control.Monad (replicateM)
 import qualified Data.ByteString.Char8 as Char8
 import           Data.Proxy (Proxy(..))
 import           Data.Word (Word16)
+import           System.Posix.Types (Fd)
 import           System.Random (randomRIO)
 import           Text.Printf (printf)
 
@@ -252,17 +253,19 @@ receivedMessageBody (ReceivedMethodError _ msg) = methodErrorBody msg
 receivedMessageBody (ReceivedSignal _ msg) = signalBody msg
 receivedMessageBody (ReceivedUnknown _ msg) = unknownMessageBody msg
 
--- | Convert a 'Message' into a 'Char8.ByteString'. Although unusual, it is
--- possible for marshaling to fail; if this occurs, an error will be
--- returned instead.
-marshal :: Message msg => Endianness -> Serial -> msg -> Either MarshalError Char8.ByteString
+-- | Convert a 'Message' into a 'Char8.ByteString' along with all 'Fd' values
+-- mentioned in the message (the marshaled bytes will contain indices into
+-- this list). Although unusual, it is possible for marshaling to fail; if this
+-- occurs, an error will be returned instead.
+marshal :: Message msg => Endianness -> Serial -> msg -> Either MarshalError (Char8.ByteString, [Fd])
 marshal = marshalMessage
 
--- | Parse a 'Char8.ByteString' into a 'ReceivedMessage'. The result can be
--- inspected to see what type of message was parsed. Unknown message types
--- can still be parsed successfully, as long as they otherwise conform to
--- the D-Bus standard.
-unmarshal :: Char8.ByteString -> Either UnmarshalError ReceivedMessage
+-- | Parse a 'Char8.ByteString' into a 'ReceivedMessage'. The 'Fd' values are needed
+-- because the marshaled message contains indices into the 'Fd' list rather then
+-- 'Fd' values directly. The result can be inspected to see what type of message
+-- was parsed. Unknown message types can still be parsed successfully, as long
+-- as they otherwise conform to the D-Bus standard.
+unmarshal :: Char8.ByteString -> [Fd] -> Either UnmarshalError ReceivedMessage
 unmarshal = unmarshalMessage
 
 -- | A D-Bus UUID is 128 bits of data, usually randomly generated. They are

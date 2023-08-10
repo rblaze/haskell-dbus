@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- Copyright (C) 2009-2012 John Millikin <john@john-millikin.com>
@@ -36,18 +37,30 @@ module DBus.Transport
     , socketTransportCredentials
     ) where
 
+import           Control.Concurrent (rtsSupportsBoundThreads, threadWaitWrite)
 import           Control.Exception
+import           Control.Monad (when)
 import qualified Data.ByteString
-import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Builder as Builder
+import           Data.ByteString.Internal (ByteString(PS))
 import qualified Data.ByteString.Lazy as Lazy
+import           Data.ByteString.Unsafe (unsafeUseAsCString)
 import qualified Data.Map as Map
+import           Data.Maybe (fromMaybe)
 import           Data.Monoid
 import           Data.Typeable (Typeable)
-import           Foreign.C (CUInt)
+import           Foreign.C (CInt, CUInt)
+import           Foreign.ForeignPtr (withForeignPtr)
+import           Foreign.Marshal.Array (peekArray)
+import           Foreign.Ptr (castPtr, plusPtr)
+import           Foreign.Storable (sizeOf)
 import           Network.Socket
-import           Network.Socket.ByteString (sendAll, recv)
+import           Network.Socket.Address (SocketAddress(..))
+import qualified Network.Socket.Address
+import           Network.Socket.ByteString (recvMsg)
 import qualified System.Info
+import           System.IO.Unsafe (unsafeDupablePerformIO)
+import           System.Posix.Types (Fd)
 import           Prelude
 
 import           DBus
@@ -73,18 +86,19 @@ class Transport t where
     -- | Default values for this transport's options.
     transportDefaultOptions :: TransportOptions t
 
-    -- | Send a 'ByteString' over the transport.
+    -- | Send a 'ByteString' and Unix file descriptors over the transport.
     --
     -- Throws a 'TransportError' if an error occurs.
-    transportPut :: t -> ByteString -> IO ()
+    transportPut :: t -> ByteString -> [Fd] -> IO ()
 
-    -- | Receive a 'ByteString' of the given size from the transport. The
+    -- | Receive a 'ByteString' of the given size from the transport, plus
+    -- any Unix file descriptors that arrive with the byte data. The
     -- transport should block until sufficient bytes are available, and
     -- only return fewer than the requested amount if there will not be
     -- any more data.
     --
     -- Throws a 'TransportError' if an error occurs.
-    transportGet :: t -> Int -> IO ByteString
+    transportGet :: t -> Int -> IO (ByteString, [Fd])
 
     -- | Close an open transport, and release any associated resources
     -- or handles.
@@ -145,30 +159,47 @@ instance Transport SocketTransport where
           socketTransportOptionBacklog :: Int
         }
     transportDefaultOptions = SocketTransportOptions 30
-    transportPut (SocketTransport addr s) bytes = catchIOException addr (sendAll s bytes)
-    transportGet (SocketTransport addr s) n = catchIOException addr (recvLoop s n)
+    transportPut (SocketTransport addr s) bytes fds = catchIOException addr (sendWithFds s bytes fds)
+    transportGet (SocketTransport addr s) n = catchIOException addr (recvWithFds s n)
     transportClose (SocketTransport addr s) = catchIOException addr (close s)
 
-recvLoop :: Socket -> Int -> IO ByteString
-recvLoop s = \n -> Lazy.toStrict `fmap` loop mempty n where
-    chunkSize = 4096
-    loop acc n = if n > chunkSize
-        then do
-            chunk <- recv s chunkSize
-            let builder = mappend acc (Builder.byteString chunk)
-            loop builder (n - Data.ByteString.length chunk)
-        else do
-            chunk <- recv s n
-            case Data.ByteString.length chunk of
-                -- Unexpected end of connection; maybe the remote end went away.
-                -- Return what we've got so far.
-                0 -> return (Builder.toLazyByteString acc)
+-- todo: import NullSockAddr from network package, when released
+-- (https://github.com/haskell/network/pull/562)
+data NullSockAddr = NullSockAddr
 
-                len -> do
-                    let builder = mappend acc (Builder.byteString chunk)
-                    if len == n
-                        then return (Builder.toLazyByteString builder)
-                        else loop builder (n - Data.ByteString.length chunk)
+instance SocketAddress NullSockAddr where
+    sizeOfSocketAddress NullSockAddr = 0
+    peekSocketAddress _ptr = return NullSockAddr
+    pokeSocketAddress _ptr NullSockAddr = return ()
+
+sendWithFds :: Socket -> ByteString -> [Fd] -> IO ()
+sendWithFds s msg fds = loop 0 where
+    loop acc  = do
+        let cmsgs = if acc == 0 then (encodeCmsg <$> fds) else []
+        n <- unsafeUseAsCString msg $ \cstr -> do
+            let buf = [(plusPtr (castPtr cstr) acc, len - acc)]
+            Network.Socket.Address.sendBufMsg s NullSockAddr buf cmsgs mempty
+        waitWhen0 n s -- copy Network.Socket.ByteString.sendAll
+        when (acc + n < len) $ do
+            loop (acc + n)
+    len = Data.ByteString.length msg
+
+recvWithFds :: Socket -> Int -> IO (ByteString, [Fd])
+recvWithFds s = loop mempty [] where
+    loop accBuf accFds n = do
+        (_sa, buf, cmsgs, flag) <- recvMsg s (min n chunkSize) cmsgsSize mempty
+        let recvLen = Data.ByteString.length buf
+            accBuf' = accBuf <> Builder.byteString buf
+            accFds' = accFds <> decodeFdCmsgs cmsgs
+        case flag of
+            MSG_CTRUNC -> throwIO (transportError ("Unexpected MSG_CTRUNC: more than " <> show maxFds <> " file descriptors?"))
+            -- no data means unexpected end of connection; maybe the remote end went away.
+            _ | recvLen == 0 || recvLen == n -> do
+                return (Lazy.toStrict (Builder.toLazyByteString accBuf'), accFds')
+            _ -> loop accBuf' accFds' (n - recvLen)
+    chunkSize = 4096
+    maxFds = 16 -- same as DBUS_DEFAULT_MESSAGE_UNIX_FDS in DBUS reference implementation
+    cmsgsSize = sizeOf (undefined :: CInt) * maxFds
 
 instance TransportOpen SocketTransport where
     transportOpen _ a = case addressMethod a of
@@ -446,3 +477,24 @@ readPortNumber s = do
     if word > 0 && word <= 65535
         then Just (fromInteger word)
         else Nothing
+
+-- | Copied from Network.Socket.ByteString.IO
+waitWhen0 :: Int -> Socket -> IO ()
+waitWhen0 0 s = when rtsSupportsBoundThreads $
+    withFdSocket s $ \fd -> threadWaitWrite $ fromIntegral fd
+waitWhen0 _ _ = return ()
+
+decodeFdCmsgs :: [Cmsg] -> [Fd]
+decodeFdCmsgs cmsgs =
+    foldMap (fromMaybe [] . decodeFdCmsg) cmsgs
+
+-- | Special decode function to handle > 1 Fd. Should be able to replace with a function
+-- from the network package in future (https://github.com/haskell/network/issues/566)
+decodeFdCmsg :: Cmsg -> Maybe [Fd]
+decodeFdCmsg (Cmsg cmsid (PS fptr off len))
+  | cmsid /= CmsgIdFd = Nothing
+  | otherwise =
+    unsafeDupablePerformIO $ withForeignPtr fptr $ \p0 -> do
+      let p = castPtr (p0 `plusPtr` off)
+          numFds = len `div` sizeOf (undefined :: Fd)
+      Just <$> peekArray numFds p

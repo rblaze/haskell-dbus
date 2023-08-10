@@ -37,8 +37,8 @@ benchMarshal :: Message msg => String -> msg -> Benchmark
 benchMarshal name msg = bench name (whnf (marshal LittleEndian (serial 0)) msg)
 
 benchUnmarshal :: Message msg => String -> msg -> Benchmark
-benchUnmarshal name msg = bench name (whnf unmarshal bytes) where
-    Right bytes = marshal LittleEndian (serial 0) msg
+benchUnmarshal name msg = bench name (whnf (uncurry unmarshal) (bytes, fds)) where
+    Right (bytes, fds) = marshal LittleEndian (serial 0) msg
 
 parseSig :: String -> Maybe Signature
 parseSig = parseSignature

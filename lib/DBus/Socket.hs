@@ -57,6 +57,7 @@ module DBus.Socket
     -- * Authentication
     , Authenticator
     , authenticator
+    , authenticatorWithUnixFds
     , authenticatorClient
     , authenticatorServer
     ) where
@@ -142,11 +143,11 @@ data SocketOptions t = SocketOptions
     }
 
 -- | Default 'SocketOptions', which uses the default Unix/TCP transport and
--- authenticator.
+-- authenticator (without support for Unix file descriptor passing).
 defaultSocketOptions :: SocketOptions SocketTransport
 defaultSocketOptions = SocketOptions
     { socketTransportOptions = transportDefaultOptions
-    , socketAuthenticator = authExternal
+    , socketAuthenticator = authExternal UnixFdsNotSupported
     }
 
 -- | Open a socket to a remote peer listening at the given address.
@@ -257,10 +258,10 @@ send :: Message msg => Socket -> msg -> (Serial -> IO a) -> IO a
 send sock msg io = toSocketError (socketAddress sock) $ do
     serial <- nextSocketSerial sock
     case marshal LittleEndian serial msg of
-        Right bytes -> do
+        Right (bytes, fds) -> do
             let t = socketTransport sock
             a <- io serial
-            withMVar (socketWriteLock sock) (\_ -> transportPut t bytes)
+            withMVar (socketWriteLock sock) (\_ -> transportPut t bytes fds)
             return a
         Left err -> throwIO (socketError ("Message cannot be sent: " ++ show err))
             { socketErrorFatal = False
@@ -283,7 +284,7 @@ receive sock = toSocketError (socketAddress sock) $ do
     --       outside of the lock.
     let t = socketTransport sock
     let get n = if n == 0
-            then return Data.ByteString.empty
+            then return (Data.ByteString.empty, [])
             else transportGet t n
     received <- withMVar (socketReadLock sock) (\_ -> unmarshalMessageM get)
     case received of
@@ -323,34 +324,62 @@ toSocketError addr io = catches io handlers where
 authenticator :: Authenticator t
 authenticator = Authenticator (\_ -> return False) (\_ _ -> return False)
 
+data UnixFdSupport = UnixFdsSupported | UnixFdsNotSupported
+
+-- | An authenticator that implements the D-Bus @EXTERNAL@ mechanism, which uses
+-- credential passing over a Unix socket, with support for Unix file descriptor passing.
+authenticatorWithUnixFds :: Authenticator SocketTransport
+authenticatorWithUnixFds = authExternal UnixFdsSupported
+
 -- | Implements the D-Bus @EXTERNAL@ mechanism, which uses credential
--- passing over a Unix socket.
-authExternal :: Authenticator SocketTransport
-authExternal = authenticator
-    { authenticatorClient = clientAuthExternal
-    , authenticatorServer = serverAuthExternal
+-- passing over a Unix socket, optionally supporting Unix file descriptor passing.
+authExternal :: UnixFdSupport -> Authenticator SocketTransport
+authExternal unixFdSupport = authenticator
+    { authenticatorClient = clientAuthExternal unixFdSupport
+    , authenticatorServer = serverAuthExternal unixFdSupport
     }
 
-clientAuthExternal :: SocketTransport -> IO Bool
-clientAuthExternal t = do
-    transportPut t (Data.ByteString.pack [0])
+clientAuthExternal :: UnixFdSupport -> SocketTransport -> IO Bool
+clientAuthExternal unixFdSupport t = do
+    transportPut t (Data.ByteString.pack [0]) []
     uid <- System.Posix.User.getRealUserID
     let token = concatMap (printf "%02X" . ord) (show uid)
     transportPutLine t ("AUTH EXTERNAL " ++ token)
     resp <- transportGetLine t
     case splitPrefix "OK " resp of
         Just _ -> do
-            transportPutLine t "BEGIN"
-            return True
+            ok <- do
+                case unixFdSupport of
+                    UnixFdsSupported -> do
+                        transportPutLine t "NEGOTIATE_UNIX_FD"
+                        respFd <- transportGetLine t
+                        return (respFd == "AGREE_UNIX_FD")
+                    UnixFdsNotSupported -> do
+                        return True
+            if ok then do
+                transportPutLine t "BEGIN"
+                return True
+            else
+                return False
         Nothing -> return False
 
-serverAuthExternal :: SocketTransport -> UUID -> IO Bool
-serverAuthExternal t uuid = do
-    let waitForBegin = do
-            resp <- transportGetLine t
-            if resp == "BEGIN"
-                then return ()
-                else waitForBegin
+serverAuthExternal :: UnixFdSupport -> SocketTransport -> UUID -> IO Bool
+serverAuthExternal unixFdSupport t uuid = do
+    let negotiateFdsAndBegin = do
+            line <- transportGetLine t
+            case line of
+                "NEGOTIATE_UNIX_FD" -> do
+                    let msg = case unixFdSupport of
+                            UnixFdsSupported ->
+                                "AGREE_UNIX_FD"
+                            UnixFdsNotSupported ->
+                                "ERROR Unix File Descriptor support is not configured."
+                    transportPutLine t msg
+                    negotiateFdsAndBegin
+                "BEGIN" ->
+                    return ()
+                _ ->
+                    negotiateFdsAndBegin
 
     let checkToken token = do
             (_, uid, _) <- socketTransportCredentials t
@@ -358,11 +387,11 @@ serverAuthExternal t uuid = do
             if token == wantToken
                 then do
                     transportPutLine t ("OK " ++ formatUUID uuid)
-                    waitForBegin
+                    negotiateFdsAndBegin
                     return True
                 else return False
 
-    c <- transportGet t 1
+    (c, _fds) <- transportGet t 1
     if c /= Char8.pack "\x00"
         then return False
         else do
@@ -378,11 +407,11 @@ serverAuthExternal t uuid = do
                     else return False
 
 transportPutLine :: Transport t => t -> String -> IO ()
-transportPutLine t line = transportPut t (Char8.pack (line ++ "\r\n"))
+transportPutLine t line = transportPut t (Char8.pack (line ++ "\r\n")) []
 
 transportGetLine :: Transport t => t -> IO String
 transportGetLine t = do
-    let getchr = Char8.head `fmap` transportGet t 1
+    let getchr = (Char8.head . fst) `fmap` transportGet t 1
     raw <- readUntil "\r\n" getchr
     return (dropEnd 2 raw)
 
