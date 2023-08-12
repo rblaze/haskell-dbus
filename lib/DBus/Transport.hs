@@ -86,10 +86,24 @@ class Transport t where
     -- | Default values for this transport's options.
     transportDefaultOptions :: TransportOptions t
 
+    -- | Send a 'ByteString' over the transport.
+    --
+    -- Throws a 'TransportError' if an error occurs.
+    transportPut :: t -> ByteString -> IO ()
+    
     -- | Send a 'ByteString' and Unix file descriptors over the transport.
     --
     -- Throws a 'TransportError' if an error occurs.
-    transportPut :: t -> ByteString -> [Fd] -> IO ()
+    transportPutWithFds :: t -> ByteString -> [Fd] -> IO ()
+    transportPutWithFds t bs _fds = transportPut t bs
+
+    -- | Receive a 'ByteString' of the given size from the transport. The
+    -- transport should block until sufficient bytes are available, and
+    -- only return fewer than the requested amount if there will not be
+    -- any more data.
+    --
+    -- Throws a 'TransportError' if an error occurs.
+    transportGet :: t -> Int -> IO ByteString
 
     -- | Receive a 'ByteString' of the given size from the transport, plus
     -- any Unix file descriptors that arrive with the byte data. The
@@ -98,7 +112,10 @@ class Transport t where
     -- any more data.
     --
     -- Throws a 'TransportError' if an error occurs.
-    transportGet :: t -> Int -> IO (ByteString, [Fd])
+    transportGetWithFds :: t -> Int -> IO (ByteString, [Fd])
+    transportGetWithFds t n = do
+        bs <- transportGet t n
+        return (bs, [])
 
     -- | Close an open transport, and release any associated resources
     -- or handles.
@@ -159,8 +176,10 @@ instance Transport SocketTransport where
           socketTransportOptionBacklog :: Int
         }
     transportDefaultOptions = SocketTransportOptions 30
-    transportPut (SocketTransport addr s) bytes fds = catchIOException addr (sendWithFds s bytes fds)
-    transportGet (SocketTransport addr s) n = catchIOException addr (recvWithFds s n)
+    transportPut st bytes = transportPutWithFds st bytes []
+    transportPutWithFds (SocketTransport addr s) bytes fds = catchIOException addr (sendWithFds s bytes fds)
+    transportGet st n = fst <$> transportGetWithFds st n
+    transportGetWithFds (SocketTransport addr s) n = catchIOException addr (recvWithFds s n)
     transportClose (SocketTransport addr s) = catchIOException addr (close s)
 
 -- todo: import NullSockAddr from network package, when released

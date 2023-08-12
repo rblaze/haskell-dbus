@@ -100,7 +100,9 @@ instance Transport SomeTransport where
     data TransportOptions SomeTransport = SomeTransportOptions
     transportDefaultOptions = SomeTransportOptions
     transportPut (SomeTransport t) = transportPut t
+    transportPutWithFds (SomeTransport t) = transportPutWithFds t
     transportGet (SomeTransport t) = transportGet t
+    transportGetWithFds (SomeTransport t) = transportGetWithFds t
     transportClose (SomeTransport t) = transportClose t
 
 -- | An open socket to another process. Messages can be sent to the remote
@@ -257,11 +259,11 @@ socketListenerAddress (SocketListener l _) = transportListenerAddress l
 send :: Message msg => Socket -> msg -> (Serial -> IO a) -> IO a
 send sock msg io = toSocketError (socketAddress sock) $ do
     serial <- nextSocketSerial sock
-    case marshal LittleEndian serial msg of
+    case marshalWithFds LittleEndian serial msg of
         Right (bytes, fds) -> do
             let t = socketTransport sock
             a <- io serial
-            withMVar (socketWriteLock sock) (\_ -> transportPut t bytes fds)
+            withMVar (socketWriteLock sock) (\_ -> transportPutWithFds t bytes fds)
             return a
         Left err -> throwIO (socketError ("Message cannot be sent: " ++ show err))
             { socketErrorFatal = False
@@ -285,7 +287,7 @@ receive sock = toSocketError (socketAddress sock) $ do
     let t = socketTransport sock
     let get n = if n == 0
             then return (Data.ByteString.empty, [])
-            else transportGet t n
+            else transportGetWithFds t n
     received <- withMVar (socketReadLock sock) (\_ -> unmarshalMessageM get)
     case received of
         Left err -> throwIO (socketError ("Error reading message from socket: " ++ show err))
@@ -341,7 +343,7 @@ authExternal unixFdSupport = authenticator
 
 clientAuthExternal :: UnixFdSupport -> SocketTransport -> IO Bool
 clientAuthExternal unixFdSupport t = do
-    transportPut t (Data.ByteString.pack [0]) []
+    transportPut t (Data.ByteString.pack [0])
     uid <- System.Posix.User.getRealUserID
     let token = concatMap (printf "%02X" . ord) (show uid)
     transportPutLine t ("AUTH EXTERNAL " ++ token)
@@ -391,7 +393,7 @@ serverAuthExternal unixFdSupport t uuid = do
                     return True
                 else return False
 
-    (c, _fds) <- transportGet t 1
+    c <- transportGet t 1
     if c /= Char8.pack "\x00"
         then return False
         else do
@@ -407,11 +409,11 @@ serverAuthExternal unixFdSupport t uuid = do
                     else return False
 
 transportPutLine :: Transport t => t -> String -> IO ()
-transportPutLine t line = transportPut t (Char8.pack (line ++ "\r\n")) []
+transportPutLine t line = transportPut t (Char8.pack (line ++ "\r\n"))
 
 transportGetLine :: Transport t => t -> IO String
 transportGetLine t = do
-    let getchr = (Char8.head . fst) `fmap` transportGet t 1
+    let getchr = Char8.head `fmap` transportGet t 1
     raw <- readUntil "\r\n" getchr
     return (dropEnd 2 raw)
 

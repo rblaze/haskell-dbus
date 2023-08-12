@@ -293,19 +293,19 @@ test_TransportSendReceive = testCase "send-receive" $ runResourceT $ do
     -- small chunks of data are combined
     do
         var <- forkVar (transportGet t 3)
-        liftIO (transportPut t "1" [])
-        liftIO (transportPut t "2" [])
-        liftIO (transportPut t "3" [])
+        liftIO (transportPut t "1")
+        liftIO (transportPut t "2")
+        liftIO (transportPut t "3")
         result <- liftIO (readMVar var)
-        liftIO (result @?= ("123", []))
+        liftIO (result @?= "123")
 
     -- large chunks of data are read in full
     do
         let sentBytes = Data.ByteString.replicate (4096 * 100) 0
         var <- forkVar (transportGet t (4096 * 100))
-        liftIO (transportPut t sentBytes [])
+        liftIO (transportPut t sentBytes)
         result <- liftIO (readMVar var)
-        liftIO (result @?= (sentBytes, []))
+        liftIO (result @?= sentBytes)
 
 test_TransportSendReceive_FileDescriptors :: TestTree
 test_TransportSendReceive_FileDescriptors = nonWindowsTestCase "send-receive-file-descriptors" $ runResourceT $ do
@@ -327,8 +327,8 @@ test_TransportSendReceive_FileDescriptors = nonWindowsTestCase "send-receive-fil
         void $ fdSeek fd2 AbsoluteSeek 0
 
         -- file descriptors from multiple chunks are combined
-        var <- forkVar (transportGet t 1)
-        liftIO (transportPut t "x" [fd1, fd2])
+        var <- forkVar (transportGetWithFds t 1)
+        liftIO (transportPutWithFds t "x" [fd1, fd2])
         ("x", [fd1', fd2']) <- liftIO (readMVar var)
         (fd1Val, _) <- liftIO (fdRead fd1' 1)
         (fd2Val, _) <- liftIO (fdRead fd2' 2)
@@ -355,9 +355,9 @@ test_TransportSendReceive_FileDescriptors_MultiplePuts = nonWindowsTestCase "sen
         void $ fdSeek fd2 AbsoluteSeek 0
 
         -- file descriptors from multiple chunks are combined
-        var <- forkVar (transportGet t 2)
-        liftIO (transportPut t "1" [fd1])
-        liftIO (transportPut t "2" [fd2])
+        var <- forkVar (transportGetWithFds t 2)
+        liftIO (transportPutWithFds t "1" [fd1])
+        liftIO (transportPutWithFds t "2" [fd2])
         ("12", [fd1', fd2']) <- liftIO (readMVar var)
         (fd1Val, _) <- liftIO (fdRead fd1' 1)
         (fd2Val, _) <- liftIO (fdRead fd2' 2)
@@ -378,7 +378,7 @@ test_HandleLostConnection = testCase "handle-lost-connection" $ runResourceT $ d
         transportClose
 
     result <- liftIO (transportGet t 4)
-    liftIO (result @?= ("123", []))
+    liftIO (result @?= "123")
 
 test_ListenUnknown :: TestTree
 test_ListenUnknown = testCase "unknown" $ do
@@ -575,11 +575,11 @@ test_AcceptSocket = testCase "socket" $ runResourceT $ do
     (_, accepted) <- allocate (readMVar acceptedVar) transportClose
     (_, opened) <- allocate (readMVar openedVar) transportClose
 
-    liftIO (transportPut opened "testing" [])
+    liftIO (transportPut opened "testing")
 
     result <- liftIO (transportGet accepted 7)
 
-    liftIO (result @?= ("testing", []))
+    liftIO (result @?= "testing")
 
 test_AcceptSocketClosed :: TestTree
 test_AcceptSocketClosed = testCase "socket-closed" $ do

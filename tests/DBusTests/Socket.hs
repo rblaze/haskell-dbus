@@ -160,15 +160,15 @@ dummyAuth = authenticator
 
 dummyAuthClient :: Transport t => t -> IO Bool
 dummyAuthClient t = do
-    transportPut t "\x00" []
+    transportPut t "\x00"
     resp <- transportGet t 4
-    return (resp == ("OK\r\n", []))
+    return (resp == "OK\r\n")
 
 dummyAuthServer :: Transport t => t -> UUID -> IO Bool
 dummyAuthServer t _ = do
-    (c, _fds) <- transportGet t 1
+    c <- transportGet t 1
     if c == "\x00"
         then do
-            transportPut t "OK\r\n" []
+            transportPut t "OK\r\n"
             return True
         else return False

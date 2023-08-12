@@ -150,11 +150,13 @@ module DBus
 
     -- ** Marshal
     , marshal
+    , marshalWithFds
     , MarshalError
     , marshalErrorMessage
 
     -- ** Unmarshal
     , unmarshal
+    , unmarshalWithFds
     , UnmarshalError
     , unmarshalErrorMessage
 
@@ -253,20 +255,36 @@ receivedMessageBody (ReceivedMethodError _ msg) = methodErrorBody msg
 receivedMessageBody (ReceivedSignal _ msg) = signalBody msg
 receivedMessageBody (ReceivedUnknown _ msg) = unknownMessageBody msg
 
+-- | Convert a 'Message' into a 'Char8.ByteString'. Although unusual, it is
+-- possible for marshaling to fail; if this occurs, an error will be
+-- returned instead.
+marshal :: Message msg => Endianness -> Serial -> msg -> Either MarshalError Char8.ByteString
+marshal end serial msg = fst <$> marshalWithFds end serial msg
+
 -- | Convert a 'Message' into a 'Char8.ByteString' along with all 'Fd' values
 -- mentioned in the message (the marshaled bytes will contain indices into
 -- this list). Although unusual, it is possible for marshaling to fail; if this
 -- occurs, an error will be returned instead.
-marshal :: Message msg => Endianness -> Serial -> msg -> Either MarshalError (Char8.ByteString, [Fd])
-marshal = marshalMessage
+marshalWithFds :: Message msg => Endianness -> Serial -> msg -> Either MarshalError (Char8.ByteString, [Fd])
+marshalWithFds = marshalMessage
+
+-- | Parse a 'Char8.ByteString' into a 'ReceivedMessage'. The result can be
+-- inspected to see what type of message was parsed. Unknown message types
+-- can still be parsed successfully, as long as they otherwise conform to
+-- the D-Bus standard.
+--
+-- Unmarshaling will fail if the message contains file descriptors. If you
+-- need file descriptor support then use 'unmarshalWithFds' instead.
+unmarshal :: Char8.ByteString -> Either UnmarshalError ReceivedMessage
+unmarshal bs = unmarshalWithFds bs []
 
 -- | Parse a 'Char8.ByteString' into a 'ReceivedMessage'. The 'Fd' values are needed
 -- because the marshaled message contains indices into the 'Fd' list rather then
 -- 'Fd' values directly. The result can be inspected to see what type of message
 -- was parsed. Unknown message types can still be parsed successfully, as long
 -- as they otherwise conform to the D-Bus standard.
-unmarshal :: Char8.ByteString -> [Fd] -> Either UnmarshalError ReceivedMessage
-unmarshal = unmarshalMessage
+unmarshalWithFds :: Char8.ByteString -> [Fd] -> Either UnmarshalError ReceivedMessage
+unmarshalWithFds = unmarshalMessage
 
 -- | A D-Bus UUID is 128 bits of data, usually randomly generated. They are
 -- used for identifying unique server instances to clients.

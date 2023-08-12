@@ -44,7 +44,7 @@ test_Unmarshal = testGroup "unmarshal"
 
 test_UnmarshalUnexpectedEof :: TestTree
 test_UnmarshalUnexpectedEof = testCase "unexpected-eof" $ do
-    let unmarshaled = unmarshal "0" []
+    let unmarshaled = unmarshalWithFds "0" []
     assertBool "invalid unmarshalled parse" (isLeft unmarshaled)
 
     let Left err = unmarshaled
@@ -63,19 +63,19 @@ test_FileDescriptors_Marshal = testCaseSteps "(un)marshal round trip" $ \step ->
     
     step "marshal"
     let msg = baseMsg { methodCallBody = [toVariant [Fd 2, Fd 1, Fd 2, Fd 3, Fd 1]] }
-        Right (bytes, fds) = marshal LittleEndian firstSerial msg
+        Right (bytes, fds) = marshalWithFds LittleEndian firstSerial msg
     fds @?= [Fd 2, Fd 1, Fd 3]
 
     step "unmarshal"
-    let result = receivedMessageBody <$> unmarshal bytes [Fd 4, Fd 5, Fd 6]
+    let result = receivedMessageBody <$> unmarshalWithFds bytes [Fd 4, Fd 5, Fd 6]
     result @?= Right [toVariant [Fd 4, Fd 5, Fd 4, Fd 6, Fd 5]]
 
 test_FileDescriptors_UnmarshalHeaderError :: TestTree
 test_FileDescriptors_UnmarshalHeaderError = testCase "UnixFdHeader mismatch" $ do
     let msg = (methodCall "/" "org.example.iface" "Foo")
             { methodCallBody = [toVariant [Fd 1, Fd 2, Fd 3]] }
-        Right (bytes, _fds) = marshal LittleEndian firstSerial msg
+        Right (bytes, _fds) = marshalWithFds LittleEndian firstSerial msg
         
-    let result = first unmarshalErrorMessage (unmarshal bytes [Fd 4, Fd 6])
+    let result = first unmarshalErrorMessage (unmarshalWithFds bytes [Fd 4, Fd 6])
     result @?= Left ("File descriptor count in message header (3)"
       <> " does not match the number of file descriptors received from the socket (2).")
