@@ -34,11 +34,11 @@ empty_MethodReturn :: MethodReturn
 empty_MethodReturn = methodReturn (serial 0)
 
 benchMarshal :: Message msg => String -> msg -> Benchmark
-benchMarshal name msg = bench name (whnf (marshal LittleEndian (serial 0)) msg)
+benchMarshal name msg = bench name (whnf (marshalWithFds LittleEndian (serial 0)) msg)
 
 benchUnmarshal :: Message msg => String -> msg -> Benchmark
-benchUnmarshal name msg = bench name (whnf (uncurry unmarshal) (bytes, fds)) where
-    Right (bytes, fds) = marshal LittleEndian (serial 0) msg
+benchUnmarshal name msg = bench name (whnf (uncurry unmarshalWithFds) (bytes, fds)) where
+    Right (bytes, fds) = marshalWithFds LittleEndian (serial 0) msg
 
 parseSig :: String -> Maybe Signature
 parseSig = parseSignature
