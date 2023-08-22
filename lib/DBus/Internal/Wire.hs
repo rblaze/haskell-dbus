@@ -45,7 +45,6 @@ import qualified Data.Text.Encoding
 import qualified Data.Vector
 import           Data.Vector (Vector)
 import           Data.Word (Word8, Word16, Word32, Word64)
-import           Foreign.C.Types (CInt)
 import           System.Posix.Types (Fd(..))
 import           Prelude
 
