@@ -1,4 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ViewPatterns #-}
 
 -- Copyright (C) 2012 John Millikin <john@john-millikin.com>
 --
@@ -18,6 +20,9 @@ module DBusTests.Socket (test_Socket) where
 
 import Control.Concurrent
 import Control.Exception
+import Control.Monad (void)
+import System.IO (SeekMode(..))
+import System.Posix (Fd, fdRead, fdSeek, fdWrite)
 import Test.Tasty
 import Test.Tasty.HUnit
 import qualified Data.Map as Map
@@ -26,21 +31,20 @@ import DBus
 import DBus.Socket
 import DBus.Transport
 
-import DBusTests.Util (forkVar)
+import DBusTests.Util (forkVar, nonWindowsTestCase, withTempFd)
 
 test_Socket :: TestTree
 test_Socket = testGroup "Socket"
     [ test_Listen
     , test_ListenWith_CustomAuth
     , test_SendReceive
+    , test_SendReceive_FileDescriptors
     ]
 
 test_Listen :: TestTree
 test_Listen = testCase "listen" $ do
     uuid <- randomUUID
-    let Just addr = address "unix" (Map.fromList
-            [ ("abstract", formatUUID uuid)
-            ])
+    let Just addr = address "unix" (Map.singleton "abstract" (formatUUID uuid))
 
     bracket (listen addr) closeListener $ \listener -> do
         acceptedVar <- forkVar (accept listener)
@@ -54,9 +58,7 @@ test_Listen = testCase "listen" $ do
 test_ListenWith_CustomAuth :: TestTree
 test_ListenWith_CustomAuth = testCase "listenWith-custom-auth" $ do
     uuid <- randomUUID
-    let Just addr = address "unix" (Map.fromList
-            [ ("abstract", formatUUID uuid)
-            ])
+    let Just addr = address "unix" (Map.singleton "abstract" (formatUUID uuid))
 
     bracket (listenWith (defaultSocketOptions
             { socketAuthenticator = dummyAuth
@@ -74,9 +76,7 @@ test_ListenWith_CustomAuth = testCase "listenWith-custom-auth" $ do
 test_SendReceive :: TestTree
 test_SendReceive = testCase "send-receive" $ do
     uuid <- randomUUID
-    let Just addr = address "unix" (Map.fromList
-            [ ("abstract", formatUUID uuid)
-            ])
+    let Just addr = address "unix" (Map.singleton "abstract" (formatUUID uuid))
 
     let msg = (methodCall "/" "org.example.iface" "Foo")
             { methodCallSender = Just "org.example.src"
@@ -117,6 +117,40 @@ test_SendReceive = testCase "send-receive" $ do
 
                     sent @?= ()
                     received @?= ReceivedMethodCall serial msg
+
+test_SendReceive_FileDescriptors :: TestTree
+test_SendReceive_FileDescriptors = nonWindowsTestCase "send-receive-file-descriptors" $ do
+    uuid <- randomUUID
+    let Just addr = address "unix" (Map.singleton "abstract" (formatUUID uuid))
+    
+    withTempFd $ \tmpFd -> do
+
+        -- in order to know that the file descriptor received by the server points to
+        -- the same file as the file descriptor that was sent, we write "hello" on the
+        -- client and read it back on the server.
+        void $ fdWrite tmpFd "hello"
+        void $ fdSeek tmpFd AbsoluteSeek 0
+
+        let msg = (methodCall "/" "org.example.iface" "Foo")
+              { methodCallBody = [toVariant tmpFd] }
+
+        bracket (listen addr) closeListener $ \listener -> do
+            acceptedVar <- forkVar (accept listener)
+            openedVar <- forkVar (open addr)
+
+            bracket (takeMVar acceptedVar) close $ \sock1 -> do
+                bracket (takeMVar openedVar) close $ \sock2 -> do
+                    receivedVar <- forkVar (receive sock1)
+                    send sock2 msg (const (pure ()))
+
+                    received <- takeMVar receivedVar
+                    case receivedMessageBody received of
+                        [fromVariant -> Just (fd :: Fd)] -> do
+                            assertBool ("Expected a different Fd, not " <> show tmpFd) (fd /= tmpFd)
+                            (fdMsg, _) <- fdRead fd 5
+                            fdMsg @?= "hello"
+                        body -> do
+                            assertFailure ("Expected a single Fd, not: " <> show body)
 
 dummyAuth :: Transport t => Authenticator t
 dummyAuth = authenticator

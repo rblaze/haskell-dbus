@@ -18,8 +18,11 @@ module DBusTests.Util
     , assertAtom
     , assertException
     , assertThrows
+    
+    , nonWindowsTestCase
 
     , getTempPath
+    , withTempFd
     , listenRandomUnixPath
     , listenRandomUnixAbstract
     , listenRandomIPv4
@@ -49,13 +52,17 @@ import Data.Bits ((.&.))
 import Data.Char (chr)
 import System.Directory (getTemporaryDirectory, removeFile)
 import System.FilePath ((</>))
+import System.IO.Temp (withSystemTempFile)
+import System.Posix (Fd, closeFd, handleToFd)
 import Test.QuickCheck hiding ((.&.))
+import Test.Tasty
 import Test.Tasty.HUnit
 import qualified Data.ByteString
 import qualified Data.ByteString.Lazy
 import qualified Data.Map as Map
 import qualified Data.Text as T
 import qualified Network.Socket as NS
+import qualified System.Info
 import qualified System.Posix as Posix
 
 import DBus
@@ -89,6 +96,11 @@ getTempPath = do
     uuid <- randomUUID
     return (tmp </> formatUUID uuid)
 
+withTempFd :: (Fd -> IO ()) -> IO ()
+withTempFd cmd =
+  withSystemTempFile "haskell-dbus" $ \_path handle -> do
+    bracket (handleToFd handle) closeFd cmd
+
 listenRandomUnixPath :: MonadResource m => m Address
 listenRandomUnixPath = do
     path <- liftIO getTempPath
@@ -106,7 +118,7 @@ listenRandomUnixPath = do
             ])
     return addr
 
-listenRandomUnixAbstract :: MonadResource m => m (Address, ReleaseKey)
+listenRandomUnixAbstract :: MonadResource m => m (Address, NS.Socket, ReleaseKey)
 listenRandomUnixAbstract = do
     uuid <- liftIO randomUUID
     let sockAddr = NS.SockAddrUnix ('\x00' : formatUUID uuid)
@@ -121,7 +133,7 @@ listenRandomUnixAbstract = do
     let Just addr = address "unix" (Map.fromList
             [ ("abstract", formatUUID uuid)
             ])
-    return (addr, key)
+    return (addr, sock, key)
 
 listenRandomIPv4 :: MonadResource m => m (Address, NS.Socket, ReleaseKey)
 listenRandomIPv4 = do
@@ -297,3 +309,9 @@ assertThrows check f = do
     case result of
         Left ex -> assertBool ("unexpected exception " ++ show ex) (check ex)
         Right _ -> assertFailure "expected exception not thrown"
+
+nonWindowsTestCase :: TestName -> Assertion -> TestTree
+nonWindowsTestCase name assertion = testCase name $ do
+    case System.Info.os of
+        "mingw32" -> pure ()
+        _ -> assertion
