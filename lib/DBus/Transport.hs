@@ -41,6 +41,7 @@ import qualified Data.ByteString
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Builder as Builder
 import qualified Data.ByteString.Lazy as Lazy
+import qualified Data.Kind
 import qualified Data.Map as Map
 import           Data.Monoid
 import           Data.Typeable (Typeable)
@@ -68,7 +69,7 @@ transportError msg = TransportError msg Nothing
 class Transport t where
     -- | Additional options that this transport type may use when establishing
     -- a connection.
-    data TransportOptions t :: *
+    data TransportOptions t :: Data.Kind.Type
 
     -- | Default values for this transport's options.
     transportDefaultOptions :: TransportOptions t
@@ -102,7 +103,7 @@ class Transport t => TransportOpen t where
 -- peers.
 class Transport t => TransportListen t where
     -- | Used for transports that listen on a port or address.
-    data TransportListener t :: *
+    data TransportListener t :: Data.Kind.Type
 
     -- | Begin listening for connections on the given address, using the
     -- given options.

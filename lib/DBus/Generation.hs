@@ -13,7 +13,6 @@ import qualified DBus.Introspection.Types as I
 import qualified Data.ByteString as BS
 import qualified Data.Char as Char
 import           Data.Coerce
-import           Data.Functor ((<$>))
 import           Data.Int
 import           Data.List
 import qualified Data.Map as Map

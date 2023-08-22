@@ -108,24 +108,21 @@ instance Functor (Wire s) where
 
 instance Control.Applicative.Applicative (Wire s) where
     {-# INLINE pure #-}
-    pure = return
+    pure a = Wire (\_ s -> WireRR a s)
+
+    {-# INLINE (*>) #-}
+    m *> k = Wire $ \e s -> case unWire m e s of
+        WireRL err -> WireRL err
+        WireRR _ s' -> unWire k e s'
 
     {-# INLINE (<*>) #-}
     (<*>) = ap
 
 instance Monad (Wire s) where
-    {-# INLINE return #-}
-    return a = Wire (\_ s -> WireRR a s)
-
     {-# INLINE (>>=) #-}
     m >>= k = Wire $ \e s -> case unWire m e s of
         WireRL err -> WireRL err
         WireRR a s' -> unWire (k a) e s'
-
-    {-# INLINE (>>) #-}
-    m >> k = Wire $ \e s -> case unWire m e s of
-        WireRL err -> WireRL err
-        WireRR _ s' -> unWire k e s'
 
 throwError :: String -> Wire s a
 throwError err = Wire (\_ _ -> WireRL err)
@@ -749,11 +746,10 @@ instance Functor (ErrorM e) where
         Right x -> Right (f x)
 
 instance Control.Applicative.Applicative (ErrorM e) where
-    pure = return
+    pure = ErrorM . Right
     (<*>) = ap
 
 instance Monad (ErrorM e) where
-    return = ErrorM . Right
     (>>=) m k = case runErrorM m of
         Left err -> ErrorM (Left err)
         Right x -> k x
@@ -767,11 +763,10 @@ instance Monad m => Functor (ErrorT e m) where
     fmap = liftM
 
 instance Monad m => Control.Applicative.Applicative (ErrorT e m) where
-    pure = return
+    pure = ErrorT . return . Right
     (<*>) = ap
 
 instance Monad m => Monad (ErrorT e m) where
-    return = ErrorT . return . Right
     (>>=) m k = ErrorT $ do
         x <- runErrorT m
         case x of

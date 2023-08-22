@@ -181,7 +181,6 @@ import Data.Bits ((.|.))
 import Data.Coerce
 import Data.Foldable hiding (forM_, and)
 import Data.Function
-import Data.Functor ((<$>))
 import Data.IORef
 import Data.List (intercalate, isPrefixOf)
 import Data.Map.Strict (Map)

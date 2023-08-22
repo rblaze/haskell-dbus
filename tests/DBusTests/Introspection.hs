@@ -15,7 +15,6 @@
 
 module DBusTests.Introspection (test_Introspection) where
 
-import Control.Applicative ((<$>), (<*>))
 import Control.Monad (liftM, liftM2)
 import Test.QuickCheck
 import Test.Tasty
