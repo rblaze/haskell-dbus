@@ -13,7 +13,6 @@ import Conduit
 import Control.Monad.ST
 import Control.Monad.Trans.Maybe
 import Data.List (isPrefixOf)
-import Data.Monoid ((<>))
 import Data.XML.Types (Event)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
