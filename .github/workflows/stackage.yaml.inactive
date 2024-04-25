@@ -7,11 +7,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        lts: ['20.26', '21.25', '22.3']
+        lts: ['23.1']
     steps:
-      - uses: actions/checkout@v3
-      - uses: haskell/actions/setup@v2
-        with:
-          enable-stack: true
+	- uses: actions/checkout@v4
+	- uses: haskell-actions/setup@v2
+          with:
+            enable-stack: true
       - name: stack test
         run: 'stack test --resolver lts-${{ matrix.lts }} --bench --only-dependencies && stack test --resolver nightly --bench --no-run-benchmarks --haddock --no-haddock-deps'

@@ -56,7 +56,7 @@ import           Foreign.Marshal.Array (peekArray)
 import           Foreign.Ptr (castPtr, plusPtr)
 import           Foreign.Storable (sizeOf)
 import           Network.Socket
-import           Network.Socket.Address (SocketAddress(..))
+import           Network.Socket.Internal (NullSockAddr(..))
 import qualified Network.Socket.Address
 import           Network.Socket.ByteString (recvMsg)
 import qualified System.Info
@@ -183,19 +183,10 @@ instance Transport SocketTransport where
     transportGetWithFds (SocketTransport addr s) n = catchIOException addr (recvWithFds s n)
     transportClose (SocketTransport addr s) = catchIOException addr (close s)
 
--- todo: import NullSockAddr from network package, when released
--- (https://github.com/haskell/network/pull/562)
-data NullSockAddr = NullSockAddr
-
-instance SocketAddress NullSockAddr where
-    sizeOfSocketAddress NullSockAddr = 0
-    peekSocketAddress _ptr = return NullSockAddr
-    pokeSocketAddress _ptr NullSockAddr = return ()
-
 sendWithFds :: Socket -> ByteString -> [Fd] -> IO ()
 sendWithFds s msg fds = loop 0 where
     loop acc  = do
-        let cmsgs = if acc == 0 then (encodeCmsg <$> fds) else []
+        let cmsgs = if acc == 0 then (encodeCmsg . (pure :: Fd -> [Fd]) <$> fds) else []
         n <- unsafeUseAsCString msg $ \cstr -> do
             let buf = [(plusPtr (castPtr cstr) acc, len - acc)]
             Network.Socket.Address.sendBufMsg s NullSockAddr buf cmsgs mempty
@@ -512,7 +503,7 @@ decodeFdCmsgs cmsgs =
 -- from the network package in future (https://github.com/haskell/network/issues/566)
 decodeFdCmsg :: Cmsg -> Maybe [Fd]
 decodeFdCmsg (Cmsg cmsid (PS fptr off len))
-  | cmsid /= CmsgIdFd = Nothing
+  | cmsid /= CmsgIdFds = Nothing
   | otherwise =
     unsafeDupablePerformIO $ withForeignPtr fptr $ \p0 -> do
       let p = castPtr (p0 `plusPtr` off)

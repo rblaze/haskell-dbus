@@ -6,10 +6,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        ghc: ['9.2', '9.4.8', '9.6.3', '9.8.1']
+        ghc: ['9.2', '9.4.8', '9.6.5', '9.8.2']
     steps:
-      - uses: actions/checkout@v3
-      - uses: haskell/actions/setup@v2
+      - uses: actions/checkout@v4
+      - uses: haskell-actions/setup@v2
         with:
           ghc-version: ${{ matrix.ghc }}
       - run: cabal v1-install --only-dependencies --enable-tests --enable-benchmarks
