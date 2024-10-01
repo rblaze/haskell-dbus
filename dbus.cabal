@@ -94,7 +94,7 @@ library
     , parsec < 3.2
     , random < 1.3
     , split < 0.3
-    , template-haskell >= 2.18 && < 2.22
+    , template-haskell >= 2.18 && <= 2.22.0.0
     , text < 2.2
     , th-lift < 0.9
     , transformers < 0.7
