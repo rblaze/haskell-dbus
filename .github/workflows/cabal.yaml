@@ -6,14 +6,14 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        ghc: ['9.2', '9.4.8', '9.6.5', '9.8.2']
+        ghc: ['9.2', '9.4.8', '9.6.6', '9.8.2', '9.10.1']
     steps:
       - uses: actions/checkout@v4
       - uses: haskell-actions/setup@v2
         with:
           ghc-version: ${{ matrix.ghc }}
-      - run: cabal v1-install --only-dependencies --enable-tests --enable-benchmarks
-      - run: cabal v1-configure --enable-tests --enable-benchmarks
-      - run: cabal v1-build
-      - run: cabal v1-test
-      - run: cabal v1-bench
+      - run: cabal configure --enable-tests --enable-benchmarks
+      - run: cabal build --only-dependencies
+      - run: cabal build
+      - run: cabal test
+      - run: cabal bench
