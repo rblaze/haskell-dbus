@@ -14,4 +14,4 @@ jobs:
           with:
             enable-stack: true
       - name: stack test
-        run: 'stack test --resolver lts-${{ matrix.lts }} --bench --only-dependencies && stack test --resolver nightly --bench --no-run-benchmarks --haddock --no-haddock-deps'
+        run: 'stack test --resolver lts-${{ matrix.lts }} --only-dependencies && stack test --resolver nightly --haddock --no-haddock-deps'

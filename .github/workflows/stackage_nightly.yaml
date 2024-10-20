@@ -10,5 +10,5 @@ jobs:
         with:
           enable-stack: true
       - name: stack test
-        run: 'stack test --resolver nightly --bench --only-dependencies && stack test --resolver nightly --bench --no-run-benchmarks --haddock --no-haddock-deps'
+        run: 'stack test --resolver nightly --only-dependencies && stack test --resolver nightly --haddock --no-haddock-deps'
         continue-on-error: true
