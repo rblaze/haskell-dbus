@@ -37,7 +37,7 @@ instance PrimMonad (Render s) where
 formatXML :: Object -> Maybe String
 formatXML obj = do
     xml <- runST $ runMaybeT $ runRender $ runConduit $
-        renderRoot obj .| R.renderText (R.def {R.rsPretty = True}) .| sinkLazy
+        renderRoot obj .| R.renderText R.def .| sinkLazy
     pure $ TL.unpack xml
 
 renderRoot :: MonadThrow m => Object -> ConduitT i Event m ()
