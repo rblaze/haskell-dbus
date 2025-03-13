@@ -897,7 +897,7 @@ unpackVariant MethodCall { methodCallSender = sender } variant =
                                  , methodErrorSender = sender
                                  } $ fromVariant variant
 
--- | Retrieve a property using the method call parameters that were provided.
+-- | Like `getPropertyValue`, but returns the value as a 'Variant'.
 --
 -- Throws a 'ClientError' if the property request couldn't be sent.
 getProperty :: Client -> MethodCall -> IO (Either MethodError Variant)
@@ -913,10 +913,19 @@ getProperty client
                                        ]
                     }
 
+-- | Get a property using the standard @\"org.freedesktop.DBus.Properties.Get\"@ method.
+-- The interface and property name are given by the 'methodCallInterface' and 'methodCallMember'
+-- fields of the supplied 'MethodCall'.  This function handles properties of fixed type.  For
+-- properties of varying types, use 'getProperty'.
+--
+-- Throws a 'ClientError' if the property request couldn't be sent.
 getPropertyValue :: IsValue a => Client -> MethodCall -> IO (Either MethodError a)
 getPropertyValue client msg =
   (>>= unpackVariant msg) <$> getProperty client msg
 
+-- | Like 'setPropertyValue', but expects the new value to be wrapped in a 'Variant'.
+--
+-- Throws a 'ClientError' if the property request couldn't be sent.
 setProperty :: Client -> MethodCall -> Variant -> IO (Either MethodError MethodReturn)
 setProperty client
             msg@MethodCall { methodCallInterface = interface
@@ -931,6 +940,11 @@ setProperty client
                     ]
                   }
 
+-- | Set a property using the standard @\"org.freedesktop.DBus.Properties.Set\"@ method.
+-- The interface and property name are given by the 'methodCallInterface' and 'methodCallMember'
+-- fields of the supplied 'MethodCall'.  See `setProperty` for a version that accepts a 'Variant'.
+--
+-- Throws a 'ClientError' if the property request couldn't be sent.
 setPropertyValue
   :: IsValue a
   => Client -> MethodCall -> a -> IO (Maybe MethodError)
