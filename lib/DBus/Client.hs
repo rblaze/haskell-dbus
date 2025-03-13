@@ -927,7 +927,7 @@ setProperty client
                   , methodCallBody =
                     [ toVariant (coerce (orDefaultInterface interface) :: String)
                     , toVariant (coerce member :: String)
-                    , value
+                    , toVariant value
                     ]
                   }
 
