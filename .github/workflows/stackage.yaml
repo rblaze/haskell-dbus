@@ -6,7 +6,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        lts: ['23.3']
+        lts: ['23.25']
     steps:
       - uses: actions/checkout@v4
       - uses: haskell-actions/setup@v2
