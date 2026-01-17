@@ -6,6 +6,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
+        # Dependencies do not support 9.14.1 yet (lens => these)
+        # ghc: ['9.2', '9.4.8', '9.6.7', '9.8.4', '9.10.2', '9.12.2', '9.14.1']
         ghc: ['9.2', '9.4.8', '9.6.7', '9.8.4', '9.10.2', '9.12.2']
     steps:
       - uses: actions/checkout@v4
