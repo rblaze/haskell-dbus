@@ -313,16 +313,25 @@ toSocketError addr io = catches io handlers where
 -- | An empty authenticator. Use 'authenticatorClient' or 'authenticatorServer'
 -- to control how the authentication is performed.
 --
--- @
---myAuthenticator :: Authenticator MyTransport
---myAuthenticator = authenticator
---    { 'authenticatorClient' = clientMyAuth
---    , 'authenticatorServer' = serverMyAuth
---    }
+-- >>> data MyTransport
 --
---clientMyAuth :: MyTransport -> IO Bool
---serverMyAuth :: MyTransport -> String -> IO Bool
--- @
+-- >>> :{
+--  clientMyAuth :: MyTransport -> IO Bool
+--  clientMyAuth = error "example"
+-- :}
+--
+-- >>> :{
+--  serverMyAuth :: MyTransport -> UUID -> IO Bool
+--  serverMyAuth = error "example"
+-- :}
+--
+-- >>> :{
+--  myAuthenticator :: Authenticator MyTransport
+--  myAuthenticator = authenticator
+--      { authenticatorClient = clientMyAuth
+--      , authenticatorServer = serverMyAuth
+--      }
+-- :}
 authenticator :: Authenticator t
 authenticator = Authenticator (\_ -> return False) (\_ _ -> return False)
 

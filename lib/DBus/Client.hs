@@ -35,30 +35,27 @@
 --
 -- Example: connect to the session bus, and get a list of active names.
 --
--- @
---{-\# LANGUAGE OverloadedStrings \#-}
+-- >>> {-# LANGUAGE OverloadedStrings #-}
 --
---import Data.List (sort)
---import DBus
---import DBus.Client
+-- >>> import Data.List (sort)
+-- >>> import DBus
+-- >>> import DBus.Client
 --
---main = do
---    client <- 'connectSession'
---    //
---    \-- Request a list of connected clients from the bus
---    reply <- 'call_' client ('methodCall' \"\/org\/freedesktop\/DBus\" \"org.freedesktop.DBus\" \"ListNames\")
---        { 'methodCallDestination' = Just \"org.freedesktop.DBus\"
+-- >>> :{
+--  getActiveNames :: IO ()
+--  getActiveNames = do
+--    client <- connectSession
+--    -- Request a list of connected clients from the bus
+--    reply <- call_ client (methodCall "/org/freedesktop/DBus" "org.freedesktop.DBus" "ListNames")
+--        { methodCallDestination = Just "org.freedesktop.DBus"
 --        }
---    //
---    \-- org.freedesktop.DBus.ListNames() returns a single value, which is
---    \-- a list of names (here represented as [String])
---    let Just names = 'fromVariant' ('methodReturnBody' reply !! 0)
---    //
---    \-- Print each name on a line, sorted so reserved names are below
---    \-- temporary names.
+--    -- org.freedesktop.DBus.ListNames() returns a single value, which is
+--    -- a list of names (here represented as [String])
+--    let Just names = fromVariant (methodReturnBody reply !! 0)
+--    -- Print each name on a line, sorted so reserved names are below
+--    -- temporary names.
 --    mapM_ putStrLn (sort names)
--- @
---
+-- :}
 module DBus.Client
     (
     -- * Clients
@@ -1253,24 +1250,33 @@ makeMethod name inSig outSig io = Method name inSig outSig
 -- Use 'autoMethod' to construct a 'Method' from a function that accepts and
 -- returns simple types.
 --
--- Use 'method' to construct a 'Method' from a function that handles parameter
+-- Use 'makeMethod' to construct a 'Method' from a function that handles parameter
 -- conversion manually.
 --
--- @
---ping :: MethodCall -> IO 'Reply'
---ping _ = ReplyReturn []
+-- >>> {-# LANGUAGE OverloadedStrings #-}
 --
---sayHello :: String -> IO String
---sayHello name = return (\"Hello \" ++ name ++ \"!\")
+-- >>> :{
+--  ping :: MethodCall -> DBusR Reply
+--  ping _ = pure $ ReplyReturn []
+-- :}
 --
--- export client \"/hello_world\"
---   defaultInterface { interfaceName = \"com.example.HelloWorld\"
---                    , interfaceMethods =
---                      [ 'method' \"com.example.HelloWorld\" \"Ping\" ping
---                      , 'autoMethod' \"com.example.HelloWorld\" \"Hello\" sayHello
---                      ]
---                    }
--- @
+-- >>> :{
+--  sayHello :: String -> IO String
+--  sayHello name = return ("Hello " ++ name ++ "!")
+-- :}
+--
+-- >>> :{
+--  doExport :: IO ()
+--  doExport = do
+--    client <- connectSession
+--    export client "/hello_world"
+--      defaultInterface { interfaceName = "com.example.HelloWorld"
+--                       , interfaceMethods =
+--                         [ makeMethod "Ping" (signature_ []) (signature_ []) ping
+--                         , autoMethod "Hello" sayHello
+--                         ]
+--                       }
+-- :}
 export :: Client -> ObjectPath -> Interface -> IO ()
 export client path interface =
   atomicModifyIORef_ (clientObjects client) $ addInterface path interface

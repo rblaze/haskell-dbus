@@ -200,14 +200,17 @@ typeOf' = DBus.Internal.Types.typeOf_
 -- Use fields such as 'methodCallDestination' and 'methodCallBody' to populate
 -- a 'MethodCall'.
 --
--- @
---{-\# LANGUAGE OverloadedStrings \#-}
+-- >>> {-# LANGUAGE OverloadedStrings #-}
 --
---methodCall \"/\" \"org.example.Math\" \"Add\"
---    { 'methodCallDestination' = Just \"org.example.Calculator\"
---    , 'methodCallBody' = ['toVariant' (1 :: Int32), 'toVariant' (2 :: Int32)]
+-- >>> import Data.Int
+--
+-- >>> :{
+--  (methodCall "/" "org.example.Math" "Add")
+--    { methodCallDestination = Just "org.example.Calculator"
+--    , methodCallBody = [toVariant (1 :: Int32), toVariant (2 :: Int32)]
 --    }
--- @
+-- :}
+-- MethodCall {methodCallPath = ObjectPath "/", methodCallInterface = Just (InterfaceName "org.example.Math"), methodCallMember = MemberName "Add", methodCallSender = Nothing, methodCallDestination = Just (BusName "org.example.Calculator"), methodCallReplyExpected = True, methodCallAutoStart = True, methodCallBody = [Variant 1,Variant 2]}
 methodCall :: ObjectPath -> InterfaceName -> MemberName -> MethodCall
 methodCall path iface member = MethodCall path (Just iface) member Nothing Nothing True True []
 
