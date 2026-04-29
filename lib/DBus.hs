@@ -191,7 +191,7 @@ import           DBus.Internal.Wire
 typeOf :: IsValue a => a -> Type
 typeOf = DBus.Internal.Types.typeOf
 
--- | Get the D-Bus type corresponding to the given Haskell type 'a'.
+-- | Get the D-Bus type corresponding to the given Haskell type @a@.
 typeOf' :: IsValue a => Proxy a -> Type
 typeOf' = DBus.Internal.Types.typeOf_
 
