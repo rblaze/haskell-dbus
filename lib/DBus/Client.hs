@@ -288,7 +288,7 @@ data PathInfo = PathInfo
 
 -- NOTE: This instance is needed to make modifyNothingHandler work, but it
 -- shouldn't really be used for much else. A more complete implementation can't
--- be provided because PathInfo > Interface > Method conatain functions which
+-- be provided because PathInfo > Interface > Method contain functions which
 -- can't/don't have an eq instance.
 instance Eq PathInfo where
   a == b = null (_pathInterfaces a) &&
@@ -753,7 +753,7 @@ encodeFlags = foldr ((.|.) . flagValue) 0  where
 --   reserves @\"org.freedesktop.NetworkManager\"@ on the system bus.
 --
 -- * When there are multiple implementations of a particular service, the
---   service standard will ususally include a generic bus name for the
+--   service standard will usually include a generic bus name for the
 --   service. This allows other clients to avoid depending on any particular
 --   implementation's name. For example, both the GNOME Keyring and KDE
 --   KWallet services request the @\"org.freedesktop.secrets\"@ name on the

@@ -836,7 +836,7 @@ parserBusName = name >> Parsec.eof where
         Parsec.skipMany (oneOf alphanum)
 
 -- | A D-Bus Structure is a container type similar to Haskell tuples, storing
--- values of any type that is convertable to 'IsVariant'. A Structure may
+-- values of any type that is convertible to 'IsVariant'. A Structure may
 -- contain up to 255 values.
 --
 -- Most users can use the 'IsVariant' instance for tuples to extract the
