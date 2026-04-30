@@ -18,6 +18,5 @@ jobs:
       - run: cabal build --only-dependencies
       - run: cabal build
       - run: cabal test
-      - run: >-
-          cabal install doctest --ignore-project --overwrite-policy=always
-          cabal repl --with-compiler="$(cabal -v0 path --installdir)/doctest" --repl-options='-w -Wdefault'
+      - run: cabal install doctest --ignore-project --overwrite-policy=always
+      - run: cabal repl --with-compiler="$(cabal -v0 path --installdir)/doctest" --repl-options='-w -Wdefault'
