@@ -200,7 +200,7 @@ typeOf' = DBus.Internal.Types.typeOf_
 -- Use fields such as 'methodCallDestination' and 'methodCallBody' to populate
 -- a 'MethodCall'.
 --
--- >>> {-# LANGUAGE OverloadedStrings #-}
+-- >>> :seti -XOverloadedStrings
 --
 -- >>> import Data.Int
 --

@@ -35,7 +35,7 @@
 --
 -- Example: connect to the session bus, and get a list of active names.
 --
--- >>> {-# LANGUAGE OverloadedStrings #-}
+-- >>> :seti -XOverloadedStrings
 --
 -- >>> import Data.List (sort)
 -- >>> import DBus
@@ -1253,7 +1253,7 @@ makeMethod name inSig outSig io = Method name inSig outSig
 -- Use 'makeMethod' to construct a 'Method' from a function that handles parameter
 -- conversion manually.
 --
--- >>> {-# LANGUAGE OverloadedStrings #-}
+-- >>> :seti -XOverloadedStrings
 --
 -- >>> :{
 --  ping :: MethodCall -> DBusR Reply
