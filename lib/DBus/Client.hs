@@ -35,30 +35,27 @@
 --
 -- Example: connect to the session bus, and get a list of active names.
 --
--- @
---{-\# LANGUAGE OverloadedStrings \#-}
+-- >>> :seti -XOverloadedStrings
 --
---import Data.List (sort)
---import DBus
---import DBus.Client
+-- >>> import Data.List (sort)
+-- >>> import DBus
+-- >>> import DBus.Client
 --
---main = do
---    client <- 'connectSession'
---    //
---    \-- Request a list of connected clients from the bus
---    reply <- 'call_' client ('methodCall' \"\/org\/freedesktop\/DBus\" \"org.freedesktop.DBus\" \"ListNames\")
---        { 'methodCallDestination' = Just \"org.freedesktop.DBus\"
+-- >>> :{
+--  getActiveNames :: IO ()
+--  getActiveNames = do
+--    client <- connectSession
+--    -- Request a list of connected clients from the bus
+--    reply <- call_ client (methodCall "/org/freedesktop/DBus" "org.freedesktop.DBus" "ListNames")
+--        { methodCallDestination = Just "org.freedesktop.DBus"
 --        }
---    //
---    \-- org.freedesktop.DBus.ListNames() returns a single value, which is
---    \-- a list of names (here represented as [String])
---    let Just names = 'fromVariant' ('methodReturnBody' reply !! 0)
---    //
---    \-- Print each name on a line, sorted so reserved names are below
---    \-- temporary names.
+--    -- org.freedesktop.DBus.ListNames() returns a single value, which is
+--    -- a list of names (here represented as [String])
+--    let Just names = fromVariant (methodReturnBody reply !! 0)
+--    -- Print each name on a line, sorted so reserved names are below
+--    -- temporary names.
 --    mapM_ putStrLn (sort names)
--- @
---
+-- :}
 module DBus.Client
     (
     -- * Clients
@@ -291,7 +288,7 @@ data PathInfo = PathInfo
 
 -- NOTE: This instance is needed to make modifyNothingHandler work, but it
 -- shouldn't really be used for much else. A more complete implementation can't
--- be provided because PathInfo > Interface > Method conatain functions which
+-- be provided because PathInfo > Interface > Method contain functions which
 -- can't/don't have an eq instance.
 instance Eq PathInfo where
   a == b = null (_pathInterfaces a) &&
@@ -756,7 +753,7 @@ encodeFlags = foldr ((.|.) . flagValue) 0  where
 --   reserves @\"org.freedesktop.NetworkManager\"@ on the system bus.
 --
 -- * When there are multiple implementations of a particular service, the
---   service standard will ususally include a generic bus name for the
+--   service standard will usually include a generic bus name for the
 --   service. This allows other clients to avoid depending on any particular
 --   implementation's name. For example, both the GNOME Keyring and KDE
 --   KWallet services request the @\"org.freedesktop.secrets\"@ name on the
@@ -1253,24 +1250,33 @@ makeMethod name inSig outSig io = Method name inSig outSig
 -- Use 'autoMethod' to construct a 'Method' from a function that accepts and
 -- returns simple types.
 --
--- Use 'method' to construct a 'Method' from a function that handles parameter
+-- Use 'makeMethod' to construct a 'Method' from a function that handles parameter
 -- conversion manually.
 --
--- @
---ping :: MethodCall -> IO 'Reply'
---ping _ = ReplyReturn []
+-- >>> :seti -XOverloadedStrings
 --
---sayHello :: String -> IO String
---sayHello name = return (\"Hello \" ++ name ++ \"!\")
+-- >>> :{
+--  ping :: MethodCall -> DBusR Reply
+--  ping _ = pure $ ReplyReturn []
+-- :}
 --
--- export client \"/hello_world\"
---   defaultInterface { interfaceName = \"com.example.HelloWorld\"
---                    , interfaceMethods =
---                      [ 'method' \"com.example.HelloWorld\" \"Ping\" ping
---                      , 'autoMethod' \"com.example.HelloWorld\" \"Hello\" sayHello
---                      ]
---                    }
--- @
+-- >>> :{
+--  sayHello :: String -> IO String
+--  sayHello name = return ("Hello " ++ name ++ "!")
+-- :}
+--
+-- >>> :{
+--  doExport :: IO ()
+--  doExport = do
+--    client <- connectSession
+--    export client "/hello_world"
+--      defaultInterface { interfaceName = "com.example.HelloWorld"
+--                       , interfaceMethods =
+--                         [ makeMethod "Ping" (signature_ []) (signature_ []) ping
+--                         , autoMethod "Hello" sayHello
+--                         ]
+--                       }
+-- :}
 export :: Client -> ObjectPath -> Interface -> IO ()
 export client path interface =
   atomicModifyIORef_ (clientObjects client) $ addInterface path interface

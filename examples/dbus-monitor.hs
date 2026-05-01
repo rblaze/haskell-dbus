@@ -105,7 +105,7 @@ main = do
         putStrLn (formatMessage received ++ "\n")
 
 -- Message formatting is verbose and mostly uninteresting, except as an
--- excersise in string manipulation.
+-- exercise in string manipulation.
 
 formatMessage :: ReceivedMessage -> String
 

@@ -480,7 +480,7 @@ unmarshalArray itemType = do
     let end = start + fromIntegral byteCount
     vs <- untilM (liftM (>= end) getOffset) (unmarshal itemType)
     end' <- getOffset
-    when (end' > end) (throwError ("Array data size exeeds array size of " ++ show end))
+    when (end' > end) (throwError ("Array data size exceeds array size of " ++ show end))
     return (Data.Vector.fromList vs)
 
 dictionaryToArray :: Map Atom Value -> Vector Value
@@ -626,7 +626,7 @@ checkMaximumSize :: Marshal ()
 checkMaximumSize = do
     (MarshalState _ messageLength _) <- getState
     when (toInteger messageLength > messageMaximumLength)
-        (throwError ("Marshaled message size (" ++ show messageLength ++ " bytes) exeeds maximum limit of (" ++ show messageMaximumLength ++ " bytes)."))
+        (throwError ("Marshaled message size (" ++ show messageLength ++ " bytes) exceeds maximum limit of (" ++ show messageMaximumLength ++ " bytes)."))
 
 unmarshalMessageM :: Monad m => (Int -> m (ByteString, [Fd]))
                   -> m (Either UnmarshalError ReceivedMessage)

@@ -72,7 +72,7 @@ buildGetTHType arrayTypeBuilder dictTypeBuilder = fn
   where fn t =
           case t of
             -- Because of a quirk in how we unmarshal things, we currently HAVE
-            -- to decorde arrays of Word8 in this way.
+            -- to decode arrays of Word8 in this way.
             T.TypeArray T.TypeWord8 -> ConT ''BS.ByteString
             T.TypeBoolean -> ConT ''Bool
             T.TypeWord8 -> ConT ''Word8
